@@ -9,7 +9,7 @@ This document defines strict operational rules and workflows for **Claude Code**
 Before writing any code, Claude Code must read the active task specification:
 **Active Spec Location**: `tasks/active/claude-task.md`
 
-- **Align Scope**: Only edit files specified under the `Scope` property of the task and `.agent-lock.md`.
+- **Align Scope**: Only edit files specified under the `Scope allowed` section of the task and `.agent-lock.md`.
 - **Constraint**: Do not refactor files, add features, or change business logic outside the boundaries of the spec.
 
 ---

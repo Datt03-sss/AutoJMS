@@ -27,17 +27,50 @@ When a new user request arrives, Antigravity must compile a detailed task specif
 5. **Lock Scope**: Declare the narrowest possible scope in `tasks/active/claude-task.md` and `.agent-lock.md`.
 
 ---
-
 ## 3. Specifying Tasks for Claude Code
 
-The task specification in `tasks/active/claude-task.md` must be extremely precise to prevent scope creep or compilation errors. Use the following structured format:
+The task specification in `tasks/active/claude-task.md` must follow this exact format:
 
-- **Target Files**: Explicitly state which files should be created, modified, or deleted.
-- **Detailed Instructions**: Write clear step-by-step algorithms and code snippets to be inserted.
-- **Verification Commands**: Provide exact commands for tests, builds, and linting.
-- **Lock Metadata**: Include writer name (`ClaudeCode`) and scope path.
+````markdown
+# Claude Code Task — AutoJMS
 
----
+## Approved by owner
+Yes
+
+## Repo
+https://github.com/Datt03-sss/AutoJMS
+
+## Branch
+main
+
+## Task summary
+[Điền task đã được owner duyệt]
+
+## Scope allowed
+[Danh sách file/folder được sửa]
+
+## Scope forbidden
+- License/auth/hash-check
+- Firebase session
+- Supabase production config
+- Velopack release
+- Database schema
+- JMS API logic
+- Print business logic nếu không liên quan
+- Tracking parser nếu không liên quan
+- service_account/key/token/secret
+
+## Requirements
+[Điền yêu cầu cụ thể]
+
+## Build commands
+```powershell
+dotnet restore .\AutoJMS.slnx
+dotnet build .\AutoJMS.slnx -c Release
+```
+````
+
+
 
 ## 4. Triggering the Worker
 

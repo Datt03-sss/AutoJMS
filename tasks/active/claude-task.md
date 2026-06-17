@@ -1,40 +1,36 @@
-# Claude Code Task Specification
+# Claude Code Task — AutoJMS
 
-This file contains the active task specification for **Claude Code**. Modify this file to define a task, obtain Owner approval, and run `run-claude-task.ps1` to execute it.
+## Approved by owner
+No
 
----
+## Repo
+https://github.com/Datt03-sss/AutoJMS
 
-## Task Metadata
-* **Status**: IDLE
-* **Spec Writer**: None
-* **Scope**: None
-* **Approved By**: None
-* **Timestamp**: None
+## Branch
+main
 
----
+## Task summary
+[Điền task đã được owner duyệt]
 
-## 1. Objective
-Describe the overall goal of the task and the desired outcome.
+## Scope allowed
+[Danh sách file/folder được sửa]
 
----
+## Scope forbidden
+- License/auth/hash-check
+- Firebase session
+- Supabase production config
+- Velopack release
+- Database schema
+- JMS API logic
+- Print business logic nếu không liên quan
+- Tracking parser nếu không liên quan
+- service_account/key/token/secret
 
-## 2. Targeted Files
-List the precise file paths to create, modify, or delete:
-- `[MODIFY]` `path/to/file.cs`
-- `[NEW]` `path/to/new_file.cs`
-- `[DELETE]` `path/to/deleted_file.cs`
+## Requirements
+[Điền yêu cầu cụ thể]
 
----
-
-## 3. Detailed Step-by-Step Instructions
-Provide specific implementation instructions, algorithms, layout updates, and C# code changes:
-1. `Step 1`: Edit file X to implement function Y.
-2. `Step 2`: Update form styling.
-
----
-
-## 4. Verification Plan
-Specify the commands to run to verify the implementation:
-- `[ ]` `dotnet build .\AutoJMS.slnx -c Release`
-- `[ ]` `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1`
-- `[ ]` Manual verification checklist.
+## Build commands
+```powershell
+dotnet restore .\AutoJMS.slnx
+dotnet build .\AutoJMS.slnx -c Release
+```

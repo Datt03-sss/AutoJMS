@@ -16,11 +16,12 @@ if (-not (Test-Path $taskSpecPath)) {
 Write-Host "Reading task spec from $taskSpecPath..." -ForegroundColor Yellow
 $specContent = Get-Content $taskSpecPath -Raw
 
-# Check if spec is idle
-if ($specContent -match "Status:\s*IDLE") {
-    Write-Host "Task status is IDLE. No active task to run. Exiting." -ForegroundColor Green
+# Check if spec is approved by owner
+if ($specContent -notmatch "(?ms)## Approved by owner\s*\r?\n\s*Yes") {
+    Write-Host "Task is not approved by owner. Please set 'Approved by owner' to 'Yes' in tasks/active/claude-task.md. Exiting." -ForegroundColor Yellow
     exit 0
 }
+
 
 # 2. Verify git status and branch
 Write-Host "Checking Git configuration..." -ForegroundColor Yellow
