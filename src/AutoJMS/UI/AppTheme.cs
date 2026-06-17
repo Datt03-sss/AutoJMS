@@ -645,6 +645,8 @@ namespace AutoJMS.UI
         {
             if (string.IsNullOrEmpty(name)) return true;
             name = name.ToLower();
+            if (name.Contains("tabtracking_btnsearch") || name.Contains("tabprint_btntimkiem"))
+                return false;
             return name.Contains("search") || 
                    name.Contains("timkiem") || 
                    name.Contains("print") || 
