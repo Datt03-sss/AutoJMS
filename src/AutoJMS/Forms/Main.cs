@@ -148,6 +148,8 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
+            this.MinimumSize = new Size(1024, 700);
+            AppTheme.Apply(this);
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
             // Register all built-in tabs with the TabManager
@@ -1402,42 +1404,58 @@ namespace AutoJMS
             }
         }
 
-        private async void tabControl_SelectedIndexChanged(object sender, EventArgs e)
+        private void tabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (this.IsDisposed) return;
-            try
+            
+            this.SuspendLayout();
+            tabControl.SuspendLayout();
+            
+            this.ResumeLayout(false);
+            tabControl.ResumeLayout(false);
+
+            this.BeginInvoke(new Action(async () =>
             {
-                if (tabControl.SelectedTab == tabHome)
+                if (this.IsDisposed) return;
+                try
                 {
-                    if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
+                    if (tabControl.SelectedTab == tabHome)
                     {
-                        tabHome_webView.CoreWebView2.Reload();
-                        _isHomeNeedReload = false;
-                    }
-                }
-                else if (tabControl.SelectedTab == tabDKCH)
-                {
-                    if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
-                    {
-                        tabDKCH_webView.CoreWebView2.Reload();
-                        _isDkchNeedReload = false;
-                    }
-                }
-                else if (tabControl.SelectedTab == tabTracking)
-                {
-                    if (string.IsNullOrEmpty(Main.CapturedAuthToken)) await RefreshAuthTokenAsync();
-                    if (tabTracking_btnSearch.Enabled)
-                    {
-                        if (tabTracking_process != null && !tabTracking_process.IsDisposed)
+                        if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
                         {
-                            tabTracking_process.Value = 0;
-                            tabTracking_process.Visible = false;
+                            tabHome_webView.CoreWebView2.Reload();
+                            _isHomeNeedReload = false;
+                        }
+                    }
+                    else if (tabControl.SelectedTab == tabDKCH)
+                    {
+                        if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
+                        {
+                            tabDKCH_webView.CoreWebView2.Reload();
+                            _isDkchNeedReload = false;
+                        }
+                    }
+                    else if (tabControl.SelectedTab == tabTracking)
+                    {
+                        if (string.IsNullOrEmpty(Main.CapturedAuthToken))
+                        {
+                            await RefreshAuthTokenAsync();
+                        }
+                        if (tabTracking_btnSearch.Enabled)
+                        {
+                            if (tabTracking_process != null && !tabTracking_process.IsDisposed)
+                            {
+                                tabTracking_process.Value = 0;
+                                tabTracking_process.Visible = false;
+                            }
                         }
                     }
                 }
-                // tabChat and tabDash views moved to FullStackOperation form
-            }
-            catch (Exception ex) { MessageBox.Show("Lỗi xử lý Tab: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Lỗi xử lý Tab: " + ex.Message);
+                }
+            }));
         }
 
         // Candidate HTTP header names the JMS frontend may attach the session

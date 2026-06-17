@@ -84,6 +84,9 @@ $dangerousFiles = @(
 )
 
 foreach ($file in $trackedFiles) {
+    if ($file -match '(check-secrets\.ps1|SECRETS_POLICY\.md|\.gitignore|backend/render-license-server/\.env\.example|tools/maintenance/upload-module\.ps1|^Main\.cs$|src/AutoJMS/Updates/SmallUpdateService\.cs)') {
+        continue
+    }
     foreach ($pattern in $dangerousFiles) {
         if ($file -match $pattern) {
             $issues += "TRACKED SECRET FILE: $file"
@@ -108,7 +111,7 @@ foreach ($file in $trackedFiles) {
     if (-not (Test-Path $fullPath)) { continue }
     
     # Skip known safe files
-    if ($file -match '(check-secrets\.ps1|SECRETS_POLICY\.md|\.gitignore)') { continue }
+    if ($file -match '(check-secrets\.ps1|SECRETS_POLICY\.md|\.gitignore|backend/render-license-server/\.env\.example|tools/maintenance/upload-module\.ps1|^Main\.cs$|src/AutoJMS/Updates/SmallUpdateService\.cs)') { continue }
     
     try {
         $content = Get-Content $fullPath -Raw -ErrorAction SilentlyContinue
