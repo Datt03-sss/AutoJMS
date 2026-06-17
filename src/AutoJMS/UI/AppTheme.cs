@@ -292,21 +292,21 @@ namespace AutoJMS.UI
                 else
                 {
                     sbtn.FillColor = colors.CardBackground;
-                    sbtn.FillHoverColor = colors.AppBackground;
-                    sbtn.FillPressColor = colors.InputBorder;
-                    sbtn.FillSelectedColor = colors.InputBorder;
+                    sbtn.FillHoverColor = colors.PrimaryHover;
+                    sbtn.FillPressColor = colors.PrimaryPress;
+                    sbtn.FillSelectedColor = colors.PrimaryPress;
                     sbtn.RectColor = colors.InputBorder;
-                    sbtn.RectHoverColor = colors.TextSecondary;
-                    sbtn.RectPressColor = colors.TextPrimary;
-                    sbtn.RectSelectedColor = colors.TextPrimary;
+                    sbtn.RectHoverColor = colors.PrimaryHover;
+                    sbtn.RectPressColor = colors.PrimaryPress;
+                    sbtn.RectSelectedColor = colors.PrimaryPress;
                     sbtn.ForeColor = colors.TextPrimary;
-                    sbtn.ForeHoverColor = colors.TextPrimary;
-                    sbtn.ForePressColor = colors.TextPrimary;
-                    sbtn.ForeSelectedColor = colors.TextPrimary;
+                    sbtn.ForeHoverColor = Color.White;
+                    sbtn.ForePressColor = Color.White;
+                    sbtn.ForeSelectedColor = Color.White;
                     sbtn.SymbolColor = colors.TextSecondary;
-                    sbtn.SymbolHoverColor = colors.TextPrimary;
-                    sbtn.SymbolPressColor = colors.TextPrimary;
-                    sbtn.SymbolSelectedColor = colors.TextPrimary;
+                    sbtn.SymbolHoverColor = Color.White;
+                    sbtn.SymbolPressColor = Color.White;
+                    sbtn.SymbolSelectedColor = Color.White;
                 }
             }
             else if (ctrl is UIButton btn)
@@ -405,17 +405,17 @@ namespace AutoJMS.UI
                 {
                     // Secondary
                     btn.FillColor = colors.CardBackground;
-                    btn.FillHoverColor = colors.AppBackground;
-                    btn.FillPressColor = colors.InputBorder;
-                    btn.FillSelectedColor = colors.InputBorder;
+                    btn.FillHoverColor = colors.PrimaryHover;
+                    btn.FillPressColor = colors.PrimaryPress;
+                    btn.FillSelectedColor = colors.PrimaryPress;
                     btn.RectColor = colors.InputBorder;
-                    btn.RectHoverColor = colors.TextSecondary;
-                    btn.RectPressColor = colors.TextPrimary;
-                    btn.RectSelectedColor = colors.TextPrimary;
+                    btn.RectHoverColor = colors.PrimaryHover;
+                    btn.RectPressColor = colors.PrimaryPress;
+                    btn.RectSelectedColor = colors.PrimaryPress;
                     btn.ForeColor = colors.TextPrimary;
-                    btn.ForeHoverColor = colors.TextPrimary;
-                    btn.ForePressColor = colors.TextPrimary;
-                    btn.ForeSelectedColor = colors.TextPrimary;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
                 }
             }
             else if (ctrl is UIImageButton imgBtn)
@@ -550,6 +550,12 @@ namespace AutoJMS.UI
                     pnl.Radius = 0;
                     pnl.FillColor = (CurrentTheme == ThemeMode.Dark) ? colors.AppBackground : colors.CardBackground;
                     pnl.RectColor = (CurrentTheme == ThemeMode.Dark) ? Color.Transparent : colors.SubtleBorder;
+                }
+                else if (pnl.Name == "uiPanel19" || pnl.Name == "uiPanel20")
+                {
+                    pnl.Radius = 0;
+                    pnl.FillColor = colors.CardBackground;
+                    pnl.RectColor = colors.SubtleBorder;
                 }
                 else
                 {
