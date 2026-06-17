@@ -35,6 +35,15 @@ namespace AutoJMS
             form.RectColor = PrimaryRed;
             form.TitleColor = PrimaryRed;
             form.TitleForeColor = Color.White;
+            
+            // Modern UI form styling
+            form.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+            try 
+            {
+                form.ShowRadius = true;
+                form.ShowShadow = true;
+            }
+            catch { }
 
             // Apply double buffering to the form itself
             EnableDoubleBuffer(form);
@@ -81,9 +90,16 @@ namespace AutoJMS
 
         private static void ApplyStyleToControl(Control ctrl)
         {
+            // Apply modern font globally (skip WebView2 to avoid COM issues)
+            if (!(ctrl is Microsoft.Web.WebView2.WinForms.WebView2))
+            {
+                ctrl.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+            }
+
             if (ctrl is UIButton btn)
             {
                 btn.Style = UIStyle.Custom;
+                btn.Radius = 10;
                 btn.FillColor = PrimaryRed;
                 btn.FillHoverColor = PrimaryHover;
                 btn.FillPressColor = PrimaryPress;
@@ -100,6 +116,7 @@ namespace AutoJMS
             else if (ctrl is UISymbolButton sbtn)
             {
                 sbtn.Style = UIStyle.Custom;
+                sbtn.Radius = 10;
                 sbtn.FillColor = PrimaryRed;
                 sbtn.FillHoverColor = PrimaryHover;
                 sbtn.FillPressColor = PrimaryPress;
@@ -169,6 +186,7 @@ namespace AutoJMS
             else if (ctrl is UITextBox txt)
             {
                 txt.Style = UIStyle.Custom;
+                txt.Radius = 10;
                 txt.FillColor = Color.White;
                 txt.RectColor = BorderColor;
                 txt.ForeColor = TextPrimary;
@@ -176,6 +194,7 @@ namespace AutoJMS
             else if (ctrl is UIRichTextBox rtxt)
             {
                 rtxt.Style = UIStyle.Custom;
+                rtxt.Radius = 10;
                 rtxt.FillColor = Color.White;
                 rtxt.RectColor = BorderColor;
                 rtxt.ForeColor = TextPrimary;
@@ -183,6 +202,7 @@ namespace AutoJMS
             else if (ctrl is UIPanel pnl)
             {
                 pnl.Style = UIStyle.Custom;
+                pnl.Radius = 10;
                 pnl.FillColor = CardBackground;
                 pnl.RectColor = BorderColor;
                 pnl.ForeColor = TextPrimary;
@@ -190,6 +210,7 @@ namespace AutoJMS
             else if (ctrl is UITitlePanel tpnl)
             {
                 tpnl.Style = UIStyle.Custom;
+                tpnl.Radius = 10;
                 tpnl.TitleColor = PrimaryRed;
                 tpnl.TitleForeColor = Color.White;
                 tpnl.RectColor = PrimaryRed;
@@ -199,6 +220,7 @@ namespace AutoJMS
             else if (ctrl is UIComboBox cb)
             {
                 cb.Style = UIStyle.Custom;
+                cb.Radius = 10;
                 cb.FillColor = Color.White;
                 cb.RectColor = BorderColor;
                 cb.ForeColor = TextPrimary;
@@ -206,6 +228,7 @@ namespace AutoJMS
             else if (ctrl is UIIntegerUpDown iud)
             {
                 iud.Style = UIStyle.Custom;
+                iud.Radius = 10;
                 iud.FillColor = Color.White;
                 iud.RectColor = BorderColor;
                 iud.ForeColor = TextPrimary;
