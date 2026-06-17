@@ -89,40 +89,105 @@ namespace AutoJMS
             if (ctrl is UIButton btn)
             {
                 btn.Style = UIStyle.Custom;
-                btn.Radius = 6; // Softer radius for buttons
-                btn.FillColor = AppPalette.PrimaryAccent;
-                btn.FillHoverColor = AppPalette.PrimaryHoverTint;
-                btn.FillPressColor = AppPalette.PrimaryPress;
-                btn.FillSelectedColor = AppPalette.PrimaryPress;
-                btn.RectColor = AppPalette.PrimaryAccent;
-                btn.RectHoverColor = AppPalette.PrimaryHoverTint;
-                btn.RectPressColor = AppPalette.PrimaryPress;
-                btn.RectSelectedColor = AppPalette.PrimaryPress;
-                btn.ForeColor = AppPalette.TextInverse;
-                btn.ForeHoverColor = AppPalette.PrimaryAccent; // Inverted on hover tint
-                btn.ForePressColor = AppPalette.TextInverse;
-                btn.ForeSelectedColor = AppPalette.TextInverse;
+                btn.Radius = 6;
+                
+                if (IsPrimaryButton(btn.Name))
+                {
+                    btn.FillColor = AppPalette.PrimaryAccent;
+                    btn.FillHoverColor = AppPalette.PrimaryHoverTint;
+                    btn.FillPressColor = AppPalette.PrimaryPress;
+                    btn.FillSelectedColor = AppPalette.PrimaryPress;
+                    btn.RectColor = AppPalette.PrimaryAccent;
+                    btn.RectHoverColor = AppPalette.PrimaryHoverTint;
+                    btn.RectPressColor = AppPalette.PrimaryPress;
+                    btn.RectSelectedColor = AppPalette.PrimaryPress;
+                    btn.ForeColor = AppPalette.TextInverse;
+                    btn.ForeHoverColor = AppPalette.PrimaryAccent;
+                    btn.ForePressColor = AppPalette.TextInverse;
+                    btn.ForeSelectedColor = AppPalette.TextInverse;
+                }
+                else
+                {
+                    // Secondary (Outlined/Gray)
+                    btn.FillColor = AppPalette.CardBackground;
+                    btn.FillHoverColor = Color.FromArgb(243, 244, 246);
+                    btn.FillPressColor = Color.FromArgb(229, 231, 235);
+                    btn.FillSelectedColor = Color.FromArgb(229, 231, 235);
+                    btn.RectColor = AppPalette.InputBorder;
+                    btn.RectHoverColor = AppPalette.TextSecondary;
+                    btn.RectPressColor = AppPalette.TextPrimary;
+                    btn.RectSelectedColor = AppPalette.TextPrimary;
+                    btn.ForeColor = AppPalette.TextPrimary;
+                    btn.ForeHoverColor = AppPalette.TextPrimary;
+                    btn.ForePressColor = AppPalette.TextPrimary;
+                    btn.ForeSelectedColor = AppPalette.TextPrimary;
+                }
             }
             else if (ctrl is UISymbolButton sbtn)
             {
                 sbtn.Style = UIStyle.Custom;
                 sbtn.Radius = 6;
-                sbtn.FillColor = AppPalette.PrimaryAccent;
-                sbtn.FillHoverColor = AppPalette.PrimaryHoverTint;
-                sbtn.FillPressColor = AppPalette.PrimaryPress;
-                sbtn.FillSelectedColor = AppPalette.PrimaryPress;
-                sbtn.RectColor = AppPalette.PrimaryAccent;
-                sbtn.RectHoverColor = AppPalette.PrimaryHoverTint;
-                sbtn.RectPressColor = AppPalette.PrimaryPress;
-                sbtn.RectSelectedColor = AppPalette.PrimaryPress;
-                sbtn.ForeColor = AppPalette.TextInverse;
-                sbtn.ForeHoverColor = AppPalette.PrimaryAccent;
-                sbtn.ForePressColor = AppPalette.TextInverse;
-                sbtn.ForeSelectedColor = AppPalette.TextInverse;
-                sbtn.SymbolColor = AppPalette.TextInverse;
-                sbtn.SymbolHoverColor = AppPalette.PrimaryAccent;
-                sbtn.SymbolPressColor = AppPalette.TextInverse;
-                sbtn.SymbolSelectedColor = AppPalette.TextInverse;
+                
+                if (IsIconButton(sbtn.Name))
+                {
+                    // Browser nav and small icon buttons - Minimalist / Transparent
+                    sbtn.FillColor = Color.Transparent;
+                    sbtn.FillHoverColor = Color.FromArgb(243, 244, 246);
+                    sbtn.FillPressColor = Color.FromArgb(229, 231, 235);
+                    sbtn.FillSelectedColor = Color.FromArgb(229, 231, 235);
+                    sbtn.RectColor = Color.Transparent;
+                    sbtn.RectHoverColor = Color.Transparent;
+                    sbtn.RectPressColor = Color.Transparent;
+                    sbtn.RectSelectedColor = Color.Transparent;
+                    sbtn.ForeColor = AppPalette.TextPrimary;
+                    sbtn.ForeHoverColor = AppPalette.PrimaryAccent;
+                    sbtn.ForePressColor = AppPalette.TextPrimary;
+                    sbtn.ForeSelectedColor = AppPalette.TextPrimary;
+                    sbtn.SymbolColor = AppPalette.TextSecondary;
+                    sbtn.SymbolHoverColor = AppPalette.PrimaryAccent;
+                    sbtn.SymbolPressColor = AppPalette.TextPrimary;
+                    sbtn.SymbolSelectedColor = AppPalette.TextPrimary;
+                }
+                else if (IsPrimaryButton(sbtn.Name))
+                {
+                    // Primary Brand Red Solid
+                    sbtn.FillColor = AppPalette.PrimaryAccent;
+                    sbtn.FillHoverColor = AppPalette.PrimaryHoverTint;
+                    sbtn.FillPressColor = AppPalette.PrimaryPress;
+                    sbtn.FillSelectedColor = AppPalette.PrimaryPress;
+                    sbtn.RectColor = AppPalette.PrimaryAccent;
+                    sbtn.RectHoverColor = AppPalette.PrimaryHoverTint;
+                    sbtn.RectPressColor = AppPalette.PrimaryPress;
+                    sbtn.RectSelectedColor = AppPalette.PrimaryPress;
+                    sbtn.ForeColor = AppPalette.TextInverse;
+                    sbtn.ForeHoverColor = AppPalette.PrimaryAccent;
+                    sbtn.ForePressColor = AppPalette.TextInverse;
+                    sbtn.ForeSelectedColor = AppPalette.TextInverse;
+                    sbtn.SymbolColor = AppPalette.TextInverse;
+                    sbtn.SymbolHoverColor = AppPalette.PrimaryAccent;
+                    sbtn.SymbolPressColor = AppPalette.TextInverse;
+                    sbtn.SymbolSelectedColor = AppPalette.TextInverse;
+                }
+                else
+                {
+                    // Secondary Brand Red Outlined
+                    sbtn.FillColor = AppPalette.CardBackground;
+                    sbtn.FillHoverColor = Color.FromArgb(243, 244, 246);
+                    sbtn.FillPressColor = Color.FromArgb(229, 231, 235);
+                    sbtn.FillSelectedColor = Color.FromArgb(229, 231, 235);
+                    sbtn.RectColor = AppPalette.InputBorder;
+                    sbtn.RectHoverColor = AppPalette.TextSecondary;
+                    sbtn.RectPressColor = AppPalette.TextPrimary;
+                    sbtn.RectSelectedColor = AppPalette.TextPrimary;
+                    sbtn.ForeColor = AppPalette.TextPrimary;
+                    sbtn.ForeHoverColor = AppPalette.TextPrimary;
+                    sbtn.ForePressColor = AppPalette.TextPrimary;
+                    sbtn.ForeSelectedColor = AppPalette.TextPrimary;
+                    sbtn.SymbolColor = AppPalette.TextSecondary;
+                    sbtn.SymbolHoverColor = AppPalette.TextPrimary;
+                    sbtn.SymbolPressColor = AppPalette.TextPrimary;
+                    sbtn.SymbolSelectedColor = AppPalette.TextPrimary;
+                }
             }
             else if (ctrl is UIImageButton imgBtn)
             {
@@ -260,6 +325,46 @@ namespace AutoJMS
                 flp.FillColor = Color.Transparent;
                 flp.RectColor = Color.Transparent;
             }
+        }
+
+        private static bool IsPrimaryButton(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return true;
+            name = name.ToLower();
+            return name.Contains("search") || 
+                   name.Contains("timkiem") || 
+                   name.Contains("print") || 
+                   name.Contains("dkch1") || 
+                   name.Contains("dkch2") || 
+                   name.Contains("stop") || 
+                   name.Contains("checkupdate");
+        }
+
+        private static bool IsSecondaryButton(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            name = name.ToLower();
+            return name.Contains("clear") || 
+                   name.Contains("lammoi") || 
+                   name.Contains("export") || 
+                   name.Contains("upload") || 
+                   name.Contains("download") || 
+                   name.Contains("terms") ||
+                   name.Contains("selectall") ||
+                   name.Contains("paper") ||
+                   name.Contains("job");
+        }
+
+        private static bool IsIconButton(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            name = name.ToLower();
+            return name.Contains("btnback") || 
+                   name.Contains("btnforward") || 
+                   name.Contains("btnreload") || 
+                   name.Contains("btnhome") || 
+                   name.Contains("btnmenu") || 
+                   name.Equals("tabdkch_home");
         }
     }
 }

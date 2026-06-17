@@ -893,7 +893,7 @@ namespace AutoJMS
         {
             lblNetworkStatus = new UILabel();
             lblNetworkStatus.AutoSize = true;
-            lblNetworkStatus.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            lblNetworkStatus.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             lblNetworkStatus.BackColor = Color.Transparent;
             lblNetworkStatus.TextAlign = ContentAlignment.MiddleRight;
             lblNetworkStatus.Parent = this;
@@ -923,15 +923,15 @@ namespace AutoJMS
             {
                 case NetworkStatus.Online:
                     lblNetworkStatus.Text = "● Online";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(0, 240, 100);
+                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Success;
                     break;
                 case NetworkStatus.Unstable:
                     lblNetworkStatus.Text = "● Mạng chậm";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(253, 224, 71);
+                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Warning;
                     break;
                 case NetworkStatus.Offline:
                     lblNetworkStatus.Text = "● Mất kết nối";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(252, 115, 115);
+                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Danger;
                     break;
             }
             RepositionNetworkLabel();
@@ -1409,6 +1409,9 @@ namespace AutoJMS
         {
             if (this.IsDisposed) return;
 
+            this.SuspendLayout();
+            tabControl.SuspendLayout();
+
             this.BeginInvoke(new Action(async () =>
             {
                 if (this.IsDisposed) return;
@@ -1446,6 +1449,11 @@ namespace AutoJMS
                 catch (Exception ex)
                 {
                     AppLogger.Error("Lỗi xử lý Tab: " + ex.Message);
+                }
+                finally
+                {
+                    tabControl.ResumeLayout(true);
+                    this.ResumeLayout(true);
                 }
             }));
         }
@@ -2932,6 +2940,9 @@ namespace AutoJMS
             uiPanel2.Controls.Add(clearJobsButton);
             uiPanel2.Controls.Add(setPaperButton);
             uiPanel2.Controls.Add(unsetPaperButton);
+
+            // Apply custom theme style to newly added dynamic action buttons
+            AppTheme.ApplyToControls(uiPanel2.Controls);
         }
 
         private static UIButton CreatePrinterActionButton(string name, string text, int left)

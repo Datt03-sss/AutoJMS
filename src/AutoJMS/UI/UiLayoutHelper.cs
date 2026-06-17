@@ -30,114 +30,179 @@ namespace AutoJMS.UI
             // TabControl styling to remove borders and make it cleaner
             if (form.Controls.Find("tabControl", true).Length > 0 && form.Controls.Find("tabControl", true)[0] is UITabControl tabControl)
             {
-                tabControl.ItemSize = new Size(120, 40); // Taller tabs for better click target
+                tabControl.ItemSize = new Size(135, 42); // Balanced size for tabs
                 tabControl.Padding = new Point(0, 0);
             }
         }
 
         private static void ConfigureHomeTab(Main form)
         {
-            // Make Home Navigation Bar a clean card
+            // Make Home Navigation Bar a clean card with bottom border only
             var navBar = FindControl<UIPanel>(form, "tabHome_navBar");
             if (navBar != null)
             {
-                navBar.Height = 50;
-                navBar.Padding = new Padding(10, 5, 10, 5);
+                navBar.Height = 46;
+                navBar.Padding = new Padding(12, 4, 12, 4);
                 navBar.Margin = new Padding(0);
                 navBar.Radius = 0; // Flat against top
+                navBar.RectSides = ToolStripStatusLabelBorderSides.Bottom;
+                navBar.RectColor = AppPalette.SubtleBorder;
+                navBar.FillColor = AppPalette.CardBackground;
             }
         }
 
         private static void ConfigureDkchTab(Main form)
         {
-            // Simplify left panel
             var pnlLeft = FindControl<UIPanel>(form, "tabHome_pnlLeft");
-            if (pnlLeft != null)
-            {
-                pnlLeft.Padding = new Padding(10);
-                pnlLeft.Width = 350; // Give it consistent width
-                pnlLeft.Radius = 0;
-            }
-
-            // Make the data source panel a distinct card
             var dataSrc = FindControl<UITitlePanel>(form, "tabDKCH_dataSrc");
-            if (dataSrc != null)
+            var ctrlPanel = FindControl<UITitlePanel>(form, "uiTitlePanel1");
+            var newBill = FindControl<UITitlePanel>(form, "uiTitlePanel2");
+
+            if (pnlLeft != null && dataSrc != null && ctrlPanel != null && newBill != null)
             {
-                dataSrc.Margin = new Padding(0, 0, 0, 10);
-                dataSrc.TitleHeight = 35;
-                dataSrc.Padding = new Padding(10);
+                pnlLeft.SuspendLayout();
+                pnlLeft.Width = 340; // Balanced width
+                pnlLeft.Padding = new Padding(12);
+                pnlLeft.Radius = 0;
+                pnlLeft.RectSides = ToolStripStatusLabelBorderSides.Right; // Border against webview
+                pnlLeft.RectColor = AppPalette.SubtleBorder;
+                pnlLeft.FillColor = AppPalette.AppBackground;
+
+                // Re-layout children programmatically using a TableLayoutPanel for modern card spacing
+                pnlLeft.Controls.Clear();
+
+                var layout = new TableLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    ColumnCount = 1,
+                    RowCount = 3,
+                    BackColor = Color.Transparent,
+                    Margin = new Padding(0)
+                };
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 165F)); // Data source
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 135F)); // Control Panel
+                layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));   // New Bill input list
+
+                dataSrc.Dock = DockStyle.Fill;
+                dataSrc.Margin = new Padding(0, 0, 0, 12);
+                dataSrc.TitleHeight = 30;
+                dataSrc.Padding = new Padding(8);
+
+                ctrlPanel.Dock = DockStyle.Fill;
+                ctrlPanel.Margin = new Padding(0, 0, 0, 12);
+                ctrlPanel.TitleHeight = 30;
+                ctrlPanel.Padding = new Padding(8);
+
+                newBill.Dock = DockStyle.Fill;
+                newBill.Margin = new Padding(0);
+                newBill.TitleHeight = 30;
+                newBill.Padding = new Padding(8);
+
+                layout.Controls.Add(dataSrc, 0, 0);
+                layout.Controls.Add(ctrlPanel, 0, 1);
+                layout.Controls.Add(newBill, 0, 2);
+
+                pnlLeft.Controls.Add(layout);
+                pnlLeft.ResumeLayout(true);
             }
 
-            // SplitContainer optimization
             var splitContainer = FindControl<SplitContainer>(form, "splitContainer1");
             if (splitContainer != null)
             {
-                splitContainer.SplitterWidth = 5;
+                splitContainer.SplitterWidth = 6;
             }
         }
 
         private static void ConfigureTrackingTab(Main form)
         {
-            // Transform toolbar into an action bar
             var actionArea = FindControl<UITableLayoutPanel>(form, "uiTableLayoutPanel2");
             if (actionArea != null)
             {
-                actionArea.Margin = new Padding(10);
+                actionArea.Padding = new Padding(12);
             }
 
-            // DataGrid optimization
+            // Style toolbar as a clean action card
+            var toolbar = FindControl<UIFlowLayoutPanel>(form, "uiFlowLayoutPanel1");
+            if (toolbar != null)
+            {
+                toolbar.Padding = new Padding(8, 4, 8, 4);
+                toolbar.Radius = 8;
+                toolbar.FillColor = AppPalette.CardBackground;
+                toolbar.RectColor = AppPalette.SubtleBorder;
+                toolbar.Height = 48;
+                toolbar.Margin = new Padding(0, 0, 0, 12);
+            }
+
             var grid = FindControl<UIDataGridView>(form, "tabTracking_dataView");
             if (grid != null)
             {
-                grid.Margin = new Padding(10, 0, 10, 10);
-                grid.RowTemplate.Height = 40; // Taller rows for readability
+                grid.RowTemplate.Height = 38; // Taller rows
+                grid.Margin = new Padding(0, 10, 0, 0);
             }
         }
 
         private static void ConfigurePrintTab(Main form)
         {
-            // Ensure main layout is clean
             var mainLayout = FindControl<UITableLayoutPanel>(form, "uiTableLayoutPanel6");
             if (mainLayout != null)
             {
-                mainLayout.Padding = new Padding(10);
-                mainLayout.ColumnStyles[1].Width = 500; // Preview area width
+                mainLayout.Padding = new Padding(12);
+                mainLayout.ColumnStyles[1].Width = 560; // Preview area width
             }
 
-            // Print functions tab control
             var printFunc = FindControl<UITabControl>(form, "tabPrint_printFunc");
             if (printFunc != null)
             {
-                printFunc.ItemSize = new Size(130, 35);
+                printFunc.ItemSize = new Size(130, 36);
+                printFunc.Margin = new Padding(0, 0, 0, 12);
             }
 
-            // Grid
             var grid = FindControl<UIDataGridView>(form, "tabPrint_dataView");
             if (grid != null)
             {
-                grid.RowTemplate.Height = 40;
+                grid.RowTemplate.Height = 38;
+            }
+
+            var previewPanel = FindControl<UIPanel>(form, "uiPanel13");
+            if (previewPanel != null)
+            {
+                previewPanel.Padding = new Padding(8);
+                previewPanel.Radius = 8;
+                previewPanel.FillColor = AppPalette.CardBackground;
+                previewPanel.RectColor = AppPalette.SubtleBorder;
+            }
+
+            var printActionBar = FindControl<UIPanel>(form, "uiPanel18");
+            if (printActionBar != null)
+            {
+                printActionBar.Padding = new Padding(6);
+                printActionBar.Radius = 8;
+                printActionBar.FillColor = AppPalette.CardBackground;
+                printActionBar.RectColor = AppPalette.SubtleBorder;
+                printActionBar.Margin = new Padding(0, 0, 0, 12);
             }
         }
 
         private static void ConfigureAboutTab(Main form)
         {
-            // Clean up the main layout
             var mainLayout = FindControl<UITableLayoutPanel>(form, "uiTableLayoutPanel5");
             if (mainLayout != null)
             {
-                // Ensure the center column has a good absolute size, but allows flexibility
-                mainLayout.ColumnStyles[1].Width = 450;
-                mainLayout.RowStyles[1].Height = 600;
+                mainLayout.ColumnStyles[1].Width = 480;
+                mainLayout.RowStyles[1].Height = 650;
             }
 
             var aboutCard = FindControl<UIPanel>(form, "uiPanel8");
             if (aboutCard != null)
             {
-                aboutCard.Padding = new Padding(20);
+                aboutCard.Padding = new Padding(24);
+                aboutCard.Radius = 12;
+                aboutCard.FillColor = AppPalette.CardBackground;
+                aboutCard.RectColor = AppPalette.SubtleBorder;
             }
         }
 
-        // Helper to find controls by name recursively
         private static T FindControl<T>(Control parent, string name) where T : Control
         {
             var found = parent.Controls.Find(name, true);
