@@ -270,6 +270,25 @@ namespace AutoJMS.UI
                     sbtn.SymbolPressColor = colors.TextPrimary;
                     sbtn.SymbolSelectedColor = colors.TextPrimary;
                 }
+                else if (sbtn.Name != null && sbtn.Name.ToLower().StartsWith("tabprint_btn"))
+                {
+                    sbtn.FillColor = colors.CardBackground;
+                    sbtn.FillHoverColor = colors.PrimaryHover;
+                    sbtn.FillPressColor = colors.PrimaryPress;
+                    sbtn.FillSelectedColor = colors.PrimaryPress;
+                    sbtn.RectColor = colors.InputBorder;
+                    sbtn.RectHoverColor = colors.PrimaryHover;
+                    sbtn.RectPressColor = colors.PrimaryPress;
+                    sbtn.RectSelectedColor = colors.PrimaryPress;
+                    sbtn.ForeColor = colors.TextPrimary;
+                    sbtn.ForeHoverColor = Color.White;
+                    sbtn.ForePressColor = Color.White;
+                    sbtn.ForeSelectedColor = Color.White;
+                    sbtn.SymbolColor = colors.TextSecondary;
+                    sbtn.SymbolHoverColor = Color.White;
+                    sbtn.SymbolPressColor = Color.White;
+                    sbtn.SymbolSelectedColor = Color.White;
+                }
                 else if (IsPrimaryButton(sbtn.Name))
                 {
                     sbtn.FillColor = colors.PrimaryAccent;
@@ -292,21 +311,21 @@ namespace AutoJMS.UI
                 else
                 {
                     sbtn.FillColor = colors.CardBackground;
-                    sbtn.FillHoverColor = colors.PrimaryHover;
-                    sbtn.FillPressColor = colors.PrimaryPress;
-                    sbtn.FillSelectedColor = colors.PrimaryPress;
+                    sbtn.FillHoverColor = colors.AppBackground;
+                    sbtn.FillPressColor = colors.InputBorder;
+                    sbtn.FillSelectedColor = colors.InputBorder;
                     sbtn.RectColor = colors.InputBorder;
-                    sbtn.RectHoverColor = colors.PrimaryHover;
-                    sbtn.RectPressColor = colors.PrimaryPress;
-                    sbtn.RectSelectedColor = colors.PrimaryPress;
+                    sbtn.RectHoverColor = colors.TextSecondary;
+                    sbtn.RectPressColor = colors.TextPrimary;
+                    sbtn.RectSelectedColor = colors.TextPrimary;
                     sbtn.ForeColor = colors.TextPrimary;
-                    sbtn.ForeHoverColor = Color.White;
-                    sbtn.ForePressColor = Color.White;
-                    sbtn.ForeSelectedColor = Color.White;
+                    sbtn.ForeHoverColor = colors.TextPrimary;
+                    sbtn.ForePressColor = colors.TextPrimary;
+                    sbtn.ForeSelectedColor = colors.TextPrimary;
                     sbtn.SymbolColor = colors.TextSecondary;
-                    sbtn.SymbolHoverColor = Color.White;
-                    sbtn.SymbolPressColor = Color.White;
-                    sbtn.SymbolSelectedColor = Color.White;
+                    sbtn.SymbolHoverColor = colors.TextPrimary;
+                    sbtn.SymbolPressColor = colors.TextPrimary;
+                    sbtn.SymbolSelectedColor = colors.TextPrimary;
                 }
             }
             else if (ctrl is UIButton btn)
@@ -386,6 +405,21 @@ namespace AutoJMS.UI
                         }
                     }
                 }
+                else if (btn.Name != null && btn.Name.ToLower().StartsWith("tabprint_btn"))
+                {
+                    btn.FillColor = colors.CardBackground;
+                    btn.FillHoverColor = colors.PrimaryHover;
+                    btn.FillPressColor = colors.PrimaryPress;
+                    btn.FillSelectedColor = colors.PrimaryPress;
+                    btn.RectColor = colors.InputBorder;
+                    btn.RectHoverColor = colors.PrimaryHover;
+                    btn.RectPressColor = colors.PrimaryPress;
+                    btn.RectSelectedColor = colors.PrimaryPress;
+                    btn.ForeColor = colors.TextPrimary;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
+                }
                 else if (IsPrimaryButton(btn.Name))
                 {
                     btn.FillColor = colors.PrimaryAccent;
@@ -405,17 +439,17 @@ namespace AutoJMS.UI
                 {
                     // Secondary
                     btn.FillColor = colors.CardBackground;
-                    btn.FillHoverColor = colors.PrimaryHover;
-                    btn.FillPressColor = colors.PrimaryPress;
-                    btn.FillSelectedColor = colors.PrimaryPress;
+                    btn.FillHoverColor = colors.AppBackground;
+                    btn.FillPressColor = colors.InputBorder;
+                    btn.FillSelectedColor = colors.InputBorder;
                     btn.RectColor = colors.InputBorder;
-                    btn.RectHoverColor = colors.PrimaryHover;
-                    btn.RectPressColor = colors.PrimaryPress;
-                    btn.RectSelectedColor = colors.PrimaryPress;
+                    btn.RectHoverColor = colors.TextSecondary;
+                    btn.RectPressColor = colors.TextPrimary;
+                    btn.RectSelectedColor = colors.TextPrimary;
                     btn.ForeColor = colors.TextPrimary;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
+                    btn.ForeHoverColor = colors.TextPrimary;
+                    btn.ForePressColor = colors.TextPrimary;
+                    btn.ForeSelectedColor = colors.TextPrimary;
                 }
             }
             else if (ctrl is UIImageButton imgBtn)
@@ -445,13 +479,72 @@ namespace AutoJMS.UI
                 tab.Style = UIStyle.Custom;
                 tab.StyleCustomMode = true;
 
-                tab.TabBackColor = colors.AppBackground;
-                tab.FillColor = colors.AppBackground;
-                tab.TabSelectedColor = colors.PrimaryAccent;
-                tab.TabSelectedForeColor = Color.White;
-                tab.TabSelectedHighColor = colors.PrimaryAccent;
-                tab.TabUnSelectedColor = colors.CardBackground;
-                tab.TabUnSelectedForeColor = (CurrentTheme == ThemeMode.Dark) ? ColorTranslator.FromHtml("#A1A1AA") : colors.TextSecondary;
+                if (tab.Name == "tabPrint_printFunc")
+                {
+                    if (CurrentTheme == ThemeMode.Dark)
+                    {
+                        tab.TabBackColor = colors.AppBackground;
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = colors.PrimaryAccent;
+                        tab.TabSelectedForeColor = Color.White;
+                        tab.TabSelectedHighColor = colors.PrimaryAccent;
+                        tab.TabUnSelectedColor = colors.CardBackground;
+                        tab.TabUnSelectedForeColor = colors.TextSecondary;
+                    }
+                    else if (CurrentTheme == ThemeMode.Light)
+                    {
+                        tab.TabBackColor = colors.AppBackground;
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = colors.PrimaryAccent;
+                        tab.TabSelectedForeColor = Color.White;
+                        tab.TabSelectedHighColor = colors.PrimaryAccent;
+                        tab.TabUnSelectedColor = colors.CardBackground;
+                        tab.TabUnSelectedForeColor = colors.TextSecondary;
+                    }
+                    else // Red theme
+                    {
+                        tab.TabBackColor = colors.AppBackground;
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = colors.PrimaryAccent;
+                        tab.TabSelectedForeColor = Color.White;
+                        tab.TabSelectedHighColor = colors.PrimaryAccent;
+                        tab.TabUnSelectedColor = colors.CardBackground;
+                        tab.TabUnSelectedForeColor = colors.TextSecondary;
+                    }
+                }
+                else
+                {
+                    if (CurrentTheme == ThemeMode.Dark)
+                    {
+                        tab.TabBackColor = colors.AppBackground;
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = colors.CardBackground;
+                        tab.TabSelectedForeColor = colors.PrimaryAccent;
+                        tab.TabSelectedHighColor = colors.PrimaryAccent;
+                        tab.TabUnSelectedColor = colors.AppBackground;
+                        tab.TabUnSelectedForeColor = ColorTranslator.FromHtml("#D4D4D8");
+                    }
+                    else if (CurrentTheme == ThemeMode.Light)
+                    {
+                        tab.TabBackColor = Color.Azure;
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = Color.White;
+                        tab.TabSelectedForeColor = SystemColors.ControlText;
+                        tab.TabSelectedHighColor = Color.Black;
+                        tab.TabUnSelectedColor = Color.FromArgb(115, 179, 255);
+                        tab.TabUnSelectedForeColor = Color.FromArgb(240, 240, 240);
+                    }
+                    else // Red theme
+                    {
+                        tab.TabBackColor = Color.FromArgb(254, 242, 242);
+                        tab.FillColor = colors.AppBackground;
+                        tab.TabSelectedColor = Color.White;
+                        tab.TabSelectedForeColor = Color.FromArgb(185, 28, 28);
+                        tab.TabSelectedHighColor = Color.FromArgb(185, 28, 28);
+                        tab.TabUnSelectedColor = Color.FromArgb(254, 202, 202);
+                        tab.TabUnSelectedForeColor = Color.FromArgb(185, 28, 28);
+                    }
+                }
             }
             else if (ctrl is TabPage page)
             {
@@ -522,6 +615,8 @@ namespace AutoJMS.UI
             {
                 pnl.Style = UIStyle.Custom;
                 pnl.StyleCustomMode = true;
+                pnl.ControlAdded -= Panel_ControlAdded;
+                pnl.ControlAdded += Panel_ControlAdded;
                 if (pnl.Name == "tabHome_pnlLeft")
                 {
                     pnl.Radius = 0;
@@ -628,12 +723,24 @@ namespace AutoJMS.UI
         {
             if (string.IsNullOrEmpty(name)) return true;
             name = name.ToLower();
-            if (name.Contains("tabtracking_btnsearch") || name.Contains("tabprint_btntimkiem"))
-                return false;
             return name.Contains("search") || 
                    name.Contains("timkiem") || 
+                   name.Contains("print") || 
                    name.Contains("stop") || 
                    name.Contains("checkupdate");
+        }
+
+        private static void Panel_ControlAdded(object sender, ControlEventArgs e)
+        {
+            if (e.Control != null)
+            {
+                EnableDoubleBuffer(e.Control);
+                ApplyStyleToControl(e.Control, Colors);
+                if (e.Control.Controls.Count > 0)
+                {
+                    ApplyToControls(e.Control.Controls, Colors);
+                }
+            }
         }
 
         private static bool IsIconButton(string name)
