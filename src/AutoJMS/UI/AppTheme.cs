@@ -270,33 +270,14 @@ namespace AutoJMS.UI
                     sbtn.SymbolPressColor = colors.TextPrimary;
                     sbtn.SymbolSelectedColor = colors.TextPrimary;
                 }
-                else if (sbtn.Name != null && sbtn.Name.ToLower().StartsWith("tabprint_btn"))
-                {
-                    sbtn.FillColor = colors.CardBackground;
-                    sbtn.FillHoverColor = colors.PrimaryHover;
-                    sbtn.FillPressColor = colors.PrimaryPress;
-                    sbtn.FillSelectedColor = colors.PrimaryPress;
-                    sbtn.RectColor = colors.InputBorder;
-                    sbtn.RectHoverColor = colors.PrimaryHover;
-                    sbtn.RectPressColor = colors.PrimaryPress;
-                    sbtn.RectSelectedColor = colors.PrimaryPress;
-                    sbtn.ForeColor = colors.TextPrimary;
-                    sbtn.ForeHoverColor = Color.White;
-                    sbtn.ForePressColor = Color.White;
-                    sbtn.ForeSelectedColor = Color.White;
-                    sbtn.SymbolColor = colors.TextSecondary;
-                    sbtn.SymbolHoverColor = Color.White;
-                    sbtn.SymbolPressColor = Color.White;
-                    sbtn.SymbolSelectedColor = Color.White;
-                }
-                else if (IsPrimaryButton(sbtn.Name))
+                else
                 {
                     sbtn.FillColor = colors.PrimaryAccent;
-                    sbtn.FillHoverColor = colors.PrimaryHover;
+                    sbtn.FillHoverColor = colors.PrimaryPress;
                     sbtn.FillPressColor = colors.PrimaryPress;
                     sbtn.FillSelectedColor = colors.PrimaryPress;
                     sbtn.RectColor = colors.PrimaryAccent;
-                    sbtn.RectHoverColor = colors.PrimaryHover;
+                    sbtn.RectHoverColor = colors.PrimaryPress;
                     sbtn.RectPressColor = colors.PrimaryPress;
                     sbtn.RectSelectedColor = colors.PrimaryPress;
                     sbtn.ForeColor = Color.White;
@@ -307,25 +288,6 @@ namespace AutoJMS.UI
                     sbtn.SymbolHoverColor = Color.White;
                     sbtn.SymbolPressColor = Color.White;
                     sbtn.SymbolSelectedColor = Color.White;
-                }
-                else
-                {
-                    sbtn.FillColor = colors.CardBackground;
-                    sbtn.FillHoverColor = colors.AppBackground;
-                    sbtn.FillPressColor = colors.InputBorder;
-                    sbtn.FillSelectedColor = colors.InputBorder;
-                    sbtn.RectColor = colors.InputBorder;
-                    sbtn.RectHoverColor = colors.TextSecondary;
-                    sbtn.RectPressColor = colors.TextPrimary;
-                    sbtn.RectSelectedColor = colors.TextPrimary;
-                    sbtn.ForeColor = colors.TextPrimary;
-                    sbtn.ForeHoverColor = colors.TextPrimary;
-                    sbtn.ForePressColor = colors.TextPrimary;
-                    sbtn.ForeSelectedColor = colors.TextPrimary;
-                    sbtn.SymbolColor = colors.TextSecondary;
-                    sbtn.SymbolHoverColor = colors.TextPrimary;
-                    sbtn.SymbolPressColor = colors.TextPrimary;
-                    sbtn.SymbolSelectedColor = colors.TextPrimary;
                 }
             }
             else if (ctrl is UIButton btn)
@@ -405,51 +367,20 @@ namespace AutoJMS.UI
                         }
                     }
                 }
-                else if (btn.Name != null && btn.Name.ToLower().StartsWith("tabprint_btn"))
-                {
-                    btn.FillColor = colors.CardBackground;
-                    btn.FillHoverColor = colors.PrimaryHover;
-                    btn.FillPressColor = colors.PrimaryPress;
-                    btn.FillSelectedColor = colors.PrimaryPress;
-                    btn.RectColor = colors.InputBorder;
-                    btn.RectHoverColor = colors.PrimaryHover;
-                    btn.RectPressColor = colors.PrimaryPress;
-                    btn.RectSelectedColor = colors.PrimaryPress;
-                    btn.ForeColor = colors.TextPrimary;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-                else if (IsPrimaryButton(btn.Name))
+                else
                 {
                     btn.FillColor = colors.PrimaryAccent;
-                    btn.FillHoverColor = colors.PrimaryHover;
+                    btn.FillHoverColor = colors.PrimaryPress;
                     btn.FillPressColor = colors.PrimaryPress;
                     btn.FillSelectedColor = colors.PrimaryPress;
                     btn.RectColor = colors.PrimaryAccent;
-                    btn.RectHoverColor = colors.PrimaryHover;
+                    btn.RectHoverColor = colors.PrimaryPress;
                     btn.RectPressColor = colors.PrimaryPress;
                     btn.RectSelectedColor = colors.PrimaryPress;
                     btn.ForeColor = Color.White;
                     btn.ForeHoverColor = Color.White;
                     btn.ForePressColor = Color.White;
                     btn.ForeSelectedColor = Color.White;
-                }
-                else
-                {
-                    // Secondary
-                    btn.FillColor = colors.CardBackground;
-                    btn.FillHoverColor = colors.AppBackground;
-                    btn.FillPressColor = colors.InputBorder;
-                    btn.FillSelectedColor = colors.InputBorder;
-                    btn.RectColor = colors.InputBorder;
-                    btn.RectHoverColor = colors.TextSecondary;
-                    btn.RectPressColor = colors.TextPrimary;
-                    btn.RectSelectedColor = colors.TextPrimary;
-                    btn.ForeColor = colors.TextPrimary;
-                    btn.ForeHoverColor = colors.TextPrimary;
-                    btn.ForePressColor = colors.TextPrimary;
-                    btn.ForeSelectedColor = colors.TextPrimary;
                 }
             }
             else if (ctrl is UIImageButton imgBtn)
