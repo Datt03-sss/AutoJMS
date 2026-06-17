@@ -23,13 +23,13 @@ namespace AutoJMS
     public partial class FullStackOperation : UIForm
     {
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-        
+
         private List<WaybillDbModel> _cloudData = new();
         private List<WaybillDbModel> _lastDashSourceData = new();
         private List<WaybillDbModel> _lastChatSourceData = new();
         private List<string> _dashStatusCache = new();
         private List<string> _chatStatusCache = new();
-        
+
         private ZaloChatService _zaloChatService;
         private bool _isZaloLoaded = false;
         private bool _isRefreshingStatusCombos = false;
@@ -200,7 +200,7 @@ namespace AutoJMS
             ApplyStandardGridSettings(tabDash_dataGridView);
             ApplyStandardGridSettings(uiDataGridView2);
             ApplyStandardGridSettings(tabChat_dataGrid);
-            
+
             // tabDash_dataGridView (tabPage3 - "Chuyển hoàn" / Dashboard)
             tabDash_dataGridView.AutoGenerateColumns = false;
             tabDash_dataGridView.Columns.Clear();
@@ -436,7 +436,7 @@ namespace AutoJMS
             }
 
             _lastDashSourceData = dashSourceData;
-            
+
             RefreshDashStatusCache(dashSourceData);
             PopulateDashStatusSelects();
             EnsureDashStatusSelectionValid();
@@ -457,7 +457,7 @@ namespace AutoJMS
         private string CalculateWarehouseAge(string thoiGianThaoTac, string thaoTacCuoi)
         {
             if (string.IsNullOrWhiteSpace(thoiGianThaoTac) || thoiGianThaoTac == "empty") return "N/A";
-            
+
             // If delivered or fully returned, warehouse age stops or is N/A
             if (thaoTacCuoi != null && (thaoTacCuoi.Contains("Ký nhận") || thaoTacCuoi.Contains("Xác nhận chuyển hoàn thành công")))
                 return "Đã hoàn thành";
@@ -475,7 +475,7 @@ namespace AutoJMS
         {
             warningLevel = "Bình thường";
             if (string.IsNullOrWhiteSpace(thoiGianNhanHang) || thoiGianNhanHang == "empty") return "N/A";
-            
+
             if (DateTime.TryParse(thoiGianNhanHang, out DateTime pickTime))
             {
                 var deadline = pickTime.AddHours(24);
@@ -607,17 +607,17 @@ namespace AutoJMS
         {
             if (row.ThaoTacCuoi == null) return false;
             var finalStatus = row.ThaoTacCuoi;
-            return finalStatus.Contains("Xuống hàng kiện đến") || 
-                   finalStatus.Contains("Xuống kiện") || 
-                   finalStatus.Contains("卸车到件") || 
+            return finalStatus.Contains("Xuống hàng kiện đến") ||
+                   finalStatus.Contains("Xuống kiện") ||
+                   finalStatus.Contains("卸车到件") ||
                    finalStatus.Contains("到件");
         }
 
         private bool IsNotDispatched(WaybillDbModel row)
         {
-            return IsNewArrival(row) && 
-                   (row.ThaoTacCuoi == null || 
-                    (!row.ThaoTacCuoi.Contains("Đang phát hàng") && 
+            return IsNewArrival(row) &&
+                   (row.ThaoTacCuoi == null ||
+                    (!row.ThaoTacCuoi.Contains("Đang phát hàng") &&
                      !row.ThaoTacCuoi.Contains("Giao lại hàng") &&
                      !row.ThaoTacCuoi.Contains("Kiện vấn đề") &&
                      !row.ThaoTacCuoi.Contains("Ký nhận")));
@@ -626,19 +626,19 @@ namespace AutoJMS
         private bool IsFailedDelivery(WaybillDbModel row)
         {
             if (row.ThaoTacCuoi == null) return false;
-            return (row.ThaoTacCuoi.Contains("vấn đề") || 
-                    row.ThaoTacCuoi.Contains("Kiện vấn đề") || 
+            return (row.ThaoTacCuoi.Contains("vấn đề") ||
+                    row.ThaoTacCuoi.Contains("Kiện vấn đề") ||
                     !string.IsNullOrEmpty(row.NguyenNhanKienVanDe)) &&
-                   !row.ThaoTacCuoi.Contains("Ký nhận") && 
+                   !row.ThaoTacCuoi.Contains("Ký nhận") &&
                    !row.ThaoTacCuoi.Contains("Xác nhận chuyển hoàn");
         }
 
         private bool IsPendingReturn(WaybillDbModel row)
         {
             if (row.ThaoTacCuoi == null) return false;
-            return (row.DauChuyenHoan == "Có" || 
-                    row.ThaoTacCuoi.Contains("Yêu cầu trả hàng") || 
-                    row.ThaoTacCuoi.Contains("In đơn chuyển hoàn") || 
+            return (row.DauChuyenHoan == "Có" ||
+                    row.ThaoTacCuoi.Contains("Yêu cầu trả hàng") ||
+                    row.ThaoTacCuoi.Contains("In đơn chuyển hoàn") ||
                     row.ThaoTacCuoi.Contains("Xác nhận chuyển hoàn")) &&
                    !row.ThaoTacCuoi.Contains("Xác nhận chuyển hoàn thành công") &&
                    !row.ThaoTacCuoi.Contains("Đã trả lại cho người gửi");
@@ -680,7 +680,7 @@ namespace AutoJMS
         {
             if (row.ThaoTacCuoi != null && (row.ThaoTacCuoi.Contains("Ký nhận") || row.ThaoTacCuoi.Contains("Xác nhận chuyển hoàn thành công")))
                 return false;
-            
+
             double days = GetWarehouseAgeDays(row.ThoiGianThaoTac);
             return days >= 3.0; // Stalled for more than 3 days
         }
@@ -748,7 +748,7 @@ namespace AutoJMS
             if (tabDash_statusSelect == null) return;
             var current = GetSelectedDashStatus();
             if (string.IsNullOrWhiteSpace(current) || current == "Tất cả") return;
-            
+
             // Check custom filters too
             if (IsCustomFilter(current)) return;
 
@@ -776,7 +776,7 @@ namespace AutoJMS
                 this.Invoke(new Action(() => UpdateDashSummaryLabels(sourceCount, filteredCount)));
                 return;
             }
-            
+
             if (tabDash_lblLastUpdate != null)
                 tabDash_lblLastUpdate.Text = $"Local refresh: {DateTime.Now:HH:mm:ss}";
 
@@ -848,7 +848,7 @@ namespace AutoJMS
                 string currentDash = GetSelectedDashStatus();
                 tabDash_statusSelect.SuspendLayout();
                 tabDash_statusSelect.Items.Clear();
-                
+
                 // Add default standard operations filters
                 tabDash_statusSelect.Items.Add("Tất cả tồn kho");
                 tabDash_statusSelect.Items.Add("Cần xử lý ngay");
@@ -870,7 +870,7 @@ namespace AutoJMS
                 tabDash_statusSelect.Items.Add("Hành trình đứng > 1 ngày");
                 tabDash_statusSelect.Items.Add("Hành trình đứng > 3 ngày");
                 tabDash_statusSelect.Items.Add("Hành trình đứng > 7 ngày");
-                
+
                 // Add physical scanner status values
                 foreach (var s in _dashStatusCache)
                 {
@@ -1017,12 +1017,12 @@ namespace AutoJMS
         private async void tabChat_btnReload_Click(object sender, EventArgs e)
         {
             if (_zaloChatService == null) { MessageBox.Show("Vui lòng đợi Zalo khởi tạo xong!"); return; }
-            tabChat_btnReload.Enabled = false; 
+            tabChat_btnReload.Enabled = false;
             tabChat_btnReload.Text = "Đang tải...";
-            
+
             await LoadDataAndRefreshViewsAsync();
-            
-            tabChat_btnReload.Enabled = true; 
+
+            tabChat_btnReload.Enabled = true;
             tabChat_btnReload.Text = "-Làm mới-";
         }
 
@@ -1045,7 +1045,7 @@ namespace AutoJMS
                 .ToList();
 
             _lastChatSourceData = chatSourceData;
-            
+
             RefreshChatStatusCache(chatSourceData);
             PopulateChatStatusSelects();
 
@@ -2648,10 +2648,10 @@ namespace AutoJMS
             {
                 if (!this.IsDisposed)
                     try { this.Invoke(new Action(() => this.Text = "Điều phối Vận hành Bưu cục Realtime")); } catch { }
-});
+            });
         }
 
-// ======================================================================================
+        // ======================================================================================
         // THỜI HIỆU TAB - TOP-LEVEL TAB
         // ======================================================================================
 
@@ -3305,7 +3305,7 @@ namespace AutoJMS
         private double GetThoiHieuTargetPct()
         {
             if (_thoiHieuGridData == null || _thoiHieuGridData.Count == 0) return 0.9;
-            
+
             int maxHour = 8;
             foreach (var r in _thoiHieuGridData)
             {
@@ -3455,7 +3455,7 @@ namespace AutoJMS
                 int seq = 1;
                 foreach (var r in _thoiHieuGridData) r.STT = seq++;
 
-UpdateThoiHieuGridData();
+                UpdateThoiHieuGridData();
             }
 
             clicked.HeaderCell.SortGlyphDirection = direction;

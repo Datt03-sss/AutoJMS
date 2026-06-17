@@ -94,10 +94,10 @@ namespace AutoJMS
             {
                 // 5. Ngắt luồng Heartbeat
                 heartbeatCts.Cancel();
-                try 
-                { 
-                    await heartbeatTask; 
-                } 
+                try
+                {
+                    await heartbeatTask;
+                }
                 catch { }
 
                 // 6. Trả lại Lock cho hệ thống
@@ -120,7 +120,7 @@ namespace AutoJMS
                 {
                     // Đợi 1 phút rồi gia hạn Lock một lần
                     await Task.Delay(TimeSpan.FromMinutes(1), ct);
-                    
+
                     if (ct.IsCancellationRequested) break;
 
                     await SupabaseDbService.RefreshInventoryLeaseAsync(LeaseSeconds);

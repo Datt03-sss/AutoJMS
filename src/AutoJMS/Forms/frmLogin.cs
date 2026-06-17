@@ -50,7 +50,7 @@ namespace AutoJMS
             if (txt_key.Text == watermarkText)
             {
                 txt_key.Text = "";
-                txt_key.ForeColor = Color.Black; 
+                txt_key.ForeColor = Color.Black;
             }
         }
 
@@ -111,4 +111,4 @@ namespace AutoJMS
 
     }
 
-}  
+}

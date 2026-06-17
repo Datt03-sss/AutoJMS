@@ -25,8 +25,8 @@ namespace AutoJMS
         [JsonPropertyName("theme")] public string Theme { get; set; } = "Light";
         [JsonPropertyName("defaultRowCount")] public int DefaultRowCount { get; set; } = 1;
         [JsonPropertyName("printerName")] public string PrinterName { get; set; } = "";
-        [JsonPropertyName("paperWidth")] public int PaperWidth { get; set; } = 762;  
-        [JsonPropertyName("paperHeight")] public int PaperHeight { get; set; } = 762; 
+        [JsonPropertyName("paperWidth")] public int PaperWidth { get; set; } = 762;
+        [JsonPropertyName("paperHeight")] public int PaperHeight { get; set; } = 762;
         [JsonPropertyName("BlockWhenQueueHasErrorJob")] public bool BlockWhenQueueHasErrorJob { get; set; } = true;
         [JsonPropertyName("BlockWhenPrinterPaused")] public bool BlockWhenPrinterPaused { get; set; } = true;
         [JsonPropertyName("BlockWhenPrinterOffline")] public bool BlockWhenPrinterOffline { get; set; } = true;

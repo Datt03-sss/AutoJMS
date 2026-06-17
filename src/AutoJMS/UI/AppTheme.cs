@@ -194,7 +194,7 @@ namespace AutoJMS.UI
             if (ctrl == null) return;
             try
             {
-                var prop = typeof(Control).GetProperty("DoubleBuffered", 
+                var prop = typeof(Control).GetProperty("DoubleBuffered",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                 prop?.SetValue(ctrl, true, null);
             }
@@ -654,10 +654,10 @@ namespace AutoJMS.UI
         {
             if (string.IsNullOrEmpty(name)) return true;
             name = name.ToLower();
-            return name.Contains("search") || 
-                   name.Contains("timkiem") || 
-                   name.Contains("print") || 
-                   name.Contains("stop") || 
+            return name.Contains("search") ||
+                   name.Contains("timkiem") ||
+                   name.Contains("print") ||
+                   name.Contains("stop") ||
                    name.Contains("checkupdate");
         }
 
@@ -678,10 +678,10 @@ namespace AutoJMS.UI
         {
             if (string.IsNullOrEmpty(name)) return false;
             name = name.ToLower();
-            return name.Contains("btnback") || 
-                   name.Contains("btnforward") || 
-                   name.Contains("btnreload") || 
-                   name.Contains("btnhome") || 
+            return name.Contains("btnback") ||
+                   name.Contains("btnforward") ||
+                   name.Contains("btnreload") ||
+                   name.Contains("btnhome") ||
                    name.Contains("btnmenu");
         }
     }

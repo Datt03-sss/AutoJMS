@@ -30,21 +30,21 @@ namespace AutoJMS
                 uiPanel10 = CreateOperationHeaderBar();
                 uiTableLayoutPanel4.Controls.Add(uiPanel10, 0, 0);
 
-            var body = new UITableLayoutPanel
-            {
+                var body = new UITableLayoutPanel
+                {
                     Dock = DockStyle.Fill,
                     Margin = Padding.Empty,
                     Padding = new Padding(10),
                     ColumnCount = 3,
                     RowCount = 1,
                     BackColor = WorkspaceBackColor
-            };
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 252F));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 386F));
+                };
+                body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 252F));
+                body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+                body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 386F));
                 body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            _operationQueueSidebar = new QueueSidebarControl { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
+                _operationQueueSidebar = new QueueSidebarControl { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
                 _operationQueueSidebar.QueueSelected += OperationQueueSidebar_QueueSelected;
 
                 var center = CreateOperationMainWorkArea();

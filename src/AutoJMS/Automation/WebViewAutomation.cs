@@ -112,7 +112,7 @@ namespace AutoJMS
                         headers[i].click();
                     }
                 }
-            })();"; 
+            })();";
             await ExecuteScriptSafeAsync(webView, collapseJs);
             string js = $@"
             (function() {{
@@ -309,7 +309,7 @@ namespace AutoJMS
         }
     }
 
-        public class DkchManager
+    public class DkchManager
     {
 
         public event Action<string> OnLog;
@@ -526,7 +526,7 @@ namespace AutoJMS
                 {
                     if (attempt > 1)
                         OnStatusUpdate?.Invoke($"1. Đang điền đơn (Thử lại lần {attempt})...");
-                    
+
 
                     string currentTarget = (_currentMode == "DKCH2") ? "Chuyển hoàn lần 2" : "Chuyển hoàn";
 

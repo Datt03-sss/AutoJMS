@@ -27,12 +27,12 @@ namespace AutoJMS
 
         public static string LogFile => LogFilePath;
 
-        public static void Info(string message)    => WriteLog("INFO",  message);
-        public static void Warning(string message) => WriteLog("WARN",  message);
+        public static void Info(string message) => WriteLog("INFO", message);
+        public static void Warning(string message) => WriteLog("WARN", message);
         public static void Error(string message, Exception ex = null) => WriteLog("ERROR", Compose(message, ex));
         public static void Fatal(string message, Exception ex = null) => WriteLog("FATAL", Compose(message, ex));
-        public static void Debug(string message)   => WriteLog("DEBUG", message);
-        public static void Action(string message)  => WriteLog("ACTION", message);
+        public static void Debug(string message) => WriteLog("DEBUG", message);
+        public static void Action(string message) => WriteLog("ACTION", message);
         public static void WriteRaw(string message) => WriteLog("RAW", message);
 
         private static string Compose(string message, Exception ex)

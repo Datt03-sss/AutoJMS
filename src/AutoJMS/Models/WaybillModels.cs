@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace AutoJMS.Data
 {
-  
+
     [Obfuscation(Exclude = true, ApplyToMembers = true)]
     public class WaybillHistoryResponse
     {
@@ -87,7 +87,7 @@ namespace AutoJMS.Data
         public string staffName { get; set; }
         public string codMoney { get; set; }
         public string terminalDispatchCode { get; set; }
-        
+
         public string destinationName { get; set; }
         public string status { get; set; }           // dùng cho "Dấu chuyển hoàn"
     }

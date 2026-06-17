@@ -82,16 +82,16 @@ namespace AutoJMS
             return default;
         }
 
-        public static Task<bool> TryAcquireInventoryLeaseAsync(int leaseSeconds = 1800) => 
+        public static Task<bool> TryAcquireInventoryLeaseAsync(int leaseSeconds = 1800) =>
             RpcAsync<bool>("try_acquire_inventory_lease", new { p_owner_id = MachineId, p_lease_seconds = leaseSeconds });
 
-        public static Task<bool> RefreshInventoryLeaseAsync(int leaseSeconds = 1800) => 
+        public static Task<bool> RefreshInventoryLeaseAsync(int leaseSeconds = 1800) =>
             RpcAsync<bool>("refresh_inventory_lease", new { p_owner_id = MachineId, p_lease_seconds = leaseSeconds });
 
-        public static Task<bool> ReleaseInventoryLeaseAsync() => 
+        public static Task<bool> ReleaseInventoryLeaseAsync() =>
             RpcAsync<bool>("release_inventory_lease", new { p_owner_id = MachineId });
 
-        public static Task<bool> CompleteInventorySyncAsync() => 
+        public static Task<bool> CompleteInventorySyncAsync() =>
             RpcAsync<bool>("complete_inventory_sync", new { p_owner_id = MachineId });
 
         public static Task<bool> UpdateInventorySyncHeartbeatAsync(string ownerId) =>

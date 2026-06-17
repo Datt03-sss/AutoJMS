@@ -181,8 +181,8 @@ namespace AutoJMS
             // Wire the high-level token orchestrator (priority resolution +
             // force-refresh + "really expired" notification). Storage still
             // lives in JmsAuthStateService; these are just providers.
-            JmsAuthTokenService.WebViewTokenReader   = GetTokenFromJmsWebViewAsync;
-            JmsAuthTokenService.ConfigTokenProvider  = () => _settings?.LastAuthToken;
+            JmsAuthTokenService.WebViewTokenReader = GetTokenFromJmsWebViewAsync;
+            JmsAuthTokenService.ConfigTokenProvider = () => _settings?.LastAuthToken;
             JmsAuthTokenService.ReallyExpiredCallback = NotifyJmsLoginRequired;
 
             JmsAuthStateService.TokenUpdated += token =>
@@ -194,9 +194,9 @@ namespace AutoJMS
             LoadSourceFingerprintCache();
 
             File.WriteAllText("debug.log", "App started\n");
-            AppDomain.CurrentDomain.UnhandledException += (s, e) => 
-            { 
-                File.WriteAllText("crash.log", e.ExceptionObject.ToString()); 
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                File.WriteAllText("crash.log", e.ExceptionObject.ToString());
             };
 
             // UI styling
@@ -205,9 +205,9 @@ namespace AutoJMS
             tabDKCH_newBillDone.WordWrap = false;
 
             string sharedFolder = AppPaths.BrowserDataDir;
-            var sharedProps = new Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties() 
-            { 
-                UserDataFolder = sharedFolder 
+            var sharedProps = new Microsoft.Web.WebView2.WinForms.CoreWebView2CreationProperties()
+            {
+                UserDataFolder = sharedFolder
             };
 
             // (tabDash and tabChat bindings moved to FullStackOperation)
@@ -265,11 +265,11 @@ namespace AutoJMS
             _dkchManager.OnSaveCountChanged += (count) => tabDKCH_countSave.Text = $" OK: " + count.ToString();
             _dkchManager.OnTrackingHistoryChanged += (history) =>
             {
-                if (this.InvokeRequired) 
+                if (this.InvokeRequired)
                 {
                     this.Invoke(new Action(() => FormatNowTracking(history ?? "Không có dữ liệu")));
                 }
-                else 
+                else
                 {
                     FormatNowTracking(history ?? "Không có dữ liệu");
                 }
@@ -509,7 +509,8 @@ namespace AutoJMS
 
             _printService.OnPrintStatsChanged += (selectedCount, totalCount) =>
             {
-                this.Invoke((MethodInvoker)delegate {
+                this.Invoke((MethodInvoker)delegate
+                {
                     tabPrint_countSelect.Text = "Đang chọn:" + selectedCount.ToString();
                     tabPrint_countSum.Text = "Tổng:" + totalCount.ToString();
                 });
@@ -840,12 +841,13 @@ namespace AutoJMS
 
             _isExiting = true;
 
-            this.Hide(); 
-            _appCts.Cancel(); 
+            this.Hide();
+            _appCts.Cancel();
             DisposeAppCaptureWebViews();
             DisposeWebDebugInspectors();
 
-            Task.Run(async () => {
+            Task.Run(async () =>
+            {
                 try
                 {
                     await SupabaseDbService.ReleaseInventoryLeaseAsync();
@@ -911,7 +913,7 @@ namespace AutoJMS
             lblNetworkStatus.Parent = this;
             lblNetworkStatus.BringToFront();
             this.Controls.Add(lblNetworkStatus);
-            
+
             UpdateNetworkUI(NetworkStatus.Online);
             NetworkState.OnChanged += UpdateNetworkUI;
             this.SizeChanged += (s, e) => RepositionNetworkLabel();
@@ -1708,7 +1710,7 @@ namespace AutoJMS
                     if (!root.GetProperty("found").GetBoolean()) continue;
 
                     string freshToken = root.GetProperty("value").GetString() ?? "";
-                    string foundKey   = root.TryGetProperty("key", out var kp) ? (kp.GetString() ?? "") : "";
+                    string foundKey = root.TryGetProperty("key", out var kp) ? (kp.GetString() ?? "") : "";
 
                     // Hard gate: only a 32-hex value is a real JMS authToken.
                     if (!JmsAuthTokenService.IsValidJmsToken(freshToken))

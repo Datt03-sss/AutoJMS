@@ -28,7 +28,7 @@ namespace AutoJMS.UI
         public static readonly Color Warning = ColorTranslator.FromHtml("#F59E0B");
         public static readonly Color Info = ColorTranslator.FromHtml("#3B82F6");
         public static readonly Color Danger = ColorTranslator.FromHtml("#DC2626");
-        
+
         // DataGrid Specific
         public static readonly Color GridHeaderBack = ColorTranslator.FromHtml("#F9FAFB");
         public static readonly Color GridAlternating = ColorTranslator.FromHtml("#F9FAFB");
