@@ -1032,6 +1032,8 @@ namespace AutoJMS
                     {
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
+                        this.Invalidate(true);
+                        this.Update();
                     }
                 }
             };

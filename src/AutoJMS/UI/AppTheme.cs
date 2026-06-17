@@ -105,31 +105,31 @@ namespace AutoJMS.UI
 
         public static readonly ThemeColors DarkColors = new ThemeColors
         {
-            AppBackground = ColorTranslator.FromHtml("#18181B"),
-            CardBackground = ColorTranslator.FromHtml("#242427"),
-            InputBackground = ColorTranslator.FromHtml("#1F1F23"),
-            SubtleBorder = ColorTranslator.FromHtml("#3F3F46"),
-            InputBorder = ColorTranslator.FromHtml("#52525B"),
-            TextPrimary = ColorTranslator.FromHtml("#F4F4F5"),
+            AppBackground = ColorTranslator.FromHtml("#101012"), // Deeper black/charcoal background matching WebView dark theme
+            CardBackground = ColorTranslator.FromHtml("#18181B"), // Matches WebView cards and panel containers
+            InputBackground = ColorTranslator.FromHtml("#121214"), // Darker input field background
+            SubtleBorder = ColorTranslator.FromHtml("#27272A"), // Very thin/sleek dark border lines
+            InputBorder = ColorTranslator.FromHtml("#3F3F46"),
+            TextPrimary = ColorTranslator.FromHtml("#FAFAFA"), // High contrast off-white text
             TextSecondary = ColorTranslator.FromHtml("#A1A1AA"),
-            TextInverse = ColorTranslator.FromHtml("#09090B"),
+            TextInverse = ColorTranslator.FromHtml("#0A0A0C"),
 
             PrimaryAccent = ColorTranslator.FromHtml("#E53935"), // Red J&T/JMS Accent
             PrimaryHover = ColorTranslator.FromHtml("#EF5350"),
-            PrimaryPress = ColorTranslator.FromHtml("#C62828"),
-            PrimaryHoverTint = ColorTranslator.FromHtml("#3F1F1F"),
+            PrimaryPress = ColorTranslator.FromHtml("#B71C1C"),
+            PrimaryHoverTint = ColorTranslator.FromHtml("#2A1414"), // Dark red highlight/hover tint
 
             Success = ColorTranslator.FromHtml("#22C55E"),
             Warning = ColorTranslator.FromHtml("#F59E0B"),
             Danger = ColorTranslator.FromHtml("#EF4444"),
 
-            GridHeaderBack = ColorTranslator.FromHtml("#1F1F23"),
-            GridAlternating = ColorTranslator.FromHtml("#1E1E22"),
-            GridSelectedBack = ColorTranslator.FromHtml("#3F1F1F"),
+            GridHeaderBack = ColorTranslator.FromHtml("#18181B"),
+            GridAlternating = ColorTranslator.FromHtml("#131316"),
+            GridSelectedBack = ColorTranslator.FromHtml("#2A1414"),
 
-            TitleColor = ColorTranslator.FromHtml("#18181B"),
-            TitleForeColor = ColorTranslator.FromHtml("#F4F4F5"),
-            RectColor = ColorTranslator.FromHtml("#3F3F46")
+            TitleColor = ColorTranslator.FromHtml("#121214"), // Premium dark title panel background
+            TitleForeColor = ColorTranslator.FromHtml("#FAFAFA"),
+            RectColor = ColorTranslator.FromHtml("#27272A")
         };
 
         public static ThemeColors Colors
@@ -526,7 +526,8 @@ namespace AutoJMS.UI
                 tpnl.StyleCustomMode = true;
                 tpnl.Radius = 8;
                 tpnl.TitleColor = colors.TitleColor;
-                tpnl.TitleForeColor = colors.TitleForeColor;
+                // Use red accent for title text in Dark theme to match J&T WebView header red accents
+                tpnl.TitleForeColor = (CurrentTheme == ThemeMode.Dark) ? colors.PrimaryAccent : colors.TitleForeColor;
                 tpnl.RectColor = colors.SubtleBorder;
                 tpnl.FillColor = colors.CardBackground;
                 tpnl.ForeColor = colors.TextPrimary;
@@ -567,6 +568,24 @@ namespace AutoJMS.UI
                 cb.FillColor = colors.InputBackground;
                 cb.RectColor = colors.InputBorder;
                 cb.ForeColor = colors.TextPrimary;
+                if (CurrentTheme == ThemeMode.Dark)
+                {
+                    cb.ItemHoverColor = colors.PrimaryHoverTint; // #2A1414 (dark red hover)
+                    cb.ItemSelectForeColor = Color.White;
+                    cb.ItemSelectBackColor = colors.PrimaryPress; // #B71C1C (red selected)
+                }
+                else if (CurrentTheme == ThemeMode.Red)
+                {
+                    cb.ItemHoverColor = ColorTranslator.FromHtml("#FFEBEE");
+                    cb.ItemSelectForeColor = Color.Black;
+                    cb.ItemSelectBackColor = colors.PrimaryHover;
+                }
+                else
+                {
+                    cb.ItemHoverColor = Color.FromArgb(155, 200, 255);
+                    cb.ItemSelectForeColor = SystemColors.ControlText;
+                    cb.ItemSelectBackColor = Color.FromArgb(80, 160, 255);
+                }
             }
             else if (ctrl is UIIntegerUpDown iud)
             {
