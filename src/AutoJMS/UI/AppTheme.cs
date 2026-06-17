@@ -445,36 +445,13 @@ namespace AutoJMS.UI
                 tab.Style = UIStyle.Custom;
                 tab.StyleCustomMode = true;
 
-                if (CurrentTheme == ThemeMode.Dark)
-                {
-                    tab.TabBackColor = colors.AppBackground;
-                    tab.FillColor = colors.AppBackground;
-                    tab.TabSelectedColor = colors.CardBackground;
-                    tab.TabSelectedForeColor = colors.PrimaryAccent;
-                    tab.TabSelectedHighColor = colors.PrimaryAccent;
-                    tab.TabUnSelectedColor = colors.AppBackground;
-                    tab.TabUnSelectedForeColor = ColorTranslator.FromHtml("#D4D4D8");
-                }
-                else if (CurrentTheme == ThemeMode.Light)
-                {
-                    tab.TabBackColor = Color.Azure;
-                    tab.FillColor = colors.AppBackground;
-                    tab.TabSelectedColor = Color.White;
-                    tab.TabSelectedForeColor = SystemColors.ControlText;
-                    tab.TabSelectedHighColor = Color.Black;
-                    tab.TabUnSelectedColor = Color.FromArgb(115, 179, 255);
-                    tab.TabUnSelectedForeColor = Color.FromArgb(240, 240, 240);
-                }
-                else // Red theme
-                {
-                    tab.TabBackColor = Color.FromArgb(254, 242, 242);
-                    tab.FillColor = colors.AppBackground;
-                    tab.TabSelectedColor = Color.White;
-                    tab.TabSelectedForeColor = Color.FromArgb(185, 28, 28);
-                    tab.TabSelectedHighColor = Color.FromArgb(185, 28, 28);
-                    tab.TabUnSelectedColor = Color.FromArgb(254, 202, 202);
-                    tab.TabUnSelectedForeColor = Color.FromArgb(185, 28, 28);
-                }
+                tab.TabBackColor = colors.AppBackground;
+                tab.FillColor = colors.AppBackground;
+                tab.TabSelectedColor = colors.PrimaryAccent;
+                tab.TabSelectedForeColor = Color.White;
+                tab.TabSelectedHighColor = colors.PrimaryAccent;
+                tab.TabUnSelectedColor = colors.CardBackground;
+                tab.TabUnSelectedForeColor = (CurrentTheme == ThemeMode.Dark) ? ColorTranslator.FromHtml("#A1A1AA") : colors.TextSecondary;
             }
             else if (ctrl is TabPage page)
             {
@@ -655,7 +632,6 @@ namespace AutoJMS.UI
                 return false;
             return name.Contains("search") || 
                    name.Contains("timkiem") || 
-                   name.Contains("print") || 
                    name.Contains("stop") || 
                    name.Contains("checkupdate");
         }
