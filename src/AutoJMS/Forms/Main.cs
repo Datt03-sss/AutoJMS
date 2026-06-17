@@ -148,9 +148,6 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
-            this.MinimumSize = new Size(1024, 700);
-            AppTheme.Apply(this);
-            AutoJMS.UI.UiLayoutHelper.Configure(this);
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
             // Register all built-in tabs with the TabManager
@@ -893,7 +890,7 @@ namespace AutoJMS
         {
             lblNetworkStatus = new UILabel();
             lblNetworkStatus.AutoSize = true;
-            lblNetworkStatus.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblNetworkStatus.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             lblNetworkStatus.BackColor = Color.Transparent;
             lblNetworkStatus.TextAlign = ContentAlignment.MiddleRight;
             lblNetworkStatus.Parent = this;
@@ -923,15 +920,15 @@ namespace AutoJMS
             {
                 case NetworkStatus.Online:
                     lblNetworkStatus.Text = "● Online";
-                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Success;
+                    lblNetworkStatus.ForeColor = Color.FromArgb(0, 240, 100);
                     break;
                 case NetworkStatus.Unstable:
                     lblNetworkStatus.Text = "● Mạng chậm";
-                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Warning;
+                    lblNetworkStatus.ForeColor = Color.FromArgb(253, 224, 71);
                     break;
                 case NetworkStatus.Offline:
                     lblNetworkStatus.Text = "● Mất kết nối";
-                    lblNetworkStatus.ForeColor = AutoJMS.UI.AppPalette.Danger;
+                    lblNetworkStatus.ForeColor = Color.FromArgb(252, 115, 115);
                     break;
             }
             RepositionNetworkLabel();
@@ -1405,57 +1402,42 @@ namespace AutoJMS
             }
         }
 
-        private void tabControl_SelectedIndexChanged(object sender, EventArgs e)
+        private async void tabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (this.IsDisposed) return;
-
-            this.SuspendLayout();
-            tabControl.SuspendLayout();
-
-            this.BeginInvoke(new Action(async () =>
+            try
             {
-                if (this.IsDisposed) return;
-                try
+                if (tabControl.SelectedTab == tabHome)
                 {
-                    if (tabControl.SelectedTab == tabHome)
+                    if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
                     {
-                        if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
-                        {
-                            tabHome_webView.CoreWebView2.Reload();
-                            _isHomeNeedReload = false;
-                        }
+                        tabHome_webView.CoreWebView2.Reload();
+                        _isHomeNeedReload = false;
                     }
-                    else if (tabControl.SelectedTab == tabDKCH)
+                }
+                else if (tabControl.SelectedTab == tabDKCH)
+                {
+                    if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
                     {
-                        if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
-                        {
-                            tabDKCH_webView.CoreWebView2.Reload();
-                            _isDkchNeedReload = false;
-                        }
+                        tabDKCH_webView.CoreWebView2.Reload();
+                        _isDkchNeedReload = false;
                     }
-                    else if (tabControl.SelectedTab == tabTracking)
+                }
+                else if (tabControl.SelectedTab == tabTracking)
+                {
+                    if (string.IsNullOrEmpty(Main.CapturedAuthToken)) await RefreshAuthTokenAsync();
+                    if (tabTracking_btnSearch.Enabled)
                     {
-                        if (string.IsNullOrEmpty(Main.CapturedAuthToken)) await RefreshAuthTokenAsync();
-                        if (tabTracking_btnSearch.Enabled)
+                        if (tabTracking_process != null && !tabTracking_process.IsDisposed)
                         {
-                            if (tabTracking_process != null && !tabTracking_process.IsDisposed)
-                            {
-                                tabTracking_process.Value = 0;
-                                tabTracking_process.Visible = false;
-                            }
+                            tabTracking_process.Value = 0;
+                            tabTracking_process.Visible = false;
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    AppLogger.Error("Lỗi xử lý Tab: " + ex.Message);
-                }
-                finally
-                {
-                    tabControl.ResumeLayout(true);
-                    this.ResumeLayout(true);
-                }
-            }));
+                // tabChat and tabDash views moved to FullStackOperation form
+            }
+            catch (Exception ex) { MessageBox.Show("Lỗi xử lý Tab: " + ex.Message); }
         }
 
         // Candidate HTTP header names the JMS frontend may attach the session
@@ -2940,9 +2922,6 @@ namespace AutoJMS
             uiPanel2.Controls.Add(clearJobsButton);
             uiPanel2.Controls.Add(setPaperButton);
             uiPanel2.Controls.Add(unsetPaperButton);
-
-            // Apply custom theme style to newly added dynamic action buttons
-            AppTheme.ApplyToControls(uiPanel2.Controls);
         }
 
         private static UIButton CreatePrinterActionButton(string name, string text, int left)
