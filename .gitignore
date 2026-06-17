@@ -1,0 +1,83 @@
+# Build outputs
+bin/
+obj/
+publish/
+artifacts/
+installer/inno/installer-output/
+release/output/
+
+# .NET
+*.nupkg
+*.user
+*.suo
+*.pfx
+*.key
+*.log
+AppData/
+BrowserData/
+
+# IDE
+.vs/
+.vscode/
+*.swp
+*.swo
+.idea/
+
+# Environment
+.env
+.env.*
+appsettings.*.json
+
+# Firebase/Supabase keys - NEVER COMMIT
+serviceAccountKey.json
+service_account.json
+serviceAccountKey.*.json
+firebase-adminsdk*.json
+*.firebase-adminsdk.json
+!serviceAccountKey.example.json
+*-key.json
+*service*.json
+!.env.example
+*.sec
+
+# Certificates
+*.pfx
+*.pem
+*.crt
+*.cer
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Velopack
+packages/
+current/
+Update.exe
+
+# Module cache
+ModuleSystem/cache/
+ModuleSystem/*.json
+!ModuleSystem/app-manifest.json
+!ModuleSystem/active_modules.json
+!ModuleSystem/BuiltInModules.cs
+src/AutoJMS/ModuleSystem/cache/
+
+# Node.js
+backend/render-license-server/node_modules/
+
+# Temp files
+*.tmp
+*.temp
+
+# Agent and Secrets config
+secrets/
+service_account*.json
+service_accout*.json
+.claude/settings.local.json

@@ -1,0 +1,76 @@
+╔══════════════════════════════════════════════════════════╗
+║  AUTOJMS LICENSE DATA SCHEMA                           ║
+║  Maintain across: Firebase → server.js → C# Client     ║
+╚══════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────┐
+│ 1. FIREBASE (Realtime DB)                               │
+│    Path: /Licenses/{licenseKey}/                        │
+│    All fields at ROOT level (no "cfg" wrapper)          │
+└─────────────────────────────────────────────────────────┘
+
+{
+  "createdAt":          "26-05-2026 01:22",
+  "dataSpreadsheetId":  "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
+  "hwid":               "29a534fab857f17e3ba515e7231b807f...",
+  "middleCode":         "0000",
+  "modulePolicy": {
+    "autoUpdate":            true,
+    "silentUpdate":          true,
+    "applyOnNextStartup":    true
+  },
+  "skipHashCheck":      true,
+  "status":             "active",
+  "tier":               "ULTRA",           // "BASE" | "ULTRA"
+}
+
+┌─────────────────────────────────────────────────────────┐
+│ 2. SERVER RESPONSE (server.js /api/verify-license)      │
+│    Must forward ALL fields from Firebase to client      │
+└─────────────────────────────────────────────────────────┘
+
+{
+  "payload":    "eyJhbGciOiJSUzI1NiIs...",    // JWT token
+  "sid":        "0463903a-4baf-4807-b688-...", // session ID
+  "tier":       "ULTRA",                       // ← MUST ADD (from data.tier)
+  "skipHashCheck": true,                       // ← MUST ADD (from data.skipHashCheck)
+  "modulePolicy": {                             // ← MUST ADD
+    "autoUpdate":         true,
+    "silentUpdate":       true,
+    "applyOnNextStartup": true
+  },
+  "cfg": {
+    "dataSpreadsheetId":  "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
+  }
+}
+
+┌─────────────────────────────────────────────────────────┐
+│ 3. C# CLIENT PARSING (LicenseApiService.cs)             │
+│    Reads from root of server response                   │
+└─────────────────────────────────────────────────────────┘
+
+  root.tier               → result.Tier
+  root.skipHashCheck      → result.SkipHashCheck
+  root.modulePolicy       → result.AutoUpdate / SilentUpdate / ApplyOnNextStartup
+  root.cfg.dataSpreadsheetId → AppConfig.Current.DataSpreadsheetId
+
+┌─────────────────────────────────────────────────────────┐
+│ 4. SUPABASE STORAGE (autojms-modules bucket)            │
+└─────────────────────────────────────────────────────────┘
+
+  configs/tier-definitions.json   -- defines what each tier can DO
+  manifest/hash-manifest.json     -- version → DLL hash map
+  modules/modules.json            -- list of downloadable modules
+
+  tier-definitions.json format:
+  {
+    "BASE": {
+      "tabs": ["HOME","DKCH","TRACKING","PRINT","ABOUT"],
+      "modules": []
+    },
+    "ULTRA": {
+      "tabs": ["HOME","DKCH","TRACKING","PRINT","ABOUT"],
+      "modules": [],
+      "backgroundForms": ["FULLSTACK_OPERATION"]
+    }
+  }

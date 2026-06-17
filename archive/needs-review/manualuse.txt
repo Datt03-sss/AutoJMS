@@ -1,0 +1,287 @@
+================================================================================
+  AUTOJMS — HƯỚNG DẪN QUY TRÌNH BUILD & UPDATE CHI TIẾT
+================================================================================
+
+Tài liệu này mô tả từng bước quy trình build setup file (cài lần đầu) và
+build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần sửa code.
+
+================================================================================
+  CẤU TRÚC FOLDER
+================================================================================
+
+  AutoJMS\
+  ├── Installer\                    ← Build file cài đặt lần đầu (Inno Setup)
+  │     ├── AutoJMS.iss             ← Script Inno Setup (bootstrapper)
+  │     ├── build-installer.ps1     ← Script build installer
+  │     ├── build-installer.bat     ← Double-click để build
+  │     ├── redist\                 ← Runtime offline (tự động cài khi setup)
+  │     │     ├── windowsdesktop-runtime-8.0-win-x64.exe
+  │     │     ├── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+  │     │     └── vc_redist.x64.exe
+  │     └── installer-output\       ← Output: AutoJMS-win-Setup.exe
+  │
+  ├── Release\                      ← Build Velopack update (push lên Supabase)
+  │     ├── build-release.ps1       ← Script build release
+  │     ├── build-release.bat       ← Double-click để build
+  │     ├── upload-only.bat         ← Upload release đã build lên Supabase
+  │     └── output\                 ← Output theo channel
+  │           ├── stable\           ← RELEASES-stable, .nupkg, Setup.exe
+  │           └── beta\
+  │
+  ├── publish\win-x64\              ← Output dotnet publish (tạm, dùng chung)
+  └── AutoJMS.csproj                ← Project chính
+
+
+================================================================================
+  KỊCH BẢN 1: BUILD SETUP FILE CÀI ĐẶT LẦN ĐẦU
+================================================================================
+
+  Khi nào dùng:
+    - Phát hành phiên bản mới cho user chưa cài app
+    - Cần tạo file AutoJMS-win-Setup.exe để gửi cho khách hàng
+    - Sau khi sửa lỗi lớn cần cài lại hoàn toàn
+
+  Bước thực hiện:
+
+  1. MỞ TERMINAL tại thư mục gốc project
+
+  2. BUILD RELEASE TRƯỚC (tạo Velopack Setup.exe):
+     ─────────────────────────────────────────────
+     cd Release
+     .\build-release.bat
+
+     → Nhập version (ví dụ: 1.26.7.1)
+     → Chọn channel: stable
+     → Chọn: No upload (chỉ build local)
+
+     Kết quả: Release\output\stable\AutoJMS-stable-Setup.exe
+
+  3. BUILD INSTALLER (đóng gói Velopack Setup vào Inno bootstrapper):
+     ─────────────────────────────────────────────
+     cd ..\Installer
+     .\build-installer.bat
+
+     → Nhập version (ví dụ: 1.26.7.1)
+     → Chọn channel: stable
+
+     Kết quả: Installer\installer-output\AutoJMS-win-Setup.exe
+
+  4. GỬI FILE CHO KHÁCH HÀNG:
+     ─────────────────────────────────────────────
+     File: Installer\installer-output\AutoJMS-win-Setup.exe
+     Kích thước: ~130 MB (bao gồm app + runtime + redist)
+
+     Khách hàng chạy file này → cài vào C:\AutoJMS (mặc định)
+     → Tự động cài .NET 8, WebView2, VC++ nếu thiếu
+     → Tạo shortcut Desktop + Start Menu
+     → Mở app → nhập license key → sử dụng
+
+
+================================================================================
+  KỊCH BẢN 2: PUSH UPDATE SAU KHI SỬA LỖI / THÊM TÍNH NĂNG
+================================================================================
+
+  Khi nào dùng:
+    - Sửa bug, thêm feature, cần user đã cài nhận update
+    - User nhấn "Check Update" trong tab About → tự tải và cập nhật
+
+  Bước thực hiện:
+
+  1. SỬA CODE xong, test local OK
+
+  2. BUILD RELEASE:
+     ─────────────────────────────────────────────
+     cd Release
+     .\build-release.bat
+
+     → Nhập version MỚI (phải lớn hơn version cũ!)
+       Ví dụ: cũ là 1.26.7 → mới phải là 1.26.8 hoặc 1.27.0
+     → Chọn channel: stable
+     → Chọn: Yes, build and upload
+
+     Script sẽ:
+       a) dotnet publish self-contained
+       b) .NET Reactor protect AutoJMS.dll
+       c) vpk pack → tạo .nupkg + RELEASES
+       d) Upload binaries lớn lên GitHub Releases (gh CLI)
+       e) Upload manifest nhỏ (version-latest.json) lên Supabase
+
+  3. XÁC NHẬN UPLOAD:
+     ─────────────────────────────────────────────
+     a) GitHub Releases (binaries lớn):
+        https://github.com/Datt03-sss/AutoJMS-Update/releases
+        Kiểm tra release tag: v{VelopackVersion}-Release
+          - RELEASES                          (file text nhỏ)
+          - AutoJMS-X.Y.Z-*-full.nupkg        (file lớn ~90MB)
+          - AutoJMS-*-Setup.exe
+        Beta phải được mark prerelease=true.
+
+     b) Supabase (manifest nhỏ):
+        https://supabase.com/dashboard/project/valmbajjpkjccqslsuou/storage/files/buckets/autojms-modules
+        Kiểm tra: manifest/version-latest.json  (provider=github, trỏ đúng tag)
+        LƯU Ý: .nupkg/Setup.exe KHÔNG còn upload lên Supabase (giới hạn 50MB).
+
+  4. USER NHẬN UPDATE:
+     ─────────────────────────────────────────────
+     User mở AutoJMS → tab About → nhấn "Check Update"
+     → App đọc version-latest.json từ Supabase (provider=github)
+     → App tải bản mới TRỰC TIẾP từ GitHub Releases qua Velopack GithubSource
+     → KHÔNG mở trang GitHub trên trình duyệt
+     → Hiện progress bar → tự restart với phiên bản mới
+
+     KHÔNG CẦN user tải lại setup file.
+     KHÔNG CẦN user gỡ cài đặt.
+
+
+================================================================================
+  KỊCH BẢN 3: CHỈ UPLOAD (ĐÃ BUILD SẴN)
+================================================================================
+
+  Khi nào dùng:
+    - Đã build release nhưng chưa upload (chọn "No" ở bước upload)
+    - Muốn upload lại sau khi kiểm tra file output
+
+  Bước thực hiện:
+
+     cd Release
+     .\upload-only.bat
+
+     → Chọn channel: stable
+     → Script upload toàn bộ file từ Release\output\stable\ lên Supabase
+
+
+================================================================================
+  KỊCH BẢN 4: BUILD BETA (TEST NỘI BỘ)
+================================================================================
+
+  1. cd Release
+     .\build-release.bat
+     → Version: 1.26.8-beta1
+     → Channel: beta
+     → Upload: Yes
+
+  2. Chỉ user có license channel=beta mới nhận update này.
+     User stable không bị ảnh hưởng.
+
+
+================================================================================
+  QUY TẮC VERSION
+================================================================================
+
+  - Velopack yêu cầu version 3 phần: MAJOR.MINOR.PATCH (ví dụ: 1.26.7)
+  - Nếu nhập 4 phần (1.26.7.1), script tự convert: 1.26.7.1 → 1.26.7
+    (patch = part3 + part4 - 1)
+  - Version MỚI phải LUÔN LỚN HƠN version cũ trên Supabase
+  - Nếu lỗi "release which is equal or greater":
+    → Tăng version lên (ví dụ: 1.26.8)
+    → Hoặc xóa file cũ trên Supabase rồi upload lại
+
+
+================================================================================
+  CẤU TRÚC CÀI ĐẶT TRÊN MÁY USER
+================================================================================
+
+  C:\AutoJMS\                       ← Thư mục gốc (user chọn khi cài)
+  ├── AutoJMS.exe                   ← Stub launcher (shortcut trỏ vào đây)
+  ├── Update.exe                    ← Velopack updater
+  ├── current\                      ← App binaries (BỊ THAY MỚI khi update)
+  │     ├── AutoJMS.exe
+  │     ├── AutoJMS.dll
+  │     ├── coreclr.dll
+  │     ├── hostfxr.dll
+  │     └── ... (toàn bộ self-contained runtime)
+  ├── packages\                     ← Cache .nupkg (Velopack quản lý)
+  └── AppData\                      ← User data (KHÔNG BỊ XÓA khi update)
+        ├── AutoJMS.json            ← Settings
+        ├── logs\debug.log          ← Log realtime
+        ├── secure\                 ← License, config encrypted
+        │     ├── AutoJMS.secure
+        │     ├── AutoJMS.config.enc
+        │     └── license.dat
+        ├── cache\                  ← Runtime config cache
+        ├── modules\                ← Module cache
+        ├── Downloads\              ← PDF, export files
+        └── BrowserData\            ← WebView2 profile
+
+
+================================================================================
+  CHECKLIST TRƯỚC KHI RELEASE
+================================================================================
+
+  [ ] Code đã test local, không crash
+  [ ] Version đã tăng so với bản trước
+  [ ] .NET Reactor không bị lỗi (hoặc dùng -SkipReactor nếu test)
+  [ ] Build release thành công (không error)
+  [ ] Upload lên Supabase thành công
+  [ ] Kiểm tra trên Supabase Dashboard: file .nupkg có đúng size
+  [ ] Test trên máy khác: mở app → Check Update → nhận bản mới
+  [ ] Sau update: app chạy bình thường, data không mất
+
+
+================================================================================
+  XỬ LÝ LỖI THƯỜNG GẶP
+================================================================================
+
+  Lỗi: "release which is equal or greater to the current version"
+  → Tăng version number lên.
+
+  Lỗi: "Velopack Setup payload missing" khi chạy installer
+  → Build release trước (Release\build-release.bat), rồi mới build installer.
+
+  Lỗi: "supabase: command not found"
+  → Cài Supabase CLI: npm install -g supabase
+  → Hoặc upload thủ công qua Dashboard.
+
+  Lỗi: App không nhận update
+  → Kiểm tra file RELEASES-stable trên Supabase có đúng version mới
+  → Kiểm tra app đang chạy từ Velopack layout (C:\AutoJMS\current\)
+  → Xem log: C:\AutoJMS\AppData\logs\debug.log
+
+  Lỗi: "Access denied" khi app ghi file
+  → Chạy lại installer (reinstall) để reset quyền thư mục
+  → Hoặc: icacls "C:\AutoJMS" /grant Users:(OI)(CI)M /T
+
+
+================================================================================
+  TÓM TẮT LỆNH NHANH
+================================================================================
+
+  # Build setup cài đặt lần đầu:
+  cd Installer && .\build-installer.bat
+
+  # Build + upload update:
+  cd Release && .\build-release.bat
+
+  # Chỉ upload (đã build sẵn):
+  cd Release && .\upload-only.bat
+
+  # Build release bằng command line (không interactive):
+  cd Release
+  powershell -File .\build-release.ps1 -Version "1.26.8" -Channel stable -Upload
+
+  # Build installer bằng command line:
+  cd Installer
+  powershell -File .\build-installer.ps1 -Version "1.26.8" -Channel stable -NoPause
+
+
+================================================================================
+  LƯU Ý QUAN TRỌNG
+================================================================================
+
+  1. LUÔN build Release TRƯỚC, Installer SAU.
+     Installer cần file AutoJMS-stable-Setup.exe từ Release output.
+
+  2. KHÔNG copy thủ công file vào C:\AutoJMS\current\.
+     Velopack quản lý folder này. Mọi thay đổi sẽ bị ghi đè khi update.
+
+  3. User data ở C:\AutoJMS\AppData\ KHÔNG BAO GIỜ bị xóa bởi update.
+     Chỉ bị xóa khi user gỡ cài đặt thủ công.
+
+  4. File AutoJMS-win-Setup.exe (Inno) = cài lần đầu.
+     File AutoJMS-stable-Setup.exe (Velopack) = update engine.
+     Hai file KHÁC NHAU, KHÔNG thay thế nhau.
+
+  5. Mọi file của app nằm trong C:\AutoJMS\ (hoặc thư mục user chọn).
+     KHÔNG có file nào ở %AppData%, %LocalAppData%, hay bất kỳ đâu khác.
+
+================================================================================

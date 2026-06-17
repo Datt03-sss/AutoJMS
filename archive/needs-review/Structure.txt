@@ -1,0 +1,288 @@
+================================================================================
+  AutoJMS — WORKSPACE STRUCTURE
+================================================================================
+
+This is the authoritative map of the repository. Update this file whenever
+folders or top-level files change.
+
+================================================================================
+  ROOT LAYOUT
+================================================================================
+
+  AutoJMS\
+  ├── Installer\           ← Build the FIRST-INSTALL package (Inno Setup)
+  ├── Release\             ← Build VELOPACK UPDATES (push to Supabase)
+  ├── ModuleProjects\      ← Side projects: RetryPolicy, Selectors, Abstractions
+  ├── ModuleSystem\        ← In-app plugin loader / module registry
+  ├── ServerTemplates\     ← Server-side JSON templates + reference Node script
+  ├── modules\             ← Bundled module data shipped with the app
+  ├── manifest\             ← (legacy, kept for reference; not used by app)
+  ├── publish\             ← dotnet publish output (regenerated each build)
+  ├── bin\, obj\           ← Build artifacts (gitignored)
+  ├── Properties\          ← AssemblyInfo / Resources designer
+  ├── Resources\           ← App icons, images
+  ├── skill\               ← Kiro skill files (SKILL.md + project-specific skills)
+  ├── .generated-manifests\ ← (none — removed during cleanup)
+  ├── manualuse.txt        ← STEP-BY-STEP build & update guide (Vietnamese)
+  ├── Structure.txt        ← THIS FILE
+  ├── AutoJMS.csproj       ← Main WinForms project (.NET 8, win-x64, self-contained)
+  ├── AutoJMS.slnx         ← Solution
+  ├── AutoJMS_Reactor.nrproj ← .NET Reactor obfuscation project
+  ├── build-modules.ps1    ← Build module DLLs (RetryPolicy, Selectors)
+  ├── upload-module.ps1    ← Upload built modules to Supabase Storage
+  ├── service_account.json ← Google service account credential (read-only)
+  ├── tier-definitions.json ← Tier → tabs/forms/modules mapping
+  ├── AutoJMS.json         ← Default user-settings template (shipped to install dir)
+  ├── favicon.ico          ← App icon
+  └── *.cs                 ← Application source files (see SOURCE FILES below)
+
+
+================================================================================
+  Installer\  —  FIRST-INSTALL PACKAGE (Inno Setup bootstrapper)
+================================================================================
+
+  Purpose:
+    Build  Installer\installer-output\AutoJMS-win-Setup.exe
+    This is the file users download to install AutoJMS for the first time.
+    It bundles a Velopack Setup payload + offline runtimes + redists.
+
+  Layout:
+    Installer\
+      ├── AutoJMS.iss              ← Inno Setup script
+      ├── build-installer.ps1      ← Build script
+      ├── build-installer.bat      ← Double-click wrapper
+      ├── clean-test-install.bat   ← Wipe C:\AutoJMS for clean re-test
+      ├── README_INSTALLER.md      ← Notes on installer internals
+      ├── redist\                  ← Offline runtime payloads
+      │     ├── windowsdesktop-runtime-8.0-win-x64.exe
+      │     ├── MicrosoftEdgeWebView2RuntimeInstallerX64.exe
+      │     └── vc_redist.x64.exe
+      └── installer-output\        ← Output: AutoJMS-win-Setup.exe
+
+
+================================================================================
+  Release\  —  VELOPACK UPDATE BUILDER (push to Supabase)
+================================================================================
+
+  Purpose:
+    Build  Release\output\<channel>\AutoJMS-<channel>-Setup.exe + .nupkg + RELEASES
+    These files go to Supabase Storage. Installed users get them via
+    in-app "Check Update" (Velopack downloads + applies).
+
+  Layout:
+    Release\
+      ├── build-release.ps1        ← publish + Reactor + vpk pack + upload
+      ├── build-release.bat        ← Interactive wrapper
+      ├── upload-only.bat          ← Upload an already-built release
+      └── output\
+            ├── stable\            ← Stable channel artifacts
+            │     ├── RELEASES-stable
+            │     ├── AutoJMS-<ver>-stable-full.nupkg
+            │     ├── AutoJMS-<ver>-stable-delta.nupkg
+            │     ├── AutoJMS-stable-Setup.exe   ← consumed by Installer\
+            │     └── releases.stable.json
+            └── beta\              ← Beta channel artifacts
+
+
+================================================================================
+  RUNTIME LAYOUT (after install on user machine)
+================================================================================
+
+  Default install root: C:\AutoJMS  (user-chosen during setup)
+
+  C:\AutoJMS\
+    ├── AutoJMS.exe              ← Velopack stub launcher (shortcuts target this)
+    ├── Update.exe               ← Velopack updater
+    ├── current\                 ← App binaries (REPLACED by Velopack on update)
+    │     ├── AutoJMS.exe / .dll / .deps.json / .runtimeconfig.json
+    │     ├── coreclr.dll / hostfxr.dll / hostpolicy.dll / System.Private.CoreLib.dll
+    │     ├── modules\           ← Bundled module data (read-only)
+    │     └── ... (full self-contained .NET 8 runtime)
+    ├── packages\                ← Velopack .nupkg cache
+    └── AppData\                 ← User data — SURVIVES every update
+          ├── AutoJMS.json       ← User settings
+          ├── logs\debug.log     ← Real-time log (ACTION/INFO/WARN/ERROR/FATAL)
+          ├── secure\            ← Encrypted config & license cache
+          │     ├── AutoJMS.secure
+          │     ├── AutoJMS.config.enc
+          │     └── license.dat
+          ├── cache\             ← Runtime config cache, sync cache
+          ├── modules\           ← Module cache (writable copy)
+          ├── Downloads\         ← Exported PDFs, logs, etc.
+          └── BrowserData\       ← WebView2 user profile
+
+  All paths centralized in AppPaths.cs.
+  Nothing is written to %LocalAppData%, %AppData%, or anywhere outside C:\AutoJMS.
+
+
+================================================================================
+  SOURCE FILES (root *.cs)
+================================================================================
+
+  Path management & logging
+    AppPaths.cs              Centralized path resolver (InstallRoot, AppData, etc.)
+    AppLogger.cs             Real-time log writer to AppData\logs\debug.log
+    AppVersion.cs            Reads assembly version
+
+  Bootstrap
+    Program.cs               Main(); VelopackApp.Run() first; mutex; license flow
+    frmLogin.cs              License key input dialog
+    Main.cs / Main.Designer.cs   Main WinForms shell (tabs, WebView2)
+    FullStackOperation.cs    Realtime tracking + Zalo chat form
+    TabManager.cs            Tier-based tab visibility
+
+  Configuration & settings
+    AppConfig.cs             Encrypted runtime config (AutoJMS.secure)
+    SettingsManager.cs       Encrypted user settings (AutoJMS.config.enc)
+    UserSettingsService.cs   Plain-text AutoJMS.json fallback
+    RuntimeConfig.cs         Runtime config DTO
+    RuntimeConfigService.cs  Cache + apply runtime config from server
+    SupabaseConfig.cs        Supabase URL / channel DTOs
+
+  License & auth
+    AuthStateService.cs / IAuthStateService.cs   App auth state singleton
+    JmsAuthStateService.cs   JMS website auth token state + expiry handling
+    LicenseApiService.cs     License verify + heartbeat against Render server
+    HashManifest.cs          Hash manifest model
+    HashVerifier.cs          Verify AutoJMS.dll SHA256 against manifest
+    IntegrityService.cs      Integrity check orchestration
+
+  Update services
+    VelopackUpdateService.cs Public Supabase feed → Velopack download/apply
+    MajorUpdateService.cs    Wrapper for major (full app) update via Supabase
+    SmallUpdateService.cs    Apply small encrypted config patches
+
+  JMS integration
+    WaybillTrackingService.cs   JMS waybill tracking API
+    WaybillModels.cs            DTOs
+    DatabaseTracking.cs         Persist tracking state
+    InventorySyncService.cs     Inventory sync against JMS
+    PrintService.cs / IPrintService.cs   PDF print pipeline
+    GoogleSheetService.cs       Google Sheets export
+
+  Supabase services
+    SupabaseDbService.cs        Realtime tracking lease, sync
+    SupabaseManifestService.cs  Fetch manifests from Supabase Storage
+    SupabaseModels.cs           Manifest DTOs
+
+  Misc
+    WebViewHost.cs              Shared WebView2 host wrapper
+    WebViewAutomation.cs        DOM automation helpers
+    ZaloChatService.cs          Zalo chat auto-reminder
+    TierDefinitions.cs          Tier definition loader
+    uiControlService.cs         Network status indicator service
+
+
+================================================================================
+  ModuleProjects\  —  side projects
+================================================================================
+
+  ModuleProjects\
+    ├── AutoJMS.Abstractions\    ← Plugin contracts (IPlugin, ISelectorProvider, ...)
+    ├── AutoJMS.RetryPolicy\     ← Retry policy module DLL
+    └── AutoJMS.Selectors\       ← Selector provider module DLL
+
+  Built via root: build-modules.ps1
+  Uploaded via root: upload-module.ps1
+  Loaded at runtime by ModuleSystem\* into the main app.
+
+
+================================================================================
+  ModuleSystem\  —  in-app plugin loader
+================================================================================
+
+  ModuleSystem\
+    ├── ActiveModules.cs           Tracks which module versions are active
+    ├── AppManifest.cs             App manifest model
+    ├── ModuleEntry.cs             Module descriptor
+    ├── ModuleRegistry.cs          Loads and dispatches IPlugin instances
+    ├── ModuleStartup.cs           Init at app boot
+    ├── ModuleUpdater.cs           Pulls module manifests from server
+    ├── ModulesManifest.cs         Server-side modules.json shape
+    ├── PluginLoadContext.cs      AssemblyLoadContext for hot-loading
+    ├── BuiltInRetryPolicy.cs      Default retry impl (no module loaded)
+    ├── BuiltInSelectorProvider.cs Default selectors
+    ├── BuiltInWorkflowProvider.cs Default workflow
+    ├── BuiltInConfigProvider.cs   Default config
+    └── SupabaseModuleProvider.cs  Pulls module DLLs from Supabase Storage
+
+
+================================================================================
+  ServerTemplates\  —  server-side reference files
+================================================================================
+
+  Renamed from "Other information" during cleanup.
+  These are templates / examples used by the license/manifest server, NOT
+  read by the client app.
+
+  ServerTemplates\
+    ├── server.js                       Sample license server (Node.js)
+    ├── app-manifest.json
+    ├── version-latest.json             Velopack feed metadata template
+    ├── hash-manifest.json
+    ├── selector-update-manifest.json
+    ├── runtime-config.json
+    ├── public-config.json
+    └── tier-definitions.json
+
+
+================================================================================
+  modules\  —  bundled module data
+================================================================================
+
+  Default module data shipped inside the install package (read-only).
+  At first launch the app copies these into AppData\modules\ for runtime use.
+
+  modules\
+    ├── active_modules.json
+    ├── app-manifest.json
+    ├── config.json
+    ├── modules-cache.json
+    ├── modules.json
+    ├── selectors.json
+    ├── tier-definitions.json
+    ├── retry\           ← retry module versions
+    └── selectors\       ← selector module versions
+
+
+================================================================================
+  COMMANDS QUICK REFERENCE
+================================================================================
+
+  # First-time install package (gives users  AutoJMS-win-Setup.exe ):
+  cd Release    && .\build-release.bat       # produces Velopack Setup.exe + nupkg
+  cd ..\Installer && .\build-installer.bat   # bundles into Inno installer
+
+  # Push an update to existing users:
+  cd Release && .\build-release.bat          # answer "Yes" to upload
+
+  # Re-upload an already-built release:
+  cd Release && .\upload-only.bat
+
+  # Build modules (RetryPolicy, Selectors):
+  .\build-modules.ps1 -Configuration Release
+
+  # Upload a module DLL:
+  .\upload-module.ps1 -Module retry
+
+  See manualuse.txt for the full step-by-step guide.
+
+================================================================================
+  SKILL FILES (skill\)
+================================================================================
+
+  Project-specific reference docs that future agent sessions can activate to
+  pick up the conventions encoded in this codebase. Each file has YAML
+  front-matter (name, description, license).
+
+  skill\
+    ├── SKILL.md                     ← Karpathy-style coding guidelines (general)
+    ├── autojms-architecture.md      ← Subsystem map + lifecycle + invariants
+    ├── csharp-winforms-net8.md      ← Bootstrap, async/CTS, FormClosing, mutex
+    ├── webview2-automation.md       ← Vue/Element UI driving + API interception
+    ├── velopack-supabase-update.md  ← Two-stage install + update flow
+    ├── app-paths-logging.md         ← AppPaths discipline + AppLogger taxonomy
+    └── inno-setup-bootstrapper.md   ← dontcopy + ExtractTemporaryFile pattern,
+                                        [Dirs] permissions, prereq order
+
+================================================================================

@@ -1,0 +1,2 @@
+-- AutoJMS local Supabase seed file.
+-- Intentionally empty: bootstrap objects live in migrations.

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "tiers": {
+    "BASE": {
+      "tabs": [
+        "HOME",
+        "DKCH",
+        "TRACKING",
+        "PRINT",
+        "ABOUT"
+      ],
+      "forms": [],
+      "backgroundJobs": {
+        "inventorySync": false,
+        "databaseTracking": false,
+        "autoSyncTimer": false,
+        "fullStackRealtime": false
+      }
+    },
+    "ULTRA": {
+      "inherits": "BASE",
+      "tabs": [
+        "HOME",
+        "DKCH",
+        "TRACKING",
+        "PRINT",
+        "ABOUT"
+      ],
+      "forms": [
+        {
+          "name": "FULLSTACK_OPERATION",
+          "type": "VISIBLE_FORM",
+          "launch": "AFTER_MAINFORM_SHOWN",
+          "fetchApiAfterAuthToken": true
+        }
+      ],
+      "backgroundJobs": {
+        "inventorySync": true,
+        "databaseTracking": true,
+        "autoSyncTimer": true,
+        "fullStackRealtime": true
+      }
+    }
+  }
+}

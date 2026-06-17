@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/AutoJMS/AutoJMS.csproj" DefaultStartup="true" />
+  <Project Path="src/AutoJMS.Abstractions/AutoJMS.Abstractions.csproj" />
+</Solution>

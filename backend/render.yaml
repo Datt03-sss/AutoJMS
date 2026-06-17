@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: autojms-api
+    runtime: node
+    rootDir: backend/render-license-server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FIREBASE_OPERATION_TIMEOUT_MS
+        value: "8000"
+      - key: FIREBASE_DATABASE_URL
+        value: https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
+      - key: SUPABASE_PROJECT_URL
+        value: https://bnsnnrlwfzxemmizknwy.supabase.co
+      - key: SUPABASE_BASE_URL
+        value: https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
+      - key: DEFAULT_UPDATE_CHANNEL
+        value: stable
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_BASE64
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: VALID_EXE_HASHES
+        sync: false
