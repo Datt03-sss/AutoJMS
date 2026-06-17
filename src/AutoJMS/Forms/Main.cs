@@ -1048,9 +1048,9 @@ namespace AutoJMS
             var summaryPanel = new Sunny.UI.UIPanel
             {
                 Name = "tabAbout_summaryPanel",
-                BackColor = Color.White,
-                FillColor = Color.FromArgb(248, 250, 252),
-                RectColor = Color.FromArgb(222, 226, 230),
+                BackColor = Color.Transparent,
+                FillColor = UI.AppTheme.Colors.CardBackground,
+                RectColor = UI.AppTheme.Colors.SubtleBorder,
                 Radius = 8,
                 Padding = new Padding(16, 12, 16, 12),
                 Dock = DockStyle.Fill,
@@ -1059,9 +1059,11 @@ namespace AutoJMS
 
             var title = new Sunny.UI.UILabel
             {
+                Name = "tabAbout_summaryTitle",
                 Text = "Tóm tắt điều khoản",
                 Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(33, 37, 41),
+                ForeColor = UI.AppTheme.Colors.TextPrimary,
+                BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Dock = DockStyle.Top,
                 Height = 26
@@ -1069,9 +1071,11 @@ namespace AutoJMS
 
             var body = new Sunny.UI.UILabel
             {
+                Name = "tabAbout_summaryBody",
                 Text = TermsContentProvider.GetTermsSummaryText(),
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(52, 58, 64),
+                ForeColor = UI.AppTheme.Colors.TextSecondary,
+                BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.TopLeft,
                 Dock = DockStyle.Fill,
                 Padding = new Padding(0, 6, 0, 0)
