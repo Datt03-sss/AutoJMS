@@ -159,6 +159,14 @@ namespace AutoJMS
             _tabManager.ApplyTier(CurrentTier);
             _userSettings = new UserSettingsService();
             _settings = _userSettings.Current;
+
+            // Resolve and apply UI theme
+            if (Enum.TryParse<UI.ThemeMode>(_settings.Theme, out var themeMode))
+            {
+                UI.AppTheme.CurrentTheme = themeMode;
+            }
+            UI.AppTheme.Apply(this);
+
             tabPrint_AutoMode.Active = _settings.PrintDefaultAutoPrint;
             _printerPreflightService = new PrinterPreflightService(() => _settings);
             _printerMaintenanceService = new PrinterMaintenanceService(_printerPreflightService);
@@ -430,6 +438,13 @@ namespace AutoJMS
             }
 
             InitializeAboutSummary();
+
+            // Re-apply theme to style dynamically created controls
+            if (Enum.TryParse<UI.ThemeMode>(_settings.Theme, out var themeModeOnLoad))
+            {
+                UI.AppTheme.CurrentTheme = themeModeOnLoad;
+            }
+            UI.AppTheme.Apply(this);
 
             if (this.IsDisposed) return;
 
@@ -947,34 +962,89 @@ namespace AutoJMS
             // Guard: avoid double-inject if OnLoad runs twice
             foreach (Control existing in tabAbout.Controls)
             {
-                if (existing.Name == "tabAbout_summaryPanel")
+                if (existing.Name == "tabAbout_summaryPanel" || existing.Name == "tabAbout_themePanel")
                     return;
             }
 
             // Restructure uiTableLayoutPanel22 rows so contact stays at the bottom
             // and there is a stretchy middle row that can host the summary card.
             // Original 7 rows (Absolute) sum to 385px in a ~700px panel, leaving the
-            // contact stuck in the middle. We add a Percent-100 spacer row and shift
-            // the link/contact controls down by one.
+            // contact stuck in the middle. We add a Theme selector row and a Percent-100 spacer row,
+            // shifting the link/contact controls down.
             if (uiTableLayoutPanel22 != null && uiTableLayoutPanel22.RowStyles.Count >= 6)
             {
-                // Re-place link and contact one row down
-                uiTableLayoutPanel22.SetRow(uiLinkLabel1, 6);
-                uiTableLayoutPanel22.SetRow(uiLabel22, 7);
+                // Re-place link and contact down by two rows
+                uiTableLayoutPanel22.SetRow(uiLinkLabel1, 7);
+                uiTableLayoutPanel22.SetRow(uiLabel22, 8);
 
-                // New row styles: turn the empty space into a 100%-height row, add a row for contact
                 if (uiTableLayoutPanel22.RowStyles.Count == 7)
                 {
-                    uiTableLayoutPanel22.RowStyles.Insert(5, new RowStyle(SizeType.Percent, 100F));
-                }
-                if (uiTableLayoutPanel22.RowStyles.Count == 8)
-                {
+                    uiTableLayoutPanel22.RowStyles.Insert(5, new RowStyle(SizeType.Absolute, 50F)); // Theme selector row
+                    uiTableLayoutPanel22.RowStyles.Insert(6, new RowStyle(SizeType.Percent, 100F)); // Stretchy summary row
+                    uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
                     uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
                 }
-                uiTableLayoutPanel22.RowCount = 8;
+                uiTableLayoutPanel22.RowCount = 9;
             }
 
-            // Place the summary card inside the new stretchy row (row 5)
+            // Create theme selector panel
+            var themePanel = new Panel
+            {
+                Name = "tabAbout_themePanel",
+                Height = 40,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(10, 0, 10, 0),
+                BackColor = Color.Transparent
+            };
+
+            var lblTheme = new UILabel
+            {
+                Name = "tabAbout_lblTheme",
+                Text = "Giao diện (Theme):",
+                Size = new Size(130, 30),
+                Location = new Point(105, 5),
+                TextAlign = ContentAlignment.MiddleRight,
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold)
+            };
+
+            var cboTheme = new UIComboBox
+            {
+                Name = "tabAbout_cboTheme",
+                Size = new Size(150, 30),
+                Location = new Point(245, 5),
+                DropDownStyle = UIDropDownStyle.DropDownList,
+                Radius = 6
+            };
+            cboTheme.Items.Add("Light");
+            cboTheme.Items.Add("Red");
+            cboTheme.Items.Add("Dark");
+            cboTheme.SelectedItem = _settings.Theme ?? "Light";
+
+            cboTheme.SelectedIndexChanged += (s, ev) =>
+            {
+                string selectedTheme = cboTheme.SelectedItem?.ToString() ?? "Light";
+                if (selectedTheme != _settings.Theme)
+                {
+                    _settings.Theme = selectedTheme;
+                    _userSettings.Save(_settings);
+
+                    if (Enum.TryParse<UI.ThemeMode>(selectedTheme, out var mode))
+                    {
+                        UI.AppTheme.CurrentTheme = mode;
+                        UI.AppTheme.Apply(this);
+                    }
+                }
+            };
+
+            themePanel.Controls.Add(lblTheme);
+            themePanel.Controls.Add(cboTheme);
+
+            if (uiTableLayoutPanel22 != null)
+            {
+                uiTableLayoutPanel22.Controls.Add(themePanel, 0, 5);
+            }
+
+            // Place the summary card inside the new stretchy row (row 6)
             var summaryPanel = new Sunny.UI.UIPanel
             {
                 Name = "tabAbout_summaryPanel",
@@ -1012,7 +1082,7 @@ namespace AutoJMS
 
             if (uiTableLayoutPanel22 != null)
             {
-                uiTableLayoutPanel22.Controls.Add(summaryPanel, 0, 5);
+                uiTableLayoutPanel22.Controls.Add(summaryPanel, 0, 6);
             }
             else
             {
@@ -2363,6 +2433,7 @@ namespace AutoJMS
                     UseSheetByDefault = _settings.UseSheetByDefault,
                     AutoRefreshToken = _settings.AutoRefreshToken,
                     LastMode = _settings.LastMode,
+                    Theme = _settings.Theme,
                     DefaultRowCount = _settings.DefaultRowCount,
                     PrinterName = _settings.PrinterName,
                     PaperWidth = _settings.PaperWidth,

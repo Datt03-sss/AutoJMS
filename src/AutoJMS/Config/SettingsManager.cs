@@ -22,6 +22,7 @@ namespace AutoJMS
         [JsonPropertyName("useSheetByDefault")] public bool UseSheetByDefault { get; set; } = false;
         [JsonPropertyName("autoRefreshToken")] public bool AutoRefreshToken { get; set; } = true;
         [JsonPropertyName("lastMode")] public string LastMode { get; set; } = "DKCH1";
+        [JsonPropertyName("theme")] public string Theme { get; set; } = "Light";
         [JsonPropertyName("defaultRowCount")] public int DefaultRowCount { get; set; } = 1;
         [JsonPropertyName("printerName")] public string PrinterName { get; set; } = "";
         [JsonPropertyName("paperWidth")] public int PaperWidth { get; set; } = 762;  
@@ -210,6 +211,7 @@ namespace AutoJMS
             Set(root, "useSheetByDefault", settings.UseSheetByDefault);
             Set(root, "autoRefreshToken", settings.AutoRefreshToken);
             Set(root, "lastMode", settings.LastMode);
+            Set(root, "theme", settings.Theme);
             Set(root, "defaultRowCount", settings.DefaultRowCount);
             Set(root, "printerName", settings.PrinterName);
             Set(root, "paperWidth", settings.PaperWidth);
@@ -264,7 +266,7 @@ namespace AutoJMS
             var names = new[]
             {
                 "zoomFactor", "defaultUrl", "lastAuthToken", "downloadFolder", "defaultSheet",
-                "useSheetByDefault", "autoRefreshToken", "lastMode", "defaultRowCount",
+                "useSheetByDefault", "autoRefreshToken", "lastMode", "theme", "defaultRowCount",
                 "printerName", "paperWidth", "paperHeight", "MiddleCode", "MiddleCodeAliases",
                 "MaxAllowedQueueJobsBeforePrint", "BlockWhenQueueHasErrorJob",
                 "BlockWhenPrinterPaused", "BlockWhenPrinterOffline",

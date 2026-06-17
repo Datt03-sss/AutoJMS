@@ -73,6 +73,9 @@ namespace AutoJMS
 
         private static AppSettings Normalize(AppSettings s)
         {
+            if (string.IsNullOrWhiteSpace(s.Theme) || !(s.Theme == "Light" || s.Theme == "Red" || s.Theme == "Dark"))
+                s.Theme = "Light";
+
             if (string.IsNullOrWhiteSpace(s.DefaultUrl))
                 s.DefaultUrl = AppConfig.Current?.JmsBaseUrl?.TrimEnd('/') ?? "https://jms.jtexpress.vn";
             if (s.PaperWidth <= 0) s.PaperWidth = 762;
