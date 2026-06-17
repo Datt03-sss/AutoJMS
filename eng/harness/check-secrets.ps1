@@ -84,9 +84,7 @@ $dangerousFiles = @(
 )
 
 foreach ($file in $trackedFiles) {
-    if ($file -match '(check-secrets\.ps1|SECRETS_POLICY\.md|\.gitignore|backend/render-license-server/\.env\.example|tools/maintenance/upload-module\.ps1|^Main\.cs$|src/AutoJMS/Updates/SmallUpdateService\.cs)') {
-        continue
-    }
+    if ($file -match '(backend/render-license-server/\.env\.example)') { continue }
     foreach ($pattern in $dangerousFiles) {
         if ($file -match $pattern) {
             $issues += "TRACKED SECRET FILE: $file"

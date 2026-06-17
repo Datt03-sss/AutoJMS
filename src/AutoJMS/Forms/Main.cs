@@ -148,8 +148,6 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
-            this.MinimumSize = new Size(1024, 700);
-            AppTheme.Apply(this);
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
             // Register all built-in tabs with the TabManager
@@ -1404,58 +1402,42 @@ namespace AutoJMS
             }
         }
 
-        private void tabControl_SelectedIndexChanged(object sender, EventArgs e)
+        private async void tabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (this.IsDisposed) return;
-            
-            this.SuspendLayout();
-            tabControl.SuspendLayout();
-            
-            this.ResumeLayout(false);
-            tabControl.ResumeLayout(false);
-
-            this.BeginInvoke(new Action(async () =>
+            try
             {
-                if (this.IsDisposed) return;
-                try
+                if (tabControl.SelectedTab == tabHome)
                 {
-                    if (tabControl.SelectedTab == tabHome)
+                    if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
                     {
-                        if (_isHomeNeedReload && tabHome_webView != null && tabHome_webView.CoreWebView2 != null)
-                        {
-                            tabHome_webView.CoreWebView2.Reload();
-                            _isHomeNeedReload = false;
-                        }
+                        tabHome_webView.CoreWebView2.Reload();
+                        _isHomeNeedReload = false;
                     }
-                    else if (tabControl.SelectedTab == tabDKCH)
+                }
+                else if (tabControl.SelectedTab == tabDKCH)
+                {
+                    if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
                     {
-                        if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
-                        {
-                            tabDKCH_webView.CoreWebView2.Reload();
-                            _isDkchNeedReload = false;
-                        }
+                        tabDKCH_webView.CoreWebView2.Reload();
+                        _isDkchNeedReload = false;
                     }
-                    else if (tabControl.SelectedTab == tabTracking)
+                }
+                else if (tabControl.SelectedTab == tabTracking)
+                {
+                    if (string.IsNullOrEmpty(Main.CapturedAuthToken)) await RefreshAuthTokenAsync();
+                    if (tabTracking_btnSearch.Enabled)
                     {
-                        if (string.IsNullOrEmpty(Main.CapturedAuthToken))
+                        if (tabTracking_process != null && !tabTracking_process.IsDisposed)
                         {
-                            await RefreshAuthTokenAsync();
-                        }
-                        if (tabTracking_btnSearch.Enabled)
-                        {
-                            if (tabTracking_process != null && !tabTracking_process.IsDisposed)
-                            {
-                                tabTracking_process.Value = 0;
-                                tabTracking_process.Visible = false;
-                            }
+                            tabTracking_process.Value = 0;
+                            tabTracking_process.Visible = false;
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    AppLogger.Error("Lỗi xử lý Tab: " + ex.Message);
-                }
-            }));
+                // tabChat and tabDash views moved to FullStackOperation form
+            }
+            catch (Exception ex) { MessageBox.Show("Lỗi xử lý Tab: " + ex.Message); }
         }
 
         // Candidate HTTP header names the JMS frontend may attach the session

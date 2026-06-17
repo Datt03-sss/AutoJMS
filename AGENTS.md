@@ -1,85 +1,151 @@
-# AutoJMS Agent Instructions (GitHub Shared-Main Workflow Mode)
+# AutoJMS Agent Instructions
 
-**For AI coding agents working on this project (Antigravity and Claude Code).**
+**For all AI agents working on this project: Antigravity, Claude Code, ChatGPT.**
 
----
-
-## Workspace Model: GitHub Shared-Main
-To support cooperative development across multiple AI platforms (Antigravity, Claude Code, and ChatGPT):
-- **Source of Truth**: The GitHub repository `origin/main` is the shared source of truth.
-- **Commit Authorization**: AI agents are authorized to commit directly to the local `main` branch, but **only** after build/verify checks pass successfully.
-- **Push Authorization**: AI agents are authorized to push commits to `origin/main` (via `ai-commit.ps1`) after successful verification.
+- **Repo**: https://github.com/Datt03-sss/AutoJMS
+- **Working branch**: `main`
+- **Source of truth**: `origin/main` — shared across all agents and the Owner.
 
 ---
 
-## Developer Rules
+## Workspace Model: Single-Writer, Multiple-Readers
 
-1. **Sync Before Coding**: Before making any edits, always synchronize with the latest remote state:
-   ```powershell
-   git switch main
-   git pull --ff-only origin main
-   git status
-   ```
-2. **Verify & Push**: Never commit or push manually. Always use the automated commit helper:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\eng\git\ai-commit.ps1 -Message "your commit message"
-   ```
-   This script runs local compilation checks, stages all modifications, commits them, and pushes them to `origin/main` automatically.
-3. **No Force Pushes**: Do not overwrite Git history. If an edit is buggy, add a fixing commit or use the rollback script. Never run `git reset --hard` on commits that have already been pushed.
-4. **Task Scope Compliance**: Only edit files within the scope defined in `.agent-lock.md`.
+- **Multiple Readers**: All agents can concurrently read, analyze, and audit the repository.
+- **Single Writer**: Only one agent is allowed to write or edit files at any given time.
+- Write concurrency is regulated by: [.agent-lock.md](./.agent-lock.md)
 
 ---
 
-## Protected Areas (Frozen Files)
-The following files are critical to licensing, updates, and releases, and must **not** be modified:
+## Workspace Lock Rules
+
+1. **Read Lock Before Edit**: Before making any edits, read `.agent-lock.md`.
+2. **Check Current Writer**: Do **NOT** edit any files if `Current Writer` is set to another agent.
+3. **Acquire Lock**: If `Current Writer` is `None`, set it to your agent name and set `Mode: WRITE_ACTIVE`.
+4. **Task Scoping**: Only edit files specified in the active `Scope` property in `.agent-lock.md`.
+5. **Release Lock**: After verification and push succeed, reset `Current Writer: None`, `Mode: READ_ONLY`.
+
+---
+
+## Required Workflow
+
+### Source of Truth
+`origin/main` on https://github.com/Datt03-sss/AutoJMS is the shared reference for all agents and the Owner.
+
+### Before Every Task
+```powershell
+git switch main
+git pull --ff-only origin main
+git status
+```
+
+Never start editing on a stale or dirty working tree.
+
+### After Every Edit — Build
+```powershell
+dotnet restore .\AutoJMS.slnx
+dotnet build .\AutoJMS.slnx -c Release
+```
+
+### After Build — Harness (if available)
+```powershell
+powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1
+```
+
+### Commit & Push — only if build/verify pass
+```powershell
+git status
+git add .
+git commit -m "<clear commit message>"
+git push origin main
+git log --oneline -1
+git status
+```
+
+**Never push if build fails.**
+
+---
+
+## Permissions
+
+| Action | Allowed |
+|---|---|
+| Edit files on `main` directly | ✅ |
+| `git commit` on local `main` after build pass | ✅ |
+| `git push origin main` after build/verify pass | ✅ |
+| Fix errors from previous commit with a new commit | ✅ |
+| Force push (`--force`, `--force-with-lease`) | ❌ |
+| Rewrite history (`rebase -i`, `reset --hard` after push) | ❌ |
+| Build/upload production release | ❌ unless owner requests |
+| Bump version number | ❌ unless owner requests |
+| Push if build fails | ❌ |
+
+---
+
+## Absolute Prohibitions
+
+Agents **must never** perform these actions under any circumstances:
+
+- **No force push**: History rewrite is forbidden.
+- **No release**: Do not build, sign, or upload a production release artifact.
+- **No license/auth/hash-check changes**: Do not touch `Licensing/`, `JmsAuthTokenService.cs`, or any hash-verification paths unless task explicitly requires it.
+- **No Firebase session changes**: Do not alter Firebase initialization, session tokens, or service account references unless task explicitly requires it.
+- **No Supabase production config changes**: Do not alter Supabase connection strings or production keys unless task explicitly requires it.
+- **No Velopack production changes**: Do not touch `VelopackUpdateService.cs` or `release/build-release.ps1` unless task explicitly requires it.
+- **No database schema changes**: Do not alter DB schema unless task explicitly requires it.
+- **No WinForms Designer moves**: Do not relocate or rename `.Designer.cs` or `.resx` files.
+- **No secrets in commits**: Never commit `.env`, service account keys, `*.pfx`, `*.pem`, `*.key`, or any token/credential file.
+
+---
+
+## Core Code Rules
+
+### 1. Minimal Edit Rule
+- Apply the minimal change required to fix a bug or add a feature.
+- Do not refactor large files unless explicitly requested.
+- Maintain existing coding style, variable names, and formatting.
+
+### 2. Tab Boundary Rule
+- Each tab in `Main.cs` is isolated. Changes to one tab must not leak into other tabs.
+- Core tabs: `HOME`, `DKCH`, `TRACKING`, `PRINT`, `ABOUT`.
+- `ABOUT` tab must always remain the last tab in the UI collection.
+
+### 3. Tier Separation Rule
+- Use `TierRuntimePolicy` property flags for tier checks (e.g. `_tierPolicy.EnableBackgroundAutoSync`).
+- Never hardcode string checks like `if (CurrentTier == "ULTRA")`.
+
+### 4. Secret Policy
+- Never log full tokens. Mask as `first4...last4`.
+- Never commit secrets. If a secret file is staged accidentally, unstage and add to `.gitignore` before committing.
+
+---
+
+## Protected Files (Frozen)
+
+Never edit without explicit owner request for that specific task:
+
 - `src/AutoJMS/Program.cs`
 - `src/AutoJMS/Forms/Main.cs` / `src/AutoJMS/Forms/Main.Designer.cs`
-- `src/AutoJMS/Licensing/` (Handshakes, tiers, policies)
+- `src/AutoJMS/Licensing/TierRuntimePolicy.cs`
+- `src/AutoJMS/Licensing/LicenseApiService.cs`
+- `src/AutoJMS/Licensing/JmsAuthTokenService.cs`
 - `src/AutoJMS/Updates/VelopackUpdateService.cs`
-- `release/` and `installer/` (Release engines and Inno Setup definitions)
-- WinForms Designer files (`.Designer.cs`, `.resx`)
+- `release/build-release.ps1`
+- `installer/inno/AutoJMS.iss`
+- All WinForms Designer files (`.Designer.cs`, `.resx`)
 
 ---
 
-## Required Workflow Sequence
-1. **Sync**: Run `git switch main`, `git pull --ff-only origin main`, and `git status`.
-2. **Lock Workspace**: Set lock state in `.agent-lock.md` (`Current Writer: Antigravity` or `Claude Code`, `Mode: SHARED_MAIN_WRITE`).
-3. **Implement**: Make code edits within the allowed scope.
-4. **Compile & Push**: Run `ai-commit.ps1 -Message "..."` to compile, commit, and push.
-5. **Unlock**: Reset lock state back to `None` in `.agent-lock.md` and request Owner testing.
-6. **Task Report**: Output the completion report details.
+## Required Final Report Format
 
----
+After every task, agents must output:
 
-## Agent Report Format (Mandatory)
-After every push, you must output a report containing:
-
-## Summary
-Key achievements of the task.
-
-## Files changed
-List of modified files.
-
-## Build/verify result
-Output summary from the verification script.
-
-## Commit message
-The message used for the commit.
-
-## Commit hash
-The full hash of the pushed commit.
-
-## Pushed to
-Target remote URL and branch (e.g. `origin/main`).
-
-## Behavior changed
-List of behavioral updates made.
-
-## Behavior intentionally unchanged
-List of functionalities preserved.
-
-## Owner manual test checklist
-Checklist of tabs and controls the owner must smoke test.
-
-## Risks
-Any identified design or security risks.
+1. **Summary** — what was done
+2. **Files Changed** — paths of modified/created files
+3. **Build/Verify Result** — pass or fail with relevant output
+4. **Commit Message** — exact message used
+5. **Commit Hash** — from `git log --oneline -1`
+6. **Pushed To** — `origin/main`
+7. **Behavior Changed** — what the app now does differently
+8. **Behavior Intentionally Unchanged** — what was explicitly left alone
+9. **Owner Manual Test Checklist** — tabs and UI controls to smoke test
+10. **Risks** — potential build, security, or stability issues

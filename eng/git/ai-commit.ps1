@@ -29,7 +29,7 @@ try {
     $branch = & git branch --show-current
     if ($branch -ne 'main') {
         Write-Host "ERROR: Active branch is not 'main'. Found: $branch" -ForegroundColor Red
-        Write-Host "The direct-main workflow requires developing and committing on 'main'." -ForegroundColor Red
+        Write-Host "The GitHub Shared-Main workflow requires developing and committing on 'main'." -ForegroundColor Red
         exit 1
     }
 } finally {
@@ -76,7 +76,7 @@ if (Test-Path $verifyPath) {
 }
 Write-Host ''
 
-# 4. Stage, commit and push changes
+# 4. Stage and commit changes
 try {
     Push-Location $Root
     Write-Host "Staging files..." -ForegroundColor Yellow
@@ -104,7 +104,7 @@ try {
     }
     
     Write-Host ""
-    Write-Host "Commit & Sync successful!" -ForegroundColor Green
+    Write-Host "Commit & Push successful!" -ForegroundColor Green
     Write-Host "Latest Commit Info:" -ForegroundColor Gray
     & git log -n 1 --color 2>&1 | ForEach-Object { Write-Host "  $_" }
 } catch {
