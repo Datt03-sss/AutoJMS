@@ -1799,7 +1799,7 @@ namespace AutoJMS
             return JmsAuthStateService.HasToken ? JmsAuthStateService.CurrentToken : null;
         }
 
-        private async void tabHome_WebView_NavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
+        private void tabHome_WebView_NavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             if (tabHome_webView.CoreWebView2 != null)
             {

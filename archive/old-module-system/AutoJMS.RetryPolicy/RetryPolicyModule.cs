@@ -24,7 +24,7 @@ namespace AutoJMS.RetryPolicy
                     ct.ThrowIfCancellationRequested();
                     return await action();
                 }
-                catch (Exception ex) when (attempt < maxRetries && !ct.IsCancellationRequested)
+                catch (Exception) when (attempt < maxRetries && !ct.IsCancellationRequested)
                 {
                     await Task.Delay(delayMs * attempt, ct);
                 }
