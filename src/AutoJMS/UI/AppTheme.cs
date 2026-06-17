@@ -2,23 +2,12 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Sunny.UI;
+using AutoJMS.UI;
 
 namespace AutoJMS
 {
     public static class AppTheme
     {
-        // Professional J&T Express Light Theme Colors
-        public static readonly Color PrimaryRed = Color.FromArgb(225, 41, 46);      // #E1292E
-        public static readonly Color PrimaryHover = Color.FromArgb(243, 65, 70);    // Hover light red
-        public static readonly Color PrimaryPress = Color.FromArgb(190, 25, 29);    // Press dark red
-        public static readonly Color Background = Color.FromArgb(245, 246, 248);     // Clean workspace background
-        public static readonly Color CardBackground = Color.White;
-        public static readonly Color BorderColor = Color.FromArgb(225, 228, 232);    // Soft border
-        public static readonly Color TextPrimary = Color.FromArgb(48, 49, 51);       // Dark gray text
-        public static readonly Color TextSecondary = Color.FromArgb(144, 147, 153);  // Muted text
-        public static readonly Color GridHeaderBack = Color.FromArgb(245, 247, 250);
-        public static readonly Color GridAlternating = Color.FromArgb(250, 251, 253);
-
         /// <summary>
         /// Applies theme styles and recursive double buffering to the entire UIForm and its children.
         /// </summary>
@@ -30,14 +19,14 @@ namespace AutoJMS
             
             // Set native form custom styling
             form.Style = UIStyle.Custom;
-            form.BackColor = Background;
-            form.ForeColor = TextPrimary;
-            form.RectColor = PrimaryRed;
-            form.TitleColor = PrimaryRed;
-            form.TitleForeColor = Color.White;
+            form.BackColor = AppPalette.AppBackground;
+            form.ForeColor = AppPalette.TextPrimary;
+            form.RectColor = AppPalette.SubtleBorder;
+            form.TitleColor = AppPalette.CardBackground;
+            form.TitleForeColor = AppPalette.TextPrimary;
             
             // Modern UI form styling
-            form.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+            form.Font = new Font("Segoe UI", 10F, FontStyle.Regular); // Slightly smaller base font for modern look
             try 
             {
                 form.ShowRadius = true;
@@ -57,7 +46,7 @@ namespace AutoJMS
         /// <summary>
         /// Recurse controls collection to apply styles and force double-buffering.
         /// </summary>
-        private static void ApplyToControls(Control.ControlCollection controls)
+        public static void ApplyToControls(Control.ControlCollection controls)
         {
             if (controls == null) return;
 
@@ -93,57 +82,58 @@ namespace AutoJMS
             // Apply modern font globally (skip WebView2 to avoid COM issues)
             if (!(ctrl is Microsoft.Web.WebView2.WinForms.WebView2))
             {
-                ctrl.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+                // Only override if not explicitly set to something else, or just force Segoe UI
+                ctrl.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
             }
 
             if (ctrl is UIButton btn)
             {
                 btn.Style = UIStyle.Custom;
-                btn.Radius = 10;
-                btn.FillColor = PrimaryRed;
-                btn.FillHoverColor = PrimaryHover;
-                btn.FillPressColor = PrimaryPress;
-                btn.FillSelectedColor = PrimaryPress;
-                btn.RectColor = PrimaryRed;
-                btn.RectHoverColor = PrimaryHover;
-                btn.RectPressColor = PrimaryPress;
-                btn.RectSelectedColor = PrimaryPress;
-                btn.ForeColor = Color.White;
-                btn.ForeHoverColor = Color.White;
-                btn.ForePressColor = Color.White;
-                btn.ForeSelectedColor = Color.White;
+                btn.Radius = 6; // Softer radius for buttons
+                btn.FillColor = AppPalette.PrimaryAccent;
+                btn.FillHoverColor = AppPalette.PrimaryHoverTint;
+                btn.FillPressColor = AppPalette.PrimaryPress;
+                btn.FillSelectedColor = AppPalette.PrimaryPress;
+                btn.RectColor = AppPalette.PrimaryAccent;
+                btn.RectHoverColor = AppPalette.PrimaryHoverTint;
+                btn.RectPressColor = AppPalette.PrimaryPress;
+                btn.RectSelectedColor = AppPalette.PrimaryPress;
+                btn.ForeColor = AppPalette.TextInverse;
+                btn.ForeHoverColor = AppPalette.PrimaryAccent; // Inverted on hover tint
+                btn.ForePressColor = AppPalette.TextInverse;
+                btn.ForeSelectedColor = AppPalette.TextInverse;
             }
             else if (ctrl is UISymbolButton sbtn)
             {
                 sbtn.Style = UIStyle.Custom;
-                sbtn.Radius = 10;
-                sbtn.FillColor = PrimaryRed;
-                sbtn.FillHoverColor = PrimaryHover;
-                sbtn.FillPressColor = PrimaryPress;
-                sbtn.FillSelectedColor = PrimaryPress;
-                sbtn.RectColor = PrimaryRed;
-                sbtn.RectHoverColor = PrimaryHover;
-                sbtn.RectPressColor = PrimaryPress;
-                sbtn.RectSelectedColor = PrimaryPress;
-                sbtn.ForeColor = Color.White;
-                sbtn.ForeHoverColor = Color.White;
-                sbtn.ForePressColor = Color.White;
-                sbtn.ForeSelectedColor = Color.White;
-                sbtn.SymbolColor = Color.White;
-                sbtn.SymbolHoverColor = Color.White;
-                sbtn.SymbolPressColor = Color.White;
-                sbtn.SymbolSelectedColor = Color.White;
+                sbtn.Radius = 6;
+                sbtn.FillColor = AppPalette.PrimaryAccent;
+                sbtn.FillHoverColor = AppPalette.PrimaryHoverTint;
+                sbtn.FillPressColor = AppPalette.PrimaryPress;
+                sbtn.FillSelectedColor = AppPalette.PrimaryPress;
+                sbtn.RectColor = AppPalette.PrimaryAccent;
+                sbtn.RectHoverColor = AppPalette.PrimaryHoverTint;
+                sbtn.RectPressColor = AppPalette.PrimaryPress;
+                sbtn.RectSelectedColor = AppPalette.PrimaryPress;
+                sbtn.ForeColor = AppPalette.TextInverse;
+                sbtn.ForeHoverColor = AppPalette.PrimaryAccent;
+                sbtn.ForePressColor = AppPalette.TextInverse;
+                sbtn.ForeSelectedColor = AppPalette.TextInverse;
+                sbtn.SymbolColor = AppPalette.TextInverse;
+                sbtn.SymbolHoverColor = AppPalette.PrimaryAccent;
+                sbtn.SymbolPressColor = AppPalette.TextInverse;
+                sbtn.SymbolSelectedColor = AppPalette.TextInverse;
             }
             else if (ctrl is UIImageButton imgBtn)
             {
                 imgBtn.Style = UIStyle.Custom;
-                imgBtn.ForeColor = TextPrimary;
+                imgBtn.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UILabel lbl)
             {
                 lbl.Style = UIStyle.Custom;
-                lbl.ForeColor = TextPrimary;
-                if (lbl.Parent is Panel || lbl.Parent is TabPage || lbl.Parent is TableLayoutPanel)
+                lbl.ForeColor = AppPalette.TextPrimary;
+                if (lbl.Parent is Panel || lbl.Parent is TabPage || lbl.Parent is TableLayoutPanel || lbl.Parent is UITitlePanel)
                 {
                     lbl.BackColor = Color.Transparent;
                 }
@@ -151,118 +141,124 @@ namespace AutoJMS
             else if (ctrl is UITabControl tab)
             {
                 tab.Style = UIStyle.Custom;
-                tab.TabSelectedColor = PrimaryRed;
-                tab.TabSelectedForeColor = Color.White;
-                tab.TabSelectedHighColor = PrimaryRed;
-                tab.TabUnSelectedColor = Color.FromArgb(230, 232, 235);
-                tab.TabUnSelectedForeColor = TextPrimary;
-                tab.TabBackColor = Background;
-                tab.FillColor = Background;
+                tab.TabSelectedColor = AppPalette.PrimaryHoverTint;
+                tab.TabSelectedForeColor = AppPalette.PrimaryAccent;
+                tab.TabSelectedHighColor = AppPalette.PrimaryAccent;
+                tab.TabUnSelectedColor = AppPalette.AppBackground;
+                tab.TabUnSelectedForeColor = AppPalette.TextSecondary;
+                tab.TabBackColor = AppPalette.AppBackground;
+                tab.FillColor = AppPalette.AppBackground;
             }
             else if (ctrl is TabPage page)
             {
-                page.BackColor = Background;
+                page.BackColor = AppPalette.AppBackground;
             }
             else if (ctrl is UIDataGridView dgv)
             {
                 dgv.Style = UIStyle.Custom;
-                dgv.BackgroundColor = CardBackground;
-                dgv.GridColor = BorderColor;
-                dgv.StripeEvenColor = GridAlternating;
-                dgv.StripeOddColor = CardBackground;
+                dgv.BackgroundColor = AppPalette.CardBackground;
+                dgv.GridColor = AppPalette.SubtleBorder;
+                dgv.StripeEvenColor = AppPalette.GridAlternating;
+                dgv.StripeOddColor = AppPalette.CardBackground;
                 
                 // Column headers style
-                dgv.ColumnHeadersDefaultCellStyle.BackColor = GridHeaderBack;
-                dgv.ColumnHeadersDefaultCellStyle.ForeColor = TextPrimary;
-                dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = GridHeaderBack;
-                dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = TextPrimary;
+                dgv.ColumnHeadersDefaultCellStyle.BackColor = AppPalette.GridHeaderBack;
+                dgv.ColumnHeadersDefaultCellStyle.ForeColor = AppPalette.TextSecondary;
+                dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+                dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = AppPalette.GridHeaderBack;
+                dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = AppPalette.TextSecondary;
                 
                 // Cells style
-                dgv.DefaultCellStyle.BackColor = CardBackground;
-                dgv.DefaultCellStyle.ForeColor = TextPrimary;
-                dgv.DefaultCellStyle.SelectionBackColor = Color.FromArgb(254, 235, 235); // Soft J&T Red highlight
-                dgv.DefaultCellStyle.SelectionForeColor = PrimaryRed;
+                dgv.DefaultCellStyle.BackColor = AppPalette.CardBackground;
+                dgv.DefaultCellStyle.ForeColor = AppPalette.TextPrimary;
+                dgv.DefaultCellStyle.SelectionBackColor = AppPalette.GridSelectedBack;
+                dgv.DefaultCellStyle.SelectionForeColor = AppPalette.PrimaryAccent;
+                dgv.RowHeadersVisible = false; // Modern tables often hide row headers
+                dgv.EnableHeadersVisualStyles = false;
+                dgv.BorderStyle = BorderStyle.None;
             }
             else if (ctrl is UITextBox txt)
             {
                 txt.Style = UIStyle.Custom;
-                txt.Radius = 10;
-                txt.FillColor = Color.White;
-                txt.RectColor = BorderColor;
-                txt.ForeColor = TextPrimary;
+                txt.Radius = 6;
+                txt.FillColor = AppPalette.CardBackground;
+                txt.RectColor = AppPalette.InputBorder;
+                txt.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIRichTextBox rtxt)
             {
                 rtxt.Style = UIStyle.Custom;
-                rtxt.Radius = 10;
-                rtxt.FillColor = Color.White;
-                rtxt.RectColor = BorderColor;
-                rtxt.ForeColor = TextPrimary;
+                rtxt.Radius = 6;
+                rtxt.FillColor = AppPalette.CardBackground;
+                rtxt.RectColor = AppPalette.InputBorder;
+                rtxt.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIPanel pnl)
             {
                 pnl.Style = UIStyle.Custom;
-                pnl.Radius = 10;
-                pnl.FillColor = CardBackground;
-                pnl.RectColor = BorderColor;
-                pnl.ForeColor = TextPrimary;
+                pnl.Radius = 8;
+                pnl.FillColor = AppPalette.CardBackground;
+                pnl.RectColor = AppPalette.SubtleBorder;
+                pnl.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UITitlePanel tpnl)
             {
                 tpnl.Style = UIStyle.Custom;
-                tpnl.Radius = 10;
-                tpnl.TitleColor = PrimaryRed;
-                tpnl.TitleForeColor = Color.White;
-                tpnl.RectColor = PrimaryRed;
-                tpnl.FillColor = CardBackground;
-                tpnl.ForeColor = TextPrimary;
+                tpnl.Radius = 8;
+                tpnl.TitleColor = AppPalette.CardBackground;
+                tpnl.TitleForeColor = AppPalette.TextPrimary;
+                tpnl.RectColor = AppPalette.SubtleBorder;
+                tpnl.FillColor = AppPalette.CardBackground;
+                tpnl.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIComboBox cb)
             {
                 cb.Style = UIStyle.Custom;
-                cb.Radius = 10;
-                cb.FillColor = Color.White;
-                cb.RectColor = BorderColor;
-                cb.ForeColor = TextPrimary;
+                cb.Radius = 6;
+                cb.FillColor = AppPalette.CardBackground;
+                cb.RectColor = AppPalette.InputBorder;
+                cb.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIIntegerUpDown iud)
             {
                 iud.Style = UIStyle.Custom;
-                iud.Radius = 10;
-                iud.FillColor = Color.White;
-                iud.RectColor = BorderColor;
-                iud.ForeColor = TextPrimary;
+                iud.Radius = 6;
+                iud.FillColor = AppPalette.CardBackground;
+                iud.RectColor = AppPalette.InputBorder;
+                iud.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIDatetimePicker dtp)
             {
                 dtp.Style = UIStyle.Custom;
-                dtp.FillColor = Color.White;
-                dtp.RectColor = BorderColor;
-                dtp.ForeColor = TextPrimary;
+                dtp.Radius = 6;
+                dtp.FillColor = AppPalette.CardBackground;
+                dtp.RectColor = AppPalette.InputBorder;
+                dtp.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UISwitch sw)
             {
                 sw.Style = UIStyle.Custom;
-                sw.ActiveColor = PrimaryRed;
-                sw.InActiveColor = Color.FromArgb(220, 223, 230);
+                sw.ActiveColor = AppPalette.Success;
+                sw.InActiveColor = ColorTranslator.FromHtml("#E5E7EB");
             }
             else if (ctrl is UICheckBox chk)
             {
                 chk.Style = UIStyle.Custom;
-                chk.CheckBoxColor = PrimaryRed;
-                chk.ForeColor = TextPrimary;
+                chk.CheckBoxColor = AppPalette.PrimaryAccent;
+                chk.ForeColor = AppPalette.TextPrimary;
             }
             else if (ctrl is UIProcessBar pb)
             {
                 pb.Style = UIStyle.Custom;
-                pb.ForeColor = PrimaryRed;
-                pb.FillColor = Color.FromArgb(235, 238, 245);
+                pb.ForeColor = AppPalette.PrimaryAccent;
+                pb.FillColor = ColorTranslator.FromHtml("#F3F4F6");
+                pb.RectColor = Color.Transparent;
             }
             else if (ctrl is UIFlowLayoutPanel flp)
             {
                 flp.Style = UIStyle.Custom;
-                flp.FillColor = CardBackground;
-                flp.RectColor = BorderColor;
+                flp.FillColor = Color.Transparent;
+                flp.RectColor = Color.Transparent;
             }
         }
     }

@@ -150,6 +150,7 @@ namespace AutoJMS
             InitializeComponent();
             this.MinimumSize = new Size(1024, 700);
             AppTheme.Apply(this);
+            AutoJMS.UI.UiLayoutHelper.Configure(this);
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
             // Register all built-in tabs with the TabManager
@@ -1407,12 +1408,6 @@ namespace AutoJMS
         private void tabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (this.IsDisposed) return;
-            
-            this.SuspendLayout();
-            tabControl.SuspendLayout();
-            
-            this.ResumeLayout(false);
-            tabControl.ResumeLayout(false);
 
             this.BeginInvoke(new Action(async () =>
             {
