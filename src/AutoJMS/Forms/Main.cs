@@ -3117,7 +3117,10 @@ namespace AutoJMS
             _settings.PrintPaperHeightInch = 3m;
             _settings.PrinterPaperMode = "AutoJMS_3x3";
             SavePrinterSettings();
-            SetGlobalDefaultPrinterPaperSize(3, 3);
+            
+            string defaultPrinter = new System.Drawing.Printing.PrinterSettings().PrinterName;
+            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 762, 762); // 3x3 inches in 0.1mm units
+            
             AppLogger.Info("[PrinterPaper] mode=AutoJMS_3x3 widthInch=3 heightInch=3 scope=per-print-job");
             ShowPrintMessage("Đã set cỡ giấy AutoJMS 3\"x3\" cho lệnh in và máy in mặc định.", false, 5000);
         }
@@ -3135,33 +3138,12 @@ namespace AutoJMS
             _settings.PrintPaperHeightInch = height;
             _settings.PrinterPaperMode = mode;
             SavePrinterSettings();
-            SetGlobalDefaultPrinterPaperSize(4, 6);
+            
+            string defaultPrinter = new System.Drawing.Printing.PrinterSettings().PrinterName;
+            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 1016, 1524); // 4x6 inches in 0.1mm units
+            
             AppLogger.Info($"[PrinterPaper] mode={mode} widthInch={width} heightInch={height} scope=per-print-job");
             ShowPrintMessage($"Đã unset cỡ giấy về {width:0.##}\"x{height:0.##}\" cho máy in mặc định.", false, 5000);
-        }
-
-        private void SetGlobalDefaultPrinterPaperSize(double widthInch, double heightInch)
-        {
-            try
-            {
-                var server = new System.Printing.LocalPrintServer();
-                var queue = new System.Printing.PrintQueue(server, server.DefaultPrintQueue.Name, System.Printing.PrintSystemDesiredAccess.AdministratePrinter);
-                var ticket = queue.DefaultPrintTicket;
-                
-                // 1 inch = 96 WPF pixels
-                double w = widthInch * 96;
-                double h = heightInch * 96;
-                
-                ticket.PageMediaSize = new System.Printing.PageMediaSize(System.Printing.PageMediaSizeName.Unknown, w, h);
-                queue.DefaultPrintTicket = ticket;
-                queue.Commit();
-                
-                AppLogger.Info($"[PrinterPaper] Global default printer '{queue.Name}' preferences updated to {widthInch}x{heightInch} inch.");
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warning($"[PrinterPaper] Failed to update global default printer preferences: {ex.Message}");
-            }
         }
 
         private void SavePrinterSettings()
