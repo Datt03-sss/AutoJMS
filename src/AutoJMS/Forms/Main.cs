@@ -3119,7 +3119,7 @@ namespace AutoJMS
             SavePrinterSettings();
             
             string defaultPrinter = new System.Drawing.Printing.PrinterSettings().PrinterName;
-            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 762, 762); // 3x3 inches in 0.1mm units
+            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 300, 300); // 3x3 inches in hundredths of an inch
             
             AppLogger.Info("[PrinterPaper] mode=AutoJMS_3x3 widthInch=3 heightInch=3 scope=per-print-job");
             ShowPrintMessage("Đã set cỡ giấy AutoJMS 3\"x3\" cho lệnh in và máy in mặc định.", false, 5000);
@@ -3140,7 +3140,7 @@ namespace AutoJMS
             SavePrinterSettings();
             
             string defaultPrinter = new System.Drawing.Printing.PrinterSettings().PrinterName;
-            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 1016, 1524); // 4x6 inches in 0.1mm units
+            AutoJMS.Utils.PrinterDevModeHelper.SetGlobalPaperSize(defaultPrinter, 400, 600); // 4x6 inches in hundredths of an inch
             
             AppLogger.Info($"[PrinterPaper] mode={mode} widthInch={width} heightInch={height} scope=per-print-job");
             ShowPrintMessage($"Đã unset cỡ giấy về {width:0.##}\"x{height:0.##}\" cho máy in mặc định.", false, 5000);

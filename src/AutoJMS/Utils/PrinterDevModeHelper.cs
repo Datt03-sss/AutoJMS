@@ -85,11 +85,11 @@ namespace AutoJMS.Utils
 
         /// <summary>
         /// Sets the global DEVMODE paper size for the specified printer.
-        /// widthTenthMm and heightTenthMm are in 0.1 mm units.
-        /// Example: 3 inches = 76.2 mm = 762.
-        /// Example: 4x6 inches = 101.6 x 152.4 mm = 1016 x 1524.
+        /// widthHundredthsInch and heightHundredthsInch are in hundredths of an inch.
+        /// Example: 3 inches = 300.
+        /// Example: 4x6 inches = 400 x 600.
         /// </summary>
-        public static bool SetGlobalPaperSize(string printerName, short widthTenthMm, short heightTenthMm)
+        public static bool SetGlobalPaperSize(string printerName, int widthHundredthsInch, int heightHundredthsInch)
         {
             IntPtr hPrinter = IntPtr.Zero;
             IntPtr pPd = IntPtr.Zero;
@@ -98,6 +98,24 @@ namespace AutoJMS.Utils
 
             try
             {
+                int rawKind = 256; // Fallback to Custom
+                try 
+                {
+                    var ps = new System.Drawing.Printing.PrinterSettings { PrinterName = printerName };
+                    foreach (System.Drawing.Printing.PaperSize pSize in ps.PaperSizes)
+                    {
+                        if (Math.Abs(pSize.Width - widthHundredthsInch) < 5 && Math.Abs(pSize.Height - heightHundredthsInch) < 5)
+                        {
+                            rawKind = pSize.RawKind;
+                            break;
+                        }
+                    }
+                } 
+                catch (Exception ex) 
+                {
+                    AppLogger.Warning($"[PrinterDevMode] Could not lookup PaperSizes: {ex.Message}");
+                }
+
                 PRINTER_DEFAULTS pd = new PRINTER_DEFAULTS();
                 pd.DesiredAccess = PRINTER_ALL_ACCESS;
 
@@ -127,11 +145,18 @@ namespace AutoJMS.Utils
 
                 DEVMODE devMode = (DEVMODE)Marshal.PtrToStructure(pDevMode, typeof(DEVMODE));
 
-                // 256 is usually DMPAPER_USER (custom size)
-                devMode.dmPaperSize = 256; 
-                devMode.dmPaperWidth = widthTenthMm;
-                devMode.dmPaperLength = heightTenthMm;
-                devMode.dmFields |= (DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH);
+                devMode.dmPaperSize = (short)rawKind;
+                if (rawKind == 256)
+                {
+                    // Convert hundredths of inch to 0.1 mm (1 inch = 25.4 mm = 254 tenth-mm)
+                    devMode.dmPaperWidth = (short)(widthHundredthsInch * 2.54);
+                    devMode.dmPaperLength = (short)(heightHundredthsInch * 2.54);
+                    devMode.dmFields |= (DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH);
+                }
+                else
+                {
+                    devMode.dmFields |= DM_PAPERSIZE;
+                }
 
                 Marshal.StructureToPtr(devMode, pDevMode, true);
 
@@ -155,7 +180,7 @@ namespace AutoJMS.Utils
                     return false;
                 }
 
-                AppLogger.Info($"[PrinterDevMode] Successfully set global DEVMODE for '{printerName}' to {widthTenthMm}x{heightTenthMm} (0.1mm units).");
+                AppLogger.Info($"[PrinterDevMode] Successfully set global DEVMODE for '{printerName}' to {widthHundredthsInch}x{heightHundredthsInch} (hundredths inch).");
                 return true;
             }
             catch (Exception ex)
