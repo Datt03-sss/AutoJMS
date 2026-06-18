@@ -292,7 +292,11 @@ namespace AutoJMS.UI
             else if (ctrl is UILabel lbl)
             {
                 lbl.Style = UIStyle.Custom;
-                if (lbl.Name != null && lbl.Name.StartsWith("tabDKCH_") && lbl.Name.EndsWith("_title"))
+                if (lbl.Name == "lblNetworkStatus")
+                {
+                    // Ignore, managed by Main.cs
+                }
+                else if (lbl.Name != null && lbl.Name.StartsWith("tabDKCH_") && lbl.Name.EndsWith("_title"))
                 {
                     lbl.ForeColor = colors.PrimaryAccent;
                 }

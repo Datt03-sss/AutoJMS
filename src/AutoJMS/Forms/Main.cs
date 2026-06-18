@@ -915,7 +915,7 @@ namespace AutoJMS
             lblNetworkStatus.BackColor = Color.Transparent;
             lblNetworkStatus.Parent = this;
             lblNetworkStatus.BringToFront();
-            lblNetworkStatus.Paint += LblNetworkStatus_Paint;
+            lblNetworkStatus.BringToFront();
             this.Controls.Add(lblNetworkStatus);
 
             UpdateNetworkUI(NetworkStatus.Online);
@@ -938,55 +938,36 @@ namespace AutoJMS
             }
 
             _currentNetworkStatus = status;
-            lblNetworkStatus.Text = ""; // Avoid default text painting
-            lblNetworkStatus.Invalidate();
-            RepositionNetworkLabel();
-        }
 
-        private void LblNetworkStatus_Paint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            bool isRed = UI.AppTheme.CurrentTheme == UI.ThemeMode.Red;
+            bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
 
-            Color textColor;
-            var theme = UI.AppTheme.CurrentTheme;
-
-            switch (_currentNetworkStatus)
+            switch (status)
             {
                 case NetworkStatus.Online:
-                    if (theme == UI.ThemeMode.Red) textColor = Color.Black;
-                    else textColor = ColorTranslator.FromHtml("#16A34A"); // Green
+                    lblNetworkStatus.Text = "● Online";
+                    if (isRed) lblNetworkStatus.ForeColor = Color.White;
+                    else if (isDark) lblNetworkStatus.ForeColor = Color.LimeGreen;
+                    else lblNetworkStatus.ForeColor = Color.FromArgb(0, 240, 100);
                     break;
                 case NetworkStatus.Unstable:
-                    if (theme == UI.ThemeMode.Red) textColor = Color.Black;
-                    else textColor = ColorTranslator.FromHtml("#D97706"); // Orange
+                    lblNetworkStatus.Text = "● Mạng chậm";
+                    if (isRed) lblNetworkStatus.ForeColor = Color.White;
+                    else if (isDark) lblNetworkStatus.ForeColor = Color.Yellow;
+                    else lblNetworkStatus.ForeColor = Color.FromArgb(253, 224, 71);
                     break;
                 case NetworkStatus.Offline:
                 default:
-                    if (theme == UI.ThemeMode.Red) textColor = Color.White;
-                    else textColor = ColorTranslator.FromHtml("#DC2626"); // Red
+                    lblNetworkStatus.Text = "● Mất kết nối";
+                    if (isRed) lblNetworkStatus.ForeColor = Color.Black;
+                    else if (isDark) lblNetworkStatus.ForeColor = Color.Red;
+                    else lblNetworkStatus.ForeColor = Color.FromArgb(252, 115, 115);
                     break;
             }
 
-            string statusText;
-            switch (_currentNetworkStatus)
-            {
-                case NetworkStatus.Online: statusText = "Online"; break;
-                case NetworkStatus.Unstable: statusText = "Mạng chậm"; break;
-                case NetworkStatus.Offline: default: statusText = "Mất kết nối"; break;
-            }
-
-            using (var textBrush = new SolidBrush(textColor))
-            {
-                var textRect = new Rectangle(0, 0, lblNetworkStatus.Width, lblNetworkStatus.Height);
-                var sf = new StringFormat
-                {
-                    Alignment = StringAlignment.Far, // Align right since it's on the right edge
-                    LineAlignment = StringAlignment.Center
-                };
-                g.DrawString(statusText, lblNetworkStatus.Font, textBrush, textRect, sf);
-            }
+            RepositionNetworkLabel();
         }
+
 
         private void AlignLeftPanelControls()
         {
