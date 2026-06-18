@@ -409,9 +409,18 @@ namespace AutoJMS.UI
                 rtxt.Style = UIStyle.Custom;
                 rtxt.StyleCustomMode = true;
                 rtxt.Radius = 6;
-                rtxt.FillColor = colors.InputBackground;
-                rtxt.RectColor = colors.InputBorder;
-                rtxt.ForeColor = colors.TextPrimary;
+                if (rtxt.Name == "tabDKCH_inputNewBill" || rtxt.Name == "tabDKCH_newBillDone" || rtxt.Name == "tabDKCH_nowTracking")
+                {
+                    rtxt.FillColor = colors.CardBackground;
+                    rtxt.RectColor = colors.SubtleBorder;
+                    rtxt.ForeColor = colors.TextPrimary;
+                }
+                else
+                {
+                    rtxt.FillColor = colors.InputBackground;
+                    rtxt.RectColor = colors.InputBorder;
+                    rtxt.ForeColor = colors.TextPrimary;
+                }
             }
             else if (ctrl is UITextBox txt)
             {
@@ -427,13 +436,19 @@ namespace AutoJMS.UI
                 tpnl.Style = UIStyle.Custom;
                 tpnl.StyleCustomMode = true;
                 tpnl.Radius = 8;
-                tpnl.TitleColor = colors.TitleColor;
-                // Use red accent for title text in Dark theme to match J&T WebView header red accents
-                tpnl.TitleForeColor = (CurrentTheme == ThemeMode.Dark) ? colors.PrimaryAccent : colors.TitleForeColor;
-                tpnl.RectColor = colors.SubtleBorder;
-                tpnl.FillColor = colors.CardBackground;
-                tpnl.ForeColor = colors.TextPrimary;
-                tpnl.BackColor = Color.Transparent;
+                if (tpnl.Name == "tabDKCH_dataSrc" || tpnl.Name == "uiTitlePanel1" || tpnl.Name == "uiTitlePanel2")
+                {
+                    ApplyThemeToTitlePanel(tpnl, colors, CurrentTheme);
+                }
+                else
+                {
+                    tpnl.TitleColor = colors.TitleColor;
+                    tpnl.TitleForeColor = (CurrentTheme == ThemeMode.Dark) ? colors.PrimaryAccent : colors.TitleForeColor;
+                    tpnl.RectColor = colors.SubtleBorder;
+                    tpnl.FillColor = colors.CardBackground;
+                    tpnl.ForeColor = colors.TextPrimary;
+                    tpnl.BackColor = Color.Transparent;
+                }
             }
             else if (ctrl is UIFlowLayoutPanel flp)
             {
@@ -695,36 +710,47 @@ namespace AutoJMS.UI
             {
                 if (btn.Name == "tabDKCH_btnDKCH1")
                 {
-                    btn.FillColor = Color.FromArgb(128, 255, 128);
-                    btn.FillHoverColor = Color.FromArgb(160, 255, 160);
-                    btn.FillPressColor = Color.FromArgb(96, 224, 96);
-                    btn.RectColor = Color.FromArgb(96, 224, 96);
-                    btn.ForeColor = Color.Black;
-                    btn.ForeHoverColor = Color.Black;
-                    btn.ForePressColor = Color.Black;
-                    btn.ForeSelectedColor = Color.Black;
+                    btn.FillColor = colors.Success;
+                    btn.FillHoverColor = ControlPaint.Light(colors.Success);
+                    btn.FillPressColor = ControlPaint.Dark(colors.Success);
+                    btn.RectColor = colors.Success;
+                    btn.ForeColor = Color.White;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
                 }
                 else if (btn.Name == "tabDKCH_btnDKCH2")
                 {
-                    btn.FillColor = Color.FromArgb(255, 192, 128);
-                    btn.FillHoverColor = Color.FromArgb(255, 210, 160);
-                    btn.FillPressColor = Color.FromArgb(224, 160, 96);
-                    btn.RectColor = Color.FromArgb(224, 160, 96);
-                    btn.ForeColor = Color.Black;
-                    btn.ForeHoverColor = Color.Black;
-                    btn.ForePressColor = Color.Black;
-                    btn.ForeSelectedColor = Color.Black;
+                    btn.FillColor = colors.Warning;
+                    btn.FillHoverColor = ControlPaint.Light(colors.Warning);
+                    btn.FillPressColor = ControlPaint.Dark(colors.Warning);
+                    btn.RectColor = colors.Warning;
+                    btn.ForeColor = Color.White;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
                 }
                 else if (btn.Name == "tabDKCH_btnStop")
                 {
-                    btn.FillColor = Color.FromArgb(255, 128, 128);
-                    btn.FillHoverColor = Color.FromArgb(255, 160, 160);
-                    btn.FillPressColor = Color.FromArgb(224, 96, 96);
-                    btn.RectColor = Color.FromArgb(224, 96, 96);
-                    btn.ForeColor = Color.Black;
-                    btn.ForeHoverColor = Color.Black;
-                    btn.ForePressColor = Color.Black;
-                    btn.ForeSelectedColor = Color.Black;
+                    btn.FillColor = colors.Danger;
+                    btn.FillHoverColor = ControlPaint.Light(colors.Danger);
+                    btn.FillPressColor = ControlPaint.Dark(colors.Danger);
+                    btn.RectColor = colors.Danger;
+                    btn.ForeColor = Color.White;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
+                }
+                else
+                {
+                    btn.FillColor = colors.PrimaryAccent;
+                    btn.FillHoverColor = colors.PrimaryHover;
+                    btn.FillPressColor = colors.PrimaryPress;
+                    btn.RectColor = colors.PrimaryAccent;
+                    btn.ForeColor = Color.White;
+                    btn.ForeHoverColor = Color.White;
+                    btn.ForePressColor = Color.White;
+                    btn.ForeSelectedColor = Color.White;
                 }
             }
         }
@@ -752,18 +778,40 @@ namespace AutoJMS.UI
             }
             else
             {
-                sbtn.FillColor = Color.FromArgb(255, 192, 192);
-                sbtn.FillHoverColor = Color.FromArgb(255, 210, 210);
-                sbtn.FillPressColor = Color.FromArgb(224, 160, 160);
-                sbtn.RectColor = Color.FromArgb(224, 160, 160);
-                sbtn.ForeColor = Color.Black;
-                sbtn.ForeHoverColor = Color.Black;
-                sbtn.ForePressColor = Color.Black;
-                sbtn.ForeSelectedColor = Color.Black;
-                sbtn.SymbolColor = Color.Black;
-                sbtn.SymbolHoverColor = Color.Black;
-                sbtn.SymbolPressColor = Color.Black;
-                sbtn.SymbolSelectedColor = Color.Black;
+                sbtn.FillColor = colors.PrimaryAccent;
+                sbtn.FillHoverColor = colors.PrimaryHover;
+                sbtn.FillPressColor = colors.PrimaryPress;
+                sbtn.RectColor = colors.PrimaryAccent;
+                sbtn.ForeColor = Color.White;
+                sbtn.ForeHoverColor = Color.White;
+                sbtn.ForePressColor = Color.White;
+                sbtn.ForeSelectedColor = Color.White;
+                sbtn.SymbolColor = Color.White;
+                sbtn.SymbolHoverColor = Color.White;
+                sbtn.SymbolPressColor = Color.White;
+                sbtn.SymbolSelectedColor = Color.White;
+            }
+        }
+
+        public static void ApplyThemeToTitlePanel(UITitlePanel tpnl, ThemeColors colors, ThemeMode mode)
+        {
+            if (mode == ThemeMode.Dark)
+            {
+                tpnl.TitleColor = colors.AppBackground;
+                tpnl.TitleForeColor = colors.PrimaryAccent;
+                tpnl.RectColor = colors.SubtleBorder;
+                tpnl.FillColor = colors.CardBackground;
+                tpnl.ForeColor = colors.TextPrimary;
+                tpnl.BackColor = Color.Transparent;
+            }
+            else
+            {
+                tpnl.TitleColor = colors.PrimaryAccent;
+                tpnl.TitleForeColor = Color.White;
+                tpnl.RectColor = colors.SubtleBorder;
+                tpnl.FillColor = colors.CardBackground;
+                tpnl.ForeColor = colors.TextPrimary;
+                tpnl.BackColor = Color.Transparent;
             }
         }
     }

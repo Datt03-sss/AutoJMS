@@ -41,7 +41,7 @@ git pull --ff-only origin main
 # But source code must be clean before Claude starts.
 $dirtyFiles = git status --porcelain
 if ($dirtyFiles) {
-    Write-Host "Warning: The working tree has local modifications:" -ForegroundColor Warning
+    Write-Host "Warning: The working tree has local modifications:" -ForegroundColor Yellow
     Write-Host $dirtyFiles -ForegroundColor Yellow
 }
 
