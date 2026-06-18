@@ -925,7 +925,7 @@ namespace AutoJMS
         private void RepositionNetworkLabel()
         {
             if (lblNetworkStatus != null)
-                lblNetworkStatus.Location = new Point(this.Width - lblNetworkStatus.Width - 145, 9);
+                lblNetworkStatus.Location = new Point(this.Width - lblNetworkStatus.Width - 100, 9);
         }
 
         private void UpdateNetworkUI(NetworkStatus status)
