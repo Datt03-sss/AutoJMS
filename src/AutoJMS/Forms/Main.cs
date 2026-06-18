@@ -4586,7 +4586,8 @@ namespace AutoJMS
                 hideTimer = null;
             }
             tabPrint_messLable.Text = message;
-            tabPrint_messLable.ForeColor = isError ? Color.Red : Color.Black;
+            bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
+            tabPrint_messLable.ForeColor = isError ? (isDark ? Color.FromArgb(252, 115, 115) : Color.Red) : (isDark ? Color.White : Color.Black);
             if (timeout <= 0)
                 return;
 
