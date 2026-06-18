@@ -909,8 +909,7 @@ namespace AutoJMS
         {
             lblNetworkStatus = new UILabel();
             lblNetworkStatus.Name = "lblNetworkStatus";
-            lblNetworkStatus.AutoSize = false;
-            lblNetworkStatus.Size = new Size(130, 28);
+            lblNetworkStatus.AutoSize = true;
             lblNetworkStatus.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold);
             lblNetworkStatus.BackColor = Color.Transparent;
             lblNetworkStatus.Parent = this;
@@ -926,7 +925,7 @@ namespace AutoJMS
         private void RepositionNetworkLabel()
         {
             if (lblNetworkStatus != null)
-                lblNetworkStatus.Location = new Point(this.Width - lblNetworkStatus.Width - 100, 7);
+                lblNetworkStatus.Location = new Point(this.Width - lblNetworkStatus.Width - 145, 9);
         }
 
         private void UpdateNetworkUI(NetworkStatus status)
