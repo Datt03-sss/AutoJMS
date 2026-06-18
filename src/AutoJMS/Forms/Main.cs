@@ -3216,16 +3216,30 @@ namespace AutoJMS
             if (printDocument == null || _settings == null)
                 return;
 
+            string currentDefaultPrinter = new PrinterSettings().PrinterName;
+            if (!string.Equals(printDocument.PrinterSettings.PrinterName, currentDefaultPrinter, StringComparison.OrdinalIgnoreCase))
+            {
+                AppLogger.Info($"[PrinterPaper] Bỏ qua override vì '{printDocument.PrinterSettings.PrinterName}' không phải là Default Printer.");
+                return;
+            }
+
             decimal widthInch = _settings.PrintPaperWidthInch <= 0 ? 3m : _settings.PrintPaperWidthInch;
             decimal heightInch = _settings.PrintPaperHeightInch <= 0 ? 3m : _settings.PrintPaperHeightInch;
             int width = Math.Max(1, (int)Math.Round(widthInch * 100m, MidpointRounding.AwayFromZero));
             int height = Math.Max(1, (int)Math.Round(heightInch * 100m, MidpointRounding.AwayFromZero));
             string mode = string.IsNullOrWhiteSpace(_settings.PrinterPaperMode) ? "AutoJMS" : _settings.PrinterPaperMode.Trim();
-            var paperSize = new PaperSize($"{mode}_{widthInch:0.##}x{heightInch:0.##}", width, height);
 
-            printDocument.DefaultPageSettings.PaperSize = paperSize;
-            printDocument.PrinterSettings.DefaultPageSettings.PaperSize = paperSize;
-            AppLogger.Info($"[PrinterPaper] apply mode={mode} widthInch={widthInch} heightInch={heightInch} width={width} height={height}");
+            try
+            {
+                var paperSize = new PaperSize($"{mode}_{widthInch:0.##}x{heightInch:0.##}", width, height);
+                printDocument.DefaultPageSettings.PaperSize = paperSize;
+                printDocument.PrinterSettings.DefaultPageSettings.PaperSize = paperSize;
+                AppLogger.Info($"[PrinterPaper] apply mode={mode} widthInch={widthInch} heightInch={heightInch} width={width} height={height}");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[PrinterPaper] apply PaperSize failed error={ex.Message}");
+            }
         }
 
         private static string BuildPrintCorrelationId(string waybillText)
