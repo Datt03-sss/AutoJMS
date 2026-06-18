@@ -1455,12 +1455,14 @@ namespace AutoJMS
 
         private void PreCreateFullStackForm()
         {
-            // FullStackOperation is an ULTRA-only independent form.
+            // Bypassed tier check temporarily for owner to test from tabHome
+            /*
             if (_tierPolicy == null || !_tierPolicy.EnableFullStackOperation)
             {
                 AppLogger.Info($"FullStackOperation disabled for {_tierPolicy?.Tier ?? "BASE"} — not pre-created.");
                 return;
             }
+            */
 
             try
             {
@@ -1476,12 +1478,14 @@ namespace AutoJMS
 
         private void ShowFullStackForm()
         {
-            // ULTRA-only. A BASE user typing the DASH command must not open it.
+            // Bypassed tier check temporarily for owner to test from tabHome
+            /*
             if (_tierPolicy == null || !_tierPolicy.EnableFullStackOperation)
             {
                 AppLogger.Info($"ShowFullStackForm ignored for {_tierPolicy?.Tier ?? "BASE"} — ULTRA only.");
                 return;
             }
+            */
 
             if (_isShowingFullStackForm)
                 return;
