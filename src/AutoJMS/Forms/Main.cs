@@ -948,64 +948,26 @@ namespace AutoJMS
             var g = e.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            // Define semantic status colors (fixed values, readable on all themes)
-            Color dotColor, textColor, backColor, borderColor;
-            bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
+            Color textColor;
+            var theme = UI.AppTheme.CurrentTheme;
 
             switch (_currentNetworkStatus)
             {
                 case NetworkStatus.Online:
-                    dotColor = ColorTranslator.FromHtml("#22C55E");
-                    textColor = ColorTranslator.FromHtml("#16A34A");
-                    backColor = isDark ? Color.FromArgb(40, 6, 78, 59) : ColorTranslator.FromHtml("#DCFCE7");
-                    borderColor = isDark ? ColorTranslator.FromHtml("#047857") : ColorTranslator.FromHtml("#BBF7D0");
+                    if (theme == UI.ThemeMode.Red) textColor = Color.Black;
+                    else textColor = ColorTranslator.FromHtml("#16A34A"); // Green
                     break;
                 case NetworkStatus.Unstable:
-                    dotColor = ColorTranslator.FromHtml("#F59E0B");
-                    textColor = ColorTranslator.FromHtml("#D97706");
-                    backColor = isDark ? Color.FromArgb(40, 120, 53, 15) : ColorTranslator.FromHtml("#FEF3C7");
-                    borderColor = isDark ? ColorTranslator.FromHtml("#92400E") : ColorTranslator.FromHtml("#FDE68A");
+                    if (theme == UI.ThemeMode.Red) textColor = Color.Black;
+                    else textColor = ColorTranslator.FromHtml("#D97706"); // Orange
                     break;
                 case NetworkStatus.Offline:
                 default:
-                    dotColor = ColorTranslator.FromHtml("#EF4444");
-                    textColor = ColorTranslator.FromHtml("#DC2626");
-                    backColor = isDark ? Color.FromArgb(40, 127, 29, 29) : ColorTranslator.FromHtml("#FEE2E2");
-                    borderColor = isDark ? ColorTranslator.FromHtml("#991B1B") : ColorTranslator.FromHtml("#FECACA");
+                    if (theme == UI.ThemeMode.Red) textColor = Color.White;
+                    else textColor = ColorTranslator.FromHtml("#DC2626"); // Red
                     break;
             }
 
-            // Draw rounded badge container
-            int radius = 6;
-            var rect = new Rectangle(0, 0, lblNetworkStatus.Width - 1, lblNetworkStatus.Height - 1);
-            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
-            {
-                path.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
-                path.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
-                path.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
-                path.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
-                path.CloseAllFigures();
-
-                using (var brush = new SolidBrush(backColor))
-                {
-                    g.FillPath(brush, path);
-                }
-                // using (var pen = new Pen(borderColor, 1.2f))
-                // {
-                //     g.DrawPath(pen, path);
-                // }
-            }
-
-            // Draw status dot
-            int dotSize = 8;
-            int dotX = 12;
-            int dotY = (lblNetworkStatus.Height - dotSize) / 2;
-            using (var dotBrush = new SolidBrush(dotColor))
-            {
-                g.FillEllipse(dotBrush, dotX, dotY, dotSize, dotSize);
-            }
-
-            // Draw status text
             string statusText;
             switch (_currentNetworkStatus)
             {
@@ -1016,10 +978,10 @@ namespace AutoJMS
 
             using (var textBrush = new SolidBrush(textColor))
             {
-                var textRect = new Rectangle(dotX + dotSize + 8, 0, lblNetworkStatus.Width - (dotX + dotSize + 12), lblNetworkStatus.Height);
+                var textRect = new Rectangle(0, 0, lblNetworkStatus.Width, lblNetworkStatus.Height);
                 var sf = new StringFormat
                 {
-                    Alignment = StringAlignment.Near,
+                    Alignment = StringAlignment.Far, // Align right since it's on the right edge
                     LineAlignment = StringAlignment.Center
                 };
                 g.DrawString(statusText, lblNetworkStatus.Font, textBrush, textRect, sf);
