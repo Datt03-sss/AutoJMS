@@ -134,6 +134,7 @@ namespace AutoJMS
         private static readonly TimeSpan DkchReadyTimeout = TimeSpan.FromSeconds(15);
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         private UILabel lblNetworkStatus;
+        private NetworkStatus _currentNetworkStatus = NetworkStatus.Online;
 
         public Main(string tier = "BASE")
         {
@@ -148,6 +149,7 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
+            AlignLeftPanelControls();
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
             // Register all built-in tabs with the TabManager
@@ -906,12 +908,14 @@ namespace AutoJMS
         private void InitNetworkUI()
         {
             lblNetworkStatus = new UILabel();
-            lblNetworkStatus.AutoSize = true;
-            lblNetworkStatus.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            lblNetworkStatus.Name = "lblNetworkStatus";
+            lblNetworkStatus.AutoSize = false;
+            lblNetworkStatus.Size = new Size(130, 28);
+            lblNetworkStatus.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold);
             lblNetworkStatus.BackColor = Color.Transparent;
-            lblNetworkStatus.TextAlign = ContentAlignment.MiddleRight;
             lblNetworkStatus.Parent = this;
             lblNetworkStatus.BringToFront();
+            lblNetworkStatus.Paint += LblNetworkStatus_Paint;
             this.Controls.Add(lblNetworkStatus);
 
             UpdateNetworkUI(NetworkStatus.Online);
@@ -933,22 +937,126 @@ namespace AutoJMS
                 return;
             }
 
-            switch (status)
+            _currentNetworkStatus = status;
+            lblNetworkStatus.Text = ""; // Avoid default text painting
+            lblNetworkStatus.Invalidate();
+            RepositionNetworkLabel();
+        }
+
+        private void LblNetworkStatus_Paint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            // Define semantic status colors (fixed values, readable on all themes)
+            Color dotColor, textColor, backColor, borderColor;
+            bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
+
+            switch (_currentNetworkStatus)
             {
                 case NetworkStatus.Online:
-                    lblNetworkStatus.Text = "● Online";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(0, 240, 100);
+                    dotColor = ColorTranslator.FromHtml("#22C55E");
+                    textColor = ColorTranslator.FromHtml("#16A34A");
+                    backColor = isDark ? Color.FromArgb(40, 6, 78, 59) : ColorTranslator.FromHtml("#DCFCE7");
+                    borderColor = isDark ? ColorTranslator.FromHtml("#047857") : ColorTranslator.FromHtml("#BBF7D0");
                     break;
                 case NetworkStatus.Unstable:
-                    lblNetworkStatus.Text = "● Mạng chậm";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(253, 224, 71);
+                    dotColor = ColorTranslator.FromHtml("#F59E0B");
+                    textColor = ColorTranslator.FromHtml("#D97706");
+                    backColor = isDark ? Color.FromArgb(40, 120, 53, 15) : ColorTranslator.FromHtml("#FEF3C7");
+                    borderColor = isDark ? ColorTranslator.FromHtml("#92400E") : ColorTranslator.FromHtml("#FDE68A");
                     break;
                 case NetworkStatus.Offline:
-                    lblNetworkStatus.Text = "● Mất kết nối";
-                    lblNetworkStatus.ForeColor = Color.FromArgb(252, 115, 115);
+                default:
+                    dotColor = ColorTranslator.FromHtml("#EF4444");
+                    textColor = ColorTranslator.FromHtml("#DC2626");
+                    backColor = isDark ? Color.FromArgb(40, 127, 29, 29) : ColorTranslator.FromHtml("#FEE2E2");
+                    borderColor = isDark ? ColorTranslator.FromHtml("#991B1B") : ColorTranslator.FromHtml("#FECACA");
                     break;
             }
-            RepositionNetworkLabel();
+
+            // Draw rounded badge container
+            int radius = 6;
+            var rect = new Rectangle(0, 0, lblNetworkStatus.Width - 1, lblNetworkStatus.Height - 1);
+            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            {
+                path.AddArc(rect.X, rect.Y, radius * 2, radius * 2, 180, 90);
+                path.AddArc(rect.Right - radius * 2, rect.Y, radius * 2, radius * 2, 270, 90);
+                path.AddArc(rect.Right - radius * 2, rect.Bottom - radius * 2, radius * 2, radius * 2, 0, 90);
+                path.AddArc(rect.X, rect.Bottom - radius * 2, radius * 2, radius * 2, 90, 90);
+                path.CloseAllFigures();
+
+                using (var brush = new SolidBrush(backColor))
+                {
+                    g.FillPath(brush, path);
+                }
+                using (var pen = new Pen(borderColor, 1.2f))
+                {
+                    g.DrawPath(pen, path);
+                }
+            }
+
+            // Draw status dot
+            int dotSize = 8;
+            int dotX = 12;
+            int dotY = (lblNetworkStatus.Height - dotSize) / 2;
+            using (var dotBrush = new SolidBrush(dotColor))
+            {
+                g.FillEllipse(dotBrush, dotX, dotY, dotSize, dotSize);
+            }
+
+            // Draw status text
+            string statusText;
+            switch (_currentNetworkStatus)
+            {
+                case NetworkStatus.Online: statusText = "Online"; break;
+                case NetworkStatus.Unstable: statusText = "Mạng chậm"; break;
+                case NetworkStatus.Offline: default: statusText = "Mất kết nối"; break;
+            }
+
+            using (var textBrush = new SolidBrush(textColor))
+            {
+                var textRect = new Rectangle(dotX + dotSize + 8, 0, lblNetworkStatus.Width - (dotX + dotSize + 12), lblNetworkStatus.Height);
+                var sf = new StringFormat
+                {
+                    Alignment = StringAlignment.Near,
+                    LineAlignment = StringAlignment.Center
+                };
+                g.DrawString(statusText, lblNetworkStatus.Font, textBrush, textRect, sf);
+            }
+        }
+
+        private void AlignLeftPanelControls()
+        {
+            // DATA section inputs alignment
+            if (tabDKCH_sheetName != null && tabDKCH_numRow != null && tabDKCH_useSheet != null)
+            {
+                tabDKCH_sheetName.Margin = new Padding(10, 0, 0, 0);
+                tabDKCH_numRow.Margin = new Padding(10, 0, 0, 0);
+                tabDKCH_useSheet.Margin = new Padding(12, 0, 0, 0);
+
+                tabDKCH_sheetName.Size = new Size(115, 28);
+                tabDKCH_numRow.Size = new Size(115, 28);
+            }
+
+            // CONTROL section buttons full width & matching height alignment
+            if (tabDKCH_Home != null && tabDKCH_btnDKCH1 != null && tabDKCH_btnDKCH2 != null && uiTableLayoutPanel9 != null)
+            {
+                tabDKCH_Home.Dock = DockStyle.Fill;
+                tabDKCH_Home.Margin = new Padding(3, 3, 3, 3);
+                tabDKCH_Home.Size = new Size(258, 32);
+
+                tabDKCH_btnDKCH1.Margin = new Padding(3, 4, 3, 4);
+                tabDKCH_btnDKCH2.Margin = new Padding(3, 4, 3, 4);
+
+                tabDKCH_btnDKCH1.Height = 32;
+                tabDKCH_btnDKCH2.Height = 32;
+
+                if (uiTableLayoutPanel9.RowStyles.Count > 0)
+                {
+                    uiTableLayoutPanel9.RowStyles[0] = new RowStyle(SizeType.Absolute, 38F);
+                }
+            }
         }
 
         private void tabAbout_btnTerms_Click(object sender, EventArgs e)

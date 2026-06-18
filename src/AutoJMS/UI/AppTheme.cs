@@ -218,37 +218,41 @@ namespace AutoJMS.UI
                 {
                     if (CurrentTheme == ThemeMode.Dark)
                     {
-                        sbtn.FillColor = colors.InputBackground;
-                        sbtn.FillHoverColor = colors.PrimaryHoverTint;
-                        sbtn.FillPressColor = colors.PrimaryPress;
-                        sbtn.FillSelectedColor = colors.PrimaryPress;
-                        sbtn.RectColor = colors.SubtleBorder;
+                        sbtn.FillColor = ColorTranslator.FromHtml("#27272A");
+                        sbtn.FillHoverColor = ColorTranslator.FromHtml("#3F3F46");
+                        sbtn.FillPressColor = ColorTranslator.FromHtml("#52525B");
+                        sbtn.FillSelectedColor = ColorTranslator.FromHtml("#52525B");
+                        sbtn.RectColor = ColorTranslator.FromHtml("#3F3F46");
                         sbtn.RectHoverColor = colors.PrimaryAccent;
                         sbtn.RectPressColor = colors.PrimaryPress;
                         sbtn.RectSelectedColor = colors.PrimaryPress;
-                        sbtn.ForeColor = colors.TextPrimary;
+                        sbtn.ForeColor = ColorTranslator.FromHtml("#F4F4F5");
                         sbtn.ForeHoverColor = colors.PrimaryAccent;
                         sbtn.ForePressColor = Color.White;
                         sbtn.ForeSelectedColor = Color.White;
-                        sbtn.SymbolColor = colors.TextPrimary;
+                        sbtn.SymbolColor = ColorTranslator.FromHtml("#F4F4F5");
                         sbtn.SymbolHoverColor = colors.PrimaryAccent;
                         sbtn.SymbolPressColor = Color.White;
                         sbtn.SymbolSelectedColor = Color.White;
                     }
                     else // Light/Red theme
                     {
-                        sbtn.FillColor = Color.FromArgb(255, 192, 192);
-                        sbtn.FillHoverColor = Color.FromArgb(255, 210, 210);
-                        sbtn.FillPressColor = Color.FromArgb(224, 160, 160);
-                        sbtn.RectColor = Color.FromArgb(224, 160, 160);
-                        sbtn.ForeColor = Color.Black;
-                        sbtn.ForeHoverColor = Color.Black;
-                        sbtn.ForePressColor = Color.Black;
-                        sbtn.ForeSelectedColor = Color.Black;
-                        sbtn.SymbolColor = Color.Black;
-                        sbtn.SymbolHoverColor = Color.Black;
-                        sbtn.SymbolPressColor = Color.Black;
-                        sbtn.SymbolSelectedColor = Color.Black;
+                        sbtn.FillColor = ColorTranslator.FromHtml("#E5E7EB");
+                        sbtn.FillHoverColor = ColorTranslator.FromHtml("#D1D5DB");
+                        sbtn.FillPressColor = ColorTranslator.FromHtml("#9CA3AF");
+                        sbtn.FillSelectedColor = ColorTranslator.FromHtml("#9CA3AF");
+                        sbtn.RectColor = ColorTranslator.FromHtml("#D1D5DB");
+                        sbtn.RectHoverColor = colors.PrimaryAccent;
+                        sbtn.RectPressColor = colors.PrimaryPress;
+                        sbtn.RectSelectedColor = colors.PrimaryPress;
+                        sbtn.ForeColor = ColorTranslator.FromHtml("#1F2937");
+                        sbtn.ForeHoverColor = colors.PrimaryAccent;
+                        sbtn.ForePressColor = Color.White;
+                        sbtn.ForeSelectedColor = Color.White;
+                        sbtn.SymbolColor = ColorTranslator.FromHtml("#1F2937");
+                        sbtn.SymbolHoverColor = colors.PrimaryAccent;
+                        sbtn.SymbolPressColor = Color.White;
+                        sbtn.SymbolSelectedColor = Color.White;
                     }
                 }
                 else if (IsIconButton(sbtn.Name))
@@ -303,68 +307,81 @@ namespace AutoJMS.UI
                     {
                         if (btn.Name == "tabDKCH_btnStop")
                         {
-                            btn.FillColor = ColorTranslator.FromHtml("#7F1D1D");
-                            btn.FillHoverColor = ColorTranslator.FromHtml("#991B1B");
+                            btn.FillColor = ColorTranslator.FromHtml("#DC2626");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#EF4444");
                             btn.FillPressColor = ColorTranslator.FromHtml("#B91C1C");
-                            btn.RectColor = ColorTranslator.FromHtml("#EF4444");
-                            btn.RectHoverColor = ColorTranslator.FromHtml("#F87171");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#B91C1C");
+                            btn.RectColor = ColorTranslator.FromHtml("#DC2626");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#EF4444");
                             btn.RectPressColor = ColorTranslator.FromHtml("#B91C1C");
-                            btn.ForeColor = Color.White;
-                            btn.ForeHoverColor = Color.White;
-                            btn.ForePressColor = Color.White;
-                            btn.ForeSelectedColor = Color.White;
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#B91C1C");
                         }
-                        else // DKCH1, DKCH2
+                        else if (btn.Name == "tabDKCH_btnDKCH1")
                         {
-                            btn.FillColor = colors.InputBackground;
-                            btn.FillHoverColor = colors.PrimaryHoverTint;
-                            btn.FillPressColor = colors.PrimaryPress;
-                            btn.FillSelectedColor = colors.PrimaryPress;
-                            btn.RectColor = colors.SubtleBorder;
-                            btn.RectHoverColor = colors.PrimaryAccent;
-                            btn.RectPressColor = colors.PrimaryPress;
-                            btn.RectSelectedColor = colors.PrimaryPress;
-                            btn.ForeColor = colors.TextPrimary;
-                            btn.ForeHoverColor = colors.PrimaryAccent;
-                            btn.ForePressColor = Color.White;
-                            btn.ForeSelectedColor = Color.White;
+                            btn.FillColor = ColorTranslator.FromHtml("#16A34A");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#22C55E");
+                            btn.FillPressColor = ColorTranslator.FromHtml("#15803D");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#15803D");
+                            btn.RectColor = ColorTranslator.FromHtml("#16A34A");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#22C55E");
+                            btn.RectPressColor = ColorTranslator.FromHtml("#15803D");
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#15803D");
                         }
+                        else // tabDKCH_btnDKCH2
+                        {
+                            btn.FillColor = ColorTranslator.FromHtml("#EA580C");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#F97316");
+                            btn.FillPressColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.RectColor = ColorTranslator.FromHtml("#EA580C");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#F97316");
+                            btn.RectPressColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#C2410C");
+                        }
+                        btn.ForeColor = Color.White;
+                        btn.ForeHoverColor = Color.White;
+                        btn.ForePressColor = Color.White;
+                        btn.ForeSelectedColor = Color.White;
                     }
-                    else // Light/Red theme: keep original designer/custom colors
+                    else // Light/Red theme
                     {
-                        if (btn.Name == "tabDKCH_btnDKCH1")
+                        if (btn.Name == "tabDKCH_btnStop")
                         {
-                            btn.FillColor = Color.FromArgb(128, 255, 128);
-                            btn.FillHoverColor = Color.FromArgb(160, 255, 160);
-                            btn.FillPressColor = Color.FromArgb(96, 224, 96);
-                            btn.RectColor = Color.FromArgb(96, 224, 96);
-                            btn.ForeColor = Color.Black;
-                            btn.ForeHoverColor = Color.Black;
-                            btn.ForePressColor = Color.Black;
-                            btn.ForeSelectedColor = Color.Black;
+                            btn.FillColor = ColorTranslator.FromHtml("#EF4444");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#DC2626");
+                            btn.FillPressColor = ColorTranslator.FromHtml("#B91C1C");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#B91C1C");
+                            btn.RectColor = ColorTranslator.FromHtml("#EF4444");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#DC2626");
+                            btn.RectPressColor = ColorTranslator.FromHtml("#B91C1C");
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#B91C1C");
                         }
-                        else if (btn.Name == "tabDKCH_btnDKCH2")
+                        else if (btn.Name == "tabDKCH_btnDKCH1")
                         {
-                            btn.FillColor = Color.FromArgb(255, 192, 128);
-                            btn.FillHoverColor = Color.FromArgb(255, 210, 160);
-                            btn.FillPressColor = Color.FromArgb(224, 160, 96);
-                            btn.RectColor = Color.FromArgb(224, 160, 96);
-                            btn.ForeColor = Color.Black;
-                            btn.ForeHoverColor = Color.Black;
-                            btn.ForePressColor = Color.Black;
-                            btn.ForeSelectedColor = Color.Black;
+                            btn.FillColor = ColorTranslator.FromHtml("#22C55E");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#16A34A");
+                            btn.FillPressColor = ColorTranslator.FromHtml("#15803D");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#15803D");
+                            btn.RectColor = ColorTranslator.FromHtml("#22C55E");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#16A34A");
+                            btn.RectPressColor = ColorTranslator.FromHtml("#15803D");
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#15803D");
                         }
-                        else if (btn.Name == "tabDKCH_btnStop")
+                        else // tabDKCH_btnDKCH2
                         {
-                            btn.FillColor = Color.FromArgb(255, 128, 128);
-                            btn.FillHoverColor = Color.FromArgb(255, 160, 160);
-                            btn.FillPressColor = Color.FromArgb(224, 96, 96);
-                            btn.RectColor = Color.FromArgb(224, 96, 96);
-                            btn.ForeColor = Color.Black;
-                            btn.ForeHoverColor = Color.Black;
-                            btn.ForePressColor = Color.Black;
-                            btn.ForeSelectedColor = Color.Black;
+                            btn.FillColor = ColorTranslator.FromHtml("#F97316");
+                            btn.FillHoverColor = ColorTranslator.FromHtml("#EA580C");
+                            btn.FillPressColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.FillSelectedColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.RectColor = ColorTranslator.FromHtml("#F97316");
+                            btn.RectHoverColor = ColorTranslator.FromHtml("#EA580C");
+                            btn.RectPressColor = ColorTranslator.FromHtml("#C2410C");
+                            btn.RectSelectedColor = ColorTranslator.FromHtml("#C2410C");
                         }
+                        btn.ForeColor = Color.White;
+                        btn.ForeHoverColor = Color.White;
+                        btn.ForePressColor = Color.White;
+                        btn.ForeSelectedColor = Color.White;
                     }
                 }
                 else
@@ -390,6 +407,8 @@ namespace AutoJMS.UI
             }
             else if (ctrl is UILabel lbl)
             {
+                if (lbl.Name == "lblNetworkStatus") return;
+
                 lbl.Style = UIStyle.Custom;
                 if (lbl.Name != null && lbl.Name.StartsWith("tabDKCH_") && lbl.Name.EndsWith("_title"))
                 {
@@ -526,6 +545,7 @@ namespace AutoJMS.UI
                 tpnl.Style = UIStyle.Custom;
                 tpnl.StyleCustomMode = true;
                 tpnl.Radius = 8;
+                tpnl.Font = new Font("Segoe UI", 10F, FontStyle.Bold); // Ensure header text is bold
                 tpnl.TitleColor = colors.TitleColor;
                 // Use red accent for title text in Dark theme to match J&T WebView header red accents
                 tpnl.TitleForeColor = (CurrentTheme == ThemeMode.Dark) ? colors.PrimaryAccent : colors.TitleForeColor;
@@ -604,6 +624,11 @@ namespace AutoJMS.UI
                 iud.FillColor = colors.InputBackground;
                 iud.RectColor = colors.InputBorder;
                 iud.ForeColor = colors.TextPrimary;
+                iud.SymbolColor = colors.TextPrimary;
+                iud.SymbolHoverColor = colors.PrimaryAccent;
+                iud.SymbolPressColor = colors.PrimaryPress;
+                iud.RectHoverColor = colors.PrimaryAccent;
+                iud.RectPressColor = colors.PrimaryPress;
             }
             else if (ctrl is UIDatetimePicker dtp)
             {
@@ -637,6 +662,12 @@ namespace AutoJMS.UI
                 pb.ForeColor = colors.PrimaryAccent;
                 pb.FillColor = colors.InputBackground;
                 pb.RectColor = Color.Transparent;
+            }
+            else if (ctrl is UITableLayoutPanel utlp)
+            {
+                utlp.Style = UIStyle.Custom;
+                utlp.StyleCustomMode = true;
+                utlp.BackColor = Color.Transparent;
             }
             else if (ctrl is TableLayoutPanel tlp)
             {
