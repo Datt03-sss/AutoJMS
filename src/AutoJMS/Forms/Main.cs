@@ -990,10 +990,10 @@ namespace AutoJMS
                 {
                     g.FillPath(brush, path);
                 }
-                using (var pen = new Pen(borderColor, 1.2f))
-                {
-                    g.DrawPath(pen, path);
-                }
+                // using (var pen = new Pen(borderColor, 1.2f))
+                // {
+                //     g.DrawPath(pen, path);
+                // }
             }
 
             // Draw status dot
