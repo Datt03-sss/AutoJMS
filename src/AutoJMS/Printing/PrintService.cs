@@ -1078,6 +1078,18 @@ namespace AutoJMS
             UpdateStatsAndVisibility();
         }
 
+        public void ClearSelection()
+        {
+            if (_grid.InvokeRequired)
+            {
+                _grid.Invoke(new Action(() => _grid.ClearSelection()));
+            }
+            else
+            {
+                _grid.ClearSelection();
+            }
+        }
+
         public List<string> GetSelectedWaybills()
         {
             _grid.EndEdit();

@@ -2912,9 +2912,9 @@ namespace AutoJMS
                     RememberPrintedPdf(pdfCacheKey, printJob.LocalPdfPath);
                     _printService.SelectAll(false);
                     tabPrint_btnSelectAll.Checked = false;
-                    tabPrint_dataView?.ClearSelection();
                     ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
                     _printService.QueuePostPrintRefresh(selected, printType);
+                    
                     AppLogger.Info($"[PrintPerf] phase=PrintTotal waybill={firstWaybill} totalMs={totalWatch.ElapsedMilliseconds}");
                     if (totalWatch.ElapsedMilliseconds > 2000)
                     {
@@ -3312,7 +3312,105 @@ namespace AutoJMS
 
         private Task<PrintJobCacheEntry> QueuePreloadPrintJobForCurrentSelection(string reason)
         {
-            return Task.FromResult<PrintJobCacheEntry>(null);
+            try
+            {
+                if (_printService == null)
+                    return null;
+
+                var selected = _printService.GetSelectedWaybills();
+                if (selected == null || selected.Count == 0)
+                    return null;
+
+                if (!SelectedMatchesCurrentInput(selected, tabPrint_inputWaybill.Text))
+                    return null;
+
+                int printType = 1;
+                int applyTypeCode = (_printService.CurrentMode == PrintMode.InChuyenTiep) ? 2 : 4;
+                int keepPdfs = 500;
+                int keepLogsDays = 3;
+                TryReadPrintConfig(out keepPdfs, out keepLogsDays);
+
+                string firstWaybill = selected[0];
+                string cacheKey = BuildPrintPdfCacheKey(selected, printType, applyTypeCode);
+                if (TryGetCachedPrintJob(cacheKey, out var cached))
+                {
+                    AppLogger.Info($"[PrintPerf] phase=PreloadPdf waybill={firstWaybill} cacheHit=true ageMs={(long)(DateTime.Now - cached.CreatedAt).TotalMilliseconds} reason={reason}");
+                    return Task.FromResult(cached);
+                }
+
+                lock (_printJobCacheLock)
+                {
+                    if (_printJobPreloadTasks.TryGetValue(cacheKey, out var existing) && !existing.IsCompleted)
+                    {
+                        AppLogger.Info($"[PrintPerf] phase=PreloadPdf waybill={firstWaybill} alreadyRunning=true reason={reason}");
+                        return existing;
+                    }
+                }
+
+                bool disablePrintUntilReady = tabPrint_AutoMode == null || !tabPrint_AutoMode.Active;
+                if (disablePrintUntilReady)
+                    SetPrintButtonState(false);
+
+                ShowPrintMessage("Đang chuẩn bị bản in...", false, 1500);
+                var selectedSnapshot = selected.ToList();
+                var preloadTask = Task.Run(async () =>
+                {
+                    var sw = Stopwatch.StartNew();
+                    try
+                    {
+                        var job = await EnsureReadyToPrintAsync(
+                            selectedSnapshot,
+                            printType,
+                            applyTypeCode,
+                            keepPdfs,
+                            firstWaybill,
+                            cacheKey,
+                            "Preload").ConfigureAwait(false);
+
+                        sw.Stop();
+                        AppLogger.Info($"[PrintPerf] phase=PreloadPdf waybill={firstWaybill} totalMs={sw.ElapsedMilliseconds} success={job != null} reason={reason}");
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            BeginInvoke((MethodInvoker)(() =>
+                            {
+                                if (disablePrintUntilReady && _printLock.CurrentCount > 0)
+                                    SetPrintButtonState(true);
+                                if (job != null)
+                                    ShowPrintMessage("Sẵn sàng in", false, 1500);
+                                else
+                                    ShowPrintMessage("Chưa chuẩn bị được bản in.", true, 2500);
+                            }));
+                        }
+
+                        return job;
+                    }
+                    catch (Exception ex)
+                    {
+                        sw.Stop();
+                        AppLogger.Warning($"[PrintPerf] phase=PreloadPdf waybill={firstWaybill} totalMs={sw.ElapsedMilliseconds} success=False error={ex.Message} reason={reason}");
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            BeginInvoke((MethodInvoker)(() =>
+                            {
+                                if (disablePrintUntilReady && _printLock.CurrentCount > 0)
+                                    SetPrintButtonState(true);
+                            }));
+                        }
+                        return null;
+                    }
+                });
+
+                lock (_printJobCacheLock)
+                {
+                    _printJobPreloadTasks[cacheKey] = preloadTask;
+                }
+                return preloadTask;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[PrintPerf] phase=PreloadPdf enqueueFailed error={ex.Message}");
+                return null;
+            }
         }
 
         private async Task<PrintJobCacheEntry> EnsureReadyToPrintAsync(
@@ -3342,64 +3440,34 @@ namespace AutoJMS
             var totalWatch = Stopwatch.StartNew();
             bool cacheHit = false;
 
-            PrintJobCacheEntry cachedJob = null;
-            if (TryGetCachedPrintJob(pdfCacheKey, out var cached))
+            string printerName = ResolvePrintPrinterName();
+            var preflight = await RunPrinterPreflightAsync(printerName, firstWaybill, "BeforePrintWaybill")
+                .ConfigureAwait(false);
+            if (!preflight.CanPrint)
             {
-                cacheHit = true;
-                cachedJob = cached;
-                AppLogger.Info($"[PrintPerf] phase=PrintCache waybill={firstWaybill} hit=true ageMs={(long)(DateTime.Now - cached.CreatedAt).TotalMilliseconds} source={source}");
+                totalWatch.Stop();
+                AppLogger.Warning(
+                    $"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} " +
+                    $"source={source} totalMs={totalWatch.ElapsedMilliseconds} error=printer-preflight-blocked reason={preflight.ReasonCode}");
+                return null;
             }
 
-            string localPath = TryGetCachedPrintPdf(pdfCacheKey);
-            if (!string.IsNullOrWhiteSpace(localPath))
-            {
-                cacheHit = true;
-            }
+            _currentPrintAttempt = new CurrentPrintAttempt { WaybillNo = firstWaybill };
+            _currentPrintAttempt.MarkPrintWaybillRequested();
+            var getPdfWatch = Stopwatch.StartNew();
+            string pdfUrl = await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
+            markApiCalled?.Invoke();
+            getPdfWatch.Stop();
+            if (_currentPrintAttempt != null)
+                _currentPrintAttempt.PdfUrl = pdfUrl ?? "";
+            AppLogger.Info($"[PrintPerf] phase=GetPdfUrl waybill={firstWaybill} elapsedMs={getPdfWatch.ElapsedMilliseconds} success={!string.IsNullOrWhiteSpace(pdfUrl)} source={source}");
+            AppCaptureManager.Instance.RecordPerformance("print.flow", "GetPdfUrl", getPdfWatch.ElapsedMilliseconds, new { waybill = firstWaybill, success = !string.IsNullOrWhiteSpace(pdfUrl), source });
 
-            string pdfUrl = "";
-            (string PdfUrl, DateTime CreatedAt) urlEntry;
-            bool hasUrlEntry;
-            lock (_printJobCacheLock)
+            if (!string.IsNullOrWhiteSpace(pdfUrl))
             {
-                hasUrlEntry = _lastPdfUrlBySignature.TryGetValue(pdfCacheKey, out urlEntry);
-            }
-
-            if (hasUrlEntry && (DateTime.Now - urlEntry.CreatedAt) < PrintPdfUrlCacheTtl)
-            {
-                pdfUrl = urlEntry.PdfUrl;
-                AppLogger.Info($"[PrintPerf] phase=PdfUrlCache waybill={firstWaybill} hit=true source={source}");
-            }
-            else
-            {
-                string printerName = ResolvePrintPrinterName();
-                var preflight = await RunPrinterPreflightAsync(printerName, firstWaybill, "BeforePrintWaybill")
-                    .ConfigureAwait(false);
-                if (!preflight.CanPrint)
+                lock (_printJobCacheLock)
                 {
-                    totalWatch.Stop();
-                    AppLogger.Warning(
-                        $"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} " +
-                        $"source={source} totalMs={totalWatch.ElapsedMilliseconds} error=printer-preflight-blocked reason={preflight.ReasonCode}");
-                    return null;
-                }
-
-                _currentPrintAttempt = new CurrentPrintAttempt { WaybillNo = firstWaybill };
-                _currentPrintAttempt.MarkPrintWaybillRequested();
-                var getPdfWatch = Stopwatch.StartNew();
-                pdfUrl = await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
-                markApiCalled?.Invoke();
-                getPdfWatch.Stop();
-                if (_currentPrintAttempt != null)
-                    _currentPrintAttempt.PdfUrl = pdfUrl ?? "";
-                AppLogger.Info($"[PrintPerf] phase=GetPdfUrl waybill={firstWaybill} elapsedMs={getPdfWatch.ElapsedMilliseconds} success={!string.IsNullOrWhiteSpace(pdfUrl)} source={source}");
-                AppCaptureManager.Instance.RecordPerformance("print.flow", "GetPdfUrl", getPdfWatch.ElapsedMilliseconds, new { waybill = firstWaybill, success = !string.IsNullOrWhiteSpace(pdfUrl), source });
-
-                if (!string.IsNullOrWhiteSpace(pdfUrl))
-                {
-                    lock (_printJobCacheLock)
-                    {
-                        _lastPdfUrlBySignature[pdfCacheKey] = (pdfUrl, DateTime.Now);
-                    }
+                    _lastPdfUrlBySignature[pdfCacheKey] = (pdfUrl, DateTime.Now);
                 }
             }
 
@@ -3410,23 +3478,7 @@ namespace AutoJMS
                 return null;
             }
 
-            if (cachedJob != null)
-            {
-                totalWatch.Stop();
-                AppLogger.Info($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit=true source={source} totalMs={totalWatch.ElapsedMilliseconds}");
-                return cachedJob;
-            }
-
-            if (!string.IsNullOrWhiteSpace(localPath))
-            {
-                var job = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, localPath).ConfigureAwait(false);
-                RememberPrintJob(pdfCacheKey, job);
-                totalWatch.Stop();
-                AppLogger.Info($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit=true fileCache=true source={source} totalMs={totalWatch.ElapsedMilliseconds}");
-                return job;
-            }
-
-            localPath = TryGetCachedPrintPdfByUrl(pdfUrl);
+            string localPath = TryGetCachedPrintPdfByUrl(pdfUrl);
             if (!string.IsNullOrWhiteSpace(localPath))
             {
                 var job = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, localPath).ConfigureAwait(false);
