@@ -1,4 +1,4 @@
-﻿using Sunny.UI;
+using Sunny.UI;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -1430,101 +1430,7 @@ namespace AutoJMS
 
         private void SetupDashToolbar()
         {
-            try
-            {
-                if (_operationQueueSidebar != null && _operationDetailPanel != null)
-                    return;
-
-                var tl = uiTableLayoutPanel18;
-                if (tl == null) return;
-
-                var flow = new FlowLayoutPanel();
-                flow.Dock = DockStyle.Fill;
-                flow.FlowDirection = FlowDirection.LeftToRight;
-                flow.WrapContents = false;
-                flow.Margin = new Padding(2);
-                flow.Padding = new Padding(3);
-                flow.BackColor = Color.Transparent;
-
-                _dashSearchBox = new TextBox();
-                _dashSearchBox.Font = new Font("Segoe UI", 11F);
-                _dashSearchBox.Margin = new Padding(2, 6, 4, 2);
-                _dashSearchBox.Size = new Size(160, 26);
-                _dashSearchBox.Text = "";
-                _dashSearchBox.ForeColor = Color.Gray;
-                _dashSearchBox.TextChanged += (s, e) =>
-                {
-                    if (_cloudData.Count == 0) return;
-                    ApplyDashFilter(_cloudData);
-                    UpdateFilterInfo();
-                };
-                flow.Controls.Add(_dashSearchBox);
-
-                _dashDateFrom = new DateTimePicker();
-                _dashDateFrom.Font = new Font("Segoe UI", 9F);
-                _dashDateFrom.Format = DateTimePickerFormat.Short;
-                _dashDateFrom.Margin = new Padding(4, 6, 2, 2);
-                _dashDateFrom.Size = new Size(110, 24);
-                _dashDateFrom.Checked = false;
-                _dashDateFrom.ShowCheckBox = true;
-                _dashDateFrom.ValueChanged += (s, e) =>
-                {
-                    if (_cloudData.Count == 0) return;
-                    ApplyDashFilter(_cloudData);
-                    UpdateFilterInfo();
-                };
-                flow.Controls.Add(_dashDateFrom);
-
-                _dashDateTo = new DateTimePicker();
-                _dashDateTo.Font = new Font("Segoe UI", 9F);
-                _dashDateTo.Format = DateTimePickerFormat.Short;
-                _dashDateTo.Margin = new Padding(2, 6, 4, 2);
-                _dashDateTo.Size = new Size(110, 24);
-                _dashDateTo.Checked = false;
-                _dashDateTo.ShowCheckBox = true;
-                _dashDateTo.ValueChanged += (s, e) =>
-                {
-                    if (_cloudData.Count == 0) return;
-                    ApplyDashFilter(_cloudData);
-                    UpdateFilterInfo();
-                };
-                flow.Controls.Add(_dashDateTo);
-
-                _dashExportBtn = new UISymbolButton();
-                _dashExportBtn.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
-                _dashExportBtn.Margin = new Padding(4, 4, 2, 2);
-                _dashExportBtn.Size = new Size(40, 30);
-                _dashExportBtn.Symbol = 61714;
-                _dashExportBtn.SymbolSize = 16;
-                _dashExportBtn.Radius = 8;
-                _dashExportBtn.FillColor = Color.FromArgb(0, 150, 0);
-                _dashExportBtn.FillHoverColor = Color.FromArgb(0, 180, 0);
-                _tooltip.SetToolTip(_dashExportBtn, "Xuất Excel");
-                _dashExportBtn.Click += ExportDashToExcel;
-                flow.Controls.Add(_dashExportBtn);
-
-                _dashFilterInfo = new Label();
-                _dashFilterInfo.Font = new Font("Segoe UI", 9F, FontStyle.Italic);
-                _dashFilterInfo.ForeColor = Color.DimGray;
-                _dashFilterInfo.Margin = new Padding(6, 6, 2, 2);
-                _dashFilterInfo.AutoSize = true;
-                _dashFilterInfo.Text = "";
-                flow.Controls.Add(_dashFilterInfo);
-
-                var commandLayout = new TableLayoutPanel();
-                commandLayout.Dock = DockStyle.Fill;
-                commandLayout.ColumnCount = 1;
-                commandLayout.RowCount = 2;
-                commandLayout.Margin = Padding.Empty;
-                commandLayout.Padding = Padding.Empty;
-                commandLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
-                commandLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-                commandLayout.Controls.Add(flow, 0, 0);
-                commandLayout.Controls.Add(CreateDashQuickFilterPanel(), 0, 1);
-
-                tl.Controls.Add(commandLayout, 2, 0);
-            }
-            catch { }
+            // Removed for new UI
         }
 
         private Control CreateDashQuickFilterPanel()
@@ -3812,5 +3718,6 @@ namespace AutoJMS
         public string TenNguoiGui { get; set; }
     }
 }
+
 
 

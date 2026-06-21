@@ -11,20 +11,14 @@ namespace AutoJMS
         private UITabControl uiTabControl1;
         private TabPage tabDash;
         private UITableLayoutPanel uiTableLayoutPanel4;
-        private UITableLayoutPanel uiTableLayoutPanel14;
         private UIPanel uiPanel10;
-        private UITableLayoutPanel uiTableLayoutPanel18;
-        private UITableLayoutPanel uiTableLayoutPanel34;
+        private UIPanel _filterBarPanel;
+        private Panel _queueNavPanel;
+        private Panel _leftContextPanel;
         private UIComboBox tabDash_timeUpdateData;
-        private UISymbolLabel uiSymbolLabel1;
-        private UITableLayoutPanel uiTableLayoutPanel35;
         private UISymbolLabel tabDash_lblLastUpdate;
         private UISymbolButton tabDash_updateData;
-        private UITableLayoutPanel uiTableLayoutPanel37;
         private UIComboBox tabDash_dataSource;
-        private UISymbolLabel uiSymbolLabel8;
-        private UITableLayoutPanel uiTableLayoutPanel36;
-        private UISymbolLabel uiSymbolLabel7;
         private UIComboBox tabDash_statusSelect;
         private UITabControl uiTabControl2;
         private TabPage tabPage3;
@@ -58,8 +52,8 @@ namespace AutoJMS
         private UIPanel uiPanel5;
 
         private FlowLayoutPanel _dashQuickFilterPanel;
-        private Label _dashQueueInsightLabel;
         private string _dashQuickFilter = string.Empty;
+        private Label _dashQueueInsightLabel;
         private QueueSidebarControl _operationQueueSidebar;
         private WaybillDetailPanel _operationDetailPanel;
         private StatusFooterControl _operationStatusFooter;
