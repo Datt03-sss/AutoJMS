@@ -15,6 +15,7 @@ namespace AutoJMS
         private UIPanel _filterBarPanel;
         private Panel _queueNavPanel;
         private Panel _leftContextPanel;
+        private Panel _rightIntelligencePanel;
         private UIComboBox tabDash_timeUpdateData;
         private UISymbolLabel tabDash_lblLastUpdate;
         private UISymbolButton tabDash_updateData;
@@ -72,12 +73,18 @@ namespace AutoJMS
         private CancellationTokenSource _journeyLoadCts;
         private FlowLayoutPanel _operationMiniMetricStrip;
         private TableLayoutPanel _operationFocusStrip;
-        private KpiCardControl _kpiCriticalFocus;
-        private KpiCardControl _kpiSlaBreach;
-        private KpiCardControl _kpiAgingRisk;
-        private KpiCardControl _kpiDataHealth;
+        private KpiCardControl _kpiTotalInventory;
+        private KpiCardControl _kpiInbound;
+        private KpiCardControl _kpiDelivery;
+        private KpiCardControl _kpiBacklog;
+        private KpiCardControl _kpiReturn;
+        private KpiCardControl _kpiInventoryCheck;
+        private KpiCardControl _kpiCustomerService;
+        private KpiCardControl _kpiStationHalt;
+        private KpiCardControl _kpiStarred;
         private Label _operationHeaderTitle;
         private Label _operationHeaderStatus;
         private UISymbolButton _operationRefreshLocalButton;
     }
 }
+

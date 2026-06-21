@@ -1216,6 +1216,16 @@ namespace AutoJMS
         // GRID COLOR STYLING HANDLERS
         // ======================================================================================
 
+
+        private void tabDash_dataGridView_SelectionChanged(object sender, EventArgs e)
+        {
+            if (tabDash_dataGridView.CurrentRow == null) return;
+            var waybillNo = tabDash_dataGridView.CurrentRow.Cells["Mã vận đơn"]?.Value?.ToString();
+            var status = tabDash_dataGridView.CurrentRow.Cells["Trạng thái"]?.Value?.ToString();
+
+            if (_lblRightWaybillNo != null) _lblRightWaybillNo.Text = waybillNo ?? "N/A";
+            if (_lblRightStatus != null) _lblRightStatus.Text = status ?? "";
+        }
         private void tabDash_dataGridView_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0 || e.RowIndex >= tabDash_dataGridView.Rows.Count) return;
@@ -1592,43 +1602,22 @@ namespace AutoJMS
 
         private void UpdatePriorityFocusCards(int sourceCount, int filteredCount)
         {
-            int needsAction = _cloudData.Count(IsNeedsAction);
-            int slaLate = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang));
-            int over48 = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 2.0);
-            int lostRisk = _cloudData.Count(IsLostRisk);
-            int critical = _cloudData.Count(x => GetRiskScore(x) >= 80);
+            int total = _cloudData.Count;
+            int inbound = _cloudData.Count(x => x.TrangThaiHienTai == "Hàng đến");
+            int delivery = _cloudData.Count(x => x.TrangThaiHienTai == "Phát hàng");
+            int returnQ = _cloudData.Count(x => x.TrangThaiHienTai == "Chuyển hoàn");
+            int needAction = _cloudData.Count(IsNeedsAction);
+            int lateSla = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang));
 
-            _kpiCriticalFocus?.SetMetric(
-                "Critical focus",
-                needsAction.ToString("N0"),
-                $"{critical:N0} critical risk | cần xử lý trước",
-                "CRIT",
-                needsAction > 0 ? AccentRed : AccentGreen,
-                "Cần xử lý ngay");
-
-            _kpiSlaBreach?.SetMetric(
-                "SLA breach",
-                slaLate.ToString("N0"),
-                "Quá 24h từ thời gian nhận hàng",
-                "SLA",
-                slaLate > 0 ? AccentRed : AccentGreen,
-                "SLA quá hạn");
-
-            _kpiAgingRisk?.SetMetric(
-                "Aging risk",
-                over48.ToString("N0"),
-                $"{lostRisk:N0} lost-risk | tồn trên 48h",
-                "RISK",
-                over48 > 0 ? AccentPurple : AccentGreen,
-                "Tồn quá hạn (>48h)");
-
-            _kpiDataHealth?.SetMetric(
-                "Data health",
-                $"{filteredCount:N0}/{sourceCount:N0}",
-                $"Local rows {_cloudData.Count:N0} | {DateTime.Now:HH:mm:ss}",
-                "LOCAL",
-                AccentBlue,
-                "Tất cả tồn kho");
+            _kpiTotalInventory?.SetMetric("TỔNG TỒN", total.ToString("N0"), "Tổng số đơn", "ALL", AccentBlue, "Tất cả tồn kho");
+            _kpiInbound?.SetMetric("HÀNG ĐẾN", inbound.ToString("N0"), "Đang trung chuyển", "IN", AccentBlue, "Hàng đến");
+            _kpiDelivery?.SetMetric("PHÁT HÀNG", delivery.ToString("N0"), "Đang đi giao", "DEL", AccentGreen, "Phát hàng");
+            _kpiBacklog?.SetMetric("BACKLOG", needAction.ToString("N0"), "Tồn đọng", "BL", AccentRed, "Cần xử lý ngay");
+            _kpiReturn?.SetMetric("CHUYỂN HOÀN", returnQ.ToString("N0"), "Đang hoàn", "RET", Color.Orange, "Chuyển hoàn");
+            _kpiInventoryCheck?.SetMetric("KIỂM KHO", lateSla.ToString("N0"), "Quá SLA", "SLA", AccentRed, "SLA quá hạn");
+            _kpiCustomerService?.SetMetric("CSKH", "0", "Khiếu nại", "CS", AccentPurple, "CSKH");
+            _kpiStationHalt?.SetMetric("DỪNG TRẠM", "0", "Hold", "HLT", Color.Gray, "Dừng trạm");
+            _kpiStarred?.SetMetric("STAR", "0", "Đánh dấu", "FAV", Color.Gold, "Đánh dấu");
         }
 
         private void UpdateOperationQueues()
@@ -3718,6 +3707,9 @@ namespace AutoJMS
         public string TenNguoiGui { get; set; }
     }
 }
+
+
+
 
 
 

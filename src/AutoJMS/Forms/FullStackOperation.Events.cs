@@ -19,6 +19,7 @@ namespace AutoJMS
             uiTabControl1.SelectedIndexChanged += uiTabControl1_SelectedIndexChanged;
 
             tabDash_dataGridView.CellFormatting += tabDash_dataGridView_CellFormatting;
+            tabDash_dataGridView.SelectionChanged += tabDash_dataGridView_SelectionChanged;
             uiDataGridView2.CellFormatting += uiDataGridView2_CellFormatting;
             tabChat_dataGrid.CellFormatting += FullStackGrid_CellFormatting;
         }
@@ -29,3 +30,4 @@ namespace AutoJMS
         }
     }
 }
+

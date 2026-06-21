@@ -141,7 +141,7 @@ namespace AutoJMS
             tabDash_timeUpdateData.Items.AddRange(new object[] { "2 PHÚT", "5 PHÚT", "10 PHÚT", "30 PHÚT", "1 GIỜ" });
             tabDash_timeUpdateData.Text = "2 PHÚT";
 
-            tabDash_updateData = CreateHeaderButton("Đồng bộ", 61473, AccentGreen);
+            tabDash_updateData = CreateHeaderButton("Đồng bộ", 61473, AccentBlue);
             tabDash_updateData.Size = new Size(104, 34);
 
             _operationRefreshLocalButton = CreateHeaderButton("Local", 61473, AccentBlue);
@@ -180,9 +180,9 @@ namespace AutoJMS
             _dashDateFrom = new DateTimePicker { Visible = false };
             _dashDateTo = new DateTimePicker { Visible = false };
 
-            layout.Controls.Add(CreateFilterField("Nguồn dữ liệu", tabDash_dataSource), 0, 0);
-            layout.Controls.Add(CreateFilterField("Tự động tải lại", tabDash_timeUpdateData), 1, 0);
-            layout.Controls.Add(CreateFilterField("Thời gian tồn / Trạng thái", tabDash_statusSelect), 2, 0);
+            layout.Controls.Add(CreateFilterField("Bưu cục / Nguồn", tabDash_dataSource), 0, 0);
+            layout.Controls.Add(CreateFilterField("Ngày / Tự tải lại", tabDash_timeUpdateData), 1, 0);
+            layout.Controls.Add(CreateFilterField("Thời gian tồn kho", tabDash_statusSelect), 2, 0);
             layout.Controls.Add(_dashSearchBox, 3, 0);
             
             var syncFlow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Margin = new Padding(0, 16, 0, 0), AutoSize = true };
@@ -220,22 +220,32 @@ namespace AutoJMS
             _operationFocusStrip = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 4,
+                ColumnCount = 9,
                 RowCount = 1,
                 Margin = Padding.Empty,
                 BackColor = Color.Transparent
             };
-            for (int i = 0; i < 4; i++) _operationFocusStrip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+            for (int i = 0; i < 9; i++) _operationFocusStrip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 11.11F));
 
-            _kpiCriticalFocus = CreateFocusCard("CẦN XỬ LÝ NGAY", "0", "Đơn ưu tiên cao nhất", "CRIT", AccentRed, "Cần xử lý ngay");
-            _kpiSlaBreach = CreateFocusCard("QUÁ HẠN SLA", "0", "Vượt cam kết", "SLA", AccentWarning, "SLA quá hạn");
-            _kpiAgingRisk = CreateFocusCard("TỒN >48H", "0", "Nguy cơ thất lạc", "RISK", AccentPurple, "Tồn quá hạn (>48h)");
-            _kpiDataHealth = CreateFocusCard("TẤT CẢ TỒN KHO", "0", "Tổng tồn tại BC", "ALL", AccentBlue, "Tất cả tồn kho");
+            _kpiTotalInventory = CreateFocusCard("TỔNG TỒN", "0", "Tổng số đơn", "ALL", AccentBlue, "Tất cả tồn kho");
+            _kpiInbound = CreateFocusCard("HÀNG ĐẾN", "0", "Đang trung chuyển", "IN", AccentBlue, "Hàng đến");
+            _kpiDelivery = CreateFocusCard("PHÁT HÀNG", "0", "Đang đi giao", "DEL", AccentGreen, "Phát hàng");
+            _kpiBacklog = CreateFocusCard("BACKLOG", "0", "Tồn đọng", "BL", AccentRed, "Cần xử lý ngay");
+            _kpiReturn = CreateFocusCard("CHUYỂN HOÀN", "0", "Đang hoàn", "RET", Color.Orange, "Chuyển hoàn");
+            _kpiInventoryCheck = CreateFocusCard("KIỂM KHO", "0", "Quá SLA", "SLA", AccentRed, "SLA quá hạn");
+            _kpiCustomerService = CreateFocusCard("CSKH", "0", "Khiếu nại", "CS", AccentPurple, "CSKH");
+            _kpiStationHalt = CreateFocusCard("DỪNG TRẠM", "0", "Hold", "HLT", Color.Gray, "Dừng trạm");
+            _kpiStarred = CreateFocusCard("STAR", "0", "Đánh dấu", "FAV", Color.Gold, "Đánh dấu");
 
-            _operationFocusStrip.Controls.Add(_kpiCriticalFocus, 0, 0);
-            _operationFocusStrip.Controls.Add(_kpiSlaBreach, 1, 0);
-            _operationFocusStrip.Controls.Add(_kpiAgingRisk, 2, 0);
-            _operationFocusStrip.Controls.Add(_kpiDataHealth, 3, 0);
+            _operationFocusStrip.Controls.Add(_kpiTotalInventory, 0, 0);
+            _operationFocusStrip.Controls.Add(_kpiInbound, 1, 0);
+            _operationFocusStrip.Controls.Add(_kpiDelivery, 2, 0);
+            _operationFocusStrip.Controls.Add(_kpiBacklog, 3, 0);
+            _operationFocusStrip.Controls.Add(_kpiReturn, 4, 0);
+            _operationFocusStrip.Controls.Add(_kpiInventoryCheck, 5, 0);
+            _operationFocusStrip.Controls.Add(_kpiCustomerService, 6, 0);
+            _operationFocusStrip.Controls.Add(_kpiStationHalt, 7, 0);
+            _operationFocusStrip.Controls.Add(_kpiStarred, 8, 0);
 
             p.Controls.Add(_operationFocusStrip);
             return p;
@@ -246,7 +256,7 @@ namespace AutoJMS
             var body = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 2,
+                ColumnCount = 3,
                 RowCount = 1,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty,
@@ -254,13 +264,41 @@ namespace AutoJMS
             };
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 256F));
             body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 336F));
 
             _leftContextPanel = CreateSmartContextPanel();
             var center = CreateOperationMainWorkArea();
+            _rightIntelligencePanel = CreateRightOrderIntelligencePanel();
 
             body.Controls.Add(_leftContextPanel, 0, 0);
             body.Controls.Add(center, 1, 0);
+            body.Controls.Add(_rightIntelligencePanel, 2, 0);
             return body;
+        }
+
+        private Label _lblRightWaybillNo;
+        private Label _lblRightStatus;
+
+        private Panel CreateRightOrderIntelligencePanel()
+        {
+            var p = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(20) };
+            
+            var tl = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            tl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+
+            var lblTitle = new Label { Text = "THÔNG TIN VẬN ĐƠN", Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = TextPrimary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            _lblRightWaybillNo = new Label { Text = "Chưa chọn", Font = new Font("Segoe UI", 10F, FontStyle.Regular), ForeColor = TextSecondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            _lblRightStatus = new Label { Text = "", Font = new Font("Segoe UI", 10F, FontStyle.Bold), ForeColor = AccentBlue, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            
+            tl.Controls.Add(lblTitle, 0, 0);
+            tl.Controls.Add(_lblRightWaybillNo, 0, 1);
+            tl.Controls.Add(_lblRightStatus, 0, 2);
+
+            p.Controls.Add(tl);
+            return p;
         }
 
         private Panel CreateSmartContextPanel()
@@ -406,3 +444,9 @@ namespace AutoJMS
         }
     }
 }
+
+
+
+
+
+
