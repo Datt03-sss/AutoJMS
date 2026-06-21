@@ -3421,6 +3421,38 @@ namespace AutoJMS
             string pdfCacheKey,
             string source)
         {
+            bool apiCalled = false;
+            var job = await EnsureReadyToPrintCoreAsync(selected, printType, applyTypeCode, keepPdfs, firstWaybill, pdfCacheKey, source, () => apiCalled = true).ConfigureAwait(false);
+
+            if (!apiCalled && string.Equals(source, "Print", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
+                        AppLogger.Info($"[PrintCountSync] Synchronized print count on system via background API call for {firstWaybill}");
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Warning($"[PrintCountSync] Sync failed for {firstWaybill}: {ex.Message}");
+                    }
+                });
+            }
+
+            return job;
+        }
+
+        private async Task<PrintJobCacheEntry> EnsureReadyToPrintCoreAsync(
+            List<string> selected,
+            int printType,
+            int applyTypeCode,
+            int keepPdfs,
+            string firstWaybill,
+            string pdfCacheKey,
+            string source,
+            Action markApiCalled)
+        {
             var totalWatch = Stopwatch.StartNew();
             bool cacheHit = false;
 
@@ -3510,6 +3542,7 @@ namespace AutoJMS
                 _currentPrintAttempt.MarkPrintWaybillRequested();
                 var getPdfWatch = Stopwatch.StartNew();
                 pdfUrl = await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
+                markApiCalled?.Invoke();
                 getPdfWatch.Stop();
                 if (_currentPrintAttempt != null)
                     _currentPrintAttempt.PdfUrl = pdfUrl ?? "";
