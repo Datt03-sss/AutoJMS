@@ -3426,18 +3426,22 @@ namespace AutoJMS
 
             if (!apiCalled && string.Equals(source, "Print", StringComparison.OrdinalIgnoreCase))
             {
-                _ = Task.Run(async () =>
+                var state = _tabPrintReprintStore.Get(firstWaybill);
+                if (state != null && state.AutoJmsReprintCount > 0)
                 {
-                    try
+                    _ = Task.Run(async () =>
                     {
-                        await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
-                        AppLogger.Info($"[PrintCountSync] Synchronized print count on system via background API call for {firstWaybill}");
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Warning($"[PrintCountSync] Sync failed for {firstWaybill}: {ex.Message}");
-                    }
-                });
+                        try
+                        {
+                            await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
+                            AppLogger.Info($"[PrintCountSync] Synchronized print count on system via background API call for {firstWaybill}");
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Warning($"[PrintCountSync] Sync failed for {firstWaybill}: {ex.Message}");
+                        }
+                    });
+                }
             }
 
             return job;
