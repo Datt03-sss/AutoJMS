@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2,
+  "goal": "",
+  "definition_of_done": [],
+  "constraints": [],
+  "out_of_scope": [],
+  "criteria": [],
+  "active_task": null,
+  "tasks": [],
+  "queue": [],
+  "open_questions": [],
+  "decisions": [],
+  "pinned_context": [],
+  "_meta": {
+    "lastActionId": null,
+    "lastUpdated": "2026-06-21T18:03:13.858Z",
+    "actionCount": 0,
+    "hash": "e5ade3fd6a567e7eaf5e364646f8e3656847c0d6b459d1bf5d33f48827a245e5"
+  }
+}

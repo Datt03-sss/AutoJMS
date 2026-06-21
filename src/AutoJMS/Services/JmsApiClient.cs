@@ -21,8 +21,10 @@ namespace AutoJMS
     /// <see cref="JmsAuthTokenService"/>.
     /// </summary>
     [System.Reflection.Obfuscation(Exclude = true, ApplyToMembers = true)]
-    public static class JmsApiClient
+    public class JmsApiClient : IJmsApiClient
     {
+        public static IJmsApiClient Instance { get; set; } = new JmsApiClient();
+
         private static readonly HttpClient _http = CreateClient();
 
         private static HttpClient CreateClient()
@@ -57,13 +59,40 @@ namespace AutoJMS
         /// response if even the retry failed. Caller still checks
         /// <c>IsSuccessStatusCode</c>. Returns null only on transport error.
         /// </returns>
-        public static async Task<HttpResponseMessage> PostJsonAsync(
+        public static Task<HttpResponseMessage> PostJsonAsync(
             string url,
             string jsonBody,
             string routeName = "trackingExpress",
             string routerNameList = null,
             string origin = "https://jms.jtexpress.vn",
             CancellationToken ct = default)
+        {
+            return Instance.PostJsonAsync(url, jsonBody, routeName, routerNameList, origin, ct);
+        }
+
+        Task<HttpResponseMessage> IJmsApiClient.PostJsonAsync(
+            string url,
+            string jsonBody,
+            string routeName,
+            string routerNameList,
+            string origin,
+            CancellationToken ct)
+        {
+            return PostJsonInternalAsync(url, jsonBody, routeName, routerNameList, origin, ct);
+        }
+
+        Task<byte[]> IJmsApiClient.GetByteArrayAsync(string url, CancellationToken ct)
+        {
+            return GetByteArrayInternalAsync(url, ct);
+        }
+
+        private static async Task<HttpResponseMessage> PostJsonInternalAsync(
+            string url,
+            string jsonBody,
+            string routeName,
+            string routerNameList,
+            string origin,
+            CancellationToken ct)
         {
             // Ensure we start from the best token we can find.
             string token = await JmsAuthTokenService.ResolveTokenAsync(ct).ConfigureAwait(false);
@@ -103,6 +132,11 @@ namespace AutoJMS
 
             AppLogger.Info($"[JmsApi] retry result=success endpoint={Shorten(url)} (no login prompt needed).");
             return resp2;
+        }
+
+        private static async Task<byte[]> GetByteArrayInternalAsync(string url, CancellationToken ct)
+        {
+            return await _http.GetByteArrayAsync(url, ct).ConfigureAwait(false);
         }
 
         private static async Task<HttpResponseMessage> SendOnceAsync(
