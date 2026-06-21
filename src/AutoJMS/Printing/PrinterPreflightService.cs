@@ -80,7 +80,7 @@ public sealed class PrinterPreflightService : IPrinterPreflightService
         }
         catch (Exception ex)
         {
-            return Block(printerName, "PRINTER_ERROR", $"Không kiểm tra được máy in: {ex.Message}");
+            return new PrinterPreflightResult { CanPrint = true, PrinterName = printerName, ReasonCode = "PRINTER_ERROR_IGNORED", StatusText = $"Không kiểm tra được máy in: {ex.Message} (Bypass)" };
         }
     }
 
@@ -98,7 +98,7 @@ public sealed class PrinterPreflightService : IPrinterPreflightService
         var settings = _settingsProvider() ?? new AppSettings();
         var printerStatus = TryReadPrinterStatus(resolvedPrinter);
         if (!TryReadQueueJobs(resolvedPrinter, out var jobs, out var queueError))
-            return Build(false, resolvedPrinter, "PRINTER_ERROR", queueError, 0, 0, false, false, true, false, false);
+            return Build(true, resolvedPrinter, "PRINTER_ERROR_IGNORED", queueError, 0, 0, false, false, true, false, false);
 
         bool isOffline = printerStatus.IsOffline;
         bool isPaused = printerStatus.IsPaused;
@@ -119,8 +119,8 @@ public sealed class PrinterPreflightService : IPrinterPreflightService
         if (isPaperOut)
             return Build(false, resolvedPrinter, "PRINTER_PAPER_OUT", statusText, queueJobCount, errorJobCount, isOffline, isPaused, hasError, isPaperOut, queueBusy);
 
-        if (hasError)
-            return Build(false, resolvedPrinter, "PRINTER_ERROR", statusText, queueJobCount, errorJobCount, isOffline, isPaused, hasError, isPaperOut, queueBusy);
+        // if (hasError)
+        //     return Build(false, resolvedPrinter, "PRINTER_ERROR", statusText, queueJobCount, errorJobCount, isOffline, isPaused, hasError, isPaperOut, queueBusy);
 
         if (settings.BlockWhenQueueHasErrorJob && errorJobCount > 0)
             return Build(false, resolvedPrinter, "PRINTER_QUEUE_HAS_ERROR_JOB", statusText, queueJobCount, errorJobCount, isOffline, isPaused, hasError, isPaperOut, queueBusy);
