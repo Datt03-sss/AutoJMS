@@ -110,6 +110,19 @@ namespace AutoJMS
             AuthStateService.Instance.TokenAcquired += _authTokenHandler;
         }
 
+        public void ClearDashGridSelection()
+        {
+            if (tabDash_dataGridView == null) return;
+            if (tabDash_dataGridView.InvokeRequired)
+            {
+                tabDash_dataGridView.Invoke(new Action(() => tabDash_dataGridView.ClearSelection()));
+            }
+            else
+            {
+                tabDash_dataGridView.ClearSelection();
+            }
+        }
+
         private async void FullStackOperation_Load(object sender, EventArgs e)
         {
             // STATE 1 — IDLE: UI only, no API calls, no realtime
@@ -3707,6 +3720,7 @@ namespace AutoJMS
         public string TenNguoiGui { get; set; }
     }
 }
+
 
 
 

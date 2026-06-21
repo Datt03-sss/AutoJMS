@@ -18,6 +18,7 @@ public interface IPrintService
     IReadOnlyList<PrintStatusSnapshot> GetLastPrintStatusSnapshots();
     PrintSafetyResult GetLastAllowedPrintSafetyResult(string waybillNo);
     void SelectAll(bool isChecked);
+    void ClearSelection();
     List<string> GetSelectedWaybills();
     void SetMode(PrintMode mode);
     void Reset();

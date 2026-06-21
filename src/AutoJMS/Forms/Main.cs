@@ -2914,6 +2914,8 @@ namespace AutoJMS
                     tabPrint_btnSelectAll.Checked = false;
                     ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
                     _printService.QueuePostPrintRefresh(selected, printType);
+                    try { _printService?.ClearSelection(); } catch { }
+                    try { _fullStackForm?.ClearDashGridSelection(); } catch { }
                     
                     AppLogger.Info($"[PrintPerf] phase=PrintTotal waybill={firstWaybill} totalMs={totalWatch.ElapsedMilliseconds}");
                     if (totalWatch.ElapsedMilliseconds > 2000)
