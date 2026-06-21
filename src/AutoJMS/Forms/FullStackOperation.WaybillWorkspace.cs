@@ -594,6 +594,25 @@ namespace AutoJMS
                 .Select((row, index) => ToJourneyEventViewModel(row, index))
                 .ToList();
             var gridRowsAfterBind = BindJourneyRows(eventRows);
+
+            if (_webView != null && _webViewInitialized && _webView.CoreWebView2 != null)
+            {
+                try
+                {
+                    var payload = new
+                    {
+                        type = "JOURNEY_DATA",
+                        journeyRows = eventRows
+                    };
+                    var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                    _webView.CoreWebView2.PostWebMessageAsJson(json);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error("Post JOURNEY_DATA failed", ex);
+                }
+            }
+
             LogJourneyBind(vm.WaybillNo, rows, eventRows.Count, gridRowsAfterBind);
             SetJourneyStatus(statusText ?? (rows.Count == 0
                 ? "Chưa có dữ liệu hành trình cho mã này."

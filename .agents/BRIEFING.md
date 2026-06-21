@@ -1,22 +1,24 @@
-# BRIEFING — 2026-06-21T19:21:55Z
+# BRIEFING — 2026-06-21T20:15:26Z
 
 ## Mission
-Orchestrate and verify the refactoring of tabPrint print logic to introduce PrintJobCoordinator and cached PDF reuse.
+Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: d:\v1.2605.2(new-test)\.agents
-- Orchestrator: 44c03dfd-e294-41d4-bd66-915e6f6e97a1
+- Orchestrator: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4
 - Victory Auditor: TBD
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
 - Victory Audit is MANDATORY before reporting completion
-- Must use Git locks (.agent-lock.md) as per AGENTS.md
-- Clear selection after successful print, protect protected files
+- Keep Main.cs and Main.Designer.cs completely untouched.
+- No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
+- No remote CDN URLs exist in the final HTML/CSS files.
+- Use Git locks (.agent-lock.md) as per AGENTS.md
 
 ## User Context
-- **Last user request**: Refactor tabPrint print logic with PrintJobCoordinator, 60s PDF cache, concurrency protection, grid selection clearing, and logging.
+- **Last user request**: Rebuild the tabDash UI in AutoJMS using WebView2, using local offline HTML/CSS/JS and postMessage bridge, keeping business logic in C# and Main.cs untouched.
 - **Pending clarifications**: none
 - **Delivered results**: none
 
@@ -30,3 +32,4 @@ Orchestrate and verify the refactoring of tabPrint print logic to introduce Prin
 
 ## Artifact Index
 - d:\v1.2605.2(new-test)\ORIGINAL_REQUEST.md — Verbatim user request.
+- d:\v1.2605.2(new-test)\.agents\ORIGINAL_REQUEST.md — Verbatim user request archive.

@@ -1,21 +1,21 @@
-# BRIEFING — 2026-06-22T02:34:10+07:00
+# BRIEFING — 2026-06-22T03:15:44+07:00
 
 ## Mission
-Refactor AutoJMS print logic to introduce PrintJobCoordinator, 60s PDF caching, concurrency protection, grid selection clearing, and logging, and verify it with automated tests.
+Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
 
 ## 🔒 My Identity
 - Archetype: orchestrator
 - Roles: orchestrator, user_liaison, human_reporter, successor
 - Working directory: d:\v1.2605.2(new-test)\.agents\orchestrator
 - Original parent: main agent
-- Original parent conversation ID: 6cdf5186-df06-4117-b83b-73a4921eca27
+- Original parent conversation ID: c78874e4-58ed-4bc9-bc18-26a28b4861d4
 
 ## 🔒 My Workflow
 - **Pattern**: Project
-- **Scope document**: d:\v1.2605.2(new-test)\PROJECT.md
-1. **Decompose**: Split into dual tracks: Implementation Track and E2E Testing Track.
+- **Scope document**: d:\v1.2605.2(new-test)\.agents\orchestrator\plan.md
+1. **Decompose**: Split task into milestones aligned with the phased rollout: Explore & Setup, Phase 1 (Local Host), Phase 2 (Bridge), Phase 3 (Data Binding), Phase 4 (Grid Replacement), Verification & Audit.
 2. **Dispatch & Execute** (pick ONE):
-   - **Delegate (sub-orchestrator)**: Spawn sub-orchestrators for milestones or tracks.
+   - **Delegate (sub-orchestrator)**: Spawn sub-orchestrators for complex milestones, or run the Explorer → Worker → Reviewer loop.
 3. **On failure** (in this order):
    - Retry: nudge stuck agent or re-send task
    - Replace: spawn fresh agent with partial progress
@@ -25,46 +25,48 @@ Refactor AutoJMS print logic to introduce PrintJobCoordinator, 60s PDF caching, 
    - Escalate: report to parent (sub-orchestrators only, last resort)
 4. **Succession**: Spawn successor at spawn count >= 16.
 - **Work items**:
-  1. Decompose project into dual tracks [done]
-  2. Spawn E2E Testing Track Orchestrator [done]
-  3. Spawn Implementation Track Orchestrator [in-progress]
-  4. Integrate and run E2E test suite against implementation [pending]
-  5. Verify final results and run Forensic Audit [pending]
-- **Current phase**: 2
-- **Current focus**: Implementation Track execution
+  1. Milestone 1: Explore & Setup [pending]
+  2. Milestone 2: Phase 1: Local Host [pending]
+  3. Milestone 3: Phase 2: Bridge Setup [pending]
+  4. Milestone 4: Phase 3: Data Binding [pending]
+  5. Milestone 5: Phase 4: Grid Replacement [pending]
+  6. Milestone 6: E2E Testing & Audit [pending]
+- **Current phase**: 1
+- **Current focus**: Milestone 1: Explore & Setup
 
 ## 🔒 Key Constraints
 - Never write, modify, or create source code files directly (DISPATCH-ONLY orchestrator).
 - Never run build/test commands yourself — require workers to do so.
 - Acquire lock in .agent-lock.md before making edits.
 - Never reuse a subagent after it has delivered its handoff — always spawn fresh.
+- Do not touch Main.cs and Main.Designer.cs.
+- No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
 
 ## Current Parent
-- Conversation ID: 6cdf5186-df06-4117-b83b-73a4921eca27
+- Conversation ID: c78874e4-58ed-4bc9-bc18-26a28b4861d4
 - Updated: not yet
 
 ## Key Decisions Made
-- Use Project pattern with Dual Track (Implementation & E2E Testing).
-- Spawn both track sub-orchestrators sequentially to prevent lock/git conflicts and follow TDD.
+- Rebuild tabDash using WebView2 with local files.
 
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
 |-------|------|-----------|--------|---------|
-| sub_orch_e2e_testing | self | E2E Testing Track | completed | 107503bc-4c9a-47d0-b1bd-ec8e85c67869 |
-| sub_orch_implementation | self | Implementation Track | in-progress | e7c233c9-1c24-4975-b21f-950abd11aafa |
+| explorer_tabdash | teamwork_preview_explorer | Explore codebase & Claude Design | completed | 70916c40-2039-45ff-a3ca-f0bfa989662a |
+| worker_tabdash | teamwork_preview_worker | Rebuild tabDash with WebView2 | in-progress | 1cf098f1-4cfa-4037-a10e-0fb27de13831 |
 
 ## Succession Status
 - Succession required: no
 - Spawn count: 2 / 16
-- Pending subagents: e7c233c9-1c24-4975-b21f-950abd11aafa
+- Pending subagents: 1cf098f1-4cfa-4037-a10e-0fb27de13831
 - Predecessor: none
 - Successor: not yet spawned
 
 ## Active Timers
-- Heartbeat cron: 44c03dfd-e294-41d4-bd66-915e6f6e97a1/task-21
+- Heartbeat cron: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4/task-37
 - Safety timer: none
 
 ## Artifact Index
+- d:\v1.2605.2(new-test)\.agents\orchestrator\plan.md — Project milestones and contracts.
+- d:\v1.2605.2(new-test)\.agents\orchestrator\progress.md — Progress tracking.
 - d:\v1.2605.2(new-test)\ORIGINAL_REQUEST.md — Verbatim user request.
-- d:\v1.2605.2(new-test)\PROJECT.md — Project milestones and contracts.
-- d:\v1.2605.2(new-test)\TEST_READY.md — E2E test ready description.

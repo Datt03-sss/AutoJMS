@@ -810,6 +810,7 @@ namespace AutoJMS
         private void UpdateDashGridDataSource(List<WaybillDbModel> data)
         {
             _lastFilteredDashRows = data?.ToList() ?? new List<WaybillDbModel>();
+            PostStateToWebView2();
 
             // Compute hash for partial refresh
             string newHash = string.Join("|", _lastFilteredDashRows.Select(x => $"{x.WaybillNo}:{x.ThaoTacCuoi}:{x.ThoiGianThaoTac}"));
@@ -1636,6 +1637,7 @@ namespace AutoJMS
             _kpiCustomerService?.SetMetric("CSKH", "0", "Khiếu nại", "CS", AccentPurple, "CSKH");
             _kpiStationHalt?.SetMetric("DỪNG TRẠM", "0", "Hold", "HLT", Color.Gray, "Dừng trạm");
             _kpiStarred?.SetMetric("STAR", "0", "Đánh dấu", "FAV", Color.Gold, "Đánh dấu");
+            PostStateToWebView2();
         }
 
         private void UpdateOperationQueues()
