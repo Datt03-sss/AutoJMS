@@ -108,6 +108,7 @@ namespace AutoJMS
         // CÁI LOA PHÁT THANH: Bắn tín hiệu (Số đã chọn, Tổng số) ra ngoài Form chính
         public event Action<int, int> OnPrintStatsChanged;
         public event Action<PrintSafetyResult> OnPrintSafetyBlocked;
+        public event Action OnPrintSelectionCleared;
 
         // HÀM TỔNG QUẢN: Đếm số lượng, Ẩn/Hiện GridView và phát loa thông báo
         private void UpdateStatsAndVisibility()
@@ -1082,12 +1083,19 @@ namespace AutoJMS
         {
             if (_grid.InvokeRequired)
             {
-                _grid.Invoke(new Action(() => _grid.ClearSelection()));
+                _grid.Invoke(new Action(() => 
+                {
+                    _grid.ClearSelection();
+                    _grid.CurrentCell = null;
+                }));
             }
             else
             {
                 _grid.ClearSelection();
+                _grid.CurrentCell = null;
             }
+            AppLogger.Info("PRINT_SELECTION_CLEAR_DONE");
+            try { OnPrintSelectionCleared?.Invoke(); } catch { }
         }
 
         public List<string> GetSelectedWaybills()

@@ -10,6 +10,7 @@ public interface IPrintService
     PrintMode CurrentMode { get; }
     event Action<int, int> OnPrintStatsChanged;
     event Action<PrintSafetyResult> OnPrintSafetyBlocked;
+    event Action OnPrintSelectionCleared;
     Task SearchAndLoadAsync(string waybillsText, PrintMode mode);
     Task<bool> ValidateSelectedBeforePrintAsync(IEnumerable<string> waybills, string currentInputText);
     Task<IReadOnlyList<PrintApprovalInfo>> RefreshPrintApprovalInfoAsync(IEnumerable<string> waybills, int printType, string phase);

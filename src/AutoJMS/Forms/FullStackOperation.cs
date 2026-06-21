@@ -115,11 +115,16 @@ namespace AutoJMS
             if (tabDash_dataGridView == null) return;
             if (tabDash_dataGridView.InvokeRequired)
             {
-                tabDash_dataGridView.Invoke(new Action(() => tabDash_dataGridView.ClearSelection()));
+                tabDash_dataGridView.Invoke(new Action(() => 
+                {
+                    tabDash_dataGridView.ClearSelection();
+                    tabDash_dataGridView.CurrentCell = null;
+                }));
             }
             else
             {
                 tabDash_dataGridView.ClearSelection();
+                tabDash_dataGridView.CurrentCell = null;
             }
         }
 

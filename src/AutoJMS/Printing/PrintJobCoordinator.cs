@@ -40,6 +40,8 @@ public sealed class PrintJobCoordinator
 
         try
         {
+            AppLogger.Info("PRINT_JOB_START");
+
             // 1. Coordinate validation
             bool isValid = await _printService.ValidateSelectedBeforePrintAsync(request.Waybills, request.CurrentInputText)
                 .ConfigureAwait(false);
@@ -52,7 +54,7 @@ public sealed class PrintJobCoordinator
                 };
             }
 
-            // 2. API call
+            // 2. API call (Enforce exactly one API request to JMS per print)
             var payload = new Dictionary<string, object>
             {
                 { "waybillIds", request.Waybills },
@@ -63,6 +65,7 @@ public sealed class PrintJobCoordinator
             };
             string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
 
+            AppLogger.Info("PRINT_API_REQUEST_START");
             string pdfUrl;
             using (var response = await _jmsApiClient.PostJsonAsync(request.ApiUrl, jsonPayload, ct: ct).ConfigureAwait(false))
             {
@@ -126,7 +129,7 @@ public sealed class PrintJobCoordinator
                 };
             }
 
-            // 3. Cache check (keep/reuse local cache for 60s)
+            // 3. Cache check (keep/reuse local cache for 60s, but still hit the API once)
             PrintJobCacheEntry entry;
             lock (_cacheLock)
             {
@@ -140,7 +143,11 @@ public sealed class PrintJobCoordinator
                 }
             }
 
-            if (entry == null)
+            if (entry != null)
+            {
+                AppLogger.Info("PRINT_CACHE_HIT");
+            }
+            else
             {
                 // Download PDF bytes
                 byte[] pdfBytes = await _jmsApiClient.GetByteArrayAsync(pdfUrl, ct).ConfigureAwait(false);
@@ -163,12 +170,21 @@ public sealed class PrintJobCoordinator
             var firstWaybill = request.Waybills.Count > 0 ? request.Waybills[0] : "";
             var printResult = await _printerSpoolerSubmitter.SubmitPrintAsync(entry, firstWaybill).ConfigureAwait(false);
 
-            // 5. Selection clearing on success spooler submission
-            if (printResult != null && printResult.CompletedBySpooler)
+            if (printResult == null || !printResult.CompletedBySpooler)
             {
-                _printService.SelectAll(false);
-                _printService.ClearSelection();
+                AppLogger.Warning("PRINT_SPOOLER_FAILED");
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = false,
+                    Reason = printResult?.Reason ?? "PRINT_SPOOLER_FAILED"
+                };
             }
+
+            AppLogger.Info("PRINT_SPOOLER_SUBMIT_DONE");
+
+            // 5. Selection clearing on success spooler submission
+            _printService.SelectAll(false);
+            _printService.ClearSelection();
 
             return printResult;
         }

@@ -49,6 +49,8 @@ namespace AutoJMS
         public static ITrackingService _trackingService;
         private DkchManager _dkchManager;
         private IPrintService _printService;
+        private IPrinterSpoolerSubmitter _printerSpoolerSubmitter;
+        private PrintJobCoordinator _printJobCoordinator;
         public ZaloChatService _zaloChatService;
 
         // ================= BACKGROUND SYNC =================
@@ -499,6 +501,15 @@ namespace AutoJMS
                 new PrintSafetyGuard(),
                 () => JmsAuthStateService.CurrentToken,
                 _siteContextProvider);
+            _printerSpoolerSubmitter = new MainPrinterSpoolerSubmitter(this);
+            _printJobCoordinator = new PrintJobCoordinator(
+                JmsApiClient.Instance,
+                _printerSpoolerSubmitter,
+                _printService);
+            _printService.OnPrintSelectionCleared += () =>
+            {
+                try { _fullStackForm?.ClearDashGridSelection(); } catch { }
+            };
             tabPrint_dataView.Visible = false;
             tabPrint_dataView.DataBindingComplete += (s, e) =>
             {
@@ -2778,162 +2789,46 @@ namespace AutoJMS
         private async Task ExecutePrintAsync(bool isAutoMode)
         {
             if (_printService == null) return;
-            var totalWatch = Stopwatch.StartNew();
-            string printInputAtStart = tabPrint_inputWaybill?.Text?.Trim() ?? "";
-            string printCorrelationId = BuildPrintCorrelationId(printInputAtStart);
-            AppCaptureManager.Instance.RecordEvent(new AppCaptureEvent
+            var selected = _printService.GetSelectedWaybills();
+            if (selected == null || selected.Count == 0)
             {
-                Category = "print.flow",
-                Source = "tabPrint",
-                EventName = "PrintRequested",
-                CorrelationId = printCorrelationId,
-                WaybillNo = printInputAtStart,
-                Data = new Dictionary<string, object> { ["isAutoMode"] = isAutoMode }
-            });
-            if (!await _printLock.WaitAsync(0))
-            {
-                if (!isAutoMode) ShowPrintMessage("Đang xử lý lệnh in hiện tại...", false, 2000);
+                if (!isAutoMode) ShowPrintMessage("Chưa chọn vận đơn nào!", true);
                 return;
             }
-            bool printButtonChanged = false;
+
+            int printType = 1;
+            int applyTypeCode = (_printService.CurrentMode == PrintMode.InChuyenTiep) ? 2 : 4;
+            string apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printBase64");
+
+            SetPrintButtonState(false);
             try
             {
-                var selected = _printService.GetSelectedWaybills();
-                if (selected == null || selected.Count == 0)
+                var request = new PrintJobRequest
                 {
-                    if (!isAutoMode) ShowPrintMessage("Chưa chọn vận đơn nào!", true);
-                    return;
-                }
+                    Waybills = selected,
+                    CurrentInputText = tabPrint_inputWaybill.Text,
+                    PrintType = printType,
+                    ApplyTypeCode = applyTypeCode,
+                    ApiUrl = apiUrl
+                };
 
-                bool safeToPrint = await _printService.ValidateSelectedBeforePrintAsync(selected, tabPrint_inputWaybill.Text);
-                AppCaptureManager.Instance.RecordPerformance("print.flow", "ValidateSelectedBeforePrint", totalWatch.ElapsedMilliseconds, new { selectedCount = selected.Count, input = printInputAtStart });
-                if (!safeToPrint)
+                var result = await _printJobCoordinator.PrintAsync(request, _appCts.Token);
+
+                if (result.CompletedBySpooler)
                 {
-                    tabPrint_btnSelectAll.Checked = false;
-                    if (!isAutoMode) ShowPrintMessage("Không đủ điều kiện in an toàn.", true, 5000);
-                    return;
-                }
-
-                selected = _printService.GetSelectedWaybills();
-                if (selected == null || selected.Count == 0)
-                {
-                    ShowPrintMessage("Dữ liệu in đã bị xóa vì không đạt kiểm tra an toàn.", true, 5000);
-                    return;
-                }
-
-                if (!SelectedMatchesCurrentInput(selected, tabPrint_inputWaybill.Text))
-                {
-                    _printService.Reset();
-                    tabPrint_btnSelectAll.Checked = false;
-                    ShowPrintMessage("Dữ liệu in không khớp mã vận đơn hiện tại.", true, 5000);
-                    return;
-                }
-
-                List<string> originalOrder = ParseWaybillOrder(tabPrint_inputWaybill.Text);
-                if (originalOrder.Count > 0)
-                {
-                    var orderMap = originalOrder.Select((wb, index) => new { wb, index }).GroupBy(x => x.wb, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().index, StringComparer.OrdinalIgnoreCase);
-                    selected = selected.OrderBy(wb => orderMap.TryGetValue(wb, out int idx) ? idx : int.MaxValue).ToList();
-                }
-                SetPrintButtonState(false);
-                printButtonChanged = true;
-                int printType = 1;
-                int applyTypeCode = (_printService.CurrentMode == PrintMode.InChuyenTiep) ? 2 : 4;
-                var beforeStatus = _printService.GetLastPrintStatusSnapshots();
-
-                selected = _printService.GetSelectedWaybills();
-                if (selected == null || selected.Count == 0)
-                {
-                    ShowPrintMessage("Dữ liệu in đã bị xóa trước khi tạo PDF.", true, 5000);
-                    return;
-                }
-
-                var reprintPlan = BuildTabPrintReprintPlan(selected, beforeStatus);
-                var blockedReprint = reprintPlan
-                    .FirstOrDefault(x => !x.Value.CanPrint);
-                if (!string.IsNullOrWhiteSpace(blockedReprint.Key))
-                {
-                    ShowPrintMessage(blockedReprint.Value.BlockMessage, true, 8000);
-                    AppLogger.Warning($"[TabPrintReprint] blocked waybill={blockedReprint.Key} autoJmsReprintCount={blockedReprint.Value.AutoJmsReprintCount}");
-                    return;
-                }
-
-                int keepPdfs = 500;
-                int keepLogsDays = 3;
-                TryReadPrintConfig(out keepPdfs, out keepLogsDays);
-                string firstWaybill = selected[0];
-                string pdfCacheKey = BuildPrintPdfCacheKey(selected, printType, applyTypeCode);
-                var ensureWatch = Stopwatch.StartNew();
-                var printJob = await EnsureReadyToPrintAsync(
-                    selected,
-                    printType,
-                    applyTypeCode,
-                    keepPdfs,
-                    firstWaybill,
-                    pdfCacheKey,
-                    "Print");
-                ensureWatch.Stop();
-
-                if (printJob == null || printJob.PdfBytes == null || printJob.PdfBytes.Length == 0)
-                {
-                    ShowPrintMessage("In thất bại.", true);
-                    return;
-                }
-
-                if (tabPrint_printPreview?.CoreWebView2 != null
-                    && !string.IsNullOrWhiteSpace(printJob.LocalPdfPath)
-                    && File.Exists(printJob.LocalPdfPath))
-                {
-                    string fileUri = new Uri(printJob.LocalPdfPath).AbsoluteUri;
-                    tabPrint_printPreview.CoreWebView2.Navigate($"{fileUri}#view=FitH&toolbar=0&navpanes=0&scrollbar=0");
-                }
-
-                try
-                {
-                    var submitResult = await SubmitPrintImmediatelyAsync(printJob, firstWaybill);
-                    if (!submitResult.CompletedBySpooler)
-                    {
-                        AppLogger.Warning(
-                            $"[PrintPerf] phase=PrintSubmitRejected waybill={firstWaybill} " +
-                            $"printer={submitResult.PrinterName} beforeJobs={submitResult.SpoolerJobsBefore} " +
-                            $"afterJobs={submitResult.SpoolerJobsAfter} printMs={submitResult.ElapsedMs} " +
-                            $"document={submitResult.DocumentName} reason={submitResult.Reason}");
-                        ShowPrintMessage("Lệnh in chưa hoàn tất trong hàng đợi máy in. Không ghi log đã in.", true, 6000);
-                        return;
-                    }
-
-                    SavePrintSuccessLog(selected, beforeStatus, Array.Empty<PrintStatusSnapshot>(), keepLogsDays);
-                    RecordTabPrintSuccess(selected, reprintPlan);
-                    if (_currentPrintAttempt != null
-                        && string.Equals(_currentPrintAttempt.WaybillNo, firstWaybill, StringComparison.OrdinalIgnoreCase))
-                    {
-                        _currentPrintAttempt.Printed = true;
-                    }
-                    RememberPrintedPdf(pdfCacheKey, printJob.LocalPdfPath);
-                    _printService.SelectAll(false);
-                    tabPrint_btnSelectAll.Checked = false;
                     ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
                     _printService.QueuePostPrintRefresh(selected, printType);
-                    try { _printService?.ClearSelection(); } catch { }
-                    try { _fullStackForm?.ClearDashGridSelection(); } catch { }
-                    
-                    AppLogger.Info($"[PrintPerf] phase=PrintTotal waybill={firstWaybill} totalMs={totalWatch.ElapsedMilliseconds}");
-                    if (totalWatch.ElapsedMilliseconds > 2000)
-                    {
-                        AppLogger.Warning(
-                            $"[PrintPerf][SLOW] phase=PrintTotalBreakdown waybill={firstWaybill} " +
-                            $"ensureReadyMs={ensureWatch.ElapsedMilliseconds} printSubmitMs={submitResult.ElapsedMs} " +
-                            $"totalMs={totalWatch.ElapsedMilliseconds} pdfBytes={printJob.PdfBytes.Length}");
-                    }
-                    AppCaptureManager.Instance.RecordPerformance(
-                        "print.flow",
-                        "PrintTotal",
-                        totalWatch.ElapsedMilliseconds,
-                        new { waybill = firstWaybill, ensureReadyMs = ensureWatch.ElapsedMilliseconds, printSubmitMs = submitResult.ElapsedMs });
                 }
-                catch (Exception ex)
+                else
                 {
-                    ShowPrintMessage($"Lỗi máy in: {ex.Message}", true, 5000);
+                    if (result.Reason != "DUPLICATE_PRINT_REQUEST_IGNORED")
+                    {
+                        ShowPrintMessage($"In thất bại: {result.Reason}", true);
+                    }
+                    else
+                    {
+                        if (!isAutoMode) ShowPrintMessage("Đang xử lý lệnh in hiện tại...", false, 2000);
+                    }
                 }
             }
             catch (Exception ex)
@@ -2942,11 +2837,7 @@ namespace AutoJMS
             }
             finally
             {
-                if (printButtonChanged)
-                {
-                    SetPrintButtonState(true);
-                }
-                _printLock.Release();
+                SetPrintButtonState(true);
             }
         }
 
@@ -4553,6 +4444,26 @@ namespace AutoJMS
                 hideTimer = null;
             };
             hideTimer.Start();
+        }
+
+        private class MainPrinterSpoolerSubmitter : IPrinterSpoolerSubmitter
+        {
+            private readonly Main _main;
+            public MainPrinterSpoolerSubmitter(Main main) => _main = main;
+            public async Task<AutoJMS.PrintSubmitResult> SubmitPrintAsync(PrintJobCacheEntry job, string firstWaybill)
+            {
+                var res = await _main.SubmitPrintImmediatelyAsync(job, firstWaybill);
+                return new AutoJMS.PrintSubmitResult
+                {
+                    CompletedBySpooler = res.CompletedBySpooler,
+                    ElapsedMs = res.ElapsedMs,
+                    PrinterName = res.PrinterName,
+                    DocumentName = res.DocumentName,
+                    SpoolerJobsBefore = res.SpoolerJobsBefore,
+                    SpoolerJobsAfter = res.SpoolerJobsAfter,
+                    Reason = res.Reason
+                };
+            }
         }
     }
 }
