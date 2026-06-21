@@ -111,9 +111,9 @@ namespace AutoJMS
         private readonly Dictionary<string, PrintJobCacheEntry> _printJobCacheBySignature = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Task<PrintJobCacheEntry>> _printJobPreloadTasks = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _printJobCacheLock = new();
-        private static readonly TimeSpan PrintPdfCacheTtl = TimeSpan.FromMinutes(10);
-        private static readonly TimeSpan PrintJobCacheTtl = TimeSpan.FromMinutes(5);
-        private static readonly TimeSpan PrintPdfUrlCacheTtl = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan PrintPdfCacheTtl = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan PrintJobCacheTtl = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan PrintPdfUrlCacheTtl = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan PrintPdfUrlTimeout = TimeSpan.FromSeconds(20);
         private static readonly TimeSpan PrintPdfDownloadTimeout = TimeSpan.FromSeconds(75);
         private static readonly TimeSpan PrintPdfFirstAttemptTimeout = TimeSpan.FromSeconds(8);
@@ -3421,28 +3421,7 @@ namespace AutoJMS
             string pdfCacheKey,
             string source)
         {
-            bool apiCalled = false;
-            var job = await EnsureReadyToPrintCoreAsync(selected, printType, applyTypeCode, keepPdfs, firstWaybill, pdfCacheKey, source, () => apiCalled = true).ConfigureAwait(false);
-
-            if (!apiCalled && string.Equals(source, "Print", StringComparison.OrdinalIgnoreCase))
-            {
-                var state = _tabPrintReprintStore.Get(firstWaybill);
-                if (state != null && state.AutoJmsReprintCount > 0)
-                {
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await GetPdfUrlViaCSharpAsync(selected, printType, applyTypeCode).ConfigureAwait(false);
-                            AppLogger.Info($"[PrintCountSync] Synchronized print count on system via background API call for {firstWaybill}");
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLogger.Warning($"[PrintCountSync] Sync failed for {firstWaybill}: {ex.Message}");
-                        }
-                    });
-                }
-            }
+            var job = await EnsureReadyToPrintCoreAsync(selected, printType, applyTypeCode, keepPdfs, firstWaybill, pdfCacheKey, source, null).ConfigureAwait(false);
 
             return job;
         }
