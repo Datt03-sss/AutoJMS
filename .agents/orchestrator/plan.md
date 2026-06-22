@@ -10,12 +10,12 @@
 
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| 1 | Explore & Setup | Explore codebase, identify existing tabDash controls in `FullStackOperation.*.cs`, set up local static assets, extract Claude Design files, clean CDN references, and choose WebView2 loading technique. | None | PLANNED |
-| 2 | Phase 1: Local Host | Integrate WebView2 control in `FullStackOperation.cs` (tabDash), configure virtual host mapping or file scheme, and verify raw HTML/CSS loads successfully offline. | M1 | PLANNED |
-| 3 | Phase 2: Bridge Setup | Establish the C# and WebView2 `postMessage` bridge. Send test messages between JS and C# to verify bidirectional communication. | M2 | PLANNED |
-| 4 | Phase 3: Data Binding | Implement message handlers to fetch real data from SQLite, JMS API, and Journey service and push updates to the UI, rendering the Claude Design dynamically. | M3 | PLANNED |
-| 5 | Phase 4: Grid Replacement | Complete integration, handle action events (e.g., clicking on rows, triggering printing/journey actions), remove old WinForms grids, run full builds, verify functionality. | M4 | PLANNED |
-| 6 | E2E Testing & Audit | Run all verification steps and Forensic Audit to ensure compliance with AGENTS.md rules. | M5 | PLANNED |
+| 1 | Explore & Setup | Explore codebase, identify existing tabDash controls in `FullStackOperation.*.cs`, set up local static assets, extract Claude Design files, clean CDN references, and choose WebView2 loading technique. | None | DONE |
+| 2 | Phase 1: Local Host | Integrate WebView2 control in `FullStackOperation.cs` (tabDash), configure virtual host mapping or file scheme, and verify raw HTML/CSS loads successfully offline. | M1 | DONE |
+| 3 | Phase 2: Bridge Setup | Establish the C# and WebView2 `postMessage` bridge. Send test messages between JS and C# to verify bidirectional communication. | M2 | DONE |
+| 4 | Phase 3: Data Binding | Implement message handlers to fetch real data from SQLite, JMS API, and Journey service and push updates to the UI, rendering the Claude Design dynamically. | M3 | DONE |
+| 5 | Phase 4: Grid Replacement | Complete integration, handle action events (e.g., clicking on rows, triggering printing/journey actions), remove old WinForms grids, run full builds, verify functionality. | M4 | DONE |
+| 6 | E2E Testing & Audit | Run all verification steps and Forensic Audit to ensure compliance with AGENTS.md rules. | M5 | DONE |
 
 ## Interface Contracts (JS ↔ C#)
 
