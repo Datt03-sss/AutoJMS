@@ -1,24 +1,23 @@
-# BRIEFING — 2026-06-21T20:15:26Z
+# BRIEFING — 2026-06-22T03:28:40Z
 
 ## Mission
-Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
+Fix the WebView2 integration in FullStackOperation.Dashboard.cs to preserve native WinForms TabControl headers.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: d:\v1.2605.2(new-test)\.agents
-- Orchestrator: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4
+- Orchestrator: f51c52c5-bcb1-4468-83d0-7717d8016ce3
 - Victory Auditor: TBD
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
 - Victory Audit is MANDATORY before reporting completion
-- Keep Main.cs and Main.Designer.cs completely untouched.
-- No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
-- No remote CDN URLs exist in the final HTML/CSS files.
-- Use Git locks (.agent-lock.md) as per AGENTS.md
+- Main.cs, HOME, DKCH, TRACKING, PRINT, and ABOUT are completely untouched.
+- WebView2 control must be placed strictly inside tabDash page.
+- Do not obscure native WinForms TabControl headers.
 
 ## User Context
-- **Last user request**: Rebuild the tabDash UI in AutoJMS using WebView2, using local offline HTML/CSS/JS and postMessage bridge, keeping business logic in C# and Main.cs untouched.
+- **Last user request**: Fix the WebView2 integration in `FullStackOperation.Dashboard.cs`. The WebView2 control (the "red area") must be placed strictly inside the `tabDash` page, preserving the native WinForms `TabControl` headers (the "green area" containing Dashboard, Thời hiệu, CHATBOT). Do not obscure the top navigation tabs.
 - **Pending clarifications**: none
 - **Delivered results**: none
 

@@ -130,6 +130,12 @@ namespace AutoJMS
 
         private async void FullStackOperation_Load(object sender, EventArgs e)
         {
+            if (_webView != null)
+            {
+                _ = _webView.Handle;
+                _ = InitializeWebView2Async();
+            }
+
             // STATE 1 — IDLE: UI only, no API calls, no realtime
             SetupGrids();
             InitializeEnhancedUI();

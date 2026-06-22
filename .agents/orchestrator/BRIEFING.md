@@ -1,21 +1,21 @@
-# BRIEFING — 2026-06-22T03:15:44+07:00
+# BRIEFING — 2026-06-22T10:31:00+07:00
 
 ## Mission
-Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
+Fix the WebView2 integration in `FullStackOperation.Dashboard.cs` to place the WebView2 control strictly inside the `tabDash` page, preserving the native WinForms `TabControl` headers without obscuring them.
 
 ## 🔒 My Identity
 - Archetype: orchestrator
 - Roles: orchestrator, user_liaison, human_reporter, successor
 - Working directory: d:\v1.2605.2(new-test)\.agents\orchestrator
 - Original parent: main agent
-- Original parent conversation ID: c78874e4-58ed-4bc9-bc18-26a28b4861d4
+- Original parent conversation ID: 22691821-e576-4df5-b1cc-18ba6f9b4dc2
 
 ## 🔒 My Workflow
 - **Pattern**: Project
 - **Scope document**: d:\v1.2605.2(new-test)\.agents\orchestrator\plan.md
-1. **Decompose**: Split task into milestones aligned with the phased rollout: Explore & Setup, Phase 1 (Local Host), Phase 2 (Bridge), Phase 3 (Data Binding), Phase 4 (Grid Replacement), Verification & Audit.
-2. **Dispatch & Execute** (pick ONE):
-   - **Delegate (sub-orchestrator)**: Spawn sub-orchestrators for complex milestones, or run the Explorer → Worker → Reviewer loop.
+1. **Decompose**: Split work into Exploration, Implementation, and Verification phases.
+2. **Dispatch & Execute**:
+   - **Direct (iteration loop)**: Spawn Explorer to analyze the issue, Worker to implement the fix, Reviewer to review code, and Forensic Auditor to audit compliance.
 3. **On failure** (in this order):
    - Retry: nudge stuck agent or re-send task
    - Replace: spawn fresh agent with partial progress
@@ -23,50 +23,46 @@ Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
    - Redistribute: split stuck agent's remaining work
    - Redesign: re-partition decomposition
    - Escalate: report to parent (sub-orchestrators only, last resort)
-4. **Succession**: Spawn successor at spawn count >= 16.
+4. **Succession**: Self-succeed at 16 spawns.
 - **Work items**:
-  1. Milestone 1: Explore & Setup [pending]
-  2. Milestone 2: Phase 1: Local Host [pending]
-  3. Milestone 3: Phase 2: Bridge Setup [pending]
-  4. Milestone 4: Phase 3: Data Binding [pending]
-  5. Milestone 5: Phase 4: Grid Replacement [pending]
-  6. Milestone 6: E2E Testing & Audit [pending]
-- **Current phase**: 1
-- **Current focus**: Milestone 1: Explore & Setup
+  1. Milestone 1: Explore WebView2 Layout [done]
+  2. Milestone 2: Implementation of Layout Fix [in-progress]
+  3. Milestone 3: Verification & Auditor Gate [pending]
+- **Current phase**: 2
+- **Current focus**: Milestone 2: Implementation of Layout Fix
 
 ## 🔒 Key Constraints
-- Never write, modify, or create source code files directly (DISPATCH-ONLY orchestrator).
-- Never run build/test commands yourself — require workers to do so.
-- Acquire lock in .agent-lock.md before making edits.
+- NEVER write, modify, or create source code files directly.
+- NEVER run build/test commands yourself.
+- Use file-editing tools only for metadata/state files (.md) in your `.agents/` folder.
+- Follow AGENTS.md rules, especially checkout, pull, locking, and verification.
 - Never reuse a subagent after it has delivered its handoff — always spawn fresh.
-- Do not touch Main.cs and Main.Designer.cs.
-- No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
 
 ## Current Parent
-- Conversation ID: c78874e4-58ed-4bc9-bc18-26a28b4861d4
+- Conversation ID: 22691821-e576-4df5-b1cc-18ba6f9b4dc2
 - Updated: not yet
 
 ## Key Decisions Made
-- Rebuild tabDash using WebView2 with local files.
+- Overwrite existing plan and progress trackers with the scope of this bug fix.
 
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
 |-------|------|-----------|--------|---------|
-| explorer_tabdash | teamwork_preview_explorer | Explore codebase & Claude Design | completed | 70916c40-2039-45ff-a3ca-f0bfa989662a |
-| worker_tabdash | teamwork_preview_worker | Rebuild tabDash with WebView2 | in-progress | 1cf098f1-4cfa-4037-a10e-0fb27de13831 |
+| explorer_layout | teamwork_preview_explorer | Explore WebView2 layout issues | completed | 42c65dc1-9670-4ba5-9be6-ccd2550e909b |
+| worker_layout | teamwork_preview_worker | Fix WebView2 layout and verify | in-progress | d43570a4-f150-4c63-9666-40f3a6087e45 |
 
 ## Succession Status
 - Succession required: no
 - Spawn count: 2 / 16
-- Pending subagents: 1cf098f1-4cfa-4037-a10e-0fb27de13831
+- Pending subagents: d43570a4-f150-4c63-9666-40f3a6087e45
 - Predecessor: none
 - Successor: not yet spawned
 
 ## Active Timers
-- Heartbeat cron: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4/task-37
+- Heartbeat cron: f51c52c5-bcb1-4468-83d0-7717d8016ce3/task-75
 - Safety timer: none
 
 ## Artifact Index
-- d:\v1.2605.2(new-test)\.agents\orchestrator\plan.md — Project milestones and contracts.
-- d:\v1.2605.2(new-test)\.agents\orchestrator\progress.md — Progress tracking.
-- d:\v1.2605.2(new-test)\ORIGINAL_REQUEST.md — Verbatim user request.
+- d:\v1.2605.2(new-test)\.agents\orchestrator\plan.md — Project Plan
+- d:\v1.2605.2(new-test)\.agents\orchestrator\progress.md — Progress Checklist
+- d:\v1.2605.2(new-test)\.agents\orchestrator\ORIGINAL_REQUEST.md — Verbatim Request

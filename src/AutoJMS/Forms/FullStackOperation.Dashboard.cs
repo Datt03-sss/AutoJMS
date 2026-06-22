@@ -35,7 +35,6 @@ namespace AutoJMS
                 tabDash.Controls.Add(_webView);
 
                 LoadStarredWaybills();
-                _ = InitializeWebView2Async();
             }
             finally
             {

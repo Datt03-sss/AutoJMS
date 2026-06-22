@@ -76,3 +76,35 @@ The C# layer must retain all business logic (JMS API handling, DB repository, pr
 - [ ] `Main.cs` and `Main.Designer.cs` are completely untouched.
 - [ ] No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
 - [ ] No remote CDN URLs exist in the final HTML/CSS files.
+
+## Follow-up — 2026-06-22T03:27:10Z
+
+# Teamwork Project Prompt
+
+Fix the WebView2 integration in `FullStackOperation.Dashboard.cs`. The WebView2 control (the "red area") must be placed strictly inside the `tabDash` page, preserving the native WinForms `TabControl` headers (the "green area" containing Dashboard, Thời hiệu, CHATBOT). Do not obscure the top navigation tabs.
+
+Working directory: d:\v1.2605.2(new-test)
+Integrity mode: development
+
+## Requirements
+
+### R1. Correct WebView2 Parent Container
+Modify `FullStackOperation.Dashboard.cs` (or where the UI is built) so that the WebView2 control is added exclusively to the `tabDash` TabPage's `Controls` collection. It must not be added to the Form itself or to a container that obscures the `TabControl`.
+
+### R2. TabControl Preservation
+Ensure the native WinForms `TabControl` remains visible and fully functional, allowing the user to switch between "Dashboard", "Thời hiệu", and "CHATBOT".
+
+### R3. Visual Layout
+The WebView2 control should have `Dock = DockStyle.Fill` within the `tabDash` page so it correctly fills the designated content area without overlapping the top navigation area.
+
+## Acceptance Criteria
+
+### UI Constraints
+- [ ] The WinForms TabControl headers are visible at the top of the window.
+- [ ] Clicking on "Dashboard" shows the WebView2 UI perfectly filling the tab body.
+- [ ] Clicking on "Thời hiệu" or "CHATBOT" shows their respective native WinForms UIs.
+
+### Code Constraints
+- [ ] `Main.cs`, `HOME`, `DKCH`, `TRACKING`, `PRINT` and `ABOUT` are completely untouched.
+- [ ] No changes leak into release/installer scripts or backend logic.
+
