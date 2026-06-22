@@ -1,12 +1,12 @@
-# BRIEFING — 2026-06-22T02:51:29Z
+# BRIEFING — 2026-06-21T20:15:26Z
 
 ## Mission
-Refactor FullStackOperation.cs to become a full-screen, single-page WebView2 host.
+Rebuild the tabDash UI in AutoJMS using WebView2 based on the Claude Design.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: d:\v1.2605.2(new-test)\.agents
-- Orchestrator: 2542f1cc-93a8-4f47-9989-3078a20d18a2
+- Orchestrator: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4
 - Victory Auditor: TBD
 
 ## 🔒 Key Constraints
@@ -18,12 +18,12 @@ Refactor FullStackOperation.cs to become a full-screen, single-page WebView2 hos
 - Use Git locks (.agent-lock.md) as per AGENTS.md
 
 ## User Context
-- **Last user request**: Refactor FullStackOperation.cs to become a full-screen, single-page WebView2 host. Remove native UITabControl and native form title bar.
+- **Last user request**: Rebuild the tabDash UI in AutoJMS using WebView2, using local offline HTML/CSS/JS and postMessage bridge, keeping business logic in C# and Main.cs untouched.
 - **Pending clarifications**: none
 - **Delivered results**: none
 
 ## Project Status
-- **Phase**: not started
+- **Phase**: in progress
 
 ## Victory Audit Status
 - **Triggered**: no
