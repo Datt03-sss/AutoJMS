@@ -1,42 +1,44 @@
-# BRIEFING — 2026-06-22T03:16:20+07:00
+# BRIEFING — 2026-06-22T03:40:30Z
 
 ## Mission
-Explore the current tabDash dashboard in AutoJMS and the Claude Design to plan WebView2 transition.
+Investigate HTML and WinForms code to dark-theme the title bar and integrate WebView2 correctly without obscuring tabs.
 
 ## 🔒 My Identity
-- Archetype: teamwork_preview_explorer
-- Roles: explorer, analyst
+- Archetype: tabDash Layout Explorer
+- Roles: Read-only investigator
 - Working directory: d:\v1.2605.2(new-test)\.agents\teamwork_preview_explorer_tabdash_explore
-- Original parent: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4
-- Milestone: Milestone 1: Rebuilding the tabDash UI in AutoJMS using WebView2 based on the Claude Design
+- Original parent: e2e16d0d-18ae-4bdf-845d-e27b4b1c48a0
+- Milestone: WebView2 UI Migration
 
 ## 🔒 Key Constraints
 - Read-only investigation — do NOT implement
-- Code-only network restrictions (no external internet/HTTP requests)
-- Must write only to working directory d:\v1.2605.2(new-test)\.agents\teamwork_preview_explorer_tabdash_explore
+- Ensure native TabControl is not obscured
+- Do not embed fake desktop application header into the WebView2; instead, remove/hide it from HTML/CSS
+- Style the Native TitleBar (TitleColor, TitleForeColor, etc.) to match the dark web theme
 
 ## Current Parent
-- Conversation ID: 3b83168d-49b3-4c4f-b7c2-afee89c2afc4
-- Updated: 2026-06-22T03:32:00+07:00
+- Conversation ID: e2e16d0d-18ae-4bdf-845d-e27b4b1c48a0
+- Updated: 2026-06-22T03:42:00Z
 
 ## Investigation State
 - **Explored paths**:
-  - `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs`: Analyzed code-first WinForms construction, control event handlers.
-  - `src/AutoJMS/Forms/FullStackOperation.cs`: Inspected data loading logic (`LoadDataAndRefreshViewsAsync`), manual sync handling, memory-based filtering logic (`ApplyDashFilter`), cell formatting, grid event wiring.
-  - `src/AutoJMS/Forms/FullStackOperation.WaybillWorkspace.cs`: Studied journey history panel, details caching (`details.db`), and API fetching logic.
-  - `docs/layout/tabDash/extracted/AutoJMS Dashboard.dc.html`: Explored design layout (using Custom React-based tags `<x-dc>`, `<helmet>`, `<sc-if>`, `<sc-for>`).
-  - `docs/layout/tabDash/extracted/support.js`: Examined the Custom Design Component (DC) runtime logic, UMD dependencies (React, ReactDOM, Babel standalone).
+  - `src/AutoJMS/Web/index.html`
+  - `src/AutoJMS/Forms/FullStackOperation.cs`
+  - `src/AutoJMS/Forms/FullStackOperation.Theme.cs`
+  - `src/AutoJMS/Forms/FullStackOperation.Layout.cs`
+  - `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs`
+  - `src/AutoJMS/Forms/FullStackOperation.Chatbot.cs`
+  - `src/AutoJMS/Forms/FullStackOperation.Fields.cs`
+  - `src/AutoJMS/UI/AppTheme.cs`
 - **Key findings**:
-  - All icons/graphics in the Claude Design are embedded SVG elements; no image assets are referenced in the UI code.
-  - The DC runtime loads React/ReactDOM/Babel UMD files from `unpkg.com` CDNs, which must be made offline.
-  - Font styling relies on Google Fonts (Inter) which must be replaced with local files.
-  - Standardizing local asset loading via Virtual Host Name Mapping in WebView2 is recommended to bypass CORS restrictions.
-- **Unexplored areas**: None. Exploration tasks completed.
+  - The fake top bar is in `src/AutoJMS/Web/index.html` at lines 24-36.
+  - The native Form's title bar is already dark navy blue (`#11243f` / `HeaderDark`) and text is white, which matches the HTML top bar design exactly.
+  - The WebView2 is correctly embedded inside `tabDash` and docked to Fill, meaning it does not obscure the tabs.
+- **Unexplored areas**: None, the scope of this investigation is complete.
+- **Progress**: 100% completed.
 
 ## Key Decisions Made
-- Recommended preloading local React/ReactDOM UMD files via standard `<script>` tags in `index.html` to prevent `support.js` from fetching online CDN resources.
-- Designed a comprehensive postMessage API bridge mapping existing WinForms functionality (data update, sync, export, detail view, journey loading, star toggling) to JS event messaging.
+- Confirmed that calling global `AppTheme.Apply(this)` is not strictly necessary for matching the HTML design, but modifying the Form `Text` to include "AutoJMS" is recommended to match the original logo + title.
 
 ## Artifact Index
-- d:\v1.2605.2(new-test)\.agents\teamwork_preview_explorer_tabdash_explore\analysis.md — Main findings and recommendation report
-- d:\v1.2605.2(new-test)\.agents\teamwork_preview_explorer_tabdash_explore\handoff.md — Handoff report
+- d:\v1.2605.2(new-test)\.agents\teamwork_preview_explorer_tabdash_explore\handoff.md — Analysis and recommendation report

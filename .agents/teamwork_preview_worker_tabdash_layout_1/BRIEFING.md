@@ -1,46 +1,49 @@
-# BRIEFING — 2026-06-22T03:33:00Z
+# BRIEFING — 2026-06-22T10:47:00+07:00
 
 ## Mission
-Fix the WebView2 integration layout issue in AutoJMS by deferring initialization to the form's Load event and removing it from the code-first page builder, complying with Layout Explorer recommendations.
+Fix the UI layout of the tabDash WebView2 integration by removing the fake top bar, updating the window title, and styling the native title bar.
 
 ## 🔒 My Identity
-- Archetype: worker
+- Archetype: tabDash Layout Worker
 - Roles: implementer, qa, specialist
 - Working directory: d:\v1.2605.2(new-test)\.agents\teamwork_preview_worker_tabdash_layout_1
-- Original parent: f51c52c5-bcb1-4468-83d0-7717d8016ce3
-- Milestone: Fix WebView2 Parent Container Layout
+- Original parent: teamwork_preview_orchestrator (id: e2e16d0d-18ae-4bdf-845d-e27b4b1c48a0)
+- Milestone: Fix tabDash WebView2 UI Layout
 
 ## 🔒 Key Constraints
-- Follow workspace rules in AGENTS.md (Locking, Git workflow, build and verify before commit, commit message structure).
-- Do not bypass verification or cheat.
-- Do not perform unrelated refactoring ("while I'm here").
-- Read files before editing.
+- CODE_ONLY network mode: No external network access, no HTTP requests.
+- Read lock before edit, check current writer, acquire lock, and release lock when done.
+- Follow AGENTS.md rules, minimal edit rule, tab boundary rule.
+- Do not edit protected files (Main.cs, Main.Designer.cs, etc.) unless requested.
 
 ## Current Parent
-- Conversation ID: f51c52c5-bcb1-4468-83d0-7717d8016ce3
-- Updated: not yet
+- Conversation ID: teamwork_preview_orchestrator (id: e2e16d0d-18ae-4bdf-845d-e27b4b1c48a0)
+- Updated: 2026-06-22T10:47:00+07:00
 
 ## Task Summary
-- **What to build**: Fix WebView2 integration layout issue. Remove `InitializeWebView2Async()` from code-first builder, and defer to `FullStackOperation_Load`.
-- **Success criteria**: Verification harness passes, build passes, lock acquired/released correctly, changes committed and pushed.
-- **Interface contracts**: N/A
-- **Code layout**: AutoJMS forms directory.
+- **What to build**: Fix layout in `src/AutoJMS/Web/index.html` by removing the fake top bar, and update window title in `src/AutoJMS/Forms/FullStackOperation.Layout.cs`.
+- **Success criteria**: Build, restore, and verify succeed; code committed and pushed to origin main; lock released.
+- **Interface contracts**: AGENTS.md rules.
+- **Code layout**: src/AutoJMS
 
 ## Key Decisions Made
-- Defer WebView2 initialization to FullStackOperation_Load and force handle creation.
+- Removed fake HTML top bar container from index.html (lines 24-36).
+- Changed title text of FullStackOperation form to "AutoJMS - Điều phối Vận hành Bưu cục Realtime" to match UI styling guidelines.
 
 ## Artifact Index
-- [d:\v1.2605.2(new-test)\.agents\teamwork_preview_worker_tabdash_layout_1\handoff.md] — Handoff report
+- None
 
 ## Change Tracker
-- **Files modified**: src/AutoJMS/Forms/FullStackOperation.Dashboard.cs, src/AutoJMS/Forms/FullStackOperation.cs
+- **Files modified**:
+  - `src/AutoJMS/Web/index.html` — Removed fake HTML top bar container.
+  - `src/AutoJMS/Forms/FullStackOperation.Layout.cs` — Updated window title.
 - **Build status**: Pass
 - **Pending issues**: None
 
 ## Quality Status
-- **Build/test result**: Pass (0 warnings, 0 errors, 7 tests passed)
-- **Lint status**: 0
-- **Tests added/modified**: None
+- **Build/test result**: Pass (all gates passed)
+- **Lint status**: Pass
+- **Tests added/modified**: None (layout fix only)
 
 ## Loaded Skills
-None
+- None

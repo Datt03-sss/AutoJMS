@@ -27,7 +27,7 @@ namespace AutoJMS
                 ShowIcon = false;
                 StartPosition = FormStartPosition.CenterScreen;
                 Style = UIStyle.Custom;
-                Text = "Điều phối Vận hành Bưu cục Realtime";
+                Text = "AutoJMS - Điều phối Vận hành Bưu cục Realtime";
                 TitleColor = HeaderDark;
                 TitleFont = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
                 TitleForeColor = Color.White;

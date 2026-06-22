@@ -65,3 +65,34 @@ The WebView2 control should have `Dock = DockStyle.Fill` within the `tabDash` pa
 - [ ] `Main.cs`, `HOME`, `DKCH`, `TRACKING`, `PRINT` and `ABOUT` are completely untouched.
 - [ ] No changes leak into release/installer scripts or backend logic.
 
+## Follow-up — 2026-06-22T03:39:26Z
+
+# Teamwork Project Prompt
+
+Fix the UI architecture of the `tabDash` WebView2 integration. Remove the redundant "fake" desktop title bar from the local HTML design and style the native SunnyUI `UIForm` TitleBar to match the design's dark theme, ensuring the native `TabControl` is properly preserved in the correct visual hierarchy.
+
+Working directory: d:\v1.2605.2(new-test)
+Integrity mode: development
+
+## Requirements
+
+### R1. Remove Fake HTML TitleBar
+Modify the static web assets (`src/AutoJMS/Web/index.html`, CSS, or JS) to completely remove or hide the custom desktop title bar (the dark header containing the logo, window title, and minimize/maximize/close buttons).
+
+### R2. Style Native TitleBar
+Modify the native `FullStackOperation` form (the `UIForm`) to change its `TitleColor`, `TitleForeColor`, and any other necessary SunnyUI TitleBar properties so that the native WinForms title bar perfectly matches the dark aesthetic of the removed HTML header.
+
+### R3. Preserve TabControl Hierarchy
+Ensure the native WinForms `TabControl` remains fully visible and functional directly below the newly styled native TitleBar, with the WebView2 control filling the `tabDash` TabPage area below it. Do not obscure or overlay the TabControl.
+
+## Acceptance Criteria
+
+### Visual & Functional Checks
+- [ ] The `index.html` loads within the WebView2 without rendering its own window controls or duplicate title bar.
+- [ ] The main `FullStackOperation` window title bar is dark-themed, matching the design.
+- [ ] The `Dashboard | Thời hiệu | CHATBOT` tabs remain fully visible and clickable.
+- [ ] The `postMessage` bridge and all WebView2 dashboard functionalities remain 100% operational.
+
+### Constraints
+- [ ] `Main.cs` and `Main.Designer.cs` are completely untouched.
+- [ ] No changes leak into HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.

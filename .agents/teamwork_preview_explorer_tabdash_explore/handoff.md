@@ -1,59 +1,67 @@
-# Handoff Report: Rebuilding the tabDash UI in AutoJMS using WebView2
+# tabDash Layout Explorer Handoff Report
 
 ## 1. Observation
-- **Current Codebase Structure**:
-  - `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs`: Form layout is constructed via code-first WinForms controls. Lines 31-39 define:
-    ```csharp
-    uiPanel10 = CreateTopBar();
-    _filterBarPanel = CreateFilterBar();
-    _queueNavPanel = CreateQueueNavigator();
-    var body = CreateBodyPanel();
-    ```
-  - `src/AutoJMS/Forms/FullStackOperation.cs`: Handles data loading (`LoadDataAndRefreshViewsAsync()` at lines 349-366) and memory-based filtering (`ApplyDashFilter()` at lines 518-622) on the SQLite snapshot list of `WaybillDbModel`.
-  - `src/AutoJMS/Forms/FullStackOperation.WaybillWorkspace.cs`: Manages a secondary workspace showing the waybill journey events history (lines 320-427).
-- **Claude Design Files**:
-  - Located in `docs/layout/tabDash/extracted/`.
-  - `AutoJMS Dashboard.dc.html`: The HTML template containing `<x-dc>` elements and a `<script data-dc-script>` containing the `Component` class extending `DCLogic` (lines 378-722).
-  - `support.js`: The compiler/runtime loader. Lines 989, 1424, and 1426 reference unpkg.com CDN assets:
-    ```javascript
-    var BABEL_URL = "https://unpkg.com/@babel/standalone@7.26.4/babel.min.js";
-    var REACT_URL = "https://unpkg.com/react@18.3.1/umd/react.production.min.js";
-    var REACT_DOM_URL = "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js";
-    ```
-  - Fonts: `AutoJMS Dashboard.dc.html` helmet references Google Fonts via:
-    ```html
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    ```
-  - Images: No images are referenced in `AutoJMS Dashboard.dc.html` or `support.js`. All icons are vector-based inline SVGs.
+- In `src/AutoJMS/Web/index.html` (lines 24-36), the fake HTML top bar is defined as:
+  ```html
+  <!-- ===== TOP BAR ===== -->
+  <div style="height: 56px; flex: none; background: #11243f; display: flex; align-items: center; padding: 0 18px; color: #fff;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3 L21 19 H3 Z" fill="#4f9bff"/><path d="M12 9 L16.5 17 H7.5 Z" fill="#11243f"/></svg>
+      <span style="font-size: 17px; font-weight: 700; letter-spacing: .3px;">AutoJMS</span>
+    </div>
+    <span style="margin-left: 16px; font-size: 14.5px; font-weight: 500; color: #e6ecf5;">Điều phối Vận hành Bưu cục Realtime</span>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 22px; color: #9fb0c8;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+    </div>
+  </div>
+  ```
+- In `src/AutoJMS/Forms/FullStackOperation.Layout.cs` (lines 30-33), the native form shell is styled:
+  ```csharp
+  Text = "Điều phối Vận hành Bưu cục Realtime";
+  TitleColor = HeaderDark; // HeaderDark is Color.FromArgb(17, 36, 63) (#11243f)
+  TitleFont = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
+  TitleForeColor = Color.White;
+  ```
+- In `src/AutoJMS/Forms/FullStackOperation.Theme.cs` (lines 15-16), the colors are:
+  ```csharp
+  private static readonly Color HeaderDark = Color.FromArgb(17, 36, 63); // #11243f
+  private static readonly Color FullStackBackColor = Color.FromArgb(244, 246, 249); // #f4f6f9
+  ```
+- In `src/AutoJMS/Forms/FullStackOperation.Layout.cs` (lines 49-92), the tab control `uiTabControl1` is instantiated and `tabDash` (TabPage) is added to it, then `uiTabControl1` is added to the form controls:
+  ```csharp
+  uiTabControl1 = new UITabControl { Dock = DockStyle.Fill, ... };
+  tabDash = new TabPage { Name = "tabDash", Text = "Dashboard", ... };
+  ...
+  uiTabControl1.TabPages.Add(tabDash);
+  Controls.Add(uiTabControl1);
+  ```
+- In `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs` (lines 31-35), the WebView2 control is instantiated and added inside `tabDash`:
+  ```csharp
+  _webView = new Microsoft.Web.WebView2.WinForms.WebView2
+  {
+      Dock = DockStyle.Fill
+  };
+  tabDash.Controls.Add(_webView);
+  ```
 
 ## 2. Logic Chain
-- Since `support.js` expects UMD React and ReactDOM to be defined globally on window, preloading local copies of React/ReactDOM UMD scripts in the HTML header satisfies this dependency. This prevents `support.js` from attempting to download them from external unpkg.com CDNs, ensuring offline functionality.
-- Since WebView2 enforces security policies that restrict local file resources under `file://` protocols, utilizing **Virtual Host Name Mapping** (`SetVirtualHostNameToFolderMapping`) provides a local `https://autojms.local` origin context. This avoids CORS errors, allows correct script execution, and enables safe use of relative path references.
-- Since the Claude Design is built on the `DCLogic` runtime, C# can pass the data loaded from SQLite directly into the WebView2 context using JSON serialization (`PostWebMessageAsJson`). The JS side can receive it, filter and search in memory using the design's component logic, and post interaction updates (sync, export, double click) back to C# via `window.chrome.webview.postMessage`.
+1. To remove the duplicate top bar, the fake HTML header should be hidden or deleted. Modifying `src/AutoJMS/Web/index.html` to hide/delete lines 24-36 is sufficient to remove the HTML title bar.
+2. The HTML top bar background uses `#11243f` and text color is `#fff`. The native form title bar in C# is styled with `TitleColor = HeaderDark` (`#11243f`) and `TitleForeColor = Color.White`. Thus, the native form title bar already matches the HTML design colors perfectly.
+3. To align the titles completely, the C# form title text (defined in `FullStackOperation.Layout.cs` line 30) should be changed from `"Điều phối Vận hành Bưu cục Realtime"` to `"AutoJMS - Điều phối Vận hành Bưu cục Realtime"`.
+4. Adding `_webView` inside `tabDash` with `DockStyle.Fill` ensures it takes up the entire area of the TabPage dashboard without overlapping or obscuring the native tab header control or other tabs (e.g. `tabChat`).
 
 ## 3. Caveats
-- No caveats. All paths, dependencies, and communication routes between C# and WebView2 have been verified against the existing codebase patterns.
+- No code was modified in this phase (read-only investigation).
+- `index.html` uses inline styles and does not support dynamic dark theme. The current custom style of `FullStackOperation` matches the HTML light/hybrid layout, which is suitable as long as `index.html` does not introduce dynamic styling.
 
 ## 4. Conclusion
-- The WebView2 migration of `tabDash` should replace the code-first WinForms grid and panels with a single WebView2 control.
-- All web assets (HTML, local JS libraries, local font files, custom CSS) should be stored in `src/AutoJMS/Web/` and mapped to `https://autojms.local` in C#.
-- Communication should be set up via a C# and JS `postMessage` bridge as detailed in `analysis.md`.
+- Hide the fake HTML top bar by deleting or setting style `display: none;` on the div at line 25 of `src/AutoJMS/Web/index.html`.
+- Change C# form shell text to `"AutoJMS - Điều phối Vận hành Bưu cục Realtime"` in `FullStackOperation.Layout.cs`.
+- The native tab control setup and WebView2 docking in `FullStackOperation.Dashboard.cs` are correct and fully adhere to UI migration guidelines.
 
 ## 5. Verification Method
-- **Verification Commands**:
-  - Run build command:
-    ```powershell
-    dotnet build .\AutoJMS.slnx -c Release
-    ```
-  - Run verification harness:
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1
-    ```
-  - Run test harness:
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File .\eng\harness\test.ps1
-    ```
-- **Files to Inspect**:
-  - `.agents/teamwork_preview_explorer_tabdash_explore/analysis.md` (Design specifications and recommendations).
-  - `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs` (To verify current layout references).
+- Perform compilation verification by running:
+  `dotnet build .\AutoJMS.slnx -c Release`
+- Run Inno Setup or run the application and execute the `DASH` command to inspect that the native title bar is visible, styled dark navy, matches the HTML content, and that the fake HTML top bar is gone.

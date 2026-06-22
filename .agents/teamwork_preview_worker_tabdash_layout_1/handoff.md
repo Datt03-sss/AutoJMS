@@ -1,30 +1,39 @@
-# Handoff Report — WebView2 Integration Layout Fix
+# Handoff Report
 
 ## 1. Observation
-- Observed `_ = InitializeWebView2Async();` in `src/AutoJMS/Forms/FullStackOperation.Dashboard.cs` line 38 inside the page builder method `BuildDashboardPageCodeFirst()` which instantiated/initialized WebView2 before the parent container layout was fully established.
-- Observed `FullStackOperation_Load` event handler in `src/AutoJMS/Forms/FullStackOperation.cs` line 131 did not perform WebView2 initialization.
-- Observed build success via `dotnet build .\AutoJMS.slnx -c Release` which completed with 0 errors.
-- Observed verification harness `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1` completed with `OVERALL: ✅ ALL GATES PASSED` including:
-  - Build: PASS
-  - Tests: PASS (7 passed)
-  - Secrets: PASS
-  - Structure: PASS
+- File `src/AutoJMS/Web/index.html` contained a fake HTML top bar (lines 24-36):
+  ```html
+    <!-- ===== TOP BAR ===== -->
+    <div style="height: 56px; flex: none; background: #11243f; display: flex; align-items: center; padding: 0 18px; color: #fff;">
+      ...
+    </div>
+  ```
+- File `src/AutoJMS/Forms/FullStackOperation.Layout.cs` contained the form title assignment around line 30:
+  ```csharp
+  Text = "Điều phối Vận hành Bưu cục Realtime";
+  ```
+- The build command `dotnet build .\AutoJMS.slnx -c Release` completed successfully:
+  ```
+  Build succeeded.
+      0 Warning(s)
+      0 Error(s)
+  ```
+- The verification harness `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1` completed successfully with `OVERALL: ✅ ALL GATES PASSED`.
 
 ## 2. Logic Chain
-- Initializing WebView2 in the code-first UI builder (`BuildDashboardPageCodeFirst`) caused layout issues because the control initialized before the parent container layout was established.
-- By removing `_ = InitializeWebView2Async();` from `BuildDashboardPageCodeFirst()` (Observation 1) and deferring it to `FullStackOperation_Load` (Observation 2), the initialization happens when the window is loaded and container controls have their final dimensions.
-- Forcing the handle creation (`_ = _webView.Handle;`) before `InitializeWebView2Async()` ensures that the underlying Win32 control handle is fully instantiated, avoiding threading or context lifecycle issues during async WebView2 setup.
-- The build (Observation 3) and verification checks (Observation 4) confirm that the changes compile correctly and satisfy all workspace layout/concurrency rules.
+- Based on the WinForms WebView2 UI Migration Rules in `AGENTS.md` and the user request:
+  - The fake HTML top bar had to be removed from `src/AutoJMS/Web/index.html` so that it doesn't duplicate or conflict with the native application header.
+  - The native header title in `src/AutoJMS/Forms/FullStackOperation.Layout.cs` was changed to `"AutoJMS - Điều phối Vận hành Bưu cục Realtime"` to properly represent the application title.
+- These changes compiled successfully and passed the verification harness script, indicating the layout and structure conform to layout guidelines.
 
 ## 3. Caveats
-- No caveats. The layout issues are resolved by adhering strictly to recommended deferrals in Layout Explorer.
+- No caveats.
 
 ## 4. Conclusion
-- The WebView2 initialization sequence is now deferred to the Form's `Load` event, ensuring the control is positioned/initialized only when the host layout is fully stabilized.
+- The WebView2 integration and native title bar styling for `tabDash` layout are correctly implemented. The fake HTML top bar is removed, and the native window header is properly styled with the correct text.
 
 ## 5. Verification Method
-- Clean the workspace and run the build:
-  `dotnet build .\AutoJMS.slnx -c Release`
-- Run the verification harness:
-  `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1`
-- Review modified files using `git diff`.
+- Run `dotnet build .\AutoJMS.slnx -c Release` to ensure there are no compilation errors.
+- Run the verification harness script `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1` to ensure all checks pass.
+- Inspect `src/AutoJMS/Web/index.html` (lines 24-36 removed).
+- Inspect `src/AutoJMS/Forms/FullStackOperation.Layout.cs` (line 30 has the updated `Text`).

@@ -1,23 +1,22 @@
-# BRIEFING — 2026-06-22T03:28:40Z
+# BRIEFING — 2026-06-22T03:39:26Z
 
 ## Mission
-Fix the WebView2 integration in FullStackOperation.Dashboard.cs to preserve native WinForms TabControl headers.
+Fix the UI architecture of the tabDash WebView2 integration: remove the fake HTML title bar, style the native title bar, and preserve the TabControl hierarchy.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: d:\v1.2605.2(new-test)\.agents
-- Orchestrator: f51c52c5-bcb1-4468-83d0-7717d8016ce3
+- Orchestrator: e2e16d0d-18ae-4bdf-845d-e27b4b1c48a0
 - Victory Auditor: TBD
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
 - Victory Audit is MANDATORY before reporting completion
-- Main.cs, HOME, DKCH, TRACKING, PRINT, and ABOUT are completely untouched.
-- WebView2 control must be placed strictly inside tabDash page.
-- Do not obscure native WinForms TabControl headers.
+- Main.cs and Main.Designer.cs must remain completely untouched.
+- No changes can leak to HOME, DKCH, TRACKING, PRINT, ABOUT, or release/installer scripts.
 
 ## User Context
-- **Last user request**: Fix the WebView2 integration in `FullStackOperation.Dashboard.cs`. The WebView2 control (the "red area") must be placed strictly inside the `tabDash` page, preserving the native WinForms `TabControl` headers (the "green area" containing Dashboard, Thời hiệu, CHATBOT). Do not obscure the top navigation tabs.
+- **Last user request**: Remove fake HTML title bar from local design, style the native SunnyUI UIForm TitleBar to match the dark theme, and preserve the native TabControl below the styled TitleBar with WebView2 filling the tabDash page.
 - **Pending clarifications**: none
 - **Delivered results**: none
 
@@ -30,5 +29,6 @@ Fix the WebView2 integration in FullStackOperation.Dashboard.cs to preserve nati
 - **Retry count**: 0
 
 ## Artifact Index
-- d:\v1.2605.2(new-test)\ORIGINAL_REQUEST.md — Verbatim user request.
-- d:\v1.2605.2(new-test)\.agents\ORIGINAL_REQUEST.md — Verbatim user request archive.
+- d:\v1.2605.2(new-test)\ORIGINAL_REQUEST.md — Verbatim user request history.
+- d:\v1.2605.2(new-test)\.agents\ORIGINAL_REQUEST.md — Verbatim user request history (agent folder).
+- d:\v1.2605.2(new-test)\.agents\BRIEFING.md — Current briefing and state tracking.
