@@ -510,10 +510,125 @@ namespace AutoJMS
                         ToggleStarWaybill(waybillNo);
                     }
                 }
+                else if (action == "SEARCH")
+                {
+                    if (root.TryGetProperty("text", out var valProp))
+                    {
+                        _dashSearchBox.Text = valProp.GetString() ?? string.Empty;
+                    }
+                }
+                else if (action == "CHANGE_DATE_RANGE")
+                {
+                    string fromIso = root.TryGetProperty("from", out var fromProp) ? fromProp.GetString() : null;
+                    string toIso = root.TryGetProperty("to", out var toProp) ? toProp.GetString() : null;
+                    ApplyDashboardDateRange(fromIso, toIso);
+                }
+                else if (action == "REGISTER_ISSUE")
+                {
+                    if (root.TryGetProperty("waybillNo", out var valProp))
+                    {
+                        _ = RegisterIssueFromWebAsync(valProp.GetString());
+                    }
+                }
+                else if (action == "SAVE_NOTE")
+                {
+                    string noteWaybill = root.TryGetProperty("waybillNo", out var wbProp) ? wbProp.GetString() : null;
+                    string noteText = root.TryGetProperty("text", out var textProp) ? textProp.GetString() : null;
+                    _ = SaveNoteFromWebAsync(noteWaybill, noteText);
+                }
+                else if (action == "REFRESH_JOURNEY")
+                {
+                    if (root.TryGetProperty("waybillNo", out var valProp))
+                    {
+                        ShowWaybillJourneyWorkspace(valProp.GetString());
+                    }
+                }
             }
             catch (Exception ex)
             {
                 AppLogger.Error("OnWebViewMessageReceived failed", ex);
+            }
+        }
+
+        private void ApplyDashboardDateRange(string fromIso, string toIso)
+        {
+            try
+            {
+                if (_dashDateFrom != null)
+                {
+                    _dashDateFrom.ShowCheckBox = true;
+                    if (!string.IsNullOrWhiteSpace(fromIso) && DateTime.TryParse(fromIso, out var fromValue))
+                    {
+                        _dashDateFrom.Value = fromValue;
+                        _dashDateFrom.Checked = true;
+                    }
+                    else
+                    {
+                        _dashDateFrom.Checked = false;
+                    }
+                }
+
+                if (_dashDateTo != null)
+                {
+                    _dashDateTo.ShowCheckBox = true;
+                    if (!string.IsNullOrWhiteSpace(toIso) && DateTime.TryParse(toIso, out var toValue))
+                    {
+                        _dashDateTo.Value = toValue;
+                        _dashDateTo.Checked = true;
+                    }
+                    else
+                    {
+                        _dashDateTo.Checked = false;
+                    }
+                }
+
+                if (_lastDashSourceData.Count > 0)
+                {
+                    RefreshFilteredGrid();
+                    UpdateFilterInfo();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("ApplyDashboardDateRange failed", ex);
+            }
+        }
+
+        private async System.Threading.Tasks.Task RegisterIssueFromWebAsync(string waybillNo)
+        {
+            if (string.IsNullOrWhiteSpace(waybillNo)) return;
+            try
+            {
+                await _fullStackWorkflowService.CreateTaskAsync(
+                    waybillNo,
+                    "REGISTER_ISSUE",
+                    Math.Max(50, GetRiskScore(GetWaybillByNo(waybillNo))),
+                    Environment.UserName,
+                    "Đăng ký kiện vấn đề từ Dashboard",
+                    _cts.Token);
+                SetFullStackStatus($"Đã đăng ký kiện vấn đề {waybillNo}");
+                await RefreshOperationMetadataAsync();
+                RefreshFilteredGrid();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("RegisterIssueFromWebAsync failed", ex);
+            }
+        }
+
+        private async System.Threading.Tasks.Task SaveNoteFromWebAsync(string waybillNo, string text)
+        {
+            if (string.IsNullOrWhiteSpace(waybillNo) || string.IsNullOrWhiteSpace(text)) return;
+            try
+            {
+                await _fullStackWorkflowService.AddNoteAsync(waybillNo, text, Environment.UserName, _cts.Token);
+                SetFullStackStatus($"Đã lưu ghi chú cho {waybillNo}");
+                await RefreshOperationMetadataAsync();
+                RefreshFilteredGrid();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("SaveNoteFromWebAsync failed", ex);
             }
         }
 

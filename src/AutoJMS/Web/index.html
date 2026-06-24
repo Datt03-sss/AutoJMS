@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html>
-<head>
+<html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="react.production.min.js"></script>
@@ -8,6 +7,7 @@
 <script src="./support.js"></script>
 </head>
 <body>
+
 <x-dc>
 <helmet>
 <style>
@@ -16,6 +16,8 @@ body { margin: 0; }
 .aj-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
 .aj-scroll::-webkit-scrollbar-thumb { background: #cfd6e0; border-radius: 4px; }
 .aj-scroll::-webkit-scrollbar-track { background: transparent; }
+@keyframes ajspin { to { transform: rotate(360deg); } }
+.aj-spin { animation: ajspin 0.3s linear infinite; }
 </style>
 </helmet>
 
@@ -25,74 +27,61 @@ body { margin: 0; }
   <!-- ===== FILTER BAR ===== -->
   <div style="height: 64px; flex: none; background: #fff; border-bottom: 1px solid #e4e8ef; display: flex; align-items: center; padding: 0 18px; gap: 16px;">
     <div style="display: flex; flex-direction: column; gap: 3px;">
-      <span style="font-size: 11px; color: #8a94a6;">Bưu cục / Nguồn</span>
-      <select onChange="{{ onSourceChange }}" value="{{ selectedSource }}" style="width: 130px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
-        <option value="ALL">ALL</option>
-        <option value="LOCAL">LOCAL</option>
-        <option value="PHATLAI">PHATLAI</option>
-      </select>
+      <span style="font-size: 11px; color: #8a94a6;">Bưu cục</span>
+      <div title="Cố định theo middle code bưu cục" style="width: 130px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #f1f4f8; font-weight: 600; color: #3a4555; display: flex; align-items: center; gap: 7px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        214A02
+      </div>
     </div>
     <div style="display: flex; flex-direction: column; gap: 3px;">
-      <span style="font-size: 11px; color: #8a94a6;">Tự tải lại</span>
-      <select onChange="{{ onTimeIntervalChange }}" value="{{ selectedTimeInterval }}" style="width: 150px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
-        <option value="2 PHÚT">2 PHÚT</option>
-        <option value="5 PHÚT">5 PHÚT</option>
-        <option value="10 PHÚT">10 PHÚT</option>
-        <option value="30 PHÚT">30 PHÚT</option>
-        <option value="1 GIỜ">1 GIỜ</option>
+      <span style="font-size: 11px; color: #8a94a6;">Cập nhật sau</span>
+      <select onchange="{{ onTimeIntervalChange }}" value="{{ selectedTimeInterval }}" style="width: 150px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
+        <option value="30 phút">30 phút</option>
+        <option value="1 giờ">1 giờ</option>
+        <option value="2 giờ">2 giờ</option>
       </select>
     </div>
     <div style="display: flex; flex-direction: column; gap: 3px;">
       <span style="font-size: 11px; color: #8a94a6;">Thời gian tồn kho</span>
-      <select onChange="{{ onStatusSelectChange }}" value="{{ selectedStatusSelect }}" style="width: 200px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
-        <option value="Tất cả tồn kho">Tất cả tồn kho</option>
-        <option value="Cần xử lý ngay">Cần xử lý ngay</option>
-        <option value="Đơn mới hôm nay">Đơn mới hôm nay</option>
-        <option value="Chưa quét phát">Chưa quét phát</option>
-        <option value="Giao thất bại">Giao thất bại</option>
-        <option value="Chờ hoàn">Chờ hoàn</option>
-        <option value="SLA quá hạn">SLA quá hạn</option>
-        <option value="Nguy cơ thất lạc">Nguy cơ thất lạc</option>
-        <option value="Checked">Checked</option>
-        <option value="Has task">Has task</option>
-        <option value="Enriched">Enriched</option>
-        <option value="Dừng 1 ngày">Dừng 1 ngày</option>
-        <option value="Dừng 3 ngày">Dừng 3 ngày</option>
-        <option value="Dừng 7 ngày">Dừng 7 ngày</option>
-        <option value="Tồn quá hạn (>24h)">Tồn quá hạn (>24h)</option>
-        <option value="Tồn quá hạn (>48h)">Tồn quá hạn (>48h)</option>
-        <option value="SLA sắp trễ (<4 giờ)">SLA sắp trễ (<4 giờ)</option>
-        <option value="Hành trình đứng > 1 ngày">Hành trình đứng > 1 ngày</option>
-        <option value="Hành trình đứng > 3 ngày">Hành trình đứng > 3 ngày</option>
-        <option value="Hành trình đứng > 7 ngày">Hành trình đứng > 7 ngày</option>
-      </select>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
+          <input type="date" value="{{ fromDateOnly }}" onchange="{{ onFromDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="{{ fromTimeOnly }}" oninput="{{ onFromTimeInput }}" onblur="{{ onFromTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; border-left: 1px solid #e7ebf1; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+        </div>
+        <span style="color: #8a94a6; font-size: 13px;">–</span>
+        <div style="display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
+          <input type="date" value="{{ toDateOnly }}" onchange="{{ onToDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="{{ toTimeOnly }}" oninput="{{ onToTimeInput }}" onblur="{{ onToTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; border-left: 1px solid #e7ebf1; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+        </div>
+      </div>
     </div>
     <div style="flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 12px; margin-top: 16px; background: #fff;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
-      <input type="text" onChange="{{ onSearchChange }}" value="{{ searchText }}" placeholder="Tìm mã vận đơn, NV, SĐT..." style="flex: 1; border: none; outline: none; font-size: 13.5px; color: #1f2937;" />
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
+      <input type="text" onchange="{{ onSearchChange }}" onkeydown="{{ onSearchKeyDown }}" value="{{ searchText }}" placeholder="Nhập mã vận đơn" style="flex: 1; border: none; outline: none; font-size: 13.5px; color: #1f2937;">
     </div>
-    <div onClick="{{ onSyncClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: {{ accent }}; color: #fff; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Đồng bộ
+    <div onclick="{{ onSearchSubmit }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: #3a4760; color: #fff; border: 1px solid #3a4760; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #2f3a50; border-color: #8a97b3;" style-active="background: #283143; border-color: #aab4cc; transform: scale(0.97);">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg> Tìm kiếm
     </div>
-    <div onClick="{{ onExportClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; border: 1px solid #d7dde6; color: #3a4555; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Xuất dữ liệu
+    <div onclick="{{ onSyncClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: {{ accent }}; color: #fff; border: 1px solid {{ accent }}; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="filter: brightness(1.07); border-color: #1b4fc0;" style-active="filter: brightness(0.92); border-color: #173f99; transform: scale(0.97);">
+      <svg class="{{ syncSpinClass }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Đồng bộ
+    </div>
+    <div onclick="{{ onExportClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; border: 1px solid #d7dde6; color: #3a4555; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #e8f7ee; border-color: #0f5e2f; color: #157a3e;" style-active="background: #d3f0de; border-color: #0a4423; color: #0f5e2f; transform: scale(0.97);">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Xuất dữ liệu
     </div>
     <div style="display: flex; flex-direction: column; gap: 4px; margin-left: 6px; margin-top: 4px; align-items: flex-start;">
       <div style="display: flex; align-items: center; gap: 16px; font-size: 11.5px;">
-        <span style="color: #6b7588;">Auto: <span style="color: #2f6fed; font-weight: 600;">Local-first</span></span>
         <span style="display: flex; align-items: center; gap: 5px; color: #6b7588;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #28a745;"></span>{{ syncStatus }}</span>
       </div>
-      <span style="font-size: 11.5px; color: #6b7588;">Đăng bộ lần cuối: <span style="font-weight: 600; color: #3a4555;">{{ lastUpdateTime }}</span></span>
+      <span style="font-size: 11.5px; color: #6b7588;">Last Update: <span style="font-weight: 600; color: #3a4555;">{{ lastUpdateTime }}</span></span>
     </div>
   </div>
 
-  <!-- ===== QUEUE NAVIGATOR (replaces Priority Focus) ===== -->
+  <!-- ===== QUEUE NAVIGATOR ===== -->
   <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
   <div style="flex: none; background: #fff; border-bottom: 1px solid #e4e8ef; padding: 12px 18px 13px;">
-    <!-- Tier 1: main queues -->
     <div style="display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px;">
       <sc-for list="{{ mains }}" as="m" hint-placeholder-count="9">
-        <div onClick="{{ m.onSelect }}" style="display: flex; align-items: center; gap: 10px; min-width: 0; height: 64px; padding: 0 12px; border-radius: 10px; cursor: pointer; border: 1px solid {{ m.border }}; background: {{ m.bg }};" style-hover="filter:brightness(0.98);">
+        <div onclick="{{ m.onSelect }}" style="display: flex; align-items: center; gap: 10px; min-width: 0; height: 64px; padding: 0 12px; border-radius: 10px; cursor: pointer; border: 1px solid {{ m.border }}; background: {{ m.bg }};" style-hover="filter:brightness(0.98);">
           <span style="width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex: none; background: {{ m.iconBg }}; color: {{ m.color }};">{{ m.iconEl }}</span>
           <div style="display: flex; flex-direction: column; line-height: 1.15; min-width: 0;">
             <span style="font-size: 12px; font-weight: 600; color: {{ m.labelColor }}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ m.label }}</span>
@@ -101,11 +90,10 @@ body { margin: 0; }
         </div>
       </sc-for>
     </div>
-    <!-- Tier 2: subqueues of the active main -->
     <div style="display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; padding-top: 11px; border-top: 1px dashed #e4e8ef;">
       <span style="font-size: 11px; font-weight: 600; color: #97a1b2; align-self: center; margin-right: 2px;">{{ activeMainLabel }}:</span>
       <sc-for list="{{ subs }}" as="s" hint-placeholder-count="7">
-        <div onClick="{{ s.onSelect }}" style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 8px; cursor: pointer; font-size: 12.5px; border: 1px solid {{ s.border }}; background: {{ s.bg }}; color: {{ s.color }}; font-weight: {{ s.weight }};" style-hover="filter:brightness(0.97);">
+        <div onclick="{{ s.onSelect }}" style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 8px; cursor: pointer; font-size: 12.5px; border: 1px solid {{ s.border }}; background: {{ s.bg }}; color: {{ s.color }}; font-weight: {{ s.weight }};" style-hover="filter:brightness(0.97);">
           {{ s.label }}
           <span style="font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; background: {{ s.badgeBg }}; color: {{ s.badgeColor }};">{{ s.count }}</span>
         </div>
@@ -118,54 +106,35 @@ body { margin: 0; }
   <div style="flex: 1; display: flex; min-height: 0;">
 
     <!-- ===== LEFT SMART CONTEXT PANEL ===== -->
-    <div class="aj-scroll" style="width: 256px; flex: none; background: #fff; border-right: 1px solid #e4e8ef; overflow-y: auto;">
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px 16px 10px; position: sticky; top: 0; background: #fff; z-index: 2;">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: .8px; color: #6b7588;">DANH SÁCH ĐƠN</span>
+    <div class="aj-scroll" style="width: 230px; flex: none; background: #fff; border-right: 1px solid #e4e8ef; overflow-y: auto;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 15px 14px 10px; position: sticky; top: 0; background: #fff; z-index: 2;">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: .6px; color: #6b7588; white-space: nowrap;">DANH SÁCH ĐƠN</span>
         <sc-if value="{{ canCopyLeft }}" hint-placeholder-val="{{ true }}">
-        <span onClick="{{ copyList }}" title="Sao chép toàn bộ mã vận đơn trong danh sách" style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: {{ copyColor }}; border: 1px solid {{ copyBorder }}; background: {{ copyBg }}; border-radius: 7px; padding: 4px 9px; cursor: pointer;" style-hover="filter:brightness(0.97);">
-          <sc-if value="{{ copied }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg></sc-if>
-          <sc-if value="{{ notCopied }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></sc-if>
+        <span onclick="{{ copyList }}" title="Sao chép toàn bộ mã vận đơn trong danh sách" style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; color: {{ copyColor }}; border: 1px solid {{ copyBorder }}; background: {{ copyBg }}; border-radius: 7px; padding: 4px 9px; cursor: pointer;" style-hover="filter:brightness(0.97);">
+          <sc-if value="{{ copied }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+          <sc-if value="{{ notCopied }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
           {{ copyLabel }}
         </span>
         </sc-if>
         <sc-if value="{{ cannotCopyLeft }}" hint-placeholder-val="{{ false }}">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
         </sc-if>
       </div>
 
-      <!-- EMPTY: no subqueue chosen -->
       <sc-if value="{{ leftEmpty }}" hint-placeholder-val="{{ false }}">
         <div style="display: flex; flex-direction: column; align-items: center; text-align: center; color: #9aa4b4; padding: 48px 24px;">
-          <span style="width: 48px; height: 48px; border-radius: 12px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span>
+          <span style="width: 48px; height: 48px; border-radius: 12px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3.5" cy="6" r="1"></circle><circle cx="3.5" cy="12" r="1"></circle><circle cx="3.5" cy="18" r="1"></circle></svg></span>
           <div style="font-size: 12.5px; line-height: 1.5;">Chọn một <b>nhóm con</b> ở thanh điều hướng để xem danh sách đơn.</div>
         </div>
       </sc-if>
 
-      <!-- STATS: too many orders to list -->
       <sc-if value="{{ leftStats }}" hint-placeholder-val="{{ false }}">
         <div style="padding: 0 16px 16px;">
           <div style="font-size: 12px; color: #8a94a6;">{{ leftSubLabel }}</div>
           <div style="font-size: 30px; font-weight: 700; color: {{ activeColor }}; line-height: 1.1; margin-top: 2px;">{{ leftCountText }}</div>
-          <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; background: #fff6f5; border: 1px solid #f6d5d0; border-radius: 9px; padding: 9px 11px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d23a2e" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <span style="font-size: 12px; color: #b23a30; line-height: 1.35;">{{ leftWarn }}</span>
-          </div>
-          <div style="font-size: 11px; font-weight: 700; letter-spacing: .5px; color: #97a1b2; margin: 16px 0 8px;">TOP ĐƠN ƯU TIÊN</div>
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <sc-for list="{{ leftTop }}" as="o" hint-placeholder-count="4">
-              <div onDoubleClick="{{ o.onOpen }}" title="Bấm đúp để mở hành trình" style="border: 1px solid {{ o.activeBorder }}; background: {{ o.activeBg }}; border-radius: 9px; padding: 9px 10px; cursor: pointer;" style-hover="background:#f4f8ff;">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                  <span style="font-size: 12.5px; font-weight: 700; color: #2f6fed;"><span style="color: {{ o.starInk }}; margin-right: 3px;">★</span>{{ o.code }}</span>
-                  <span style="font-size: 10.5px; font-weight: 600; color: {{ o.slaColor }};">{{ o.sla }}</span>
-                </div>
-                <div style="font-size: 11px; color: #8a94a6; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.recipient }} · {{ o.source }}</div>
-              </div>
-            </sc-for>
-          </div>
         </div>
       </sc-if>
 
-      <!-- CODES: small enough to list every waybill -->
       <sc-if value="{{ leftCodes }}" hint-placeholder-val="{{ false }}">
         <div style="padding: 0 12px 16px;">
           <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px 8px;">
@@ -174,12 +143,8 @@ body { margin: 0; }
           </div>
           <div style="display: flex; flex-direction: column; gap: 5px;">
             <sc-for list="{{ orders }}" as="o" hint-placeholder-count="6">
-              <div onDoubleClick="{{ o.onOpen }}" title="Bấm đúp để mở hành trình" style="border: 1px solid {{ o.activeBorder }}; background: {{ o.activeBg }}; border-radius: 9px; padding: 9px 10px; cursor: pointer;" style-hover="background:#f4f8ff;">
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                  <span style="font-size: 12.5px; font-weight: 700; color: #2f6fed;"><span style="color: {{ o.starInk }}; margin-right: 3px;">★</span>{{ o.code }}</span>
-                  <span style="font-size: 10.5px; font-weight: 600; color: {{ o.slaColor }};">{{ o.sla }}</span>
-                </div>
-                <div style="font-size: 11px; color: #8a94a6; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.recipient }} · {{ o.source }}</div>
+              <div onclick="{{ o.onOpen }}" title="Bấm để mở hành trình" style="border: 1px solid {{ o.activeBorder }}; background: {{ o.activeBg }}; border-radius: 9px; padding: 9px 10px; cursor: pointer; text-align: center;" style-hover="background:#f4f8ff;">
+                <span style="font-size: 12.5px; font-weight: 700; color: {{ o.codeColor }};"><span style="color: {{ o.starInk }}; margin-right: 3px;">★</span>{{ o.code }}</span>
               </div>
             </sc-for>
           </div>
@@ -190,11 +155,10 @@ body { margin: 0; }
     <!-- ===== CENTER MAIN GRID ===== -->
     <div class="aj-scroll" style="flex: 1; min-width: 0; overflow-y: auto; padding: 18px 20px;">
 
-      <!-- ===== LIST MODE ===== -->
       <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
       <div style="background: #fff; border: 1px solid #e7ebf1; border-radius: 10px; overflow: hidden;">
         <div style="display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid #eef1f5; font-size: 13.5px;">
-          <span style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: #1f2937;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Danh sách đơn</span>
+          <span style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: #1f2937;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg> Danh sách đơn</span>
           <span style="color: #cdd4de;">|</span>
           <span style="font-weight: 700; color: #1f2937;">{{ activeMainLabel }}</span>
           <sc-if value="{{ hasSub }}" hint-placeholder-val="{{ true }}">
@@ -203,10 +167,11 @@ body { margin: 0; }
           </sc-if>
           <span style="color: #cdd4de;">·</span>
           <span style="color: #6b7588;">{{ centerCountText }} đơn</span>
-          <span style="margin-left: auto; font-size: 12px; color: #9aa4b4; display: flex; align-items: center; gap: 5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l2 2"/></svg> Bấm đúp vào một dòng để mở chi tiết</span>
+          <span style="margin-left: auto; font-size: 12px; color: #9aa4b4; display: flex; align-items: center; gap: 5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l2 2"></path></svg> Bấm đúp vào một dòng để mở chi tiết</span>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
+              </sc-for><table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
               <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
@@ -220,10 +185,9 @@ body { margin: 0; }
             </tr>
           </thead>
           <tbody>
-            <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
-              <tr onDoubleClick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
-                <td style="padding: {{ cellPad }}; color: #6b7588;">{{ o.stt }}</td>
-                <td style="padding: {{ cellPad }}; color: #2f6fed; font-weight: 600; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span>{{ o.code }}</td>
+            <tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
+                <td style="padding: {{ cellPad }}; color: #6b7588; border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</td>
+                <td style="padding: {{ cellPad }}; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span><span onclick="{{ o.onOpen }}" title="Bấm để xem chi tiết" style="color: {{ o.codeColor }}; font-weight: 600; cursor: pointer;">{{ o.code }}</span></td>
                 <td style="padding: {{ cellPad }}; color: #2d3645;">{{ o.recipient }}</td>
                 <td style="padding: {{ cellPad }}; color: #6b7588; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.addr }}</td>
                 <td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ activeStatusBg }}; color: {{ activeStatusColor }}; white-space: nowrap;">{{ activeStatusText }}</span></td>
@@ -231,39 +195,42 @@ body { margin: 0; }
                 <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ o.source }}</td>
                 <td style="padding: {{ cellPad }}; color: #2d3645; text-align: right; white-space: nowrap;">{{ o.cod }}</td>
               </tr>
-            </sc-for>
+            
           </tbody>
         </table>
 
         <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid #eef1f5; font-size: 12.5px; color: #6b7588;">
-          <span>Hiển thị 1 - {{ orderCount }} / {{ centerCountText }} đơn</span>
+          <span>Hiển thị {{ pageRangeText }} / {{ centerCountText }} đơn · tối đa 100 đơn/trang</span>
           <div style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
-            <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: {{ accent }}; color: #fff; font-weight: 600;">1</span>
-            <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">2</span>
-            <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">3</span>
-            <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7588" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+            <span onclick="{{ pagePrev }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee; cursor: pointer; color: {{ prevColor }}; background: {{ prevBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></span>
+            <sc-for list="{{ pages }}" as="p" hint-placeholder-count="3">
+              <span onclick="{{ p.onSelect }}" style="min-width: 30px; height: 30px; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; font-weight: {{ p.weight }}; border: 1px solid {{ p.border }}; background: {{ p.bg }}; color: {{ p.color }};">{{ p.label }}</span>
+            </sc-for>
+            <span onclick="{{ pageNext }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee; cursor: pointer; color: {{ nextColor }}; background: {{ nextBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
           </div>
         </div>
       </div>
       </sc-if>
 
-      <!-- ===== JOURNEY MODE ===== -->
       <sc-if value="{{ isJourney }}" hint-placeholder-val="{{ false }}">
       <div style="background: #fff; border: 1px solid #e7ebf1; border-radius: 10px; overflow: hidden;">
         <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid #eef1f5; font-size: 13.5px;">
-          <span onClick="{{ backToList }}" style="display: flex; align-items: center; gap: 5px; color: #2f6fed; font-weight: 600; cursor: pointer; border: 1px solid #d3e0fb; background: #f3f8ff; border-radius: 7px; padding: 5px 11px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Quay lại danh sách</span>
+          <span onclick="{{ backToList }}" style="display: flex; align-items: center; gap: 5px; color: #2f6fed; font-weight: 600; cursor: pointer; border: 1px solid #d3e0fb; background: #f3f8ff; border-radius: 7px; padding: 5px 11px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Quay lại danh sách</span>
           <span style="font-weight: 700; color: #1f2937;">Hành trình vận chuyển</span>
           <span style="color: #cdd4de;">·</span>
-          <span style="font-weight: 600; color: #3a4555;">{{ wbCode }}</span>
-          <span style="color: #cdd4de;">·</span>
-          <span style="color: #6b7588;">65 sự kiện</span>
+          <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.3px; color: #1f2937; background: #eef4ff; border: 1px solid #d3e0fb; border-radius: 7px; padding: 3px 10px;">{{ wbCode }}</span>
           <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-            <span style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #3a4555; border: 1px solid #d7dde6; border-radius: 7px; padding: 5px 11px; cursor: pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</span>
-            <span style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #3a4555; border: 1px solid #d7dde6; border-radius: 7px; padding: 5px 11px; cursor: pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Làm mới</span>
+            <span onclick="{{ copyJourney }}" title="Sao chép hành trình vận chuyển" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: {{ journeyCopyColor }}; background: {{ journeyCopyBg }}; border: 1px solid {{ journeyCopyBorder }}; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef8f0; border-color: #1c8a3c; color: #1c8a3c;" style-active="background: #ddf0e2; border-color: #157032; transform: scale(0.96);">
+              <sc-if value="{{ journeyCopied }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+              <sc-if value="{{ journeyNotCopied }}" hint-placeholder-val="{{ true }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+              {{ journeyCopyLabel }}
+            </span>
+            <span onclick="{{ refreshJourney }}" title="Làm mới hành trình" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #3a4555; background: #fff; border: 1px solid #d7dde6; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef4ff; border-color: #2f6fed; color: #2f6fed;" style-active="background: #dde9ff; border-color: #2a63d6; transform: scale(0.96);"><svg class="{{ refreshSpinClass }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Làm mới</span>
           </span>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
+              </sc-for><table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
               <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
@@ -277,8 +244,7 @@ body { margin: 0; }
             </tr>
           </thead>
           <tbody>
-            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
-              <tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
+            <tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
                 <td style="padding: {{ cellPad }}; color: #6b7588;">{{ r.stt }}</td>
                 <td style="padding: {{ cellPad }};"><span style="display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid {{ r.dotColor }}; background: {{ r.dotFill }};"></span></td>
                 <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.t1 }}</td>
@@ -288,7 +254,7 @@ body { margin: 0; }
                 <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.source }}</td>
                 <td style="padding: {{ cellPad }}; color: #3a4555;">{{ wbWeight }}</td>
               </tr>
-            </sc-for>
+            
           </tbody>
         </table>
 
@@ -296,12 +262,12 @@ body { margin: 0; }
           <span>Hiển thị 1 - 20 / 65 sự kiện</span>
           <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
             <span>Hiển thị</span>
-            <div style="display: flex; align-items: center; gap: 8px; height: 30px; border: 1px solid #d7dde6; border-radius: 6px; padding: 0 9px;">20 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; border: 1px solid #d7dde6; border-radius: 6px; padding: 0 9px;">20 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: {{ accent }}; color: #fff; font-weight: 600;">1</span>
               <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">2</span>
               <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">3</span>
-              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7588" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span>
+              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7588" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
             </div>
           </div>
         </div>
@@ -309,12 +275,12 @@ body { margin: 0; }
       </sc-if>
     </div>
 
-    <!-- ===== RIGHT PANEL (Order Intelligence) ===== -->
+    <!-- ===== RIGHT PANEL ===== -->
     <div class="aj-scroll" style="width: 336px; flex: none; background: #fff; border-left: 1px solid #e4e8ef; overflow-y: auto; padding: 16px 18px;">
 
       <sc-if value="{{ noWaybill }}" hint-placeholder-val="{{ true }}">
         <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #9aa4b4; padding: 40px 20px;">
-          <span style="width: 56px; height: 56px; border-radius: 14px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>
+          <span style="width: 56px; height: 56px; border-radius: 14px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg></span>
           <div style="font-size: 13.5px; font-weight: 600; color: #6b7588;">Chưa chọn vận đơn</div>
           <div style="font-size: 12.5px; margin-top: 6px; line-height: 1.5;">Bấm đúp vào một vận đơn trong danh sách để xem tổng quan &amp; đề xuất xử lý.</div>
         </div>
@@ -324,45 +290,107 @@ body { margin: 0; }
       <div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 19px; font-weight: 700; color: #1f2937;">{{ wbCode }}</span>
-        <span style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: #3a4555; border: 1px solid #d7dde6; border-radius: 6px; padding: 4px 9px; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</span>
-        <span onClick="{{ toggleStar }}" style="display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ starColor }}; background: {{ starBg }}; border: 1px solid {{ starBorder }}; border-radius: 6px; padding: 5px 11px; cursor: pointer; font-weight: 600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="{{ starFill }}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> {{ starLabel }}</span>
+        <span onclick="{{ copyWaybill }}" title="Sao chép mã vận đơn" style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ wbCopyColor }}; border: 1px solid {{ wbCopyBorder }}; background: {{ wbCopyBg }}; border-radius: 6px; padding: 4px 9px; cursor: pointer;">
+          <sc-if value="{{ wbCopied }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
+          <sc-if value="{{ wbNotCopied }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+          {{ wbCopyLabel }}
+        </span>
+        <span onclick="{{ toggleStar }}" style="display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ starColor }}; background: {{ starBg }}; border: 1px solid {{ starBorder }}; border-radius: 6px; padding: 5px 11px; cursor: pointer; font-weight: 600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="{{ starFill }}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> {{ starLabel }}</span>
       </div>
 
-      <div style="display: flex; flex-wrap: wrap; gap: 7px; margin: 13px 0 16px;">
-        <sc-for list="{{ badges }}" as="b" hint-placeholder-count="3">
-          <span style="font-size: 10.5px; font-weight: 700; letter-spacing: .3px; background: {{ b.bg }}; color: {{ b.c }}; padding: 5px 9px; border-radius: 6px;">{{ b.t }}</span>
+      <div style="margin: 13px 0 4px;"></div>
+
+      <div style="display: flex; gap: 5px; margin: 14px 0 14px;">
+        <sc-for list="{{ rightTabs }}" as="rt" hint-placeholder-count="3">
+          <span onclick="{{ rt.onSelect }}" style="display: flex; align-items: center; font-size: 11.5px; font-weight: {{ rt.weight }}; color: {{ rt.fg }}; background: {{ rt.bg }}; padding: 0 9px; height: 48px; border-radius: 7px; cursor: pointer; white-space: nowrap;">{{ rt.label }}</span>
         </sc-for>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
-        <sc-for list="{{ summary }}" as="s" hint-placeholder-count="7">
-          <div style="display: flex; align-items: flex-start; gap: 12px;">
-            <span style="color: #8a94a6; width: 120px; flex: none;">{{ s.k }}</span>
-            <span style="color: #2d3645; font-weight: 500;">{{ s.v }}</span>
+      <sc-if value="{{ showInfo }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 15px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+        <sc-for list="{{ detailGroups }}" as="g" hint-placeholder-count="3">
+          <div>
+            <div style="font-size: 11px; font-weight: 700; letter-spacing: .5px; color: #97a1b2; margin-bottom: 8px;">{{ g.title }}</div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <sc-for list="{{ g.rows }}" as="d" hint-placeholder-count="3">
+                <div style="display: flex; align-items: flex-start; gap: 12px;">
+                  <span style="color: #8a94a6; width: 104px; flex: none;">{{ d.k }}</span>
+                  <sc-if value="{{ d.isText }}" hint-placeholder-val="{{ true }}">
+                    <span style="color: #2d3645; font-weight: 500;">{{ d.v }}</span>
+                  </sc-if>
+                  <sc-if value="{{ d.isList }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <sc-for list="{{ d.v }}" as="li" hint-placeholder-count="3">
+                        <span style="color: #2d3645; font-weight: 500; line-height: 1.4;">• {{ li }}</span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
           </div>
         </sc-for>
       </div>
+      </sc-if>
 
-      <div style="display: flex; gap: 6px; margin: 14px 0 14px;">
-        <span style="font-size: 12px; font-weight: 600; color: #fff; background: {{ accent }}; padding: 6px 11px; border-radius: 7px;">Thông tin cơ bản</span>
-        <span style="font-size: 12px; font-weight: 500; color: #6b7588; background: #f1f4f8; padding: 6px 11px; border-radius: 7px;">Lịch sử kiện văn bản</span>
-        <span style="font-size: 12px; font-weight: 500; color: #6b7588; background: #f1f4f8; padding: 6px 11px; border-radius: 7px;">Khiếu nại</span>
+      <sc-if value="{{ showHistory }}" hint-placeholder-val="{{ false }}">
+      <div onclick="{{ onRegisterIssue }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid #f0c9c4; background: #fff6f5; color: #d23a2e; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:#fdeeec;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Đăng ký kiện vấn đề
       </div>
-
-      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
-        <sc-for list="{{ details }}" as="d" hint-placeholder-count="9">
-          <div style="display: flex; align-items: flex-start; gap: 12px;">
-            <span style="color: #8a94a6; width: 104px; flex: none;">{{ d.k }}</span>
-            <span style="color: #2d3645; font-weight: 500;">{{ d.v }}</span>
+      <div style="display: flex; flex-direction: column; gap: 11px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+        <sc-for list="{{ issueHistory }}" as="h" hint-placeholder-count="3">
+          <div style="display: flex; gap: 10px;">
+            <span style="width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex: none; background: {{ h.tagColor }};"></span>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; gap: 7px;">
+                <span style="font-size: 12.5px; font-weight: 600; color: #2d3645;">{{ h.title }}</span>
+                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: {{ h.tagBg }}; color: {{ h.tagColor }};">{{ h.tag }}</span>
+              </div>
+              <div style="font-size: 11.5px; color: #8a94a6; margin-top: 2px;">{{ h.desc }}</div>
+              <div style="font-size: 11px; color: #aab2c0; margin-top: 1px;">{{ h.t }}</div>
+            </div>
           </div>
         </sc-for>
       </div>
+      </sc-if>
+
+      <sc-if value="{{ showComplaint }}" hint-placeholder-val="{{ false }}">
+      <div style="padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+        <div onclick="{{ onCreateComplaint }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid #f0c9c4; background: #fff6f5; color: #d23a2e; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:#fdeeec;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Tạo khiếu nại
+        </div>
+        <div style="display: flex; align-items: center; gap: 9px; background: #f6f8fb; border: 1px solid #e7ebf1; border-radius: 9px; padding: 11px 12px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <span style="font-size: 12.5px; color: #6b7588;">Chưa có khiếu nại nào cho vận đơn này.</span>
+        </div>
+      </div>
+      </sc-if>
 
       <div style="margin: 14px 0;">
-        <div style="font-size: 13px; font-weight: 600; color: #3a4555; margin-bottom: 8px;">Ghi chú</div>
-        <textarea placeholder="Nhập ghi chú..." style="width: 100%; height: 64px; resize: none; border: 1px solid #d7dde6; border-radius: 8px; padding: 9px 11px; font-size: 12.5px; font-family: inherit; outline: none; color: #2d3645;"></textarea>
+        <div style="display: flex; align-items: baseline; gap: 7px; margin-bottom: 8px;">
+          <span style="font-size: 13px; font-weight: 600; color: #3a4555;">Ghi chú</span>
+          <span style="font-size: 11px; color: #97a1b2;">{{ noteCountText }}</span>
+        </div>
+        <sc-if value="{{ hasNotes }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px;">
+          <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2">
+            <div style="background: #f6f8fb; border: 1px solid #e7ebf1; border-radius: 8px; padding: 8px 10px;">
+              <div style="font-size: 12.5px; color: #2d3645; line-height: 1.45; white-space: pre-wrap;">{{ n.text }}</div>
+              <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
+                <span style="font-size: 10.5px; color: #97a1b2;">{{ n.author }}</span>
+                <span style="font-size: 10.5px; color: #c3cad6;">·</span>
+                <span style="font-size: 10.5px; color: #97a1b2;">{{ n.time }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+        <sc-if value="{{ noNotes }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size: 12px; color: #aab2c0; margin-bottom: 10px;">Chưa có ghi chú nào cho vận đơn này.</div>
+        </sc-if>
+        <textarea value="{{ noteDraft }}" onchange="{{ onNoteDraftChange }}" placeholder="Nhập ghi chú mới..." style="width: 100%; height: 64px; resize: none; border: 1px solid #d7dde6; border-radius: 8px; padding: 9px 11px; font-size: 12.5px; font-family: inherit; outline: none; color: #2d3645;"></textarea>
         <div style="display: flex; justify-content: flex-end; margin-top: 9px;">
-          <span style="font-size: 12.5px; font-weight: 600; color: #fff; background: #3a4760; padding: 7px 15px; border-radius: 7px; cursor: pointer;">Lưu ghi chú</span>
+          <span onclick="{{ onSaveNote }}" style="font-size: 12.5px; font-weight: 600; color: #fff; background: #3a4760; padding: 7px 15px; border-radius: 7px; cursor: pointer;">Lưu ghi chú</span>
         </div>
       </div>
 
@@ -375,7 +403,7 @@ body { margin: 0; }
               <div style="font-size: 12.5px; font-weight: 600; color: #2d3645;">{{ g.title }}</div>
               <div style="font-size: 11px; color: #8a94a6; margin-top: 2px;">{{ g.sub }}</div>
             </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9b888" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9b888" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </div>
         </sc-for>
       </div>
@@ -386,7 +414,7 @@ body { margin: 0; }
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{
+<script type="text/x-dc" data-dc-script="" data-props="{
   &quot;$preview&quot;: { &quot;width&quot;: &quot;100%&quot;, &quot;height&quot;: &quot;100%&quot; },
   &quot;accent&quot;: { &quot;editor&quot;: &quot;color&quot;, &quot;default&quot;: &quot;#2f6fed&quot;, &quot;tsType&quot;: &quot;string&quot; },
   &quot;density&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;Tiêu chuẩn&quot;, &quot;options&quot;: [&quot;Thoáng&quot;, &quot;Tiêu chuẩn&quot;, &quot;Gọn&quot;], &quot;tsType&quot;: &quot;string&quot; },
@@ -395,21 +423,25 @@ body { margin: 0; }
 class Component extends DCLogic {
   state = {
     starred: false,
-    mainKey: 'backlog',
-    subLabel: '7D',     // null => no subqueue chosen yet
-    mode: 'list',       // 'list' | 'journey'
+    mainKey: 'tong-ton',
+    subLabel: 'Tất cả',
+    mode: 'list',
     waybill: null,
     copied: false,
-    starredCodes: {},   // code -> true
+    starredCodes: {},
     siteId: '214A02',
-    lastUpdateTime: 'Chưa tải',
+    lastUpdateTime: (function () { const d = new Date(); const p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); })(),
     syncStatus: 'DB: Synced',
     waybills: [],
     journeyRows: [],
-    selectedSource: 'LOCAL',
-    selectedTimeInterval: '2 PHÚT',
+    selectedSource: '214A02',
+    selectedTimeInterval: '1 giờ',
     selectedStatusSelect: 'Tất cả tồn kho',
     searchText: '',
+    rightTab: 'info',
+    page: 0,
+    fromDate: (function () { const d = new Date(Date.now() - 30 * 86400000); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T00:00'; })(),
+    toDate: (function () { const d = new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T23:59'; })(),
   };
 
   componentDidMount() {
@@ -425,65 +457,108 @@ class Component extends DCLogic {
             waybills: msg.waybills || [],
             starredCodes: msg.starredCodes || {},
             selectedSource: msg.selectedSource || 'LOCAL',
-            selectedTimeInterval: msg.selectedTimeInterval || '2 PHÚT',
+            selectedTimeInterval: msg.selectedTimeInterval || '1 giờ',
             selectedStatusSelect: msg.selectedStatusSelect || 'Tất cả tồn kho',
             searchText: msg.searchText || ''
           });
         } else if (msg && msg.type === 'JOURNEY_DATA') {
-          this.setState({
-            journeyRows: msg.journeyRows || []
-          });
+          this.setState({ journeyRows: msg.journeyRows || [] });
         }
       });
-      try {
-        window.chrome.webview.postMessage({ action: 'READY' });
-      } catch (e) {}
+      try { window.chrome.webview.postMessage({ action: 'READY' }); } catch (e) {}
     }
   }
 
   onSyncClick = () => {
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'SYNC' });
-    }
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SYNC' });
+    if (this.state.syncing) return;
+    this.setState({ syncing: true });
+    clearTimeout(this._syncT);
+    this._syncT = setTimeout(() => this.setState({ syncing: false }), 300);
   };
+  onExportClick = () => { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'EXPORT' }); };
+  onSourceChange = (e) => { const val = e.target.value; this.setState({ selectedSource: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_SOURCE', source: val }); };
+  onTimeIntervalChange = (e) => { const val = e.target.value; this.setState({ selectedTimeInterval: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_TIME_INTERVAL', text: val }); };
+  onStatusSelectChange = (e) => { const val = e.target.value; this.setState({ selectedStatusSelect: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_STATUS_SELECT', text: val }); };
+  onSearchChange = (e) => { const val = e.target.value; this.setState({ searchText: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_SEARCH', text: val }); };
+  onSearchKeyDown = (e) => { if (e.key === 'Enter') this.onSearchSubmit(); };
+  onSearchSubmit = () => { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SEARCH', text: this.state.searchText || '' }); };
+  onFromDateChange = (e) => { this.setState({ fromDate: e.target.value }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: e.target.value, to: this.state.toDate }); };
+  onToDateChange = (e) => { this.setState({ toDate: e.target.value }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: this.state.fromDate, to: e.target.value }); };
 
-  onExportClick = () => {
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'EXPORT' });
-    }
+  // --- "Thời gian tồn kho": native date picker + free-typed HH:MM ---
+  _splitDT(v) { const s = String(v || ''); const i = s.indexOf('T'); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1, i + 6)]; }
+  // While typing: keep only digits + one colon, max 5 chars — show exactly what's typed
+  _coerceTime = (raw) => {
+    let t = String(raw || '').replace(/[^\d:]/g, '');
+    const i = t.indexOf(':');
+    if (i >= 0) t = t.slice(0, i + 1) + t.slice(i + 1).replace(/:/g, '');
+    return t.slice(0, 5);
   };
-
-  onSourceChange = (e) => {
-    const val = e.target.value;
-    this.setState({ selectedSource: val });
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'CHANGE_SOURCE', source: val });
+  // On blur: parse naturally → "930"→09:30, "1430"→14:30, "9"→09:00, "9:5"→09:05
+  _commitTime = (which, raw) => {
+    let t = String(raw || '').trim();
+    let h, m;
+    if (t.indexOf(':') >= 0) {
+      const parts = t.split(':'); h = parts[0]; m = parts[1] || '0';
+    } else {
+      const d = t.replace(/\D/g, '');
+      if (d.length <= 2) { h = d; m = '0'; }
+      else if (d.length === 3) { h = d.slice(0, 1); m = d.slice(1); }
+      else { h = d.slice(0, 2); m = d.slice(2, 4); }
     }
+    h = String(Math.min(23, parseInt(h, 10) || 0)).padStart(2, '0');
+    m = String(Math.min(59, parseInt(m, 10) || 0)).padStart(2, '0');
+    const time = h + ':' + m;
+    const key = which === 'from' ? 'fromDate' : 'toDate';
+    const date = this._splitDT(this.state[key])[0];
+    const val = date + 'T' + time;
+    this.setState({ [key]: val });
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: which === 'from' ? val : this.state.fromDate, to: which === 'to' ? val : this.state.toDate });
   };
-
-  onTimeIntervalChange = (e) => {
-    const val = e.target.value;
-    this.setState({ selectedTimeInterval: val });
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'CHANGE_TIME_INTERVAL', text: val });
-    }
+  onFromDateOnly = (e) => { const val = e.target.value + 'T' + this._splitDT(this.state.fromDate)[1]; this.setState({ fromDate: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: val, to: this.state.toDate }); };
+  onToDateOnly = (e) => { const val = e.target.value + 'T' + this._splitDT(this.state.toDate)[1]; this.setState({ toDate: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: this.state.fromDate, to: val }); };
+  onFromTimeInput = (e) => { const t = this._coerceTime(e.target.value); const d = this._splitDT(this.state.fromDate)[0]; this.setState({ fromDate: d + 'T' + t }); };
+  onToTimeInput = (e) => { const t = this._coerceTime(e.target.value); const d = this._splitDT(this.state.toDate)[0]; this.setState({ toDate: d + 'T' + t }); };
+  onFromTimeBlur = (e) => this._commitTime('from', e.target.value);
+  onToTimeBlur = (e) => this._commitTime('to', e.target.value);
+  onTimeKeyDown = (e) => { if (e.key === 'Enter') e.target.blur(); };
+  onCreateComplaint = () => {};
+  onRegisterIssue = () => { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'REGISTER_ISSUE', waybillNo: this.state.waybill ? this.state.waybill.code : '' }); };
+  copyWaybill = () => {
+    const wb = this.state.waybill;
+    if (!wb) return;
+    const text = wb.code;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
+      else { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    } catch (e) {}
+    this.setState({ wbCopied: true });
+    clearTimeout(this._wbCopyT);
+    this._wbCopyT = setTimeout(() => this.setState({ wbCopied: false }), 1600);
   };
-
-  onStatusSelectChange = (e) => {
-    const val = e.target.value;
-    this.setState({ selectedStatusSelect: val });
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'CHANGE_STATUS_SELECT', text: val });
-    }
+  onNoteDraftChange = (e) => this.setState({ noteDraft: e.target.value });
+  onSaveNote = () => {
+    const wb = this.state.waybill; const text = (this.state.noteDraft || '').trim();
+    if (!wb || !text) return;
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const time = pad(now.getDate()) + '/' + pad(now.getMonth() + 1) + '/' + now.getFullYear() + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    this.setState(s => {
+      const all = Object.assign({}, s.notesByCode || {});
+      all[wb.code] = (all[wb.code] || []).concat([{ text: text, author: 'Lê Quang Vinh', time: time }]);
+      return { notesByCode: all, noteDraft: '' };
+    });
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SAVE_NOTE', waybillNo: wb.code, text: text });
   };
-
-  onSearchChange = (e) => {
-    const val = e.target.value;
-    this.setState({ searchText: val });
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage({ action: 'CHANGE_SEARCH', text: val });
-    }
-  };
+  notesFor(code) {
+    const all = this.state.notesByCode || {};
+    if (all[code]) return all[code];
+    return [
+      { text: 'Khách yêu cầu giao trước 18h, gọi xác nhận trước khi đến.', author: 'Trần Thị Phương Anh', time: '05/06/2026 09:42' },
+      { text: 'Đã liên hệ, khách bận — hẹn giao lại buổi tối.', author: 'Lê Quang Vinh', time: '05/06/2026 15:10' },
+    ];
+  }
 
   copyOrderList(orders) {
     const text = orders.map(o => o.code).join('\n');
@@ -496,11 +571,42 @@ class Component extends DCLogic {
     this._copyT = setTimeout(() => this.setState({ copied: false }), 1600);
   }
 
+  copyJourney(rows) {
+    const text = (rows || []).map(r => [r.t2 || r.t1, r.type, r.desc, r.source].filter(Boolean).join('\t')).join('\n');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text);
+      else { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    } catch (e) {}
+    this.setState({ journeyCopied: true });
+    clearTimeout(this._jCopyT);
+    this._jCopyT = setTimeout(() => this.setState({ journeyCopied: false }), 1600);
+  }
+
+  refreshJourney = () => {
+    if (this.state.journeyRefreshing) return;
+    this.setState({ journeyRefreshing: true });
+    const wb = this.state.waybill;
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'REFRESH_JOURNEY', waybillNo: wb ? wb.code : '' });
+    clearTimeout(this._jRefreshT);
+    this._jRefreshT = setTimeout(() => this.setState({ journeyRefreshing: false }), 300);
+  };
+
   num(s) { return parseInt(String(s).replace(/[^\d]/g, ''), 10) || 0; }
+
+  // Default sub-branch to auto-select when a main queue is picked.
+  // Honors explicit preferences, otherwise falls back to the first branch.
+  defaultSubFor(key) {
+    const list = this.subDefs()[key] || [];
+    const pref = { 'hang-den': 'Chưa quét đến', 'phat-hang': 'Chưa phát' };
+    if (pref[key] && list.some(s => s.label === pref[key])) return pref[key];
+    return list.length ? list[0].label : null;
+  }
 
   mainDefs() {
     const I = {
       boxes: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
+      warehouse: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35Z"/><path d="M6 18h12"/><path d="M6 14h12"/><path d="M6 10h12"/></svg>',
+      package: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>',
       arrowIn: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>',
       truck: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
       clock: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -512,13 +618,13 @@ class Component extends DCLogic {
     };
     const mains = this.state.counts && this.state.counts.mains ? this.state.counts.mains : null;
     return [
-      { key: 'tong-ton', label: 'Tổng tồn', total: mains ? (mains['tong-ton'] || '0') : '2,505', color: '#e0453a', iconBg: '#fde7e5', icon: I.boxes },
-      { key: 'hang-den', label: 'Hàng đến', total: mains ? (mains['hang-den'] || '0') : '2,104', color: '#2f6fed', iconBg: '#e4eefe', icon: I.arrowIn },
-      { key: 'phat-hang', label: 'Phát hàng', total: mains ? (mains['phat-hang'] || '0') : '0', color: '#1c8a3c', iconBg: '#e3f4e8', icon: I.truck },
-      { key: 'backlog', label: 'Backlog', total: mains ? (mains['backlog'] || '0') : '238', color: '#e89020', iconBg: '#fdf0db', icon: I.clock },
+      { key: 'tong-ton', label: 'Tổng tồn', total: mains ? (mains['tong-ton'] || '0') : '2,505', color: '#e0453a', iconBg: '#fde7e5', icon: I.warehouse },
+      { key: 'hang-den', label: 'Hàng đến', total: mains ? (mains['hang-den'] || '0') : '2,104', color: '#2f6fed', iconBg: '#e4eefe', icon: I.truck },
+      { key: 'phat-hang', label: 'Phát hàng', total: mains ? (mains['phat-hang'] || '0') : '0', color: '#1c8a3c', iconBg: '#e3f4e8', icon: I.package },
       { key: 'chuyen-hoan', label: 'Chuyển hoàn', total: mains ? (mains['chuyen-hoan'] || '0') : '284', color: '#2f6fed', iconBg: '#e4eefe', icon: I.refresh },
-      { key: 'kiem-kho', label: 'Kiểm kho', total: mains ? (mains['kiem-kho'] || '0') : '554', color: '#1aa3a3', iconBg: '#dcf3f3', icon: I.grid },
+      { key: 'backlog', label: 'Backlog', total: mains ? (mains['backlog'] || '0') : '238', color: '#e89020', iconBg: '#fdf0db', icon: I.clock },
       { key: 'cskh', label: 'CSKH', total: mains ? (mains['cskh'] || '0') : '39', color: '#d23a2e', iconBg: '#fde7e5', icon: I.headset },
+      { key: 'kiem-kho', label: 'Kiểm kho', total: mains ? (mains['kiem-kho'] || '0') : '554', color: '#1aa3a3', iconBg: '#dcf3f3', icon: I.grid },
       { key: 'dung-tram', label: 'Đơn dừng trạm', total: mains ? (mains['dung-tram'] || '0') : '17', color: '#8b5cf6', iconBg: '#efe9fd', icon: I.pause },
       { key: 'star', label: 'Star', total: mains ? (mains['star'] || '0') : '12', color: '#d99a00', iconBg: '#fff3d4', icon: I.star },
     ];
@@ -526,16 +632,19 @@ class Component extends DCLogic {
 
   subDefs() {
     if (this.state.counts && this.state.counts.subs && Object.keys(this.state.counts.subs).length > 0) {
-      return this.state.counts.subs;
+      const fromBackend = Object.assign({}, this.state.counts.subs);
+      const dyn = this.tongTonStatusSubs();
+      if (dyn) fromBackend['tong-ton'] = dyn;
+      return fromBackend;
     }
-    return {
+    const defs = {
       'tong-ton': [
         { label: 'Tất cả', count: '2,505' }, { label: 'Quét phát hàng', count: '1,210' },
         { label: 'Đăng ký chuyển hoàn', count: '284' }, { label: 'Giao lại hàng', count: '176' },
         { label: 'Chờ lấy hàng', count: '95' }, { label: 'Lưu kho', count: '740' },
       ],
       'hang-den': [ { label: 'Tổng số đơn', count: '2,104' }, { label: 'Chưa quét đến', count: '36' } ],
-      'phat-hang': [ { label: 'Cần phát', count: '0' }, { label: 'Đã phát', count: '0' }, { label: 'Chưa phát', count: '0' } ],
+      'phat-hang': [ { label: 'Cần phát', count: '0' }, { label: 'Chưa phát', count: '0' } ],
       'backlog': [
         { label: '7D+', count: '1' }, { label: '7D', count: '6' }, { label: '6D', count: '12' },
         { label: '5D', count: '19' }, { label: '4D', count: '21' }, { label: '3D', count: '38' }, { label: '<2D', count: '141' },
@@ -544,7 +653,7 @@ class Component extends DCLogic {
       'kiem-kho': [ { label: 'Đơn cần kiểm', count: '554' }, { label: 'Kiểm thiếu', count: '554' } ],
       'cskh': [
         { label: 'Ticket CSKH', count: '39' }, { label: 'Khiếu nại SLA', count: '12' },
-        { label: 'Khiếu nại chịu trách nhiệm', count: '7' }, { label: 'Kháng cáo CLDV', count: '5' }, { label: 'Tiền phạt dự kiến', count: '15' },
+        { label: 'Khiếu nại chịu trách nhiệm', count: '7' },
       ],
       'dung-tram': [
         { label: 'Dừng >12h', count: '17' }, { label: 'Dừng >24h', count: '9' }, { label: 'Dừng >48h', count: '4' },
@@ -552,6 +661,38 @@ class Component extends DCLogic {
       ],
       'star': [ { label: 'Đơn đã ghim', count: '12' }, { label: 'Đang theo dõi', count: '5' }, { label: 'Chưa xử lý', count: '7' }, { label: 'Đã xử lý', count: '5' } ],
     };
+    const dyn = this.tongTonStatusSubs();
+    if (dyn) defs['tong-ton'] = dyn;
+    return defs;
+  }
+
+  // Build "Tổng tồn" sub-branches from the distinct statuses found in the
+  // database (waybills). Every status present becomes one queue + its count;
+  // "Tất cả" leads with the grand total. Returns null when there is no DB data
+  // (falls back to the static list).
+  tongTonStatusSubs() {
+    const wbs = this.state.waybills;
+    if (!wbs || wbs.length === 0) return null;
+    const inTongTon = wbs.filter(o => o && o.mains && o.mains.includes('tong-ton'));
+    if (inTongTon.length === 0) return null;
+    const counts = {};
+    const order = [];
+    inTongTon.forEach(o => {
+      // status field, else fall back to the order's sub labels
+      let sts = [];
+      if (o.status != null && o.status !== '') sts = [o.status];
+      else if (Array.isArray(o.statuses)) sts = o.statuses;
+      else if (Array.isArray(o.subs)) sts = o.subs;
+      sts.forEach(s => {
+        if (s == null || s === '' || s === 'Tất cả') return;
+        if (!(s in counts)) { counts[s] = 0; order.push(s); }
+        counts[s]++;
+      });
+    });
+    const fmt = n => n.toLocaleString('en-US');
+    const list = [{ label: 'Tất cả', count: fmt(inTongTon.length) }];
+    order.forEach(s => list.push({ label: s, count: fmt(counts[s]) }));
+    return list;
   }
 
   statusForMain(key) {
@@ -569,7 +710,6 @@ class Component extends DCLogic {
     return m[key] || { text: 'CHỜ XỬ LÝ', bg: '#f0f2f6', color: '#5a6678' };
   }
 
-  // does the left panel list every waybill, or just stats?
   leftShowsCodes(key, sub) {
     if (!sub) return false;
     const c = this.num(sub.count);
@@ -579,7 +719,7 @@ class Component extends DCLogic {
     if (key === 'phat-hang') return sub.label === 'Chưa phát' && c < 50;
     if (key === 'backlog') return !/^<\s*2d/i.test(sub.label) && c <= 100;
     if (key === 'dung-tram') return c <= 50;
-    return false; // tổng tồn, chuyển hoàn, kiểm kho, cskh => stats only
+    return false;
   }
 
   suggestForMain(key) {
@@ -609,19 +749,43 @@ class Component extends DCLogic {
     return s.map(x => ({ title: x[0], sub: x[1], iconEl: React.createElement('span', { style: { display: 'flex' }, dangerouslySetInnerHTML: { __html: x[2] } }) }));
   }
 
-  genOrders(seed, count, mainKey) {
+  buildPageButtons(page, pageCount) {
+    const out = [];
+    let start = Math.max(0, page - 2);
+    let end = Math.min(pageCount - 1, start + 4);
+    start = Math.max(0, end - 4);
+    for (let i = start; i <= end; i++) {
+      const active = i === page;
+      out.push({
+        label: String(i + 1),
+        onSelect: () => this.setState({ page: i }),
+        bg: active ? '#2f6fed' : '#fff',
+        color: active ? '#fff' : '#3a4555',
+        border: active ? '#2f6fed' : '#e2e7ee',
+        weight: active ? '600' : '500',
+      });
+    }
+    return out;
+  }
+
+  genOrders(seed, count, mainKey, opts) {
     const recips = ['Nguyễn Văn An', 'Trần Thị Bình', 'Lê Hoàng Cường', 'Phạm Thu Dung', 'Vũ Đức Em', 'Đỗ Minh Phúc', 'Bùi Thị Giang', 'Hồ Văn Hải', 'Ngô Thị Lan', 'Đặng Quốc Khánh', 'Mai Thị Ngọc', 'Trịnh Văn Long', 'Lý Thị Mai', 'Phan Văn Nam', 'Cao Thị Oanh', 'Đinh Quang Phú'];
     const addrs = ['125 Lạch Tray, Ngô Quyền, Hải Phòng', '45 Trần Phú, Hà Đông, Hà Nội', '89 Lê Lợi, Quận 1, TP.HCM', '12 Nguyễn Trãi, Thanh Xuân, Hà Nội', '200 CMT8, Quận 3, TP.HCM', '7 Bạch Đằng, Hồng Bàng, Hải Phòng', '56 Hùng Vương, Hải Châu, Đà Nẵng', '301 Giải Phóng, Hoàng Mai, Hà Nội', '88 Phan Đình Phùng, Ba Đình, Hà Nội', '14 Võ Thị Sáu, Quận 3, TP.HCM'];
     const sources = ['214A02 - Bưu cục A', '214H01 - Hub HCM', '214H02 - Hub HN', '213B05 - BC Hải Phòng', '215C03 - BC Đà Nẵng'];
     const cods = ['1,250,000 đ', '320,000 đ', '0 đ', '2,100,000 đ', '585,000 đ', '770,000 đ', '1,890,000 đ', '430,000 đ', '95,000 đ', '3,250,000 đ'];
-    const n = Math.min(this.num(count), 16);
+    opts = opts || {};
+    const total = this.num(count);
+    const offset = opts.offset || 0;
+    const max = opts.max != null ? opts.max : 16;
+    const n = Math.max(0, Math.min(max, total - offset));
     const overdue = /backlog|tồn|dừng|lost|thất lạc|sla/i.test((mainKey || '') + ' ' + seed);
     const slaPool = overdue
       ? [['Quá hạn 2 ngày', '#d23a2e'], ['Quá hạn 1 ngày', '#d23a2e'], ['Quá hạn 3 ngày', '#d23a2e'], ['Quá hạn 5 giờ', '#c77a14']]
       : [['Còn 4 giờ', '#1c8a3c'], ['Còn 8 giờ', '#1c8a3c'], ['Còn 2 giờ', '#c77a14'], ['Trong hạn', '#1c8a3c']];
     const base = 50800000 + seed.length * 137 + (mainKey || '').length * 911;
     const out = [];
-    for (let i = 0; i < n; i++) {
+    for (let k = 0; k < n; k++) {
+      const i = offset + k;
       const sla = slaPool[i % slaPool.length];
       out.push({
         stt: i + 1,
@@ -669,6 +833,33 @@ class Component extends DCLogic {
     ];
   }
 
+  buildDetailGroups(wb) {
+    const ghiChu = [
+      'Cho khách xem hàng, không cho thử',
+      'Hàng dễ vỡ, vui lòng nhẹ tay',
+      'Không giao được liên hệ SĐT shop, không tự ý hủy đơn',
+    ];
+    return [
+      { title: 'NGƯỜI GỬI', rows: [
+        { k: 'Người gửi', v: 'Tổng kho Kính - Mỡ' },
+        { k: 'Địa chỉ gửi hàng', v: 'Đ Hà Nội Huyện Gia Lâm Xã Cổ Bi-024HGL10 Thôn Cam 2, Cổ Bị, Gia Lâm, Hà Nội' },
+        { k: 'SĐT gửi', v: '0356525129' },
+      ] },
+      { title: 'ĐƠN HÀNG', rows: [
+        { k: 'Phân loại hàng hóa', v: 'HÀNG HÓA' },
+        { k: 'Nội dung hàng hóa', v: 'kính' },
+        { k: 'Trọng lượng gốc', v: '8' },
+        { k: 'Phương thức kết toán', v: 'CC CASH' },
+        { k: 'Giá trị hàng hóa', v: '0' },
+        { k: 'COD gốc', v: '460000' },
+        { k: 'Tiền thu hộ COD', v: '460000' },
+        { k: 'Dấu lưu kho', v: 'Y' },
+        { k: 'Ký 1p', v: 'Y' },
+        { k: 'Ghi chú', v: ghiChu, isList: true },
+      ] },
+    ];
+  }
+
   renderVals() {
     const accent = this.props.accent ?? '#2f6fed';
     const density = this.props.density ?? 'Tiêu chuẩn';
@@ -686,10 +877,9 @@ class Component extends DCLogic {
     const activeSub = subLabel ? (subList.find(s => s.label === subLabel) || null) : null;
     const status = this.statusForMain(mainKey);
 
-    // ---- Tier 1 main chips ----
     const mains = mainDefs.map(m => {
       const active = m.key === mainKey;
-      m.onSelect = () => this.setState({ mainKey: m.key, subLabel: null, mode: 'list', waybill: null });
+      m.onSelect = () => this.setState({ mainKey: m.key, subLabel: this.defaultSubFor(m.key), mode: 'list', waybill: null, page: 0 });
       m.bg = active ? '#f3f8ff' : '#fbfcfe';
       m.border = active ? accent : '#e7ebf1';
       m.labelColor = active ? '#1f2937' : '#6b7588';
@@ -697,12 +887,11 @@ class Component extends DCLogic {
       return m;
     });
 
-    // ---- Tier 2 sub chips ----
     const subs = subList.map(s => {
       const active = subLabel === s.label;
       return {
         label: s.label, count: s.count,
-        onSelect: () => this.setState({ subLabel: s.label, mode: 'list', waybill: null }),
+        onSelect: () => this.setState({ subLabel: s.label, mode: 'list', waybill: null, page: 0 }),
         bg: active ? accent : '#f4f6f9',
         border: active ? accent : '#e7ebf1',
         color: active ? '#fff' : '#3a4555',
@@ -712,25 +901,32 @@ class Component extends DCLogic {
       };
     });
 
-    // ---- orders for active (queue, sub) ----
     const seed = activeSub ? activeSub.label : activeMain.label;
     const realCount = activeSub ? activeSub.count : activeMain.total;
-    
+
+    const perPage = 100;
+    const totalCount = (this.state.waybills && this.state.waybills.length > 0)
+      ? null : this.num(realCount);
     let orders = [];
+    let pageCount = 1;
+    let page = this.state.page || 0;
     if (this.state.waybills && this.state.waybills.length > 0) {
-      orders = this.state.waybills.filter(o => {
-        // filter by mainKey
+      const all = this.state.waybills.filter(o => {
         const matchesMain = o.mains && o.mains.includes(mainKey);
         if (!matchesMain) return false;
-        // filter by subLabel (if selected)
         if (activeSub) {
           const matchesSub = o.subs && o.subs.includes(activeSub.label);
           if (!matchesSub) return false;
         }
         return true;
       });
+      pageCount = Math.max(1, Math.ceil(all.length / perPage));
+      page = Math.min(page, pageCount - 1);
+      orders = all.slice(page * perPage, page * perPage + perPage);
     } else {
-      orders = this.genOrders(seed, realCount, mainKey);
+      pageCount = Math.max(1, Math.ceil(this.num(realCount) / perPage));
+      page = Math.min(page, pageCount - 1);
+      orders = this.genOrders(seed, realCount, mainKey, { offset: page * perPage, max: perPage });
     }
 
     const wb = this.state.waybill;
@@ -751,12 +947,13 @@ class Component extends DCLogic {
       };
       const isActive = wb && o.code === wb.code;
       o.isStar = !!starredCodes[o.code];
-      o.activeBg = isActive ? '#eef4ff' : (o.isStar ? '#fffae9' : '#fff');
-      o.activeBorder = isActive ? accent : (o.isStar ? '#f0d588' : '#eef1f5');
-      o.starInk = o.isStar ? '#f5b301' : 'transparent';
+      o.activeBg = isActive ? '#eef4ff' : (o.isStar ? '#fff6da' : '#fff');
+      o.activeBorder = isActive ? accent : (o.isStar ? '#e9c860' : '#eef1f5');
+      o.starInk = o.isStar ? '#f5a623' : 'transparent';
+      o.codeColor = o.isStar ? '#b8860b' : '#2f6fed';
+      o.rowAccent = o.isStar ? '#f5a623' : 'transparent';
     });
 
-    // ---- left panel decision ----
     const leftShowsCodes = this.leftShowsCodes(mainKey, activeSub);
     const leftEmpty = !activeSub;
     const leftCodes = !!activeSub && leftShowsCodes;
@@ -765,10 +962,9 @@ class Component extends DCLogic {
     const leftSubLabel = activeSub ? activeSub.label : '';
     const leftCountText = activeSub ? activeSub.count : '';
     const leftWarn = (this.num(realCount) > 0)
-      ? ('Quá nhiều đơn để liệt kê — hiển thị thống kê & top ưu tiên.')
-      : 'Không có đơn trong nhóm này.';
+      ? 'Quá nhiều đơn'
+      : 'Không có đơn';
 
-    // ---- journey rows ----
     const blue = { badgeBg: '#e4eefe', badgeColor: '#2f6fed' };
     const green = { badgeBg: '#e3f4e8', badgeColor: '#1c8a3c' };
     const teal = { badgeBg: '#dcf3f3', badgeColor: '#1aa3a3' };
@@ -784,14 +980,11 @@ class Component extends DCLogic {
         else if (/giao|phát/i.test(type)) badge = orange;
         else if (/kiểm|loại/i.test(type)) badge = purple;
         else if (/nhập|quét/i.test(type)) badge = teal;
-
         return {
           stt: item.Stt || item.stt || (i + 1),
           t1: item.EventTimeText || item.eventTimeText || '-',
           t2: item.UploadTimeText || item.uploadTimeText || '-',
-          type: type,
-          badgeBg: badge.badgeBg,
-          badgeColor: badge.badgeColor,
+          type: type, badgeBg: badge.badgeBg, badgeColor: badge.badgeColor,
           desc: item.Description || item.description || '-',
           source: item.ScanSite || item.scanSite || item.ScanSource || item.scanSource || '-',
           dotColor: i === this.state.journeyRows.length - 1 ? '#1c8a3c' : '#c3cad6',
@@ -823,13 +1016,14 @@ class Component extends DCLogic {
       }));
     }
 
-    // ---- right panel ----
     const hasWaybill = mode === 'journey' && !!wb;
     const starActive = hasWaybill && !!starredCodes[wb.code];
-    let summary = [], details = [], badges = [], suggestions = [], wbCode = '', wbWeight = '1.20 kg';
+    let summary = [], details = [], detailGroups = [], badges = [], suggestions = [], wbCode = '', wbWeight = '1.20 kg';
     if (hasWaybill) {
       summary = this.buildSummary(wb, status);
       details = this.buildDetails(wb);
+      detailGroups = this.buildDetailGroups(wb);
+      detailGroups.forEach(g => g.rows.forEach(r => { r.isList = !!r.isList; r.isText = !r.isList; }));
       badges = [
         { t: status.text, bg: status.bg, c: status.color },
         { t: 'COD ' + wb.cod, bg: '#e4eefe', c: '#2f6fed' },
@@ -839,12 +1033,43 @@ class Component extends DCLogic {
       wbCode = wb.code; wbWeight = wb.weight;
     }
 
+    const rt = this.state.rightTab || 'info';
+    const rtDefs = [['info', 'Thông tin cơ bản'], ['history', 'Lịch sử kiện vấn đề'], ['complaint', 'Khiếu nại']];
+    const rightTabs = rtDefs.map(d => ({ label: d[1], onSelect: () => this.setState({ rightTab: d[0] }), bg: rt === d[0] ? accent : '#f1f4f8', fg: rt === d[0] ? '#fff' : '#6b7588', weight: rt === d[0] ? '600' : '500' }));
+    const showInfo = rt === 'info', showHistory = rt === 'history', showComplaint = rt === 'complaint';
+    const noteList = hasWaybill ? this.notesFor(wb.code) : [];
+    const issueHistory = [
+      { title: 'Giao thất bại lần 1', desc: 'Khách không nghe máy, hẹn giao lại.', tag: 'Sự cố', tagBg: '#fde7e5', tagColor: '#d23a2e', t: '05/06/2026 21:30' },
+      { title: 'Cập nhật lịch giao', desc: 'Khách hẹn nhận hàng buổi tối.', tag: 'Cập nhật', tagBg: '#e4eefe', tagColor: '#2f6fed', t: '05/06/2026 14:10' },
+      { title: 'Phát sinh phí lưu kho', desc: 'Đơn tồn quá 24h tại bưu cục.', tag: 'Cảnh báo', tagBg: '#fdf0db', tagColor: '#c77a14', t: '05/06/2026 09:05' },
+    ];
+
     return {
       accent, cellPad, showNav,
+      fromDate: this.state.fromDate, toDate: this.state.toDate,
+      fromDateOnly: this._splitDT(this.state.fromDate)[0], fromTimeOnly: this._splitDT(this.state.fromDate)[1],
+      toDateOnly: this._splitDT(this.state.toDate)[0], toTimeOnly: this._splitDT(this.state.toDate)[1],
+      onFromDateOnly: this.onFromDateOnly, onToDateOnly: this.onToDateOnly,
+      onFromTimeInput: this.onFromTimeInput, onToTimeInput: this.onToTimeInput,
+      onFromTimeBlur: this.onFromTimeBlur, onToTimeBlur: this.onToTimeBlur, onTimeKeyDown: this.onTimeKeyDown,
+      onFromDateChange: this.onFromDateChange, onToDateChange: this.onToDateChange,
+      onSearchSubmit: this.onSearchSubmit, onSearchKeyDown: this.onSearchKeyDown,
+      onCreateComplaint: this.onCreateComplaint,
+      onRegisterIssue: this.onRegisterIssue,
+      notes: noteList, hasNotes: noteList.length > 0, noNotes: noteList.length === 0,
+      noteCountText: noteList.length > 0 ? '(' + noteList.length + ')' : '',
+      noteDraft: this.state.noteDraft || '',
+      onNoteDraftChange: this.onNoteDraftChange, onSaveNote: this.onSaveNote,
+      rightTabs, showInfo, showHistory, showComplaint, issueHistory,
       mains, subs, activeMainLabel: activeMain.label, activeColor: activeMain.color,
-      // center
       isList: mode === 'list', isJourney: mode === 'journey',
       orders, orderCount: orders.length,
+      pageRangeText: (this.num(realCount) === 0 || orders.length === 0) ? '0 - 0' : ((page * perPage + 1) + ' - ' + (page * perPage + orders.length)),
+      pages: this.buildPageButtons(page, pageCount),
+      pagePrev: () => this.setState(s => ({ page: Math.max(0, (s.page || 0) - 1) })),
+      pageNext: () => this.setState(s => ({ page: Math.min(pageCount - 1, (s.page || 0) + 1) })),
+      prevColor: page <= 0 ? '#c3cad6' : '#6b7588', prevBg: page <= 0 ? '#f6f8fb' : '#fff',
+      nextColor: page >= pageCount - 1 ? '#c3cad6' : '#6b7588', nextBg: page >= pageCount - 1 ? '#f6f8fb' : '#fff',
       hasSub: !!activeSub, centerCountText: realCount,
       activeStatusText: status.text, activeStatusBg: status.bg, activeStatusColor: status.color,
       backToList: () => this.setState({ mode: 'list', waybill: null }),
@@ -852,16 +1077,27 @@ class Component extends DCLogic {
       copyList: () => this.copyOrderList(leftCodes ? orders : leftTop),
       canCopyLeft: leftCodes || leftStats, cannotCopyLeft: !(leftCodes || leftStats),
       copied: this.state.copied, notCopied: !this.state.copied,
-      copyLabel: this.state.copied ? 'Đã chép' : 'Copy',
+      copyLabel: this.state.copied ? 'Đã copy' : 'Copy',
       copyColor: this.state.copied ? '#1c8a3c' : '#3a4555',
       copyBorder: this.state.copied ? '#bfe3c8' : '#d7dde6',
       copyBg: this.state.copied ? '#eef8f0' : '#fff',
+      copyJourney: () => this.copyJourney(rows),
+      journeyCopied: this.state.journeyCopied, journeyNotCopied: !this.state.journeyCopied,
+      journeyCopyLabel: this.state.journeyCopied ? 'Đã copy' : 'Copy',
+      journeyCopyColor: this.state.journeyCopied ? '#1c8a3c' : '#3a4555',
+      journeyCopyBorder: this.state.journeyCopied ? '#bfe3c8' : '#d7dde6',
+      journeyCopyBg: this.state.journeyCopied ? '#eef8f0' : '#fff',
+      refreshJourney: this.refreshJourney,
+      refreshSpinClass: this.state.journeyRefreshing ? 'aj-spin' : '',
       rows, wbCode, wbWeight,
-      // left
       leftEmpty, leftCodes, leftStats, leftTop, leftSubLabel, leftCountText, leftWarn,
-      // right
-      hasWaybill, noWaybill: !hasWaybill, summary, details, badges, suggestions,
-      // star (per waybill)
+      hasWaybill, noWaybill: !hasWaybill, summary, details, detailGroups, badges, suggestions,
+      copyWaybill: this.copyWaybill,
+      wbCopied: this.state.wbCopied, wbNotCopied: !this.state.wbCopied,
+      wbCopyLabel: this.state.wbCopied ? 'Đã copy' : 'Copy',
+      wbCopyColor: this.state.wbCopied ? '#1c8a3c' : '#3a4555',
+      wbCopyBorder: this.state.wbCopied ? '#bfe3c8' : '#d7dde6',
+      wbCopyBg: this.state.wbCopied ? '#eef8f0' : '#fff',
       toggleStar: () => {
         if (!wb) return;
         this.setState(s => {
@@ -878,15 +1114,15 @@ class Component extends DCLogic {
       starBg: starActive ? '#fff7df' : '#fff',
       starBorder: starActive ? '#f0d588' : '#d7dde6',
       starLabel: 'Star',
-      // extra dynamic states
       siteId: this.state.siteId || '214A02',
-      lastUpdateTime: this.state.lastUpdateTime || 'Chưa tải',
+      lastUpdateTime: this.state.lastUpdateTime || '00:00:00',
       syncStatus: this.state.syncStatus || 'DB: Synced',
       selectedSource: this.state.selectedSource || 'LOCAL',
-      selectedTimeInterval: this.state.selectedTimeInterval || '2 PHÚT',
+      selectedTimeInterval: this.state.selectedTimeInterval || '1 giờ',
       selectedStatusSelect: this.state.selectedStatusSelect || 'Tất cả tồn kho',
       searchText: this.state.searchText || '',
       onSyncClick: this.onSyncClick,
+      syncSpinClass: this.state.syncing ? 'aj-spin' : '',
       onExportClick: this.onExportClick,
       onSourceChange: this.onSourceChange,
       onTimeIntervalChange: this.onTimeIntervalChange,
@@ -896,5 +1132,6 @@ class Component extends DCLogic {
   }
 }
 </script>
-</body>
-</html>
+
+
+</body></html>
