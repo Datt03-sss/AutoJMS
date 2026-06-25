@@ -603,6 +603,10 @@ namespace AutoJMS
                 return;
             }
 
+            // [TEMP DISABLE] Tạm thời tắt tự động fetch waybill khi có autoken theo yêu cầu
+            AppLogger.Info("[Sync] Auto fetch is temporarily disabled.");
+            return;
+
             if (!await _syncGate.WaitAsync(0, ct)) return;
             try
             {
@@ -620,6 +624,9 @@ namespace AutoJMS
             // Defensive guard: even if the timer somehow runs, BASE never does
             // background auto-sync.
             if (_tierPolicy == null || !_tierPolicy.EnableBackgroundAutoSync) return;
+
+            // [TEMP DISABLE] Tạm thời tắt tự động fetch waybill khi có autoken theo yêu cầu
+            return;
 
             if (_syncGate.CurrentCount == 0) return;
             if (!ShouldRunAutoSyncNow()) return;
@@ -1063,9 +1070,9 @@ namespace AutoJMS
             var lblTheme = new UILabel
             {
                 Name = "tabAbout_lblTheme",
-                Text = "Giao diện (Theme):",
-                Size = new Size(130, 30),
-                Location = new Point(105, 5),
+                Text = "Theme:",
+                Size = new Size(150, 30),
+                Location = new Point(45, 5),
                 TextAlign = ContentAlignment.MiddleRight,
                 Font = new Font("Segoe UI", 10F, FontStyle.Bold)
             };
@@ -1074,7 +1081,7 @@ namespace AutoJMS
             {
                 Name = "tabAbout_cboTheme",
                 Size = new Size(150, 30),
-                Location = new Point(245, 5),
+                Location = new Point(195, 5),
                 DropDownStyle = UIDropDownStyle.DropDownList,
                 Radius = 6
             };
@@ -1088,6 +1095,7 @@ namespace AutoJMS
                 string selectedTheme = cboTheme.SelectedItem?.ToString() ?? "Light";
                 if (selectedTheme != _settings.Theme)
                 {
+                    string previousTheme = _settings.Theme ?? "Light";
                     _settings.Theme = selectedTheme;
                     _userSettings.Save(_settings);
 
@@ -1098,6 +1106,9 @@ namespace AutoJMS
                         this.Invalidate(true);
                         this.Update();
                     }
+
+                    // Sync the embedded JMS webview theme (server config + background reload).
+                    _ = SyncJmsWebViewThemeAsync(selectedTheme, previousTheme);
                 }
             };
 
@@ -1813,6 +1824,135 @@ namespace AutoJMS
                 return uri.Host.EndsWith("jtexpress.vn", StringComparison.OrdinalIgnoreCase);
             }
             catch { return false; }
+        }
+
+        // ===== tabAbout theme -> JMS webview theme sync =====
+
+        // Map the app theme name to the JMS sysUser configColor value.
+        // Light -> "default", Dark -> "black", Red -> "green".
+        private static string MapThemeToConfigColor(string theme)
+        {
+            switch ((theme ?? "Light").Trim().ToLowerInvariant())
+            {
+                case "dark": return "black";
+                case "red": return "green";
+                default: return "default";
+            }
+        }
+
+        // First logged-in JMS-origin webview (or null).
+        private Microsoft.Web.WebView2.WinForms.WebView2 GetJmsWebView()
+        {
+            foreach (var wv in new[] { tabHome_webView, tabDKCH_webView })
+            {
+                if (wv?.CoreWebView2 == null) continue;
+                if (IsJmsOriginWebView(wv)) return wv;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Persist the chosen theme to the JMS sysUser config (so the embedded
+        /// JMS webview uses the same theme) and reload the JMS webviews in the
+        /// background. Reads id / countryId / current color (preTheme) from the
+        /// logged-in JMS webview localStorage.
+        /// </summary>
+        private async Task SyncJmsWebViewThemeAsync(string newTheme, string previousTheme)
+        {
+            try
+            {
+                string newColor = MapThemeToConfigColor(newTheme);
+
+                var wv = GetJmsWebView();
+                if (wv?.CoreWebView2 == null)
+                {
+                    AppLogger.Warning("SyncJmsWebViewTheme: no logged-in JMS webview; theme not synced.");
+                    return;
+                }
+
+                const string readJs = @"(function(){
+  var out = { preTheme:null, id:null, countryId:null, configColor:null };
+  try { out.preTheme = localStorage.getItem('preTheme'); } catch(e){}
+  try {
+    for (var i=0;i<localStorage.length;i++){
+      var k = localStorage.key(i); var v = localStorage.getItem(k);
+      if (!v) continue;
+      var o; try { o = JSON.parse(v); } catch(e){ continue; }
+      var c = (o && (o.configColor!==undefined || o.id!==undefined)) ? o : (o && o.data ? o.data : null);
+      if (c && c.id!==undefined && (c.configColor!==undefined || c.countryId!==undefined)) {
+        out.id = c.id;
+        out.countryId = (c.countryId!==undefined ? c.countryId : null);
+        if (c.configColor!==undefined) out.configColor = c.configColor;
+        break;
+      }
+    }
+  } catch(e){}
+  return JSON.stringify(out);
+})();";
+
+                string raw = await wv.ExecuteScriptAsync(readJs);
+                string json = (string.IsNullOrEmpty(raw) || raw == "null") ? null : JsonSerializer.Deserialize<string>(raw);
+
+                string idStr = null, countryId = "1", currentColor = null;
+                if (!string.IsNullOrEmpty(json))
+                {
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("id", out var idp) && idp.ValueKind != JsonValueKind.Null)
+                        idStr = idp.ValueKind == JsonValueKind.Number ? idp.GetRawText() : idp.GetString();
+                    if (root.TryGetProperty("countryId", out var cidp) && cidp.ValueKind != JsonValueKind.Null)
+                        countryId = cidp.ValueKind == JsonValueKind.Number ? cidp.GetRawText() : cidp.GetString();
+                    if (root.TryGetProperty("configColor", out var ccp) && ccp.ValueKind == JsonValueKind.String)
+                        currentColor = ccp.GetString();
+                    if (string.IsNullOrEmpty(currentColor) && root.TryGetProperty("preTheme", out var ptp) && ptp.ValueKind == JsonValueKind.String)
+                        currentColor = ptp.GetString();
+                }
+                if (string.IsNullOrEmpty(currentColor)) currentColor = MapThemeToConfigColor(previousTheme);
+                if (string.IsNullOrWhiteSpace(countryId)) countryId = "1";
+
+                // Persist to the server when we know the sysUser id.
+                if (!string.IsNullOrWhiteSpace(idStr) && long.TryParse(idStr, out var idNum))
+                {
+                    var payload = new
+                    {
+                        newData = new { id = idNum, configLanguage = "VN", configColor = newColor, countryId = countryId },
+                        oldData = new { id = idNum, configLanguage = "VN", configColor = currentColor, countryId = countryId },
+                        countryId = countryId
+                    };
+                    string body = JsonSerializer.Serialize(payload);
+                    string url = AppConfig.Current.JmsApiBaseUrl.TrimEnd('/') + "/oauth/sysUser/updateConfig";
+                    string origin = AppConfig.Current.JmsBaseUrl.TrimEnd('/');
+
+                    var resp = await JmsApiClient.PostJsonAsync(url, body, "setting", null, origin);
+                    bool ok = resp != null && resp.IsSuccessStatusCode;
+                    AppLogger.Info($"SyncJmsWebViewTheme: updateConfig {(ok ? "OK" : "FAILED")} color={newColor} status={(resp != null ? ((int)resp.StatusCode).ToString() : "null")}");
+                    resp?.Dispose();
+                }
+                else
+                {
+                    AppLogger.Warning("SyncJmsWebViewTheme: sysUser id not found in localStorage; applied client-side only.");
+                }
+
+                // Update client cache (preTheme) + reload JMS webviews in the background.
+                string applyJs = "try{localStorage.setItem('preTheme'," + JsonSerializer.Serialize(newColor) + ");}catch(e){}";
+                foreach (var w in new[] { tabHome_webView, tabDKCH_webView })
+                {
+                    try
+                    {
+                        if (w?.CoreWebView2 == null || !IsJmsOriginWebView(w)) continue;
+                        await w.ExecuteScriptAsync(applyJs);
+                        w.CoreWebView2.Reload();
+                    }
+                    catch (Exception exReload)
+                    {
+                        AppLogger.Warning($"SyncJmsWebViewTheme: reload failed ({exReload.Message}).");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("SyncJmsWebViewThemeAsync failed", ex);
+            }
         }
 
         /// <summary>
@@ -4467,4 +4607,3 @@ namespace AutoJMS
         }
     }
 }
-

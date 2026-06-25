@@ -26,17 +26,19 @@ namespace AutoJMS.FullStack.Services
             _repository = repository;
         }
 
-        public async Task<FullStackSyncResult> SyncInventoryAsync(CancellationToken ct = default)
+        public async Task<FullStackSyncResult> SyncInventoryAsync(DateTime? startOverride = null, DateTime? endOverride = null, CancellationToken ct = default)
         {
             if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
                 throw new InvalidOperationException("Đang chờ đăng nhập / authToken");
 
             DateTime startedAt = DateTime.UtcNow;
-            DateTime endDate = DateTime.Now;
-            DateTime startDate = endDate.AddDays(-30);
+            DateTime endDate = endOverride ?? DateTime.Today.AddDays(1).AddSeconds(-1);
+            DateTime startDate = startOverride ?? endDate.Date.AddDays(-30);
             string actionSiteCode = GetActionSiteCode();
 
-            AppLogger.Info($"[FullStackSync] inventory sync started actionSiteCode={actionSiteCode}, startDate={startDate:yyyy-MM-dd}, endDate={endDate:yyyy-MM-dd}");
+            string dbgTok = JmsAuthStateService.HasToken ? (JmsAuthStateService.CurrentToken ?? "") : "";
+            string dbgTokMask = dbgTok.Length >= 8 ? $"{dbgTok.Substring(0, 4)}...{dbgTok.Substring(dbgTok.Length - 4)}" : (dbgTok.Length == 0 ? "<none>" : "<short>");
+            AppLogger.Info($"[FullStackSync] inventory sync started actionSiteCode={actionSiteCode}, startDate={startDate:yyyy-MM-dd HH:mm:ss}, endDate={endDate:yyyy-MM-dd HH:mm:ss}, token={dbgTokMask}");
 
             var fetchResult = await FetchInventoryAsync(actionSiteCode, startDate, endDate, ct).ConfigureAwait(false);
             var run = new InventoryRun
@@ -63,8 +65,8 @@ namespace AutoJMS.FullStack.Services
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<InventoryFetchItem>();
             string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/take_ret_mon_detail_doris2");
-            string start = startDate.ToString("yyyy-MM-dd 00:00:00");
-            string end = endDate.ToString("yyyy-MM-dd 23:59:59");
+            string start = startDate.ToString("yyyy-MM-dd HH:mm:ss");
+            string end = endDate.ToString("yyyy-MM-dd HH:mm:ss");
             int currentPage = 1;
             int? totalPages = null;
             int totalRecords = 0;
@@ -92,9 +94,12 @@ namespace AutoJMS.FullStack.Services
                             { "countryId", "1" }
                         };
 
+                        var body = JsonSerializer.Serialize(payload, AppConfig.CreateJsonOptions());
+                        AppLogger.Info($"[FullStackSync] REQUEST page={currentPage} url={url} body={body}");
+
                         using var res = await JmsApiClient.PostJsonAsync(
                             url,
-                            JsonSerializer.Serialize(payload, AppConfig.CreateJsonOptions()),
+                            body,
                             routeName: InventoryRouteName,
                             routerNameList: InventoryRouterNameList,
                             origin: "https://jms.jtexpress.vn",
@@ -104,6 +109,7 @@ namespace AutoJMS.FullStack.Services
                         if ((int)res.StatusCode == 401) throw new UnauthorizedAccessException("JMS auth expired.");
 
                         var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        AppLogger.Info($"[FullStackSync] RESPONSE page={currentPage} status={(int)res.StatusCode} body={Truncate(json, 1000)}");
                         if (!res.IsSuccessStatusCode)
                             throw new Exception($"HTTP {(int)res.StatusCode}: {Truncate(json, 300)}");
                         if (string.IsNullOrWhiteSpace(json))
