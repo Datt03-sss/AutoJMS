@@ -107,6 +107,14 @@ namespace AutoJMS.FullStack.Services
             await _repository.UpsertTrackingRowsAsync(finalRows, ct).ConfigureAwait(false);
             var finalEvents = BuildFinalEvents(list, eventDict, aliasMap);
             await _repository.UpsertTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
+            try
+            {
+                await new JourneyHistoryService().StoreTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
+            }
+            catch (System.Exception jhEx)
+            {
+                AppLogger.Warning($"[FullStackTracking] journey_history persist skipped: {jhEx.Message}");
+            }
             await _repository.MarkEnrichedAsync(list, ct).ConfigureAwait(false);
             AppLogger.Info($"[FullStackTracking] enrichment finished count={finalRows.Count}");
 

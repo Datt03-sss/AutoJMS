@@ -76,6 +76,10 @@ backend/render-license-server/node_modules/
 *.tmp
 *.temp
 
+# Python cache
+__pycache__/
+*.pyc
+
 # Agent and Secrets config
 secrets/
 service_account*.json

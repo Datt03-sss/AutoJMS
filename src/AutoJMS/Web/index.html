@@ -50,7 +50,7 @@ body { margin: 0; }
         </div>
         <span style="color: #8a94a6; font-size: 13px;">–</span>
         <div style="display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
-          <input type="date" value="{{ toDateOnly }}" onchange="{{ onToDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
+          <input type="date" value="{{ toDateOnly }}" max="{{ toDateMax }}" onchange="{{ onToDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
           <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="{{ toTimeOnly }}" oninput="{{ onToTimeInput }}" onblur="{{ onToTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; border-left: 1px solid #e7ebf1; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
         </div>
       </div>
@@ -454,6 +454,7 @@ class Component extends DCLogic {
             siteId: msg.siteId,
             lastUpdateTime: msg.lastUpdateTime,
             syncStatus: msg.syncStatus,
+            counts: msg.counts || {},
             waybills: msg.waybills || [],
             starredCodes: msg.starredCodes || {},
             selectedSource: msg.selectedSource || 'LOCAL',
@@ -616,7 +617,7 @@ class Component extends DCLogic {
       pause: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/></svg>',
       star: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
     };
-    const mains = this.state.counts && this.state.counts.mains ? this.state.counts.mains : null;
+    const mains = this.state.counts && this.state.counts.mains ? this.state.counts.mains : {};
     return [
       { key: 'tong-ton', label: 'Tổng tồn', total: mains ? (mains['tong-ton'] || '0') : '2,505', color: '#e0453a', iconBg: '#fde7e5', icon: I.warehouse },
       { key: 'hang-den', label: 'Hàng đến', total: mains ? (mains['hang-den'] || '0') : '2,104', color: '#2f6fed', iconBg: '#e4eefe', icon: I.truck },
@@ -680,7 +681,8 @@ class Component extends DCLogic {
     inTongTon.forEach(o => {
       // status field, else fall back to the order's sub labels
       let sts = [];
-      if (o.status != null && o.status !== '') sts = [o.status];
+      if (o.op != null && o.op !== '') sts = [o.op];
+      else if (o.status != null && o.status !== '') sts = [o.status];
       else if (Array.isArray(o.statuses)) sts = o.statuses;
       else if (Array.isArray(o.subs)) sts = o.subs;
       sts.forEach(s => {
@@ -809,10 +811,10 @@ class Component extends DCLogic {
 
   buildSummary(wb, status) {
     return [
-      { k: 'Rủi ro', v: wb.risk || 'Thấp (0%)' },
-      { k: 'SLA cam kết', v: wb.slaCommit || '05/06/2026 21:59' },
-      { k: 'Trạng thái hiện tại', v: status.text },
-      { k: 'Lần quét cuối', v: wb.lastScan || '05/06/2026 22:18:14' },
+      { k: 'Rủi ro', v: wb.risk || '-' },
+      { k: 'SLA cam kết', v: wb.slaCommit || '-' },
+      { k: 'Trạng thái hiện tại', v: wb.status || status.text },
+      { k: 'Lần quét cuối', v: wb.lastScan || '-' },
       { k: 'SLA dòng đơn', v: wb.sla },
       { k: 'Nhân viên phụ trách', v: wb.staff },
       { k: 'Đề xuất hành động', v: 'Xem mục đề xuất xử lý' },
@@ -834,28 +836,19 @@ class Component extends DCLogic {
   }
 
   buildDetailGroups(wb) {
-    const ghiChu = [
-      'Cho khách xem hàng, không cho thử',
-      'Hàng dễ vỡ, vui lòng nhẹ tay',
-      'Không giao được liên hệ SĐT shop, không tự ý hủy đơn',
-    ];
     return [
       { title: 'NGƯỜI GỬI', rows: [
-        { k: 'Người gửi', v: 'Tổng kho Kính - Mỡ' },
-        { k: 'Địa chỉ gửi hàng', v: 'Đ Hà Nội Huyện Gia Lâm Xã Cổ Bi-024HGL10 Thôn Cam 2, Cổ Bị, Gia Lâm, Hà Nội' },
-        { k: 'SĐT gửi', v: '0356525129' },
+        { k: 'Người gửi', v: wb.sender || '-' },
+        { k: 'Địa chỉ gửi hàng', v: wb.senderAddr || '-' },
+        { k: 'SĐT gửi', v: wb.senderPhone || '-' },
       ] },
       { title: 'ĐƠN HÀNG', rows: [
-        { k: 'Phân loại hàng hóa', v: 'HÀNG HÓA' },
-        { k: 'Nội dung hàng hóa', v: 'kính' },
-        { k: 'Trọng lượng gốc', v: '8' },
-        { k: 'Phương thức kết toán', v: 'CC CASH' },
-        { k: 'Giá trị hàng hóa', v: '0' },
-        { k: 'COD gốc', v: '460000' },
-        { k: 'Tiền thu hộ COD', v: '460000' },
-        { k: 'Dấu lưu kho', v: 'Y' },
-        { k: 'Ký 1p', v: 'Y' },
-        { k: 'Ghi chú', v: ghiChu, isList: true },
+        { k: 'Nội dung hàng hóa', v: wb.content || '-' },
+        { k: 'Phương thức kết toán', v: wb.payMethod || '-' },
+        { k: 'COD', v: wb.cod || '-' },
+        { k: 'Khối lượng', v: wb.weight || '-' },
+        { k: 'Phường/Khu vực', v: wb.ward || '-' },
+        { k: 'Mã đơn hàng', v: wb.orderNo || '-' },
       ] },
     ];
   }
@@ -915,7 +908,7 @@ class Component extends DCLogic {
         const matchesMain = o.mains && o.mains.includes(mainKey);
         if (!matchesMain) return false;
         if (activeSub) {
-          const matchesSub = o.subs && o.subs.includes(activeSub.label);
+          const matchesSub = (o.subs && o.subs.includes(activeSub.label)) || (o.op != null && o.op === activeSub.label);
           if (!matchesSub) return false;
         }
         return true;
@@ -924,9 +917,9 @@ class Component extends DCLogic {
       page = Math.min(page, pageCount - 1);
       orders = all.slice(page * perPage, page * perPage + perPage);
     } else {
-      pageCount = Math.max(1, Math.ceil(this.num(realCount) / perPage));
-      page = Math.min(page, pageCount - 1);
-      orders = this.genOrders(seed, realCount, mainKey, { offset: page * perPage, max: perPage });
+      orders = [];
+      pageCount = 1;
+      page = 0;
     }
 
     const wb = this.state.waybill;
@@ -992,28 +985,7 @@ class Component extends DCLogic {
         };
       });
     } else {
-      const raw = [
-        ['06:13:20','06:13:24','TẠO ĐƠN', blue,  'Tạo vận đơn tại bưu cục', '214A02 - Bưu cục A'],
-        ['06:18:05','06:18:09','NHẬN HÀNG', green, 'Nhân viên nhận hàng, scan vận đơn', '214A02 - Bưu cục A'],
-        ['07:02:11','07:02:16','CHUYỂN ĐI', blue,  'Chuyển khỏi bưu cục - Lên xe tải', '214A02 - Bưu cục A'],
-        ['08:45:33','08:45:37','TRUNG CHUYỂN', blue, 'Đến trung tâm khai thác', '214H01 - Hub HCM'],
-        ['08:52:19','08:52:23','QUÉT NHẬP', teal,  'Quét nhập vào băng chuyền', '214H01 - Hub HCM'],
-        ['10:15:42','10:15:47','PHÂN LOẠI', purple,'Phân loại - Hướng đến HUB HN', '214H01 - Hub HCM'],
-        ['12:02:18','12:02:22','CHUYỂN ĐI', blue,  'Rời HUB HCM - Chuyển đi HUB HN', '214H01 - Hub HCM'],
-        ['18:22:31','18:22:37','TRUNG CHUYỂN', blue, 'Đến trung tâm khai thác', '214H02 - Hub HN'],
-        ['18:31:08','18:31:13','QUÉT NHẬP', teal,  'Quét nhập vào băng chuyền', '214H02 - Hub HN'],
-        ['19:05:26','19:05:31','PHÂN LOẠI', purple,'Phân loại - Hướng đến bưu cục nhận', '214H02 - Hub HN'],
-        ['20:10:45','20:10:50','CHUYỂN ĐI', blue,  'Rời HUB HN - Chuyển đi bưu cục nhận', '214H02 - Hub HN'],
-        ['21:05:07','21:05:11','ĐẾN BƯU CỤC', orange,'Đến bưu cục giao hàng', '213B05 - BC Hải Phòng'],
-        ['21:22:33','21:22:38','ĐANG GIAO', orange,'Xuất kho, giao cho nhân viên giao', '213B05 - BC Hải Phòng'],
-        ['22:18:14','22:18:18','PHÁT THÀNH CÔNG', green,'Giao thành công - Ký bởi người nhận', '213B05 - BC Hải Phòng'],
-      ];
-      rows = raw.map((r, i) => ({
-        stt: i + 1, t1: '05/06/2026 ' + r[0], t2: '05/06/2026 ' + r[1], type: r[2],
-        badgeBg: r[3].badgeBg, badgeColor: r[3].badgeColor, desc: r[4], source: r[5],
-        dotColor: i === raw.length - 1 ? '#1c8a3c' : '#c3cad6',
-        dotFill: i === raw.length - 1 ? '#1c8a3c' : '#fff',
-      }));
+      rows = [];
     }
 
     const hasWaybill = mode === 'journey' && !!wb;
@@ -1049,6 +1021,7 @@ class Component extends DCLogic {
       fromDate: this.state.fromDate, toDate: this.state.toDate,
       fromDateOnly: this._splitDT(this.state.fromDate)[0], fromTimeOnly: this._splitDT(this.state.fromDate)[1],
       toDateOnly: this._splitDT(this.state.toDate)[0], toTimeOnly: this._splitDT(this.state.toDate)[1],
+      toDateMax: (function () { const d = new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })(),
       onFromDateOnly: this.onFromDateOnly, onToDateOnly: this.onToDateOnly,
       onFromTimeInput: this.onFromTimeInput, onToTimeInput: this.onToTimeInput,
       onFromTimeBlur: this.onFromTimeBlur, onToTimeBlur: this.onToTimeBlur, onTimeKeyDown: this.onTimeKeyDown,

@@ -50,7 +50,7 @@ namespace AutoJMS.FullStack.Services
             };
         }
 
-        public async Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(CancellationToken ct = default)
+        public async Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
         {
             await InitializeAsync(ct).ConfigureAwait(false);
 
@@ -59,7 +59,7 @@ namespace AutoJMS.FullStack.Services
 
             try
             {
-                var syncResult = await _inventorySyncService.SyncInventoryAsync(ct).ConfigureAwait(false);
+                var syncResult = await _inventorySyncService.SyncInventoryAsync(from, to, ct).ConfigureAwait(false);
                 var rows = await _repository.GetDashboardRowsAsync(ct).ConfigureAwait(false);
                 var waybills = rows.Select(x => x.WaybillNo).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
                 if (waybills.Count > 0)

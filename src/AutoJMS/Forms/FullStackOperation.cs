@@ -84,6 +84,7 @@ namespace AutoJMS
         private readonly FullStackWorkflowService _fullStackWorkflowService = new();
         private readonly FullStackExportService _fullStackExportService = new();
         private readonly IFullStackJourneyService _fullStackJourneyService = new FullStackJourneyService();
+        private readonly JourneyHistoryService _journeyHistoryService = new();
         private readonly IJourneyAttachmentService _journeyAttachmentService = new JourneyAttachmentService();
         private List<WaybillDbModel> _lastFilteredDashRows = new();
         private bool _isSyncRunning = false;
@@ -388,7 +389,7 @@ namespace AutoJMS
                 }
 
                 SetFullStackStatus("Đang đồng bộ tồn kho 30 ngày...");
-                var result = await _fullStackDashboardService.SyncInventoryAndRefreshTrackingAsync(ct);
+                var result = await _fullStackDashboardService.SyncInventoryAndRefreshTrackingAsync(ct: ct);
                 AppLogger.Info($"[FullStackOperation] manual sync finished runId={result.RunId}, fetched={result.TotalFetched}, new={result.NewWaybills}, left={result.LeftInventory}");
                 SetFullStackStatus($"Sync xong: {result.TotalFetched:N0} đơn, mới {result.NewWaybills:N0}, rời tồn {result.LeftInventory:N0}");
                 await LoadDataAndRefreshViewsAsync();

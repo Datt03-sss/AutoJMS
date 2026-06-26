@@ -12,5 +12,11 @@ namespace AutoJMS.FullStack.Models
         public int LeftInventory { get; set; }
         public DateTime StartedAt { get; set; }
         public DateTime FinishedAt { get; set; }
+
+        // Outcome classification (consumed by FullStackOperation tabDash sync handler).
+        public bool Success { get; set; }
+        public bool IsNoData { get; set; }
+        public string ErrorCode { get; set; } = "";
+        public string ErrorMessage { get; set; } = "";
     }
 }

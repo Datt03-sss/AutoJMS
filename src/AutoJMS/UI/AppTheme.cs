@@ -110,7 +110,7 @@ namespace AutoJMS.UI
             InputBackground = ColorTranslator.FromHtml("#121214"), // Darker input field background
             SubtleBorder = ColorTranslator.FromHtml("#27272A"), // Very thin/sleek dark border lines
             InputBorder = ColorTranslator.FromHtml("#3F3F46"),
-            TextPrimary = ColorTranslator.FromHtml("#FAFAFA"), // High contrast off-white text
+            TextPrimary = ColorTranslator.FromHtml("#E4E4E7"), // Slightly dimmed off-white text (reduced glare)
             TextSecondary = ColorTranslator.FromHtml("#A1A1AA"),
             TextInverse = ColorTranslator.FromHtml("#0A0A0C"),
 
@@ -292,7 +292,15 @@ namespace AutoJMS.UI
             else if (ctrl is UILabel lbl)
             {
                 lbl.Style = UIStyle.Custom;
-                if (lbl.Name == "lblNetworkStatus")
+                if (lbl.Name == "tabTracking_countSum")
+                {
+                    // Bigger count + no outer frame (the global 10F font above + the
+                    // designer's FixedSingle border made it tiny and boxed).
+                    lbl.Font = new Font("Segoe UI Semibold", 26F, FontStyle.Bold);
+                    lbl.BorderStyle = BorderStyle.None;
+                    lbl.ForeColor = colors.TextPrimary;
+                }
+                else if (lbl.Name == "lblNetworkStatus")
                 {
                     // Ignore, managed by Main.cs
                 }
@@ -396,9 +404,10 @@ namespace AutoJMS.UI
                 dgv.StripeOddColor = colors.CardBackground;
 
                 dgv.ColumnHeadersDefaultCellStyle.BackColor = colors.GridHeaderBack;
-                dgv.ColumnHeadersDefaultCellStyle.ForeColor = colors.TextSecondary;
+                // Header text: Light/Red -> black, Dark -> white (clearer contrast).
+                dgv.ColumnHeadersDefaultCellStyle.ForeColor = (CurrentTheme == ThemeMode.Dark) ? Color.White : Color.Black;
                 dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = colors.GridHeaderBack;
-                dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = colors.TextSecondary;
+                dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = (CurrentTheme == ThemeMode.Dark) ? Color.White : Color.Black;
 
                 dgv.DefaultCellStyle.BackColor = colors.CardBackground;
                 dgv.DefaultCellStyle.ForeColor = colors.TextPrimary;
@@ -416,7 +425,8 @@ namespace AutoJMS.UI
                 if (rtxt.Name == "tabDKCH_inputNewBill" || rtxt.Name == "tabDKCH_newBillDone" || rtxt.Name == "tabDKCH_nowTracking")
                 {
                     rtxt.FillColor = colors.CardBackground;
-                    rtxt.RectColor = colors.SubtleBorder;
+                    // Per-theme border: Red -> red, Dark -> soft gray (not glaring white), Light -> blue accent.
+                    rtxt.RectColor = (CurrentTheme == ThemeMode.Dark) ? ColorTranslator.FromHtml("#71717A") : colors.PrimaryAccent;
                     rtxt.ForeColor = colors.TextPrimary;
                 }
                 else

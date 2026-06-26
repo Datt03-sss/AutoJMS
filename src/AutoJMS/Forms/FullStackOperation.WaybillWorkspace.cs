@@ -365,6 +365,7 @@ namespace AutoJMS
                         BuildJourneyLoadedStatus(refresh.ViewModel.Rows.Count, refresh.FetchedAt ?? DateTime.Now, "Fresh"));
                     SetJourneyAuxButtons(false, !string.IsNullOrWhiteSpace(refresh.RawJson));
                     QueueJourneySnapshotSave(journeyWaybill, refresh);
+                    _ = _journeyHistoryService.StoreRowsAsync(journeyWaybill, refresh.ViewModel.Rows);
                 }
                 else if (refresh.Success)
                 {

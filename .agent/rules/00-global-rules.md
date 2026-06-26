@@ -6,6 +6,7 @@
 2. Always read `.agent/context` before changing code.
 3. Always read `.agent/rules` before changing code.
 4. Always read `docs/audit/CODEBASE_AUDIT.md` if available.
+5. Read `.agent\skills/SKILL.md `
 
 ## MANDATORY GLOBAL RULES
 

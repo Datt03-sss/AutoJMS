@@ -173,11 +173,11 @@ namespace AutoJMS
             };
             _dashSearchBox.TextChanged += (s, e) => { if (_lastDashSourceData.Count == 0) return; RefreshFilteredGrid(); UpdateFilterInfo(); };
 
-            _dashDateFrom = new DateTimePicker { Visible = false };
-            _dashDateTo = new DateTimePicker { Visible = false };
+            _dashDateFrom = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false };
+            _dashDateTo = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false };
 
-            layout.Controls.Add(CreateFilterField("Bưu cục / Nguồn", tabDash_dataSource), 0, 0);
-            layout.Controls.Add(CreateFilterField("Ngày / Tự tải lại", tabDash_timeUpdateData), 1, 0);
+            layout.Controls.Add(CreateFilterField("Bưu cục", tabDash_dataSource), 0, 0);
+            layout.Controls.Add(CreateFilterField("Cập nhật sau", tabDash_timeUpdateData), 1, 0);
             layout.Controls.Add(CreateFilterField("Thời gian tồn kho", tabDash_statusSelect), 2, 0);
             layout.Controls.Add(_dashSearchBox, 3, 0);
             
@@ -705,7 +705,7 @@ namespace AutoJMS
             var mains = new System.Collections.Generic.List<string> { "tong-ton" };
             var subs = new System.Collections.Generic.List<string> { "Tất cả" };
 
-            if (row.TrangThaiHienTai == "Hàng đến")
+            if (row.ThaoTacCuoi == "Hàng đến")
             {
                 mains.Add("hang-den");
                 subs.Add("Tổng số đơn");
@@ -715,7 +715,7 @@ namespace AutoJMS
                 }
             }
 
-            if (row.TrangThaiHienTai == "Phát hàng")
+            if (row.ThaoTacCuoi == "Phát hàng")
             {
                 mains.Add("phat-hang");
                 subs.Add("Cần phát");
@@ -741,7 +741,7 @@ namespace AutoJMS
                 else subs.Add("<2D");
             }
 
-            if (row.TrangThaiHienTai == "Chuyển hoàn" || IsPendingReturn(row))
+            if (row.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(row))
             {
                 mains.Add("chuyen-hoan");
                 if (row.RebackStatus == "Đợi xét duyệt") subs.Add("Đợi xét duyệt");
@@ -792,11 +792,11 @@ namespace AutoJMS
                 else subs.Add("Đã xử lý");
             }
 
-            if (row.TrangThaiHienTai == "Phát hàng") subs.Add("Quét phát hàng");
-            if (row.TrangThaiHienTai == "Chuyển hoàn") subs.Add("Đăng ký chuyển hoàn");
+            if (row.ThaoTacCuoi == "Phát hàng") subs.Add("Quét phát hàng");
+            if (row.ThaoTacCuoi == "Chuyển hoàn") subs.Add("Đăng ký chuyển hoàn");
             if (row.ThaoTacCuoi?.ToLower().Contains("phát lại") == true || row.ThaoTacCuoi?.ToLower().Contains("giao lại") == true) subs.Add("Giao lại hàng");
-            if (row.TrangThaiHienTai == "Chờ lấy") subs.Add("Chờ lấy hàng");
-            if (row.TrangThaiHienTai == "Lưu kho") subs.Add("Lưu kho");
+            if (row.ThaoTacCuoi == "Chờ lấy") subs.Add("Chờ lấy hàng");
+            if (row.ThaoTacCuoi == "Lưu kho") subs.Add("Lưu kho");
 
             return new
             {
@@ -814,6 +814,14 @@ namespace AutoJMS
                 orderNo = row.WaybillNo,
                 sender = row.TenNguoiGui ?? "-",
                 staff = row.NguoiThaoTac ?? "-",
+                senderAddr = row.DiaChiLayHang ?? "-",
+                content = row.NoiDungHangHoa ?? "-",
+                payMethod = row.PTTT ?? "-",
+                ward = row.Phuong ?? "-",
+                lastScan = row.ThoiGianThaoTac ?? "-",
+                status = row.TrangThaiHienTai ?? "-",
+                op = row.ThaoTacCuoi ?? "",
+                issueReason = row.NguyenNhanKienVanDe ?? "-",
                 mains = mains,
                 subs = subs,
                 isStar = isStarred
@@ -836,10 +844,10 @@ namespace AutoJMS
                 string syncStatus = "DB: Synced";
 
                 int tongTonCount = _cloudData.Count;
-                int hangDenCount = _cloudData.Count(x => x.TrangThaiHienTai == "Hàng đến");
-                int phatHangCount = _cloudData.Count(x => x.TrangThaiHienTai == "Phát hàng");
+                int hangDenCount = _cloudData.Count(x => x.ThaoTacCuoi == "Hàng đến");
+                int phatHangCount = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng");
                 int backlogCount = _cloudData.Count(IsNeedsAction);
-                int chuyenHoanCount = _cloudData.Count(x => x.TrangThaiHienTai == "Chuyển hoàn" || IsPendingReturn(x));
+                int chuyenHoanCount = _cloudData.Count(x => x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x));
                 int kiemKhoCount = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang));
                 int cskhCount = _cloudData.Count(HasTaskWaybill);
                 int dungTramCount = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 1.0);
@@ -867,20 +875,20 @@ namespace AutoJMS
                 {
                     { "tong-ton", new System.Collections.Generic.List<object> {
                         new { label = "Tất cả", count = tongTonCount.ToString("N0") },
-                        new { label = "Quét phát hàng", count = _cloudData.Count(x => x.TrangThaiHienTai == "Phát hàng").ToString("N0") },
-                        new { label = "Đăng ký chuyển hoàn", count = _cloudData.Count(x => x.TrangThaiHienTai == "Chuyển hoàn").ToString("N0") },
+                        new { label = "Quét phát hàng", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng").ToString("N0") },
+                        new { label = "Đăng ký chuyển hoàn", count = _cloudData.Count(x => x.ThaoTacCuoi == "Chuyển hoàn").ToString("N0") },
                         new { label = "Giao lại hàng", count = _cloudData.Count(x => x.ThaoTacCuoi?.ToLower().Contains("phát lại") == true || x.ThaoTacCuoi?.ToLower().Contains("giao lại") == true).ToString("N0") },
-                        new { label = "Chờ lấy hàng", count = _cloudData.Count(x => x.TrangThaiHienTai == "Chờ lấy").ToString("N0") },
-                        new { label = "Lưu kho", count = _cloudData.Count(x => x.TrangThaiHienTai == "Lưu kho").ToString("N0") }
+                        new { label = "Chờ lấy hàng", count = _cloudData.Count(x => x.ThaoTacCuoi == "Chờ lấy").ToString("N0") },
+                        new { label = "Lưu kho", count = _cloudData.Count(x => x.ThaoTacCuoi == "Lưu kho").ToString("N0") }
                     } },
                     { "hang-den", new System.Collections.Generic.List<object> {
                         new { label = "Tổng số đơn", count = hangDenCount.ToString("N0") },
-                        new { label = "Chưa quét đến", count = _cloudData.Count(x => x.TrangThaiHienTai == "Hàng đến" && IsNotDispatched(x)).ToString("N0") }
+                        new { label = "Chưa quét đến", count = _cloudData.Count(x => x.ThaoTacCuoi == "Hàng đến" && IsNotDispatched(x)).ToString("N0") }
                     } },
                     { "phat-hang", new System.Collections.Generic.List<object> {
                         new { label = "Cần phát", count = phatHangCount.ToString("N0") },
-                        new { label = "Đã phát", count = _cloudData.Count(x => x.TrangThaiHienTai == "Phát hàng" && !IsNotDispatched(x)).ToString("N0") },
-                        new { label = "Chưa phát", count = _cloudData.Count(x => x.TrangThaiHienTai == "Phát hàng" && IsNotDispatched(x)).ToString("N0") }
+                        new { label = "Đã phát", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng" && !IsNotDispatched(x)).ToString("N0") },
+                        new { label = "Chưa phát", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng" && IsNotDispatched(x)).ToString("N0") }
                     } },
                     { "backlog", new System.Collections.Generic.List<object> {
                         new { label = "7D+", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
@@ -892,9 +900,9 @@ namespace AutoJMS
                         new { label = "<2D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 2.0).ToString("N0") }
                     } },
                     { "chuyen-hoan", new System.Collections.Generic.List<object> {
-                        new { label = "Đợi xét duyệt", count = _cloudData.Count(x => (x.TrangThaiHienTai == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đợi xét duyệt").ToString("N0") },
-                        new { label = "Đã phê duyệt", count = _cloudData.Count(x => (x.TrangThaiHienTai == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đã phê duyệt").ToString("N0") },
-                        new { label = "Phát lại", count = _cloudData.Count(x => (x.TrangThaiHienTai == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Phát lại").ToString("N0") }
+                        new { label = "Đợi xét duyệt", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đợi xét duyệt").ToString("N0") },
+                        new { label = "Đã phê duyệt", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đã phê duyệt").ToString("N0") },
+                        new { label = "Phát lại", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Phát lại").ToString("N0") }
                     } },
                     { "kiem-kho", new System.Collections.Generic.List<object> {
                         new { label = "Đơn cần kiểm", count = kiemKhoCount.ToString("N0") },
@@ -1005,9 +1013,3 @@ namespace AutoJMS
         }
     }
 }
-
-
-
-
-
-
