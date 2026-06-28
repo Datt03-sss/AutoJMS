@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,131 +67,254 @@ public sealed class PrintJobCoordinator
             };
             string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
 
+            string rawJson;
+            var apiWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=PrintWaybillApi");
             AppLogger.Info("PRINT_API_REQUEST_START");
-            string pdfUrl;
-            using (var response = await _jmsApiClient.PostJsonAsync(request.ApiUrl, jsonPayload, ct: ct).ConfigureAwait(false))
+            try
             {
-                if (response == null || !response.IsSuccessStatusCode)
+                using var response = await _jmsApiClient.PostJsonAsync(request.ApiUrl, jsonPayload, ct: ct).ConfigureAwait(false);
+                if (response == null)
+                {
+                    apiWatch.Stop();
+                    AppLogger.Warning($"PRINT_API_RESPONSE http=0 bodyLength=0 success=False error=null-response");
+                    AppLogger.Info($"PRINT_STAGE_END stage=PrintWaybillApi elapsedMs={apiWatch.ElapsedMilliseconds}");
+                    return new PrintSubmitResult
+                    {
+                        CompletedBySpooler = false,
+                        Reason = "API failed"
+                    };
+                }
+
+                rawJson = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                AppLogger.Info($"PRINT_API_RESPONSE http={(int)response.StatusCode} bodyLength={rawJson?.Length ?? 0} success={response.IsSuccessStatusCode}");
+                apiWatch.Stop();
+                AppLogger.Info($"PRINT_STAGE_END stage=PrintWaybillApi elapsedMs={apiWatch.ElapsedMilliseconds}");
+                if (!response.IsSuccessStatusCode)
                 {
                     return new PrintSubmitResult
                     {
                         CompletedBySpooler = false,
-                        Reason = "API call failed"
+                        Reason = "API failed"
                     };
                 }
-
-                string rawJson = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                using (var doc = System.Text.Json.JsonDocument.Parse(rawJson))
+            }
+            catch (Exception ex)
+            {
+                apiWatch.Stop();
+                AppLogger.Warning($"PRINT_API_RESPONSE http=0 bodyLength=0 success=False error={ex.Message}");
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=PrintWaybillApi elapsedMs={apiWatch.ElapsedMilliseconds}", ex);
+                return new PrintSubmitResult
                 {
-                    var root = doc.RootElement;
-                    if (root.TryGetProperty("code", out var codeElement))
+                    CompletedBySpooler = false,
+                    Reason = "API failed"
+                };
+            }
+
+            string pdfUrl = null;
+            var parseWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=ParseResponse");
+            try
+            {
+                using var doc = JsonDocument.Parse(rawJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("code", out var codeElement))
+                {
+                    string codeVal = codeElement.ToString();
+                    if (codeVal == "200" || codeVal == "0" || codeVal == "1")
                     {
-                        string codeVal = codeElement.ToString();
-                        if (codeVal == "200" || codeVal == "0" || codeVal == "1")
+                        if (root.TryGetProperty("data", out var data))
                         {
-                            pdfUrl = null;
-                            if (root.TryGetProperty("data", out var data))
+                            if (data.ValueKind == JsonValueKind.String)
                             {
-                                if (data.ValueKind == System.Text.Json.JsonValueKind.String)
-                                {
-                                    pdfUrl = data.GetString();
-                                }
-                                else if (data.ValueKind == System.Text.Json.JsonValueKind.Array && data.GetArrayLength() > 0)
-                                {
-                                    pdfUrl = data[0].GetString();
-                                }
+                                pdfUrl = data.GetString();
                             }
-                        }
-                        else
-                        {
-                            return new PrintSubmitResult
+                            else if (data.ValueKind == JsonValueKind.Array && data.GetArrayLength() > 0)
                             {
-                                CompletedBySpooler = false,
-                                Reason = $"API returned error code: {codeVal}"
-                            };
+                                pdfUrl = data[0].GetString();
+                            }
                         }
                     }
                     else
                     {
+                        parseWatch.Stop();
+                        AppLogger.Info($"PRINT_API_PARSE_OK code={codeVal} dataCount=0");
+                        AppLogger.Info($"PRINT_STAGE_END stage=ParseResponse elapsedMs={parseWatch.ElapsedMilliseconds}");
                         return new PrintSubmitResult
                         {
                             CompletedBySpooler = false,
-                            Reason = "Invalid API response structure"
+                            Reason = "API failed"
                         };
                     }
                 }
-            }
+                else
+                {
+                    throw new JsonException("JMS response is missing code.");
+                }
 
-            if (string.IsNullOrEmpty(pdfUrl))
+                parseWatch.Stop();
+                AppLogger.Info($"PRINT_API_PARSE_OK dataCount={(string.IsNullOrWhiteSpace(pdfUrl) ? 0 : 1)}");
+                AppLogger.Info($"PRINT_STAGE_END stage=ParseResponse elapsedMs={parseWatch.ElapsedMilliseconds}");
+            }
+            catch (JsonException ex)
             {
+                parseWatch.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=ParseResponse elapsedMs={parseWatch.ElapsedMilliseconds}", ex);
                 return new PrintSubmitResult
                 {
                     CompletedBySpooler = false,
-                    Reason = "No PDF URL found in response"
+                    Reason = "JSON parse failed"
+                };
+            }
+            catch (Exception ex)
+            {
+                parseWatch.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=ParseResponse elapsedMs={parseWatch.ElapsedMilliseconds}", ex);
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = false,
+                    Reason = "Unknown exception"
                 };
             }
 
-            // 3. Cache check (keep/reuse local cache for 60s, but still hit the API once)
-            PrintJobCacheEntry entry;
-            lock (_cacheLock)
+            var resolveWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=ResolvePdfUrl");
+            if (string.IsNullOrEmpty(pdfUrl))
             {
-                if (_cache.TryGetValue(pdfUrl, out var existing) && !existing.IsExpired)
+                resolveWatch.Stop();
+                AppLogger.Warning($"PRINT_STAGE_FAILED stage=ResolvePdfUrl elapsedMs={resolveWatch.ElapsedMilliseconds} reason=no-pdf-url");
+                return new PrintSubmitResult
                 {
-                    entry = existing;
+                    CompletedBySpooler = false,
+                    Reason = "PDF download failed"
+                };
+            }
+            resolveWatch.Stop();
+            AppLogger.Info($"PRINT_STAGE_END stage=ResolvePdfUrl elapsedMs={resolveWatch.ElapsedMilliseconds}");
+
+            // 3. Cache check (keep/reuse local cache for 60s, but still hit the API once)
+            var firstWaybill = request.Waybills.Count > 0 ? request.Waybills[0] : "";
+            PrintJobCacheEntry entry = null;
+            bool cacheHit = false;
+            var downloadWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=DownloadOrCachePdf");
+            try
+            {
+                lock (_cacheLock)
+                {
+                    if (_cache.TryGetValue(pdfUrl, out var existing) && !existing.IsExpired)
+                    {
+                        entry = existing;
+                        cacheHit = true;
+                    }
+                }
+
+                if (entry != null)
+                {
+                    AppLogger.Info("PRINT_CACHE_HIT");
                 }
                 else
                 {
-                    entry = null;
+                    byte[] pdfBytes = await _jmsApiClient.GetByteArrayAsync(pdfUrl, ct).ConfigureAwait(false);
+                    if (pdfBytes == null || pdfBytes.Length == 0)
+                        throw new InvalidOperationException("Downloaded PDF bytes are empty.");
+
+                    entry = new PrintJobCacheEntry
+                    {
+                        CacheKey = pdfUrl,
+                        WaybillNo = firstWaybill,
+                        PdfBytes = pdfBytes,
+                        CreatedAt = DateTime.Now,
+                        ExpiresAt = DateTime.Now.AddSeconds(60)
+                    };
+
+                    lock (_cacheLock)
+                    {
+                        _cache[pdfUrl] = entry;
+                    }
                 }
+
+                downloadWatch.Stop();
+                AppLogger.Info($"PDF_READY waybill={firstWaybill} cacheHit={cacheHit} bytes={entry.PdfBytes?.Length ?? 0}");
+                AppLogger.Info($"PRINT_STAGE_END stage=DownloadOrCachePdf elapsedMs={downloadWatch.ElapsedMilliseconds}");
             }
-
-            if (entry != null)
+            catch (Exception ex)
             {
-                AppLogger.Info("PRINT_CACHE_HIT");
-            }
-            else
-            {
-                // Download PDF bytes
-                byte[] pdfBytes = await _jmsApiClient.GetByteArrayAsync(pdfUrl, ct).ConfigureAwait(false);
-                entry = new PrintJobCacheEntry
-                {
-                    CacheKey = pdfUrl,
-                    WaybillNo = request.Waybills.Count > 0 ? request.Waybills[0] : "",
-                    PdfBytes = pdfBytes,
-                    CreatedAt = DateTime.Now,
-                    ExpiresAt = DateTime.Now.AddSeconds(60)
-                };
-
-                lock (_cacheLock)
-                {
-                    _cache[pdfUrl] = entry;
-                }
-            }
-
-            // 4. Spooler submit
-            var firstWaybill = request.Waybills.Count > 0 ? request.Waybills[0] : "";
-            var printResult = await _printerSpoolerSubmitter.SubmitPrintAsync(entry, firstWaybill).ConfigureAwait(false);
-
-            if (printResult == null || !printResult.CompletedBySpooler)
-            {
-                AppLogger.Warning("PRINT_SPOOLER_FAILED");
+                downloadWatch.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=DownloadOrCachePdf elapsedMs={downloadWatch.ElapsedMilliseconds}", ex);
                 return new PrintSubmitResult
                 {
                     CompletedBySpooler = false,
-                    Reason = printResult?.Reason ?? "PRINT_SPOOLER_FAILED"
+                    Reason = "PDF download failed"
                 };
             }
 
-            AppLogger.Info("PRINT_SPOOLER_SUBMIT_DONE");
+            // 4. Spooler submit
+            PrintSubmitResult printResult;
+            var submitWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=SubmitPrintJob");
+            AppLogger.Info($"PRINT_SUBMIT_START waybill={firstWaybill}");
+            try
+            {
+                printResult = await _printerSpoolerSubmitter.SubmitPrintAsync(entry, firstWaybill).ConfigureAwait(false);
+                submitWatch.Stop();
+                AppLogger.Info($"PRINT_STAGE_END stage=SubmitPrintJob elapsedMs={submitWatch.ElapsedMilliseconds}");
+            }
+            catch (Exception ex)
+            {
+                submitWatch.Stop();
+                AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=SubmitPrintJob reason=Printer submit failed");
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=SubmitPrintJob elapsedMs={submitWatch.ElapsedMilliseconds}", ex);
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = false,
+                    Reason = "Printer submit failed"
+                };
+            }
+
+            if (printResult == null || !printResult.CompletedBySpooler)
+            {
+                AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=WaitSpoolerAccepted reason={printResult?.Reason ?? "spooler-not-accepted"}");
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = false,
+                    Reason = printResult?.Reason ?? "Spooler rejected"
+                };
+            }
+
+            AppLogger.Info($"PRINT_SUBMIT_SUCCESS waybill={firstWaybill} elapsedMs={printResult.ElapsedMs}");
 
             // 5. Selection clearing on success spooler submission
-            _printService.SelectAll(false);
-            _printService.ClearSelection();
+            var gridWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=GridDeselect");
+            try
+            {
+                _printService.SelectAll(false);
+                _printService.ClearSelection();
+                gridWatch.Stop();
+                AppLogger.Info($"GRID_DESELECT_DONE waybill={firstWaybill}");
+                AppLogger.Info($"PRINT_STAGE_END stage=GridDeselect elapsedMs={gridWatch.ElapsedMilliseconds}");
+            }
+            catch (Exception ex)
+            {
+                gridWatch.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage=GridDeselect elapsedMs={gridWatch.ElapsedMilliseconds}", ex);
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = false,
+                    Reason = "Unknown exception"
+                };
+            }
 
             return printResult;
         }
         finally
         {
+            var finishWatch = Stopwatch.StartNew();
+            AppLogger.Info("PRINT_STAGE_BEGIN stage=Finish");
+            AppLogger.Info("PRINT_PIPELINE_FINISH source=PrintJobCoordinator");
+            finishWatch.Stop();
+            AppLogger.Info($"PRINT_STAGE_END stage=Finish elapsedMs={finishWatch.ElapsedMilliseconds}");
             _semaphore.Release();
         }
     }
