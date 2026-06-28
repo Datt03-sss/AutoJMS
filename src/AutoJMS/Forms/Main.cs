@@ -171,6 +171,7 @@ namespace AutoJMS
                 UI.AppTheme.CurrentTheme = themeMode;
             }
             UI.AppTheme.Apply(this);
+            ApplyWaybillInputBoldFonts();
 
             tabPrint_AutoMode.Active = _settings.PrintDefaultAutoPrint;
             _printerPreflightService = new PrinterPreflightService(() => _settings);
@@ -205,7 +206,7 @@ namespace AutoJMS
             };
 
             // UI styling
-            tabDKCH_inputNewBill.Font = new System.Drawing.Font("Segoe UI Semibold", 12f, System.Drawing.FontStyle.Bold);
+            ApplyWaybillInputBoldFonts();
             tabDKCH_inputNewBill.WordWrap = false;
             tabDKCH_newBillDone.WordWrap = false;
 
@@ -308,6 +309,20 @@ namespace AutoJMS
             _appUserActionCapture.CaptureButton(tabPrint_btnTimKiem, "tabPrint", "Search.Click");
             _appUserActionCapture.CaptureButton(tabPrint_btnPrint, "tabPrint", "Print.Click");
             _appUserActionCapture.CaptureTextEnter(tabPrint_inputWaybill, "tabPrint", "WaybillInput.Enter", () => tabPrint_inputWaybill?.Text ?? "");
+        }
+
+        private void ApplyWaybillInputBoldFonts()
+        {
+            var boldFont = new Font("Segoe UI Semibold", 12f, FontStyle.Bold);
+
+            if (tabDKCH_inputNewBill != null && !tabDKCH_inputNewBill.IsDisposed)
+                tabDKCH_inputNewBill.Font = boldFont;
+
+            if (tabTracking_inputWaybill != null && !tabTracking_inputWaybill.IsDisposed)
+                tabTracking_inputWaybill.Font = boldFont;
+
+            if (tabPrint_inputWaybill != null && !tabPrint_inputWaybill.IsDisposed)
+                tabPrint_inputWaybill.Font = boldFont;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -456,6 +471,7 @@ namespace AutoJMS
                 UI.AppTheme.CurrentTheme = themeModeOnLoad;
             }
             UI.AppTheme.Apply(this);
+            ApplyWaybillInputBoldFonts();
 
             if (this.IsDisposed) return;
 
