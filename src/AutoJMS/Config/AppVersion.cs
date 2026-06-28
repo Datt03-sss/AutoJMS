@@ -16,7 +16,7 @@ public static class AppVersion
                 .InformationalVersion;
             if (!string.IsNullOrWhiteSpace(info))
             {
-                _cached = info.Trim();
+                _cached = NormalizeDisplayVersion(info);
                 return _cached;
             }
 
@@ -26,5 +26,18 @@ public static class AppVersion
                 : "0.00.00.0";
             return _cached;
         }
+    }
+
+    public static string NormalizeDisplayVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return "";
+
+        string normalized = version.Trim();
+        int buildMetadataIndex = normalized.IndexOf('+');
+
+        if (buildMetadataIndex >= 0)
+            normalized = normalized[..buildMetadataIndex];
+
+        return normalized.Trim();
     }
 }

@@ -429,9 +429,10 @@ namespace AutoJMS
         private static string GetCurrentAssemblyVersion()
         {
             var asm = typeof(VelopackUpdateService).Assembly;
-            return asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            return AppVersion.NormalizeDisplayVersion(
+                asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? asm.GetName().Version?.ToString()
-                ?? "UNKNOWN";
+                ?? "UNKNOWN");
         }
 
         private static string GetGithubRepoUrl(VersionChannel? ch)
