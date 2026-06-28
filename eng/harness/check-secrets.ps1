@@ -59,7 +59,7 @@ Write-Host '[2/3] Scanning tracked files for secrets...' -ForegroundColor Yellow
 # Get list of tracked files
 try {
     Push-Location $Root
-    $trackedFiles = & git ls-files 2>&1
+    $trackedFiles = & git -c core.quotePath=false ls-files 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host '  WARNING: git ls-files failed. Falling back to file system scan.' -ForegroundColor Yellow
         $trackedFiles = Get-ChildItem -Path $Root -Recurse -File |
