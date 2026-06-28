@@ -93,6 +93,7 @@ namespace AutoJMS
         private System.Windows.Forms.Timer _dkchUiStateTimer;
         private bool _isDkchStarting = false;
         private readonly SemaphoreSlim _dkchManualInputGate = new(1, 1);
+        private CancellationTokenSource _dkchSheetCountCts;
         private bool _webDebugInspectorEnabled = false;
         private bool _webDebugExportRunning = false;
         private WebViewDevToolsInspector _homeWebDebugInspector = null;
@@ -243,6 +244,10 @@ namespace AutoJMS
 
             // ================= GẮN EVENT UI =================
             tabTracking_inputWaybill.KeyDown += tabTracking_inputWaybill_KeyDown;
+            tabTracking_inputWaybill.TextChanged += (s, e) => UpdateWaybillCount();
+            tabDKCH_sheetName.SelectedIndexChanged += (s, e) => QueueRefreshDkchSheetCount();
+            tabDKCH_sheetName.TextChanged += (s, e) => QueueRefreshDkchSheetCount();
+            tabDKCH_numRow.ValueChanged += (s, e) => QueueRefreshDkchSheetCount();
             tabPrint_inputWaybill.KeyDown += tabPrint_inputWaybill_KeyDown;
             tabPrint_btnSelectAll.CheckedChanged += tabPrint_btnSelectAll_CheckedChanged;
             tabPrint_printFunc.SelectedIndexChanged += TabPrint_printFunc_SelectedIndexChanged;
@@ -546,6 +551,7 @@ namespace AutoJMS
 
             tabDKCH_btnDKCH1.Enabled = true;
             tabDKCH_btnDKCH2.Enabled = true;
+            QueueRefreshDkchSheetCount();
 
             await WebViewHost.InitAsync(tabDKCH_webView);
             ApplyZoomFactor();
@@ -1571,6 +1577,7 @@ namespace AutoJMS
                 }
                 else if (tabControl.SelectedTab == tabDKCH)
                 {
+                    QueueRefreshDkchSheetCount();
                     if (_isDkchNeedReload && tabDKCH_webView != null && tabDKCH_webView.CoreWebView2 != null)
                     {
                         tabDKCH_webView.CoreWebView2.Reload();
@@ -2065,6 +2072,7 @@ namespace AutoJMS
                     return;
                 }
                 await _dkchManager.StartAsync("DKCH1");
+                QueueRefreshDkchSheetCount();
                 await RefreshAuthTokenAsync();
                 UpdateDkchButtonsByState(_dkchManager.IsRunning);
             }
@@ -2094,6 +2102,7 @@ namespace AutoJMS
                     return;
                 }
                 await _dkchManager.StartAsync("DKCH2");
+                QueueRefreshDkchSheetCount();
                 UpdateDkchButtonsByState(_dkchManager.IsRunning);
             }
             catch (Exception ex)
@@ -2811,9 +2820,98 @@ namespace AutoJMS
 
         private void UpdateWaybillCount()
         {
-            if (tabDKCH_countSum == null) return;
+            if (tabTracking_countSum == null) return;
             var uniqueCodes = tabTracking_inputWaybill.Text.Split(new[] { '\r', '\n', ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim().ToUpper()).Where(x => x.Length > 5).Distinct(StringComparer.OrdinalIgnoreCase);
-            tabDKCH_countSum.Text = $":Tổng: " + uniqueCodes.Count().ToString("N0");
+            tabTracking_countSum.Text = uniqueCodes.Count().ToString("N0");
+        }
+
+        private void QueueRefreshDkchSheetCount()
+        {
+            if (tabDKCH_countSum == null || tabDKCH_countSum.IsDisposed) return;
+
+            _dkchSheetCountCts?.Cancel();
+            _dkchSheetCountCts?.Dispose();
+            _dkchSheetCountCts = CancellationTokenSource.CreateLinkedTokenSource(_appCts.Token);
+            var token = _dkchSheetCountCts.Token;
+
+            _ = RefreshDkchSheetCountAsync(token);
+        }
+
+        private async Task RefreshDkchSheetCountAsync(CancellationToken token)
+        {
+            try
+            {
+                await Task.Delay(150, token);
+
+                string sheetName = "";
+                int columnIndex = 2;
+
+                await UiThread.InvokeOnUiAsync(this, () =>
+                {
+                    sheetName = (tabDKCH_sheetName?.Text ?? "").Trim();
+                    columnIndex = Math.Max(1, (int)(tabDKCH_numRow?.Value ?? 2));
+                    SetDkchSheetCountText("Tổng: ...");
+                    return Task.CompletedTask;
+                });
+
+                if (string.IsNullOrWhiteSpace(sheetName))
+                {
+                    await SetDkchSheetCountTextAsync("Tổng: 0", token);
+                    return;
+                }
+
+                string columnLetter = GetSpreadsheetColumnLetter(columnIndex);
+                string range = $"{sheetName}!{columnLetter}2:{columnLetter}";
+                var rows = await GoogleSheetService.ReadRangeAsync(
+                    GoogleSheetService.DATA_SPREADSHEET_ID,
+                    range).ConfigureAwait(false);
+
+                token.ThrowIfCancellationRequested();
+
+                int count = rows
+                    .Select(row => row.Count > 0 ? row[0]?.ToString()?.Trim() : "")
+                    .Count(value => !string.IsNullOrWhiteSpace(value));
+
+                await SetDkchSheetCountTextAsync($"Tổng: {count:N0}", token);
+                AppLogger.Info($"[DKCH] sheet count refreshed sheet={sheetName} column={columnLetter} columnIndex={columnIndex} count={count}");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                await SetDkchSheetCountTextAsync("Tổng: 0", CancellationToken.None);
+                AppLogger.Warning($"[DKCH] sheet count refresh failed: {ex.Message}");
+            }
+        }
+
+        private Task SetDkchSheetCountTextAsync(string text, CancellationToken token)
+        {
+            if (token.IsCancellationRequested) return Task.CompletedTask;
+            return UiThread.InvokeOnUiAsync(this, () =>
+            {
+                SetDkchSheetCountText(text);
+                return Task.CompletedTask;
+            });
+        }
+
+        private void SetDkchSheetCountText(string text)
+        {
+            if (tabDKCH_countSum == null || tabDKCH_countSum.IsDisposed) return;
+            tabDKCH_countSum.Text = text;
+        }
+
+        private static string GetSpreadsheetColumnLetter(int columnIndex)
+        {
+            columnIndex = Math.Max(1, columnIndex);
+            var columnName = "";
+
+            while (columnIndex > 0)
+            {
+                columnIndex--;
+                columnName = (char)('A' + (columnIndex % 26)) + columnName;
+                columnIndex /= 26;
+            }
+
+            return columnName;
         }
 
 
