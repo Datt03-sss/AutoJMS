@@ -2938,45 +2938,147 @@ namespace AutoJMS
 
             int printType = 1;
             int applyTypeCode = (_printService.CurrentMode == PrintMode.InChuyenTiep) ? 2 : 4;
-            string apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printBase64");
+            int keepPdfs = 500;
+            TryReadPrintConfig(out keepPdfs, out _);
+            string firstWaybill = selected[0];
+            string pdfCacheKey = BuildPrintPdfCacheKey(selected, printType, applyTypeCode);
 
+            if (!await _printLock.WaitAsync(0).ConfigureAwait(true))
+            {
+                AppLogger.Warning("DUPLICATE_PRINT_REQUEST_IGNORED");
+                if (!isAutoMode) ShowPrintMessage("Đang xử lý lệnh in hiện tại...", false, 2000);
+                return;
+            }
+
+            bool printSucceeded = false;
+            string finishReason = "";
             SetPrintButtonState(false);
             try
             {
-                var request = new PrintJobRequest
-                {
-                    Waybills = selected,
-                    CurrentInputText = tabPrint_inputWaybill.Text,
-                    PrintType = printType,
-                    ApplyTypeCode = applyTypeCode,
-                    ApiUrl = apiUrl
-                };
+                AppLogger.Info($"PRINT_PIPELINE_START waybill={firstWaybill} count={selected.Count} autoMode={isAutoMode}");
 
-                var result = await _printJobCoordinator.PrintAsync(request, _appCts.Token);
-
-                if (result.CompletedBySpooler)
+                bool isValid = await _printService.ValidateSelectedBeforePrintAsync(selected, tabPrint_inputWaybill.Text)
+                    .ConfigureAwait(true);
+                if (!isValid)
                 {
-                    ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
-                    _printService.QueuePostPrintRefresh(selected, printType);
+                    finishReason = "Validation failed";
+                    ShowPrintMessage("In thất bại: Validation failed", true);
+                    return;
+                }
+
+                PrintJobCacheEntry job = null;
+                if (TryGetCachedPrintJob(pdfCacheKey, out var cached))
+                {
+                    job = RunPrintPipelineStage(
+                        "DownloadOrCachePdf",
+                        firstWaybill,
+                        PrintFailurePdfDownload,
+                        () =>
+                        {
+                            AppLogger.Info($"PDF_READY waybill={firstWaybill} cacheHit=true bytes={cached.PdfBytes?.Length ?? 0}");
+                            return cached;
+                        });
                 }
                 else
                 {
-                    if (result.Reason != "DUPLICATE_PRINT_REQUEST_IGNORED")
+                    Task<PrintJobCacheEntry> preloadTask = null;
+                    lock (_printJobCacheLock)
                     {
-                        ShowPrintMessage($"In thất bại: {result.Reason}", true);
+                        _printJobPreloadTasks.TryGetValue(pdfCacheKey, out preloadTask);
+                    }
+
+                    if (preloadTask != null && !preloadTask.IsCompleted)
+                    {
+                        job = await RunPrintPipelineStageAsync(
+                            "DownloadOrCachePdf",
+                            firstWaybill,
+                            PrintFailurePdfDownload,
+                            async () =>
+                            {
+                                AppLogger.Info($"PRINT_PRELOAD_AWAIT waybill={firstWaybill}");
+                                var prepared = await preloadTask.ConfigureAwait(false);
+                                if (prepared == null || prepared.PdfBytes == null || prepared.PdfBytes.Length == 0)
+                                    throw new PrintPipelineException("DownloadOrCachePdf", PrintFailurePdfDownload, "Preloaded PDF job is empty.");
+
+                                AppLogger.Info($"PDF_READY waybill={firstWaybill} cacheHit=true preload=true bytes={prepared.PdfBytes.Length}");
+                                return prepared;
+                            }).ConfigureAwait(true);
                     }
                     else
                     {
-                        if (!isAutoMode) ShowPrintMessage("Đang xử lý lệnh in hiện tại...", false, 2000);
+                        job = await EnsureReadyToPrintAsync(
+                            selected,
+                            printType,
+                            applyTypeCode,
+                            keepPdfs,
+                            firstWaybill,
+                            pdfCacheKey,
+                            "Print").ConfigureAwait(true);
                     }
                 }
+
+                if (job == null || job.PdfBytes == null || job.PdfBytes.Length == 0)
+                    throw new PrintPipelineException("DownloadOrCachePdf", PrintFailurePdfDownload, "PDF job is empty.");
+
+                var result = await _printerSpoolerSubmitter.SubmitPrintAsync(job, firstWaybill).ConfigureAwait(true);
+
+                if (result == null || !result.CompletedBySpooler)
+                {
+                    string userMessage = string.Equals(result?.Reason, PrintFailurePrinterSubmit, StringComparison.OrdinalIgnoreCase)
+                        ? PrintFailurePrinterSubmit
+                        : PrintFailureSpoolerRejected;
+                    throw new PrintPipelineException("WaitSpoolerAccepted", userMessage, result?.Reason ?? "Spooler did not accept print job.");
+                }
+
+                RunPrintPipelineStage(
+                    "GridDeselect",
+                    firstWaybill,
+                    PrintFailureUnknown,
+                    () =>
+                    {
+                        _printService.SelectAll(false);
+                        _printService.ClearSelection();
+                        tabPrint_btnSelectAll.Checked = false;
+                        AppLogger.Info($"GRID_DESELECT_DONE waybill={firstWaybill}");
+                        return true;
+                    });
+
+                printSucceeded = true;
+                finishReason = "success";
+                ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
+                _printService.QueuePostPrintRefresh(selected, printType);
+            }
+            catch (PrintPipelineException ex)
+            {
+                finishReason = ex.UserMessage;
+                AppLogger.Error($"PRINT_PIPELINE_FAILED stage={ex.Stage} waybill={firstWaybill} userMessage={ex.UserMessage}", ex);
+                ShowPrintMessage($"In thất bại: {ex.UserMessage}", true);
             }
             catch (Exception ex)
             {
-                ShowPrintMessage($"Lỗi hệ thống: {ex.Message}", true);
+                finishReason = PrintFailureUnknown;
+                AppLogger.Error($"PRINT_PIPELINE_FAILED stage=Unknown waybill={firstWaybill} userMessage={PrintFailureUnknown}", ex);
+                ShowPrintMessage($"In thất bại: {PrintFailureUnknown}", true);
             }
             finally
             {
+                try
+                {
+                    RunPrintPipelineStage(
+                        "Finish",
+                        firstWaybill,
+                        PrintFailureUnknown,
+                        () =>
+                        {
+                            AppLogger.Info($"PRINT_PIPELINE_FINISH waybill={firstWaybill} success={printSucceeded} reason={finishReason}");
+                            return true;
+                        });
+                }
+                catch
+                {
+                }
+
+                _printLock.Release();
                 SetPrintButtonState(true);
             }
         }
@@ -3067,6 +3169,89 @@ namespace AutoJMS
                 .Select(x => (x ?? "").Trim().ToUpperInvariant())
                 .Where(x => !string.IsNullOrWhiteSpace(x)));
             return $"{_printService?.CurrentMode}|{printType}|{applyTypeCode}|{order}";
+        }
+
+        private const string PrintFailureApi = "API failed";
+        private const string PrintFailureJsonParse = "JSON parse failed";
+        private const string PrintFailurePdfDownload = "PDF download failed";
+        private const string PrintFailurePrinterSubmit = "Printer submit failed";
+        private const string PrintFailurePrintDocument = "PrintDocument failed";
+        private const string PrintFailureSpoolerRejected = "Spooler rejected";
+        private const string PrintFailureUnknown = "Unknown exception";
+
+        private static async Task<T> RunPrintPipelineStageAsync<T>(
+            string stage,
+            string waybillNo,
+            string userMessage,
+            Func<Task<T>> action)
+        {
+            var sw = Stopwatch.StartNew();
+            AppLogger.Info($"PRINT_STAGE_BEGIN stage={stage} waybill={waybillNo}");
+            try
+            {
+                var result = await action().ConfigureAwait(false);
+                sw.Stop();
+                AppLogger.Info($"PRINT_STAGE_END stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds}");
+                return result;
+            }
+            catch (PrintPipelineException ex)
+            {
+                sw.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds} userMessage={ex.UserMessage}", ex);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds} userMessage={userMessage}", ex);
+                throw new PrintPipelineException(stage, userMessage, $"{stage} failed", ex);
+            }
+        }
+
+        private static T RunPrintPipelineStage<T>(
+            string stage,
+            string waybillNo,
+            string userMessage,
+            Func<T> action)
+        {
+            var sw = Stopwatch.StartNew();
+            AppLogger.Info($"PRINT_STAGE_BEGIN stage={stage} waybill={waybillNo}");
+            try
+            {
+                var result = action();
+                sw.Stop();
+                AppLogger.Info($"PRINT_STAGE_END stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds}");
+                return result;
+            }
+            catch (PrintPipelineException ex)
+            {
+                sw.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds} userMessage={ex.UserMessage}", ex);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                AppLogger.Error($"PRINT_STAGE_FAILED stage={stage} waybill={waybillNo} elapsedMs={sw.ElapsedMilliseconds} userMessage={userMessage}", ex);
+                throw new PrintPipelineException(stage, userMessage, $"{stage} failed", ex);
+            }
+        }
+
+        private static bool IsPrintApiSuccessCode(string code)
+            => code == "200" || code == "0" || code == "1";
+
+        private sealed class PrintWaybillApiRawResponse
+        {
+            public int StatusCode { get; init; }
+            public bool IsSuccessStatusCode { get; init; }
+            public string Body { get; init; } = "";
+        }
+
+        private sealed class PrintWaybillParsedResponse
+        {
+            public string Code { get; init; } = "";
+            public string Message { get; init; } = "";
+            public List<string> DataUrls { get; init; } = new();
         }
 
         private void InitializeTabPrintPrinterControls()
@@ -3474,7 +3659,11 @@ namespace AutoJMS
             bool cacheHit = false;
 
             string printerName = ResolvePrintPrinterName();
-            var preflight = await RunPrinterPreflightAsync(printerName, firstWaybill, "BeforePrintWaybill")
+            var preflight = await RunPrintPipelineStageAsync(
+                "PrinterPreflight",
+                firstWaybill,
+                PrintFailurePrinterSubmit,
+                () => RunPrinterPreflightAsync(printerName, firstWaybill, "PrinterPreflight"))
                 .ConfigureAwait(false);
             if (!preflight.CanPrint)
             {
@@ -3482,7 +3671,7 @@ namespace AutoJMS
                 AppLogger.Warning(
                     $"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} " +
                     $"source={source} totalMs={totalWatch.ElapsedMilliseconds} error=printer-preflight-blocked reason={preflight.ReasonCode}");
-                return null;
+                throw new PrintPipelineException("PrinterPreflight", PrintFailurePrinterSubmit, preflight.ReasonCode);
             }
 
             _currentPrintAttempt = new CurrentPrintAttempt { WaybillNo = firstWaybill };
@@ -3508,39 +3697,63 @@ namespace AutoJMS
             {
                 totalWatch.Stop();
                 AppLogger.Warning($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} source={source} totalMs={totalWatch.ElapsedMilliseconds} error=no-pdf-url");
-                return null;
+                throw new PrintPipelineException("ResolvePdfUrl", PrintFailurePdfDownload, "No PDF URL found in JMS response.");
             }
 
             string localPath = TryGetCachedPrintPdfByUrl(pdfUrl);
             if (!string.IsNullOrWhiteSpace(localPath))
             {
-                var job = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, localPath).ConfigureAwait(false);
-                RememberPrintJob(pdfCacheKey, job);
+                var job = await RunPrintPipelineStageAsync(
+                    "DownloadOrCachePdf",
+                    firstWaybill,
+                    PrintFailurePdfDownload,
+                    async () =>
+                    {
+                        var cachedJob = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, localPath).ConfigureAwait(false);
+                        if (cachedJob == null || cachedJob.PdfBytes == null || cachedJob.PdfBytes.Length == 0)
+                            throw new PrintPipelineException("DownloadOrCachePdf", PrintFailurePdfDownload, "Cached PDF file is empty.");
+
+                        RememberPrintJob(pdfCacheKey, cachedJob);
+                        AppLogger.Info($"PDF_READY waybill={firstWaybill} cacheHit=true urlFileCache=true bytes={cachedJob.PdfBytes.Length} localPath={cachedJob.LocalPdfPath}");
+                        return cachedJob;
+                    }).ConfigureAwait(false);
                 cacheHit = true;
                 totalWatch.Stop();
                 AppLogger.Info($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit=true urlFileCache=true source={source} totalMs={totalWatch.ElapsedMilliseconds}");
                 return job;
             }
 
-            var downloadWatch = Stopwatch.StartNew();
-            if (string.Equals(source, "Print", StringComparison.OrdinalIgnoreCase))
-                ShowPrintMessage("JMS đã nhận lệnh in, đang chờ PDF...", false, 0);
+            var created = await RunPrintPipelineStageAsync(
+                "DownloadOrCachePdf",
+                firstWaybill,
+                PrintFailurePdfDownload,
+                async () =>
+                {
+                    var downloadWatch = Stopwatch.StartNew();
+                    if (string.Equals(source, "Print", StringComparison.OrdinalIgnoreCase))
+                        ShowPrintMessage("JMS đã nhận lệnh in, đang chờ PDF...", false, 0);
 
-            localPath = await DownloadPdfWithRetryAsync(pdfUrl, keepPdfs, firstWaybill).ConfigureAwait(false);
-            downloadWatch.Stop();
-            RememberPrintedPdfUrl(pdfUrl, localPath);
-            AppLogger.Info($"[PrintPerf] phase=DownloadPdf waybill={firstWaybill} elapsedMs={downloadWatch.ElapsedMilliseconds} success={File.Exists(localPath)} source={source}");
-            AppCaptureManager.Instance.RecordPerformance("print.flow", "DownloadPdf", downloadWatch.ElapsedMilliseconds, new { waybill = firstWaybill, success = File.Exists(localPath), source });
+                    string downloadedPath = await DownloadPdfWithRetryAsync(pdfUrl, keepPdfs, firstWaybill).ConfigureAwait(false);
+                    downloadWatch.Stop();
+                    RememberPrintedPdfUrl(pdfUrl, downloadedPath);
+                    bool fileExists = !string.IsNullOrWhiteSpace(downloadedPath) && File.Exists(downloadedPath);
+                    AppLogger.Info($"[PrintPerf] phase=DownloadPdf waybill={firstWaybill} elapsedMs={downloadWatch.ElapsedMilliseconds} success={fileExists} source={source}");
+                    AppCaptureManager.Instance.RecordPerformance("print.flow", "DownloadPdf", downloadWatch.ElapsedMilliseconds, new { waybill = firstWaybill, success = fileExists, source });
 
-            if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
-            {
-                totalWatch.Stop();
-                AppLogger.Warning($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} source={source} totalMs={totalWatch.ElapsedMilliseconds} error=no-local-pdf");
-                return null;
-            }
+                    if (!fileExists)
+                    {
+                        AppLogger.Warning($"[PrintPerf] phase=EnsureReady waybill={firstWaybill} cacheHit={cacheHit} source={source} totalMs={totalWatch.ElapsedMilliseconds} error=no-local-pdf");
+                        throw new PrintPipelineException("DownloadOrCachePdf", PrintFailurePdfDownload, "Local PDF was not created.");
+                    }
 
-            var created = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, localPath).ConfigureAwait(false);
-            RememberPrintJob(pdfCacheKey, created);
+                    var newJob = await CreatePrintJobCacheEntryAsync(pdfCacheKey, firstWaybill, downloadedPath).ConfigureAwait(false);
+                    if (newJob == null || newJob.PdfBytes == null || newJob.PdfBytes.Length == 0)
+                        throw new PrintPipelineException("DownloadOrCachePdf", PrintFailurePdfDownload, "Downloaded PDF job is empty.");
+
+                    RememberPrintJob(pdfCacheKey, newJob);
+                    AppLogger.Info($"PDF_READY waybill={firstWaybill} cacheHit=false bytes={newJob.PdfBytes.Length} localPath={newJob.LocalPdfPath}");
+                    return newJob;
+                }).ConfigureAwait(false);
             if (_currentPrintAttempt != null
                 && string.Equals(_currentPrintAttempt.WaybillNo, firstWaybill, StringComparison.OrdinalIgnoreCase)
                 && created != null)
@@ -3630,11 +3843,18 @@ namespace AutoJMS
             var printWatch = Stopwatch.StartNew();
             string printerName = ResolvePrintPrinterName();
             string documentName = BuildPrintDocumentName(firstWaybill);
-            var preflight = await RunPrinterPreflightAsync(printerName, firstWaybill, "BeforeSubmitPrint")
+            AppLogger.Info($"PRINT_SUBMIT_START waybill={firstWaybill} printer={printerName} document={documentName}");
+
+            var preflight = await RunPrintPipelineStageAsync(
+                "PrinterPreflight",
+                firstWaybill,
+                PrintFailurePrinterSubmit,
+                () => RunPrinterPreflightAsync(printerName, firstWaybill, "BeforeSubmitPrint"))
                 .ConfigureAwait(false);
             if (!preflight.CanPrint)
             {
                 printWatch.Stop();
+                AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=PrinterPreflight reason={preflight.ReasonCode}");
                 return new PrintSubmitResult
                 {
                     CompletedBySpooler = false,
@@ -3643,7 +3863,7 @@ namespace AutoJMS
                     DocumentName = documentName,
                     SpoolerJobsBefore = preflight.QueueJobCount,
                     SpoolerJobsAfter = preflight.QueueJobCount,
-                    Reason = preflight.ReasonCode
+                    Reason = PrintFailurePrinterSubmit
                 };
             }
 
@@ -3657,6 +3877,7 @@ namespace AutoJMS
             {
                 printWatch.Stop();
                 string reason = "spooler-has-error-job";
+                AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=PrinterPreflight reason={reason}");
                 AppLogger.Warning(
                     $"[PrintPerf] phase=PrintSubmitBlocked waybill={firstWaybill} printer={printerName} " +
                     $"document={documentName} beforeJobs={beforeJobs} job={errorQueueJob.Name} " +
@@ -3669,64 +3890,156 @@ namespace AutoJMS
                     DocumentName = documentName,
                     SpoolerJobsBefore = beforeJobs,
                     SpoolerJobsAfter = beforeJobs,
-                    Reason = reason
+                    Reason = PrintFailurePrinterSubmit
                 };
             }
 
-            using var stream = new MemoryStream(job.PdfBytes, writable: false);
-            using var document = PdfDocument.Load(stream);
-            using var printDocument = document.CreatePrintDocument();
-            printDocument.DocumentName = documentName;
-            if (!string.IsNullOrEmpty(printerName) && printerName != "-1")
+            MemoryStream stream = null;
+            PdfiumViewer.PdfDocument document = null;
+            PrintDocument printDocument = null;
+            try
             {
-                printDocument.PrinterSettings.PrinterName = printerName;
-            }
-
-            ApplyPrintPaperSettings(printDocument);
-            printDocument.PrintController = new StandardPrintController();
-            DateTime submittedAt = DateTime.Now;
-            printDocument.Print();
-            var spooler = await WaitForPrinterJobCompletedAsync(
-                printerName,
-                documentName,
-                beforeJobNames,
-                submittedAt,
-                beforeJobs,
-                firstWaybill,
-                TimeSpan.FromSeconds(30)).ConfigureAwait(true);
-            printWatch.Stop();
-            int afterJobs = CountPrinterJobs(printerName);
-            AppLogger.Info(
-                $"[PrintPerf] phase=PrintSubmit waybill={firstWaybill} printMs={printWatch.ElapsedMilliseconds} " +
-                $"completed={spooler.Completed} observed={spooler.Observed} printer={printerName} " +
-                $"document={documentName} beforeJobs={beforeJobs} afterJobs={afterJobs} " +
-                $"jobName={spooler.JobName} jobStatus={spooler.JobStatus} reason={spooler.Reason}");
-            AppCaptureManager.Instance.RecordPerformance(
-                "print.flow",
-                "PrintDocument.Print",
-                printWatch.ElapsedMilliseconds,
-                new
+                try
                 {
-                    waybill = firstWaybill,
-                    printerName,
-                    documentName,
-                    completed = spooler.Completed,
-                    observed = spooler.Observed,
-                    beforeJobs,
-                    afterJobs,
-                    spooler.Reason,
-                    spooler.JobStatus
-                });
-            return new PrintSubmitResult
+                    var createdDocument = RunPrintPipelineStage(
+                        "CreatePrintDocument",
+                        firstWaybill,
+                        PrintFailurePrintDocument,
+                        () =>
+                        {
+                            if (job == null || job.PdfBytes == null || job.PdfBytes.Length == 0)
+                                throw new PrintPipelineException("CreatePrintDocument", PrintFailurePrintDocument, "PDF bytes are empty.");
+
+                            var pdfStream = new MemoryStream(job.PdfBytes, writable: false);
+                            PdfiumViewer.PdfDocument pdfDocument = null;
+                            PrintDocument printerDocument = null;
+                            try
+                            {
+                                pdfDocument = PdfiumViewer.PdfDocument.Load(pdfStream);
+                                printerDocument = pdfDocument.CreatePrintDocument();
+                                printerDocument.DocumentName = documentName;
+                                if (!string.IsNullOrEmpty(printerName) && printerName != "-1")
+                                {
+                                    printerDocument.PrinterSettings.PrinterName = printerName;
+                                }
+
+                                ApplyPrintPaperSettings(printerDocument);
+                                printerDocument.PrintController = new StandardPrintController();
+                                return (stream: pdfStream, document: pdfDocument, printDocument: printerDocument);
+                            }
+                            catch
+                            {
+                                printerDocument?.Dispose();
+                                pdfDocument?.Dispose();
+                                pdfStream.Dispose();
+                                throw;
+                            }
+                        });
+                    stream = createdDocument.stream;
+                    document = createdDocument.document;
+                    printDocument = createdDocument.printDocument;
+                }
+                catch (PrintPipelineException ex)
+                {
+                    AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=CreatePrintDocument reason={ex.UserMessage}");
+                    throw;
+                }
+
+                DateTime submittedAt;
+                try
+                {
+                    submittedAt = RunPrintPipelineStage(
+                        "SubmitPrintJob",
+                        firstWaybill,
+                        PrintFailurePrinterSubmit,
+                        () =>
+                        {
+                            DateTime submitted = DateTime.Now;
+                            printDocument.Print();
+                            return submitted;
+                        });
+                }
+                catch (PrintPipelineException ex)
+                {
+                    AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=SubmitPrintJob reason={ex.UserMessage}");
+                    throw;
+                }
+
+                PrintSpoolerWatchResult spooler;
+                try
+                {
+                    spooler = await RunPrintPipelineStageAsync(
+                        "WaitSpoolerAccepted",
+                        firstWaybill,
+                        PrintFailureSpoolerRejected,
+                        () => WaitForPrinterJobCompletedAsync(
+                            printerName,
+                            documentName,
+                            beforeJobNames,
+                            submittedAt,
+                            beforeJobs,
+                            firstWaybill,
+                            TimeSpan.FromSeconds(30))).ConfigureAwait(true);
+                }
+                catch (PrintPipelineException ex)
+                {
+                    AppLogger.Warning($"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=WaitSpoolerAccepted reason={ex.UserMessage}");
+                    throw;
+                }
+
+                printWatch.Stop();
+                int afterJobs = CountPrinterJobs(printerName);
+                if (spooler.Completed)
+                {
+                    AppLogger.Info(
+                        $"PRINT_SUBMIT_SUCCESS waybill={firstWaybill} printer={printerName} document={documentName} " +
+                        $"elapsedMs={printWatch.ElapsedMilliseconds} observed={spooler.Observed} reason={spooler.Reason}");
+                }
+                else
+                {
+                    AppLogger.Warning(
+                        $"PRINT_SUBMIT_FAILED waybill={firstWaybill} stage=WaitSpoolerAccepted printer={printerName} " +
+                        $"document={documentName} elapsedMs={printWatch.ElapsedMilliseconds} observed={spooler.Observed} reason={spooler.Reason}");
+                }
+
+                AppLogger.Info(
+                    $"[PrintPerf] phase=PrintSubmit waybill={firstWaybill} printMs={printWatch.ElapsedMilliseconds} " +
+                    $"completed={spooler.Completed} observed={spooler.Observed} printer={printerName} " +
+                    $"document={documentName} beforeJobs={beforeJobs} afterJobs={afterJobs} " +
+                    $"jobName={spooler.JobName} jobStatus={spooler.JobStatus} reason={spooler.Reason}");
+                AppCaptureManager.Instance.RecordPerformance(
+                    "print.flow",
+                    "PrintDocument.Print",
+                    printWatch.ElapsedMilliseconds,
+                    new
+                    {
+                        waybill = firstWaybill,
+                        printerName,
+                        documentName,
+                        completed = spooler.Completed,
+                        observed = spooler.Observed,
+                        beforeJobs,
+                        afterJobs,
+                        spooler.Reason,
+                        spooler.JobStatus
+                    });
+                return new PrintSubmitResult
+                {
+                    CompletedBySpooler = spooler.Completed,
+                    ElapsedMs = printWatch.ElapsedMilliseconds,
+                    PrinterName = printerName,
+                    DocumentName = documentName,
+                    SpoolerJobsBefore = beforeJobs,
+                    SpoolerJobsAfter = afterJobs,
+                    Reason = spooler.Completed ? spooler.Reason : PrintFailureSpoolerRejected
+                };
+            }
+            finally
             {
-                CompletedBySpooler = spooler.Completed,
-                ElapsedMs = printWatch.ElapsedMilliseconds,
-                PrinterName = printerName,
-                DocumentName = documentName,
-                SpoolerJobsBefore = beforeJobs,
-                SpoolerJobsAfter = afterJobs,
-                Reason = spooler.Reason
-            };
+                printDocument?.Dispose();
+                document?.Dispose();
+                stream?.Dispose();
+            }
         }
 
         private static string BuildPrintDocumentName(string waybillNo)
@@ -4134,68 +4447,153 @@ namespace AutoJMS
 
         private async Task<string> GetPdfUrlViaCSharpAsync(List<string> waybills, int printType, int applyTypeCode)
         {
+            string firstWaybill = waybills?.FirstOrDefault() ?? "";
+            var raw = await RunPrintPipelineStageAsync(
+                "PrintWaybillApi",
+                firstWaybill,
+                PrintFailureApi,
+                () => RequestPrintWaybillApiAsync(waybills, printType, applyTypeCode, firstWaybill))
+                .ConfigureAwait(false);
+
+            var parsed = RunPrintPipelineStage(
+                "ParseResponse",
+                firstWaybill,
+                PrintFailureJsonParse,
+                () => ParsePrintWaybillResponse(raw.Body, firstWaybill));
+
+            string pdfUrl = RunPrintPipelineStage(
+                "ResolvePdfUrl",
+                firstWaybill,
+                PrintFailurePdfDownload,
+                () => ResolvePrintPdfUrl(parsed, firstWaybill));
+
+            return pdfUrl;
+        }
+
+        private async Task<PrintWaybillApiRawResponse> RequestPrintWaybillApiAsync(
+            List<string> waybills,
+            int printType,
+            int applyTypeCode,
+            string firstWaybill)
+        {
+            await RefreshAuthTokenAsync().ConfigureAwait(false);
+            if (!JmsAuthStateService.HasToken)
+            {
+                ShowPrintMessage("Không tìm thấy Token xác thực.", true);
+                throw new PrintPipelineException("PrintWaybillApi", PrintFailureApi, "Missing JMS auth token.");
+            }
+
+            var payload = new Dictionary<string, object>
+            {
+                { "waybillIds", waybills },
+                { "applyTypeCode", applyTypeCode },
+                { "printType", printType },
+                { "pringType", printType },
+                { "countryId", "1" }
+            };
+            string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
+            string apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printWaybill");
+
+            AppLogger.Info($"PRINT_API_REQUEST_START waybill={firstWaybill} endpoint=printWaybill waybillCount={waybills?.Count ?? 0}");
+            using var timeoutCts = new CancellationTokenSource(PrintPdfUrlTimeout);
             try
             {
-                await RefreshAuthTokenAsync();
-                if (!JmsAuthStateService.HasToken)
+                using var response = await JmsApiClient.PostJsonAsync(apiUrl, jsonPayload, routeName: "trackingExpress", ct: timeoutCts.Token)
+                    .ConfigureAwait(false);
+                if (response == null)
                 {
-                    ShowPrintMessage("Không tìm thấy Token xác thực.", true);
-                    return string.Empty;
+                    AppLogger.Warning($"PRINT_API_RESPONSE waybill={firstWaybill} http=0 bodyLength=0 success=False error=null-response");
+                    throw new PrintPipelineException("PrintWaybillApi", PrintFailureApi, "JMS returned null response.");
                 }
 
-                var payload = new Dictionary<string, object> { { "waybillIds", waybills }, { "applyTypeCode", applyTypeCode }, { "printType", printType }, { "pringType", printType }, { "countryId", "1" } };
-                string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
-                string apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printWaybill");
+                string rawJson = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
+                int statusCode = (int)response.StatusCode;
+                int bodyLength = rawJson?.Length ?? 0;
+                AppLogger.Info($"PRINT_API_RESPONSE waybill={firstWaybill} http={statusCode} bodyLength={bodyLength} success={response.IsSuccessStatusCode}");
+                AppLogger.Info($"[PrintPerf] phase=GetPdfUrlResponse http={statusCode} bodyLength={bodyLength}");
+                if (!response.IsSuccessStatusCode)
+                    throw new PrintPipelineException("PrintWaybillApi", PrintFailureApi, $"HTTP {statusCode}");
 
-                using var timeoutCts = new CancellationTokenSource(PrintPdfUrlTimeout);
-                using (var response = await JmsApiClient.PostJsonAsync(apiUrl, jsonPayload, routeName: "trackingExpress", ct: timeoutCts.Token))
+                return new PrintWaybillApiRawResponse
                 {
-                    if (response == null) return null;
-                    string rawJson = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                    AppLogger.Info($"[PrintPerf] phase=GetPdfUrlResponse http={(int)response.StatusCode} bodyLength={rawJson?.Length ?? 0}");
-                    if (!response.IsSuccessStatusCode) return null;
-                    using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(rawJson))
-                    {
-                        var root = doc.RootElement;
-                        if (root.TryGetProperty("code", out System.Text.Json.JsonElement codeElement))
-                        {
-                            string codeVal = codeElement.ToString();
-                            if (codeVal == "200" || codeVal == "0" || codeVal == "1")
-                            {
-                                if (root.TryGetProperty("data", out System.Text.Json.JsonElement data))
-                                {
-                                    if (data.ValueKind == System.Text.Json.JsonValueKind.String)
-                                    {
-                                        string url = data.GetString();
-                                        if (!string.IsNullOrEmpty(url) && url.StartsWith("http")) return url;
-                                    }
-                                    else if (data.ValueKind == System.Text.Json.JsonValueKind.Array && data.GetArrayLength() > 0)
-                                    {
-                                        string url = data[0].GetString();
-                                        if (!string.IsNullOrEmpty(url) && url.StartsWith("http")) return url;
-                                    }
-                                }
-                                ShowPrintMessage("JMS trả về thành công nhưng không có link PDF.", true);
-                            }
-                            else
-                            {
-                                string msg = root.TryGetProperty("msg", out System.Text.Json.JsonElement msgElement) ? msgElement.GetString() : "Lỗi từ máy chủ JMS";
-                                ShowPrintMessage(msg, true);
-                            }
-                        }
-                    }
-                }
+                    StatusCode = statusCode,
+                    IsSuccessStatusCode = response.IsSuccessStatusCode,
+                    Body = rawJson ?? ""
+                };
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                AppLogger.Warning($"PRINT_API_RESPONSE waybill={firstWaybill} http=0 bodyLength=0 success=False error=timeout timeoutMs={(int)PrintPdfUrlTimeout.TotalMilliseconds}");
                 AppLogger.Warning($"[PrintPerf] phase=GetPdfUrl timeoutMs={(int)PrintPdfUrlTimeout.TotalMilliseconds}");
                 ShowPrintMessage("JMS trả link PDF quá chậm. Vui lòng thử lại.", true);
+                throw new PrintPipelineException("PrintWaybillApi", PrintFailureApi, "JMS printWaybill timed out.", ex);
+            }
+            catch (PrintPipelineException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Lỗi mạng GetPdfUrl", ex);
+                AppLogger.Warning($"PRINT_API_RESPONSE waybill={firstWaybill} http=0 bodyLength=0 success=False error={ex.Message}");
+                throw;
             }
-            return string.Empty;
+        }
+
+        private static PrintWaybillParsedResponse ParsePrintWaybillResponse(string rawJson, string firstWaybill)
+        {
+            if (string.IsNullOrWhiteSpace(rawJson))
+                throw new PrintPipelineException("ParseResponse", PrintFailureJsonParse, "JMS response body is empty.");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("code", out System.Text.Json.JsonElement codeElement))
+                throw new PrintPipelineException("ParseResponse", PrintFailureJsonParse, "JMS response is missing code.");
+
+            string codeVal = codeElement.ToString();
+            string message = "";
+            if (root.TryGetProperty("msg", out System.Text.Json.JsonElement msgElement))
+                message = msgElement.ValueKind == System.Text.Json.JsonValueKind.String ? msgElement.GetString() ?? "" : msgElement.ToString();
+
+            var dataUrls = new List<string>();
+            if (root.TryGetProperty("data", out System.Text.Json.JsonElement data))
+            {
+                if (data.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    dataUrls.Add(data.GetString() ?? "");
+                }
+                else if (data.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var item in data.EnumerateArray())
+                    {
+                        if (item.ValueKind == System.Text.Json.JsonValueKind.String)
+                            dataUrls.Add(item.GetString() ?? "");
+                    }
+                }
+            }
+
+            AppLogger.Info($"PRINT_API_PARSE_OK waybill={firstWaybill} code={codeVal} dataCount={dataUrls.Count}");
+            return new PrintWaybillParsedResponse
+            {
+                Code = codeVal,
+                Message = message,
+                DataUrls = dataUrls
+            };
+        }
+
+        private static string ResolvePrintPdfUrl(PrintWaybillParsedResponse parsed, string firstWaybill)
+        {
+            if (parsed == null)
+                throw new PrintPipelineException("ResolvePdfUrl", PrintFailureJsonParse, "Parsed response is null.");
+
+            if (!IsPrintApiSuccessCode(parsed.Code))
+                throw new PrintPipelineException("ResolvePdfUrl", PrintFailureApi, $"JMS code={parsed.Code} message={parsed.Message}");
+
+            string url = parsed.DataUrls
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && x.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrWhiteSpace(url))
+                throw new PrintPipelineException("ResolvePdfUrl", PrintFailurePdfDownload, "JMS response did not contain a PDF URL.");
+
+            return url.Trim();
         }
 
         private async Task<string> DownloadPdfWithRetryAsync(string pdfUrl, int keepPdfs, string waybillTag = "")
@@ -4224,15 +4622,15 @@ namespace AutoJMS
                 }
                 return path;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
-                AppLogger.Warning($"[PrintPerf] phase=DownloadPdf timeoutMs={(int)PrintPdfDownloadTimeout.TotalMilliseconds} waybill={waybillTag}");
+                AppLogger.Error($"[PrintPerf] phase=DownloadPdf timeoutMs={(int)PrintPdfDownloadTimeout.TotalMilliseconds} waybill={waybillTag}", ex);
                 ShowPrintMessage("PDF từ JMS chưa sẵn sàng. Bấm in lại để tải lại đúng link PDF vừa tạo.", true, 6000);
                 return string.Empty;
             }
             catch (Exception ex)
             {
-                AppLogger.Warning($"[PrintPerf] phase=DownloadPdf failed waybill={waybillTag} error={ex.Message}");
+                AppLogger.Error($"[PrintPerf] phase=DownloadPdf failed waybill={waybillTag}", ex);
                 ShowPrintMessage("Không thể tải PDF.", true);
                 return string.Empty;
             }
@@ -4364,6 +4762,7 @@ namespace AutoJMS
             {
                 totalWatch.Stop();
                 TryDeleteFile(tempPath);
+                AppLogger.Error($"[PrintPerf] phase=DownloadPdfAttemptException waybill={waybillTag} attempt={attemptName}", ex);
                 return new PrintPdfDownloadResult(false, tempPath, attemptName, 0, headerWatch.ElapsedMilliseconds, 0, totalWatch.ElapsedMilliseconds, ex.Message);
             }
         }
