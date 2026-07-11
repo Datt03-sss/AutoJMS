@@ -14,7 +14,9 @@ namespace AutoJMS.FullStack.Services
     public sealed class FullStackTrackingEnrichmentService
     {
         private const int BatchSize = 40;
-        private const int MaxDegreeOfParallelism = 3;
+        // Order-detail is 1 HTTP request per waybill and is the dominant cost of a sync.
+        // Run it (and the bulk tracking calls) up to 8-wide to match the real JMS console speed.
+        private const int MaxDegreeOfParallelism = 8;
         private static readonly JsonSerializerOptions JsonOptions = AppConfig.CreateJsonOptions();
 
         private readonly IFullStackWaybillRepository _repository;
@@ -68,14 +70,34 @@ namespace AutoJMS.FullStack.Services
                 }
             }
 
-            var batches = queryCodes.ToList().Chunk(BatchSize).ToList();
+            var codeList = queryCodes.ToList();
+
+            // Stage 1 — bulk tracking status (up to 40 waybills per request), parallel across batches.
+            // This is what drives the dashboard queues, so it lands first and fast.
+            var batches = codeList.Chunk(BatchSize).ToList();
             await Parallel.ForEachAsync(
                 batches,
                 new ParallelOptions { MaxDegreeOfParallelism = MaxDegreeOfParallelism, CancellationToken = ct },
                 async (batch, token) =>
                 {
                     await ProcessTrackingBatchAsync(batch.ToArray(), dict, eventDict, token).ConfigureAwait(false);
-                    await ProcessOrderDetailBatchAsync(batch.ToArray(), dict, token).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+
+            // Cache-once: order detail (sender/COD/weight/address/mã đoạn) is static per waybill, so
+            // only fetch it for codes not already cached in the DB. Re-syncs of the same inventory then
+            // cost just the bulk tracking calls above. Cached detail is preserved on merge (see Keep()).
+            var cached = await _repository.GetWaybillsWithDetailAsync(codeList, ct).ConfigureAwait(false);
+            var detailCodes = codeList.Where(c => !cached.Contains(c)).ToList();
+            AppLogger.Info($"[FullStackTracking] order-detail fetch={detailCodes.Count} new, skipped={cached.Count} cached");
+
+            // Stage 2 — order detail (1 request per waybill, the bottleneck), fully parallel across
+            // the new codes at the full degree of parallelism instead of serially within a batch.
+            await Parallel.ForEachAsync(
+                detailCodes,
+                new ParallelOptions { MaxDegreeOfParallelism = MaxDegreeOfParallelism, CancellationToken = ct },
+                async (code, token) =>
+                {
+                    await CallOrderDetailAsync(code, dict, token).ConfigureAwait(false);
                 }).ConfigureAwait(false);
 
             foreach (var kv in aliasMap)
@@ -229,15 +251,6 @@ namespace AutoJMS.FullStack.Services
                         }
                     });
                 }
-            }
-        }
-
-        private static async Task ProcessOrderDetailBatchAsync(string[] batch, ConcurrentDictionary<string, WaybillDbModel> dict, CancellationToken ct)
-        {
-            foreach (var waybill in batch)
-            {
-                ct.ThrowIfCancellationRequested();
-                await CallOrderDetailAsync(waybill, dict, ct).ConfigureAwait(false);
             }
         }
 

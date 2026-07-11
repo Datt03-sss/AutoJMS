@@ -25,6 +25,8 @@ namespace AutoJMS
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
         private List<WaybillDbModel> _cloudData = new();
+        // Timestamp the dashboard data was last refreshed from the local snapshot (for "Last Update").
+        private DateTime? _lastDataUpdate;
         private List<WaybillDbModel> _lastDashSourceData = new();
         private List<WaybillDbModel> _lastChatSourceData = new();
         private List<string> _dashStatusCache = new();
@@ -88,6 +90,7 @@ namespace AutoJMS
         private readonly IJourneyAttachmentService _journeyAttachmentService = new JourneyAttachmentService();
         private List<WaybillDbModel> _lastFilteredDashRows = new();
         private bool _isSyncRunning = false;
+        private volatile bool _streamRefreshInFlight = false;
         private string _savedOperationFilter = string.Empty;
         private string _savedOperationSearch = string.Empty;
         private IReadOnlyDictionary<string, FullStackOperationMetadata> _operationMetadata = new Dictionary<string, FullStackOperationMetadata>(StringComparer.OrdinalIgnoreCase);
@@ -180,6 +183,51 @@ namespace AutoJMS
             _autoRefreshTimer.Start();
 
             await LoadDataAndRefreshViewsAsync();
+
+            // Hybrid local-first + Supabase sync (docs/hybrid-supabase-sync-plan.md):
+            // background outbox flush + delta-pull + realtime doorbell. No-op when disabled.
+            StartCloudSync();
+        }
+
+        private void StartCloudSync()
+        {
+            try
+            {
+                if (!FullStackCloudSyncService.IsEnabled)
+                {
+                    AppLogger.Info("[HybridSync] cloud sync disabled (flag/site/credentials) — local-only mode");
+                    return;
+                }
+
+                FullStackCloudSyncService.Instance.DataMerged += OnCloudDataMerged;
+                FullStackCloudSyncService.Instance.StatusChanged += OnCloudSyncStatus;
+                _ = FullStackCloudSyncService.Instance.StartAsync(_cts.Token);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[HybridSync] StartCloudSync failed: " + ex.Message);
+            }
+        }
+
+        // Remote rows were merged into SQLite — reuse the coalesced stream refresh.
+        private void OnCloudDataMerged()
+        {
+            if (_isClosing) return;
+            _ = OnSyncBatchPersistedAsync();
+        }
+
+        private void OnCloudSyncStatus(string message)
+        {
+            if (_isClosing || string.IsNullOrWhiteSpace(message)) return;
+            try
+            {
+                if (InvokeRequired) BeginInvoke(new Action(() => SetFullStackStatus(message)));
+                else SetFullStackStatus(message);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[HybridSync] status update error: " + ex.Message);
+            }
         }
 
         private void FullStackOperation_FormClosing(object sender, FormClosingEventArgs e)
@@ -194,6 +242,16 @@ namespace AutoJMS
             _alertCheckTimer?.Dispose();
             CancelCurrentJourneyLoad();
             _cts.Cancel();
+            try
+            {
+                FullStackCloudSyncService.Instance.DataMerged -= OnCloudDataMerged;
+                FullStackCloudSyncService.Instance.StatusChanged -= OnCloudSyncStatus;
+                _ = FullStackCloudSyncService.Instance.StopAsync();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[HybridSync] stop on close failed: " + ex.Message);
+            }
             if (_authTokenHandler != null)
             {
                 AuthStateService.Instance.TokenAcquired -= _authTokenHandler;
@@ -360,6 +418,8 @@ namespace AutoJMS
                 await _fullStackDashboardService.InitializeAsync(_cts.Token);
                 FullStackDashboardSnapshot snapshot = await _fullStackDashboardService.LoadSnapshotAsync(_cts.Token);
                 _cloudData = snapshot.Rows ?? new List<WaybillDbModel>();
+                _lastDataUpdate = snapshot.LastSyncAt?.ToLocalTime() ?? DateTime.Now;
+                await RefreshArrivalMonitorAsync(_cts.Token);
                 await RefreshOperationMetadataAsync();
                 await RefreshDashViewAsync(_cts.Token);
                 await RefreshChatViewAsync(_cts.Token);
@@ -388,11 +448,39 @@ namespace AutoJMS
                     return;
                 }
 
+                // Hybrid sync: only the lease-holding machine pulls JMS; others delta-pull the
+                // shared canonical data from Supabase (falls back to JMS when cloud is off/down).
+                bool isLeader = await FullStackCloudSyncService.Instance.TryBecomeLeaderAsync(ct);
+                if (!isLeader)
+                {
+                    SetFullStackStatus("Máy khác đang giữ lease — lấy dữ liệu chia sẻ từ cloud...");
+                    int merged = await FullStackCloudSyncService.Instance.PullAllAsync(ct);
+                    await LoadDataAndRefreshViewsAsync();
+                    SetFullStackStatus($"Đồng bộ từ cloud xong ({merged:N0} thay đổi) — máy giữ lease đang kéo JMS");
+                    return;
+                }
+
                 SetFullStackStatus("Đang đồng bộ tồn kho 30 ngày...");
-                var result = await _fullStackDashboardService.SyncInventoryAndRefreshTrackingAsync(ct: ct);
+                // Stream results into the grid as each page is fetched + tracked (realtime).
+                var result = await _fullStackDashboardService.SyncInventoryAndRefreshTrackingAsync(
+                    from: null, to: null, onBatchPersisted: OnSyncBatchPersistedAsync, ct: ct);
                 AppLogger.Info($"[FullStackOperation] manual sync finished runId={result.RunId}, fetched={result.TotalFetched}, new={result.NewWaybills}, left={result.LeftInventory}");
                 SetFullStackStatus($"Sync xong: {result.TotalFetched:N0} đơn, mới {result.NewWaybills:N0}, rời tồn {result.LeftInventory:N0}");
                 await LoadDataAndRefreshViewsAsync();
+
+                // Leader shares the freshly enriched rows with the rest of the site.
+                if (FullStackCloudSyncService.IsEnabled && FullStackCloudSyncService.Instance.HasLease)
+                {
+                    try
+                    {
+                        await FullStackCloudSyncService.Instance.PushDashboardRowsAsync(ct);
+                        SetFullStackStatus("Đã chia sẻ dữ liệu lên cloud cho các máy khác");
+                    }
+                    catch (Exception pushEx)
+                    {
+                        AppLogger.Warning("[HybridSync] post-sync push failed: " + pushEx.Message);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -404,6 +492,45 @@ namespace AutoJMS
                 tabDash_updateData.Enabled = true;
                 tabDash_updateData.Text = "Đồng bộ";
                 _isSyncRunning = false;
+            }
+        }
+
+        // Realtime streaming refresh: invoked from the sync consumer after each page of codes is
+        // enriched. Coalesced (skips while a refresh is already running) and marshaled to the UI thread.
+        private Task OnSyncBatchPersistedAsync()
+        {
+            try
+            {
+                if (_streamRefreshInFlight) return Task.CompletedTask;
+                _streamRefreshInFlight = true;
+                if (InvokeRequired) BeginInvoke(new Action(() => _ = RunStreamRefreshAsync()));
+                else _ = RunStreamRefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                _streamRefreshInFlight = false;
+                AppLogger.Warning("[FullStackOperation] stream refresh dispatch error: " + ex.Message);
+            }
+            return Task.CompletedTask;
+        }
+
+        private async Task RunStreamRefreshAsync()
+        {
+            try
+            {
+                var snapshot = await _fullStackDashboardService.LoadSnapshotAsync(_cts.Token);
+                _cloudData = snapshot.Rows ?? new List<WaybillDbModel>();
+                _lastDataUpdate = snapshot.LastSyncAt?.ToLocalTime() ?? _lastDataUpdate;
+                await RefreshDashViewAsync(_cts.Token);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[FullStackOperation] stream refresh error: " + ex.Message);
+            }
+            finally
+            {
+                _streamRefreshInFlight = false;
             }
         }
 
@@ -3734,11 +3861,3 @@ namespace AutoJMS
         public string TenNguoiGui { get; set; }
     }
 }
-
-
-
-
-
-
-
-

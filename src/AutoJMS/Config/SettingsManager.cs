@@ -56,6 +56,8 @@ namespace AutoJMS
         [JsonPropertyName("ArchiveLegacyServiceAccountAfterBrokerSuccess")] public bool ArchiveLegacyServiceAccountAfterBrokerSuccess { get; set; } = true;
         [JsonPropertyName("DeleteLegacyServiceAccountAfterBrokerSuccess")] public bool DeleteLegacyServiceAccountAfterBrokerSuccess { get; set; } = false;
         [JsonPropertyName("GoogleSheetsTokenRefreshSkewMinutes")] public int GoogleSheetsTokenRefreshSkewMinutes { get; set; } = 5;
+        [JsonPropertyName("CloudSyncEnabled")] public bool CloudSyncEnabled { get; set; } = true;
+        [JsonPropertyName("CloudSyncIntervalSeconds")] public int CloudSyncIntervalSeconds { get; set; } = 45;
     }
 
     [Obfuscation(Exclude = true, ApplyToMembers = true)]
@@ -245,6 +247,8 @@ namespace AutoJMS
             Set(root, "ArchiveLegacyServiceAccountAfterBrokerSuccess", settings.ArchiveLegacyServiceAccountAfterBrokerSuccess);
             Set(root, "DeleteLegacyServiceAccountAfterBrokerSuccess", settings.DeleteLegacyServiceAccountAfterBrokerSuccess);
             Set(root, "GoogleSheetsTokenRefreshSkewMinutes", settings.GoogleSheetsTokenRefreshSkewMinutes);
+            Set(root, "CloudSyncEnabled", settings.CloudSyncEnabled);
+            Set(root, "CloudSyncIntervalSeconds", settings.CloudSyncIntervalSeconds);
             return root.ToJsonString(JsonOptions);
         }
 
@@ -282,7 +286,8 @@ namespace AutoJMS
                 "AllowLegacyLocalServiceAccountFallback",
                 "ArchiveLegacyServiceAccountAfterBrokerSuccess",
                 "DeleteLegacyServiceAccountAfterBrokerSuccess",
-                "GoogleSheetsTokenRefreshSkewMinutes"
+                "GoogleSheetsTokenRefreshSkewMinutes",
+                "CloudSyncEnabled", "CloudSyncIntervalSeconds"
             };
 
             foreach (var name in names)

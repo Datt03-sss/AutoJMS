@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace AutoJMS.FullStack.Services
@@ -50,7 +51,16 @@ namespace AutoJMS.FullStack.Services
             };
         }
 
-        public async Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
+        public Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
+            => SyncInventoryAndRefreshTrackingAsync(from, to, null, ct);
+
+        // onBatchPersisted (optional): fired after each fetched page of codes has been enriched and
+        // written, so the caller can refresh the UI in realtime.
+        public async Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(
+            DateTime? from,
+            DateTime? to,
+            Func<Task> onBatchPersisted,
+            CancellationToken ct = default)
         {
             await InitializeAsync(ct).ConfigureAwait(false);
 
@@ -59,12 +69,51 @@ namespace AutoJMS.FullStack.Services
 
             try
             {
-                var syncResult = await _inventorySyncService.SyncInventoryAsync(from, to, ct).ConfigureAwait(false);
-                var rows = await _repository.GetDashboardRowsAsync(ct).ConfigureAwait(false);
-                var waybills = rows.Select(x => x.WaybillNo).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-                if (waybills.Count > 0)
-                    await _trackingEnrichmentService.EnrichAsync(waybills, ct).ConfigureAwait(false);
-                AppLogger.Info($"[FullStackDashboard] risk engine updated rows={waybills.Count}");
+                // Producer/consumer: the inventory paginator writes each page's new codes into the
+                // channel; the consumer enriches (bulk tracking + per-waybill order detail) those codes
+                // immediately while the next page is still downloading, then fires onBatchPersisted so
+                // the grid updates in realtime. DB writes are serialized by the repository write-gate.
+                var channel = Channel.CreateUnbounded<IReadOnlyList<string>>(
+                    new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+
+                int enrichedCount = 0;
+                var consumer = Task.Run(async () =>
+                {
+                    await foreach (var pageCodes in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                    {
+                        try
+                        {
+                            await _trackingEnrichmentService.EnrichAsync(pageCodes, ct).ConfigureAwait(false);
+                            enrichedCount += pageCodes.Count;
+                            if (onBatchPersisted != null)
+                            {
+                                try { await onBatchPersisted().ConfigureAwait(false); }
+                                catch (Exception cbEx) { AppLogger.Warning($"[FullStackDashboard] onBatchPersisted error: {cbEx.Message}"); }
+                            }
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception enrichEx)
+                        {
+                            AppLogger.Warning($"[FullStackDashboard] page enrichment failed: {enrichEx.Message}");
+                        }
+                    }
+                }, ct);
+
+                FullStackSyncResult syncResult;
+                try
+                {
+                    syncResult = await _inventorySyncService.SyncInventoryAsync(
+                        from, to,
+                        onPageCodes: (codes, token) => channel.Writer.WriteAsync(codes, token).AsTask(),
+                        ct: ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    channel.Writer.Complete();
+                }
+
+                await consumer.ConfigureAwait(false);
+                AppLogger.Info($"[FullStackDashboard] risk engine updated rows={enrichedCount}");
                 return syncResult;
             }
             finally

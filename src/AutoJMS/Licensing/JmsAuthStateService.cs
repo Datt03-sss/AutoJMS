@@ -20,6 +20,19 @@ namespace AutoJMS
             get { lock (_lock) return !string.IsNullOrEmpty(_token) && _token.Length > 20; }
         }
 
+        private static string _userName = string.Empty;
+
+        /// <summary>
+        /// Display name of the logged-in JMS user (from the JMS WebView localStorage
+        /// `userData.name`). Captured during the WebView token read; consumed by the
+        /// dashboard to attribute notes.
+        /// </summary>
+        public static string CurrentUserName
+        {
+            get { lock (_lock) return _userName; }
+            set { lock (_lock) _userName = value ?? string.Empty; }
+        }
+
         /// <summary>Raised when JMS auth token is detected as expired/revoked.</summary>
         public static event Action AuthExpired;
 

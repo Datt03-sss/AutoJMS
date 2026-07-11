@@ -306,13 +306,13 @@ namespace AutoJMS
                 foreach (var r in rows)
                 {
                     string finalWaybill = r.WaybillNo ?? string.Empty;
-                    bool isKyNhanCPN = (r.TrangThaiHienTai?.Contains("Ký nhận CPN") == true) ||
-                                       (r.ThaoTacCuoi?.Contains("Ký nhận CPN") == true);
+                    bool isKyNhan = (r.TrangThaiHienTai?.Contains("Ký nhận", StringComparison.OrdinalIgnoreCase) == true) ||
+                                       (r.ThaoTacCuoi?.Contains("Ký nhận", StringComparison.OrdinalIgnoreCase) == true);
 
                     if (string.IsNullOrWhiteSpace(finalWaybill))
                         continue;
 
-                    if (isKyNhanCPN && !finalWaybill.EndsWith("-001", StringComparison.Ordinal))
+                    if (isKyNhan && !finalWaybill.EndsWith("-001", StringComparison.Ordinal))
                     {
                         finalWaybill += "-001";
                     }
@@ -1232,6 +1232,14 @@ namespace AutoJMS
             return ParseTrackingRowsDirect(rawJson, trackingWaybills);
         }
 
+        private static bool IsNoiseScan(string scanTypeName)
+        {
+            string type = scanTypeName ?? string.Empty;
+            return type.Contains("Kiểm tra hàng tồn kho", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("Lịch sử cuộc gọi", StringComparison.OrdinalIgnoreCase)
+                || type.Contains("cuộc gọi-phát", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static IReadOnlyList<TrackingRow> ParseTrackingRowsDirect(string rawJson, IReadOnlyList<string> trackingWaybills)
         {
             var requested = trackingWaybills
@@ -1254,10 +1262,13 @@ namespace AutoJMS
                     continue;
 
                 var detailRows = details.EnumerateArray().ToList();
-                var latest = detailRows
+                var orderedByTime = detailRows
                     .Select(d => new { Detail = d, Time = ParseDateTime(FirstText(d, "uploadTime", "scanTime")) })
                     .OrderByDescending(x => x.Time ?? DateTime.MinValue)
-                    .FirstOrDefault()?.Detail;
+                    .ToList();
+                // Bỏ qua thao tác nhiễu (kiểm kho, lịch sử cuộc gọi); nếu toàn nhiễu thì dùng bản mới nhất làm dự phòng.
+                var latest = (orderedByTime.FirstOrDefault(x => !IsNoiseScan(GetRawText(x.Detail, "scanTypeName")))
+                              ?? orderedByTime.FirstOrDefault())?.Detail;
 
                 var row = new TrackingRow
                 {

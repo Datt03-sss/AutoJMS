@@ -31,6 +31,9 @@ namespace AutoJMS.FullStack.LocalDb
                 await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV1, ct).ConfigureAwait(false);
                 await EnsureWaybillColumnsAsync(connection, transaction, ct).ConfigureAwait(false);
                 await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV1PostColumnIndexes, ct).ConfigureAwait(false);
+                await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV2, ct).ConfigureAwait(false);
+                await EnsureSyncColumnsAsync(connection, transaction, ct).ConfigureAwait(false);
+                await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV2PostColumnIndexes, ct).ConfigureAwait(false);
                 await ExecuteAsync(
                     connection,
                     transaction,
@@ -70,6 +73,17 @@ namespace AutoJMS.FullStack.LocalDb
             foreach (var (columnName, sql) in FullStackMigrations.WaybillColumnGuards)
             {
                 if (await HasColumnAsync(connection, transaction, "fs_waybills", columnName, ct).ConfigureAwait(false))
+                    continue;
+
+                await ExecuteAsync(connection, transaction, sql, ct).ConfigureAwait(false);
+            }
+        }
+
+        private static async Task EnsureSyncColumnsAsync(SqliteConnection connection, SqliteTransaction transaction, CancellationToken ct)
+        {
+            foreach (var (tableName, columnName, sql) in FullStackMigrations.SyncColumnGuards)
+            {
+                if (await HasColumnAsync(connection, transaction, tableName, columnName, ct).ConfigureAwait(false))
                     continue;
 
                 await ExecuteAsync(connection, transaction, sql, ct).ConfigureAwait(false);

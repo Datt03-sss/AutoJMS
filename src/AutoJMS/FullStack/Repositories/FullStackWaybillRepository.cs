@@ -19,6 +19,9 @@ namespace AutoJMS.FullStack.Repositories
         private readonly FullStackOrderStateEngine _stateEngine = new();
         private readonly FullStackRiskEngine _riskEngine = new();
         private readonly FullStackSlaEngine _slaEngine = new();
+        // Serializes all write transactions so streamed per-page enrichment writes and the final
+        // inventory-apply never run concurrently (WAL + busy_timeout would otherwise queue/stall).
+        private readonly SemaphoreSlim _writeGate = new(1, 1);
 
         public FullStackWaybillRepository(FullStackDbConnectionFactory connectionFactory)
         {
@@ -54,6 +57,9 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
 
         public async Task<FullStackSyncResult> ApplyInventoryRunAsync(InventoryRun run, IReadOnlyList<InventoryFetchItem> items, CancellationToken ct = default)
         {
+            await _writeGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
             var now = DateTime.UtcNow;
             var uniqueItems = items?
                 .Where(x => !string.IsNullOrWhiteSpace(x?.WaybillNo))
@@ -100,12 +106,20 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
                 StartedAt = run.StartedAt,
                 FinishedAt = now
             };
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
         public async Task UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default)
         {
             if (rows == null || rows.Count == 0) return;
 
+            await _writeGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
@@ -122,12 +136,20 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             AppLogger.Info($"[FullStackLocalDb] tracking rows upserted count={rows.Count}");
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
         public async Task UpsertTrackingEventsAsync(IReadOnlyList<TrackingEvent> events, CancellationToken ct = default)
         {
             if (events == null || events.Count == 0) return;
 
+            await _writeGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
             foreach (var item in events.Where(x => !string.IsNullOrWhiteSpace(x?.WaybillNo)))
@@ -154,6 +176,11 @@ VALUES (
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             AppLogger.Info($"[FullStackLocalDb] tracking events upserted count={events.Count}");
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
         }
 
         public async Task MarkEnrichedAsync(IEnumerable<string> waybillNos, CancellationToken ct = default)
@@ -165,6 +192,9 @@ VALUES (
                 .ToList() ?? new List<string>();
             if (list.Count == 0) return;
 
+            await _writeGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
             var now = DateTime.UtcNow;
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
@@ -187,6 +217,46 @@ WHERE waybill_no = $waybillNo;";
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _writeGate.Release();
+            }
+        }
+
+        public async Task<HashSet<string>> GetWaybillsWithDetailAsync(IReadOnlyCollection<string> waybillNos, CancellationToken ct = default)
+        {
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = waybillNos?
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim().ToUpperInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
+            if (list.Count == 0) return result;
+
+            await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
+            foreach (var chunk in list.Chunk(300))
+            {
+                await using var command = connection.CreateCommand();
+                var names = new List<string>(chunk.Length);
+                for (int i = 0; i < chunk.Length; i++)
+                {
+                    var p = "$w" + i;
+                    names.Add(p);
+                    command.Parameters.AddWithValue(p, chunk[i]);
+                }
+                // "Has detail" = any getOrderDetail-only field is populated (tracking never sets these).
+                command.CommandText =
+                    "SELECT waybill_no FROM fs_waybills WHERE waybill_no IN (" + string.Join(",", names) + ") " +
+                    "AND (ten_nguoi_gui <> 'empty' OR dia_chi_nhan_hang <> 'empty' OR noi_dung_hang_hoa <> 'empty' OR ma_doan_full <> 'empty');";
+                await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    var wb = reader.IsDBNull(0) ? null : reader.GetValue(0)?.ToString();
+                    if (!string.IsNullOrWhiteSpace(wb)) result.Add(wb.Trim());
+                }
+            }
+            return result;
         }
 
         public async Task IncrementReminderCountAsync(IEnumerable<string> waybillNos, CancellationToken ct = default)
@@ -460,9 +530,18 @@ ON CONFLICT(waybill_no) DO UPDATE SET
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
+        // When source has no value ("empty"), keep the previously cached value. Lets a tracking-only
+        // re-sync (getOrderDetail skipped for already-cached orders) avoid wiping cached detail.
+        private static string Keep(string incoming, string existing)
+        {
+            var s = Empty(incoming);
+            return s == "empty" ? Empty(existing) : s;
+        }
+
         private static void MergeTracking(FullStackWaybill target, WaybillDbModel source)
         {
             target.WaybillNo = source.WaybillNo?.Trim().ToUpperInvariant();
+            // Tracking fields — refreshed from every sync.
             target.TrangThaiHienTai = Empty(source.TrangThaiHienTai);
             target.ThaoTacCuoi = Empty(source.ThaoTacCuoi);
             target.ThoiGianThaoTac = Empty(source.ThoiGianThaoTac);
@@ -472,20 +551,21 @@ ON CONFLICT(waybill_no) DO UPDATE SET
             target.BuuCucThaoTac = Empty(source.BuuCucThaoTac);
             target.NguoiThaoTac = Empty(source.NguoiThaoTac);
             target.DauChuyenHoan = Empty(source.DauChuyenHoan);
-            target.DiaChiNhanHang = Empty(source.DiaChiNhanHang);
-            target.Phuong = Empty(source.Phuong);
-            target.NoiDungHangHoa = Empty(source.NoiDungHangHoa);
-            target.CODThucTe = Empty(source.CODThucTe);
-            target.PTTT = Empty(source.PTTT);
-            target.NhanVienNhanHang = Empty(source.NhanVienNhanHang);
-            target.DiaChiLayHang = Empty(source.DiaChiLayHang);
-            target.ThoiGianNhanHang = Empty(source.ThoiGianNhanHang);
-            target.TenNguoiGui = Empty(source.TenNguoiGui);
-            target.TrongLuong = Empty(source.TrongLuong);
-            target.MaDoanFull = Empty(source.MaDoanFull);
-            target.MaDoan1 = Empty(source.MaDoan1);
-            target.MaDoan2 = Empty(source.MaDoan2);
-            target.MaDoan3 = Empty(source.MaDoan3);
+            // Detail fields (getOrderDetail) — preserve cached value when this sync skipped detail.
+            target.NhanVienNhanHang = Keep(source.NhanVienNhanHang, target.NhanVienNhanHang);
+            target.DiaChiNhanHang = Keep(source.DiaChiNhanHang, target.DiaChiNhanHang);
+            target.Phuong = Keep(source.Phuong, target.Phuong);
+            target.NoiDungHangHoa = Keep(source.NoiDungHangHoa, target.NoiDungHangHoa);
+            target.CODThucTe = Keep(source.CODThucTe, target.CODThucTe);
+            target.PTTT = Keep(source.PTTT, target.PTTT);
+            target.DiaChiLayHang = Keep(source.DiaChiLayHang, target.DiaChiLayHang);
+            target.ThoiGianNhanHang = Keep(source.ThoiGianNhanHang, target.ThoiGianNhanHang);
+            target.TenNguoiGui = Keep(source.TenNguoiGui, target.TenNguoiGui);
+            target.TrongLuong = Keep(source.TrongLuong, target.TrongLuong);
+            target.MaDoanFull = Keep(source.MaDoanFull, target.MaDoanFull);
+            target.MaDoan1 = Keep(source.MaDoan1, target.MaDoan1);
+            target.MaDoan2 = Keep(source.MaDoan2, target.MaDoan2);
+            target.MaDoan3 = Keep(source.MaDoan3, target.MaDoan3);
             target.RebackStatus = Empty(source.RebackStatus);
             target.InHoanScanTime = Empty(source.InHoanScanTime);
             target.PrintCount = source.PrintCount;

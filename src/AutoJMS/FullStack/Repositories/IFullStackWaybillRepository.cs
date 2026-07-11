@@ -13,6 +13,9 @@ namespace AutoJMS.FullStack.Repositories
         Task UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default);
         Task UpsertTrackingEventsAsync(IReadOnlyList<TrackingEvent> events, CancellationToken ct = default);
         Task MarkEnrichedAsync(IEnumerable<string> waybillNos, CancellationToken ct = default);
+        // Returns the subset of the given waybills whose static order-detail is already cached,
+        // so a re-sync can skip the per-order getOrderDetail call for them.
+        Task<HashSet<string>> GetWaybillsWithDetailAsync(IReadOnlyCollection<string> waybillNos, CancellationToken ct = default);
         Task IncrementReminderCountAsync(IEnumerable<string> waybillNos, CancellationToken ct = default);
         Task<string> GetSyncStateAsync(string key, CancellationToken ct = default);
         Task SetSyncStateAsync(string key, string value, CancellationToken ct = default);

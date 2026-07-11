@@ -417,6 +417,10 @@ namespace AutoJMS
 
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                // Lock page zoom for the whole dashboard (Ctrl+scroll / pinch / Ctrl±) so image
+                // zoom in the overlay never rescales tabDash itself.
+                _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+                _webView.ZoomFactor = 1.0;
 
                 _webView.WebMessageReceived += OnWebViewMessageReceived;
                 _webView.CoreWebView2.Navigate("https://autojms.local/index.html");
@@ -500,7 +504,35 @@ namespace AutoJMS
                     if (root.TryGetProperty("waybillNo", out var valProp))
                     {
                         var waybillNo = valProp.GetString();
+                        _ = FetchAndPostWaybillDetailAsync(waybillNo);
+                        _ = FetchAndPostIssueHistoryAsync(waybillNo);
                     }
+                }
+                else if (action == "FETCH_RECEIVER_NETWORK")
+                {
+                    if (root.TryGetProperty("waybillNo", out var valProp))
+                    {
+                        _ = FetchAndPostReceiverNetworkAsync(valProp.GetString());
+                    }
+                }
+                else if (action == "FETCH_NETWORK_INFO")
+                {
+                    if (root.TryGetProperty("code", out var valProp))
+                    {
+                        _ = FetchAndPostNetworkInfoAsync(valProp.GetString());
+                    }
+                }
+                else if (action == "FETCH_NETWORK_SEARCH")
+                {
+                    if (root.TryGetProperty("query", out var valProp))
+                    {
+                        _ = FetchAndPostNetworkSearchAsync(valProp.GetString());
+                    }
+                }
+                else if (action == "SUBMIT_ISSUE")
+                {
+                    string Sv(string k) => root.TryGetProperty(k, out var p) ? (p.GetString() ?? "") : "";
+                    _ = SubmitIssueRegistrationAsync(Sv("waybillNo"), Sv("level1"), Sv("level2"), Sv("level2Code"), Sv("level2Name"), Sv("network"), Sv("description"));
                 }
                 else if (action == "TOGGLE_STAR")
                 {
@@ -700,81 +732,189 @@ namespace AutoJMS
             _ = LoadDataAndRefreshViewsAsync();
         }
 
-        private object MapWaybillToDto(WaybillDbModel row)
+        private static string NormalizeQueueText(string value)
         {
-            var mains = new System.Collections.Generic.List<string> { "tong-ton" };
-            var subs = new System.Collections.Generic.List<string> { "Tất cả" };
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
 
-            if (row.ThaoTacCuoi == "Hàng đến")
+            var normalized = value
+                .Replace('Đ', 'D')
+                .Replace('đ', 'd')
+                .Normalize(System.Text.NormalizationForm.FormD);
+            var builder = new System.Text.StringBuilder(normalized.Length);
+            foreach (var ch in normalized)
             {
-                mains.Add("hang-den");
-                subs.Add("Tổng số đơn");
-                if (IsNotDispatched(row))
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
                 {
-                    subs.Add("Chưa quét đến");
+                    builder.Append(char.ToLowerInvariant(ch));
                 }
             }
 
-            if (row.ThaoTacCuoi == "Phát hàng")
+            return builder.ToString().Normalize(System.Text.NormalizationForm.FormC).Trim();
+        }
+
+        private static bool OperationHas(WaybillDbModel row, params string[] needles)
+        {
+            var operation = NormalizeQueueText(row?.ThaoTacCuoi ?? string.Empty);
+            if (operation.Length == 0) return false;
+
+            foreach (var needle in needles)
             {
-                mains.Add("phat-hang");
-                subs.Add("Cần phát");
+                var normalizedNeedle = NormalizeQueueText(needle);
+                if (normalizedNeedle.Length > 0 && operation.Contains(normalizedNeedle))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsRedeliveryOperation(WaybillDbModel row) =>
+            OperationHas(row, "giao lại", "giao lai", "phát lại", "phat lai", "redelivery");
+
+        private static bool IsDeliveryScanOperation(WaybillDbModel row) =>
+            !IsRedeliveryOperation(row) && OperationHas(row, "quét phát", "quet phat", "phát hàng", "phat hang");
+
+        private static bool IsReturnRegisteredOperation(WaybillDbModel row) =>
+            OperationHas(row, "đăng ký chuyển hoàn", "dang ky chuyen hoan", "chuyển hoàn", "chuyen hoan", "return");
+
+        private static bool IsWarehouseHoldOperation(WaybillDbModel row) =>
+            OperationHas(row, "lưu kho", "luu kho", "warehouse");
+
+        private static bool IsAwaitingPickupOperation(WaybillDbModel row) =>
+            OperationHas(row, "chờ lấy", "cho lay", "pickup");
+
+        // Any null / empty / whitespace display value becomes "-" so the UI never shows blank cells.
+        private static string Dash(string value) => string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+
+        // Like Dash, but also treats the "empty" placeholder (used for un-enriched rows) as blank.
+        private static string DashE(string value) =>
+            (string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "empty", StringComparison.OrdinalIgnoreCase))
+                ? "-" : value.Trim();
+
+        private object MapWaybillToDto(WaybillDbModel row)
+        {
+            var mains = new System.Collections.Generic.List<string>();
+            var subs = new System.Collections.Generic.List<string>();
+            var subKeys = new System.Collections.Generic.List<string>();
+
+            void AddMain(string key)
+            {
+                if (!string.IsNullOrWhiteSpace(key) && !mains.Contains(key)) mains.Add(key);
+            }
+
+            void AddSub(string label)
+            {
+                if (!string.IsNullOrWhiteSpace(label) && !subs.Contains(label)) subs.Add(label);
+            }
+
+            void AddSubKey(string key)
+            {
+                if (!string.IsNullOrWhiteSpace(key) && !subKeys.Contains(key)) subKeys.Add(key);
+            }
+
+            AddMain("tong-ton");
+            AddSub("Tất cả");
+            AddSubKey("all");
+
+            var isDeliveryScan = IsDeliveryScanOperation(row);
+            var isRedelivery = IsRedeliveryOperation(row);
+            var isReturnRegistered = IsReturnRegisteredOperation(row);
+
+            if (OperationHas(row, "hàng đến", "hang den"))
+            {
+                AddMain("hang-den");
+                // "Đã đến" and "Chưa quét đến" are sourced from the JMS arrival-monitor report,
+                // not from local data (see FullStackOperation.ArrivalMonitor.cs).
+            }
+
+            if (isDeliveryScan || isRedelivery)
+            {
+                AddMain("phat-hang");
+                AddSub("Cần phát");
+                AddSubKey("need_delivery");
+                if (isDeliveryScan)
+                {
+                    AddSub("Quét phát hàng");
+                    AddSubKey("delivery_scan");
+                }
+                if (isRedelivery)
+                {
+                    AddSub("Giao lại hàng");
+                    AddSubKey("redelivery");
+                }
+
                 if (IsNotDispatched(row))
                 {
-                    subs.Add("Chưa phát");
+                    AddSub("Chưa phát");
+                    AddSubKey("not_delivered");
+                }
+                else
+                {
+                    AddSub("Đã phát");
+                    AddSubKey("delivered");
                 }
             }
 
             if (IsNeedsAction(row))
             {
-                mains.Add("backlog");
+                AddMain("backlog");
                 double days = GetWarehouseAgeDays(row.ThoiGianThaoTac);
                 if (days >= 7.0)
                 {
-                    subs.Add("7D+");
-                    subs.Add("7D");
+                    AddSub("7D+");
+                    AddSub("7D");
+                    AddSubKey("age_7d_plus");
+                    AddSubKey("age_7d");
                 }
-                else if (days >= 6.0) subs.Add("6D");
-                else if (days >= 5.0) subs.Add("5D");
-                else if (days >= 4.0) subs.Add("4D");
-                else if (days >= 3.0) subs.Add("3D");
-                else subs.Add("<2D");
+                else if (days >= 6.0) { AddSub("6D"); AddSubKey("age_6d"); }
+                else if (days >= 5.0) { AddSub("5D"); AddSubKey("age_5d"); }
+                else if (days >= 4.0) { AddSub("4D"); AddSubKey("age_4d"); }
+                else if (days >= 3.0) { AddSub("3D"); AddSubKey("age_3d"); }
+                else { AddSub("<2D"); AddSubKey("age_lt_2d"); }
             }
 
-            if (row.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(row))
+            if (isReturnRegistered || IsPendingReturn(row))
             {
-                mains.Add("chuyen-hoan");
-                if (row.RebackStatus == "Đợi xét duyệt") subs.Add("Đợi xét duyệt");
-                else if (row.RebackStatus == "Đã phê duyệt") subs.Add("Đã phê duyệt");
-                else if (row.RebackStatus == "Phát lại") subs.Add("Phát lại");
+                AddMain("chuyen-hoan");
+                if (isReturnRegistered)
+                {
+                    AddSub("Đăng ký chuyển hoàn");
+                    AddSubKey("return_registered");
+                }
+                if (row.RebackStatus == "Đợi xét duyệt") { AddSub("Đợi xét duyệt"); AddSubKey("return_waiting_approval"); }
+                else if (row.RebackStatus == "Đã phê duyệt") { AddSub("Đã phê duyệt"); AddSubKey("return_approved"); }
+                else if (row.RebackStatus == "Phát lại") { AddSub("Phát lại"); AddSubKey("return_redelivery"); }
             }
 
             if (IsSlaBreached(row.ThoiGianNhanHang))
             {
-                mains.Add("kiem-kho");
-                subs.Add("Đơn cần kiểm");
-                subs.Add("Kiểm thiếu");
+                AddMain("kiem-kho");
+                AddSub("Đơn cần kiểm");
+                AddSub("Kiểm thiếu");
+                AddSubKey("inventory_check");
+                AddSubKey("inventory_missing");
             }
 
             if (HasTaskWaybill(row))
             {
-                mains.Add("cskh");
-                subs.Add("Ticket CSKH");
+                AddMain("cskh");
+                AddSub("Ticket CSKH");
+                AddSubKey("support_ticket");
                 if (IsSlaBreached(row.ThoiGianNhanHang))
                 {
-                    subs.Add("Khiếu nại SLA");
+                    AddSub("Khiếu nại SLA");
+                    AddSubKey("sla_complaint");
                 }
             }
 
             double ageDays = GetWarehouseAgeDays(row.ThoiGianThaoTac);
             if (ageDays >= 1.0)
             {
-                mains.Add("dung-tram");
-                if (ageDays >= 7.0) subs.Add("Dừng >7D");
-                else if (ageDays >= 3.0) subs.Add("Dừng >3D");
-                else if (ageDays >= 2.0) subs.Add("Dừng >48h");
-                else if (ageDays >= 1.0) subs.Add("Dừng >24h");
-                else subs.Add("Dừng >12h");
+                AddMain("dung-tram");
+                if (ageDays >= 7.0) { AddSub("Dừng >7D"); AddSubKey("halt_7d"); }
+                else if (ageDays >= 3.0) { AddSub("Dừng >3D"); AddSubKey("halt_3d"); }
+                else if (ageDays >= 2.0) { AddSub("Dừng >48h"); AddSubKey("halt_48h"); }
+                else if (ageDays >= 1.0) { AddSub("Dừng >24h"); AddSubKey("halt_24h"); }
+                else { AddSub("Dừng >12h"); AddSubKey("halt_12h"); }
             }
 
             bool isStarred = false;
@@ -785,45 +925,70 @@ namespace AutoJMS
 
             if (isStarred)
             {
-                mains.Add("star");
-                subs.Add("Đơn đã ghim");
-                subs.Add("Đang theo dõi");
-                if (IsNeedsAction(row)) subs.Add("Chưa xử lý");
-                else subs.Add("Đã xử lý");
+                AddMain("star");
+                AddSub("Đơn đã ghim");
+                AddSub("Đang theo dõi");
+                AddSubKey("starred");
+                AddSubKey("watching");
+                if (IsNeedsAction(row)) { AddSub("Chưa xử lý"); AddSubKey("star_unresolved"); }
+                else { AddSub("Đã xử lý"); AddSubKey("star_resolved"); }
             }
 
-            if (row.ThaoTacCuoi == "Phát hàng") subs.Add("Quét phát hàng");
-            if (row.ThaoTacCuoi == "Chuyển hoàn") subs.Add("Đăng ký chuyển hoàn");
-            if (row.ThaoTacCuoi?.ToLower().Contains("phát lại") == true || row.ThaoTacCuoi?.ToLower().Contains("giao lại") == true) subs.Add("Giao lại hàng");
-            if (row.ThaoTacCuoi == "Chờ lấy") subs.Add("Chờ lấy hàng");
-            if (row.ThaoTacCuoi == "Lưu kho") subs.Add("Lưu kho");
+            if (IsWarehouseHoldOperation(row))
+            {
+                AddSub("Lưu kho");
+                AddSubKey("warehouse_hold");
+            }
+
+            if (IsAwaitingPickupOperation(row))
+            {
+                AddSub("Chờ lấy hàng");
+                AddSubKey("awaiting_pickup");
+            }
+
+            // "Tồn kho" = số ngày tồn (kể từ thao tác cuối cùng).
+            bool hasOpTime = !string.IsNullOrWhiteSpace(row.ThoiGianThaoTac)
+                && !string.Equals(row.ThoiGianThaoTac.Trim(), "empty", StringComparison.OrdinalIgnoreCase);
+            double tonKhoDays = hasOpTime ? GetWarehouseAgeDays(row.ThoiGianThaoTac) : 0;
+            int tonKhoWhole = (int)Math.Floor(tonKhoDays);
+            string tonKhoText = !hasOpTime ? "-" : (tonKhoWhole <= 0 ? "< 1 ngày" : tonKhoWhole + " ngày");
+            string tonKhoColor = !hasOpTime
+                ? "#6b7588"
+                : (tonKhoDays >= 7.0 ? "#d23a2e" : (tonKhoDays >= 3.0 ? "#e07b39" : "#3a4555"));
 
             return new
             {
-                code = row.WaybillNo,
-                recipient = row.NhanVienNhanHang ?? "Chưa rõ",
+                code = Dash(row.WaybillNo),
+                curOp = DashE(row.TrangThaiHienTai),
+                lastOp = DashE(row.ThaoTacCuoi),
+                opTime = DashE(row.ThoiGianThaoTac),
+                tonKho = tonKhoText,
+                tonKhoColor = tonKhoColor,
+                recipient = Dash(row.NhanVienNhanHang),
                 phone = "-",
-                addr = row.DiaChiNhanHang ?? "-",
-                source = row.BuuCucThaoTac ?? "-",
-                cod = row.CODThucTe ?? "0 đ",
+                addr = Dash(row.DiaChiNhanHang),
+                source = Dash(row.BuuCucThaoTac),
+                cod = string.IsNullOrWhiteSpace(row.CODThucTe) ? "0 đ" : row.CODThucTe.Trim(),
                 sla = IsSlaBreached(row.ThoiGianNhanHang) ? "Quá hạn" : "Trong hạn",
                 slaColor = IsSlaBreached(row.ThoiGianNhanHang) ? "#d23a2e" : "#1c8a3c",
                 service = "Chuyển phát",
-                weight = row.TrongLuong ?? "-",
+                weight = Dash(row.TrongLuong),
                 pkgs = "1",
-                orderNo = row.WaybillNo,
-                sender = row.TenNguoiGui ?? "-",
-                staff = row.NguoiThaoTac ?? "-",
-                senderAddr = row.DiaChiLayHang ?? "-",
-                content = row.NoiDungHangHoa ?? "-",
-                payMethod = row.PTTT ?? "-",
-                ward = row.Phuong ?? "-",
-                lastScan = row.ThoiGianThaoTac ?? "-",
-                status = row.TrangThaiHienTai ?? "-",
+                orderNo = Dash(row.WaybillNo),
+                sender = Dash(row.TenNguoiGui),
+                staff = Dash(row.NguoiThaoTac),
+                senderAddr = Dash(row.DiaChiLayHang),
+                content = Dash(row.NoiDungHangHoa),
+                payMethod = Dash(row.PTTT),
+                ward = Dash(row.Phuong),
+                lastScan = Dash(row.ThoiGianThaoTac),
+                status = Dash(row.TrangThaiHienTai),
                 op = row.ThaoTacCuoi ?? "",
-                issueReason = row.NguyenNhanKienVanDe ?? "-",
+                issueReason = Dash(row.NguyenNhanKienVanDe),
                 mains = mains,
+                mainKeys = mains,
                 subs = subs,
+                subKeys = subKeys,
                 isStar = isStarred
             };
         }
@@ -835,17 +1000,16 @@ namespace AutoJMS
             try
             {
                 string siteId = "214A02";
-                string lastUpdateTime = DateTime.Now.ToString("HH:mm:ss");
-                if (tabDash_lblLastUpdate != null && !string.IsNullOrEmpty(tabDash_lblLastUpdate.Text))
-                {
-                    lastUpdateTime = tabDash_lblLastUpdate.Text.Replace("Local refresh: ", "").Replace("Chưa tải", "Chưa cập nhật");
-                }
+                // "Last Update" = only the timestamp the data was last refreshed (never status text).
+                string lastUpdateTime = _lastDataUpdate.HasValue
+                    ? _lastDataUpdate.Value.ToString("HH:mm:ss dd/MM/yyyy")
+                    : "Chưa cập nhật";
 
                 string syncStatus = "DB: Synced";
 
                 int tongTonCount = _cloudData.Count;
-                int hangDenCount = _cloudData.Count(x => x.ThaoTacCuoi == "Hàng đến");
-                int phatHangCount = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng");
+                // "Hàng đến" card mirrors the "Đã đến" (arrived today) count from the arrival monitor.
+                int phatHangCount = _cloudData.Count(x => IsDeliveryScanOperation(x) || IsRedeliveryOperation(x));
                 int backlogCount = _cloudData.Count(IsNeedsAction);
                 int chuyenHoanCount = _cloudData.Count(x => x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x));
                 int kiemKhoCount = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang));
@@ -861,7 +1025,7 @@ namespace AutoJMS
                 var mainsObj = new System.Collections.Generic.Dictionary<string, string>
                 {
                     { "tong-ton", tongTonCount.ToString("N0") },
-                    { "hang-den", hangDenCount.ToString("N0") },
+                    { "hang-den", _arrivalArrivedTotal.ToString("N0") },
                     { "phat-hang", phatHangCount.ToString("N0") },
                     { "backlog", backlogCount.ToString("N0") },
                     { "chuyen-hoan", chuyenHoanCount.ToString("N0") },
@@ -874,64 +1038,68 @@ namespace AutoJMS
                 var subsObj = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<object>>
                 {
                     { "tong-ton", new System.Collections.Generic.List<object> {
-                        new { label = "Tất cả", count = tongTonCount.ToString("N0") },
-                        new { label = "Quét phát hàng", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng").ToString("N0") },
-                        new { label = "Đăng ký chuyển hoàn", count = _cloudData.Count(x => x.ThaoTacCuoi == "Chuyển hoàn").ToString("N0") },
-                        new { label = "Giao lại hàng", count = _cloudData.Count(x => x.ThaoTacCuoi?.ToLower().Contains("phát lại") == true || x.ThaoTacCuoi?.ToLower().Contains("giao lại") == true).ToString("N0") },
-                        new { label = "Chờ lấy hàng", count = _cloudData.Count(x => x.ThaoTacCuoi == "Chờ lấy").ToString("N0") },
-                        new { label = "Lưu kho", count = _cloudData.Count(x => x.ThaoTacCuoi == "Lưu kho").ToString("N0") }
+                        new { key = "all", label = "Tất cả", count = tongTonCount.ToString("N0") },
+                        new { key = "delivery_scan", label = "Quét phát hàng", count = _cloudData.Count(IsDeliveryScanOperation).ToString("N0") },
+                        new { key = "return_registered", label = "Đăng ký chuyển hoàn", count = _cloudData.Count(IsReturnRegisteredOperation).ToString("N0") },
+                        new { key = "redelivery", label = "Giao lại hàng", count = _cloudData.Count(IsRedeliveryOperation).ToString("N0") },
+                        new { key = "awaiting_pickup", label = "Chờ lấy hàng", count = _cloudData.Count(IsAwaitingPickupOperation).ToString("N0") },
+                        new { key = "warehouse_hold", label = "Lưu kho", count = _cloudData.Count(IsWarehouseHoldOperation).ToString("N0") }
                     } },
                     { "hang-den", new System.Collections.Generic.List<object> {
-                        new { label = "Tổng số đơn", count = hangDenCount.ToString("N0") },
-                        new { label = "Chưa quét đến", count = _cloudData.Count(x => x.ThaoTacCuoi == "Hàng đến" && IsNotDispatched(x)).ToString("N0") }
+                        new { key = "hang_den_all", label = "Đã đến", count = _arrivalArrivedTotal.ToString("N0") },
+                        new { key = "not_scanned_in", label = "Chưa quét đến", count = _arrivalNotScannedTotal.ToString("N0") }
                     } },
                     { "phat-hang", new System.Collections.Generic.List<object> {
-                        new { label = "Cần phát", count = phatHangCount.ToString("N0") },
-                        new { label = "Đã phát", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng" && !IsNotDispatched(x)).ToString("N0") },
-                        new { label = "Chưa phát", count = _cloudData.Count(x => x.ThaoTacCuoi == "Phát hàng" && IsNotDispatched(x)).ToString("N0") }
+                        new { key = "need_delivery", label = "Cần phát", count = phatHangCount.ToString("N0") },
+                        new { key = "delivered", label = "Đã phát", count = _cloudData.Count(x => (IsDeliveryScanOperation(x) || IsRedeliveryOperation(x)) && !IsNotDispatched(x)).ToString("N0") },
+                        new { key = "not_delivered", label = "Chưa phát", count = _cloudData.Count(x => (IsDeliveryScanOperation(x) || IsRedeliveryOperation(x)) && IsNotDispatched(x)).ToString("N0") }
                     } },
                     { "backlog", new System.Collections.Generic.List<object> {
-                        new { label = "7D+", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
-                        new { label = "7D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
-                        new { label = "6D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 6.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 7.0).ToString("N0") },
-                        new { label = "5D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 5.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 6.0).ToString("N0") },
-                        new { label = "4D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 4.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 5.0).ToString("N0") },
-                        new { label = "3D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 3.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 4.0).ToString("N0") },
-                        new { label = "<2D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 2.0).ToString("N0") }
+                        new { key = "age_7d_plus", label = "7D+", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
+                        new { key = "age_7d", label = "7D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
+                        new { key = "age_6d", label = "6D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 6.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 7.0).ToString("N0") },
+                        new { key = "age_5d", label = "5D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 5.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 6.0).ToString("N0") },
+                        new { key = "age_4d", label = "4D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 4.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 5.0).ToString("N0") },
+                        new { key = "age_3d", label = "3D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 3.0 && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 4.0).ToString("N0") },
+                        new { key = "age_lt_2d", label = "<2D", count = _cloudData.Count(x => IsNeedsAction(x) && GetWarehouseAgeDays(x.ThoiGianThaoTac) < 2.0).ToString("N0") }
                     } },
                     { "chuyen-hoan", new System.Collections.Generic.List<object> {
-                        new { label = "Đợi xét duyệt", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đợi xét duyệt").ToString("N0") },
-                        new { label = "Đã phê duyệt", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Đã phê duyệt").ToString("N0") },
-                        new { label = "Phát lại", count = _cloudData.Count(x => (x.ThaoTacCuoi == "Chuyển hoàn" || IsPendingReturn(x)) && x.RebackStatus == "Phát lại").ToString("N0") }
+                        new { key = "return_waiting_approval", label = "Đợi xét duyệt", count = _cloudData.Count(x => (IsReturnRegisteredOperation(x) || IsPendingReturn(x)) && x.RebackStatus == "Đợi xét duyệt").ToString("N0") },
+                        new { key = "return_approved", label = "Đã phê duyệt", count = _cloudData.Count(x => (IsReturnRegisteredOperation(x) || IsPendingReturn(x)) && x.RebackStatus == "Đã phê duyệt").ToString("N0") },
+                        new { key = "return_redelivery", label = "Phát lại", count = _cloudData.Count(x => (IsReturnRegisteredOperation(x) || IsPendingReturn(x)) && x.RebackStatus == "Phát lại").ToString("N0") }
                     } },
                     { "kiem-kho", new System.Collections.Generic.List<object> {
-                        new { label = "Đơn cần kiểm", count = kiemKhoCount.ToString("N0") },
-                        new { label = "Kiểm thiếu", count = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang)).ToString("N0") }
+                        new { key = "inventory_check", label = "Đơn cần kiểm", count = kiemKhoCount.ToString("N0") },
+                        new { key = "inventory_missing", label = "Kiểm thiếu", count = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang)).ToString("N0") }
                     } },
                     { "cskh", new System.Collections.Generic.List<object> {
-                        new { label = "Ticket CSKH", count = cskhCount.ToString("N0") },
-                        new { label = "Khiếu nại SLA", count = _cloudData.Count(x => HasTaskWaybill(x) && IsSlaBreached(x.ThoiGianNhanHang)).ToString("N0") },
-                        new { label = "Khiếu nại chịu trách nhiệm", count = "0" },
-                        new { label = "Kháng cáo CLDV", count = "0" },
-                        new { label = "Tiền phạt dự kiến", count = "0" }
+                        new { key = "support_ticket", label = "Ticket CSKH", count = cskhCount.ToString("N0") },
+                        new { key = "sla_complaint", label = "Khiếu nại SLA", count = _cloudData.Count(x => HasTaskWaybill(x) && IsSlaBreached(x.ThoiGianNhanHang)).ToString("N0") },
+                        new { key = "responsibility_complaint", label = "Khiếu nại chịu trách nhiệm", count = "0" },
+                        new { key = "cldv_appeal", label = "Kháng cáo CLDV", count = "0" },
+                        new { key = "expected_penalty", label = "Tiền phạt dự kiến", count = "0" }
                     } },
                     { "dung-tram", new System.Collections.Generic.List<object> {
-                        new { label = "Dừng >12h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 0.5).ToString("N0") },
-                        new { label = "Dừng >24h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 1.0).ToString("N0") },
-                        new { label = "Dừng >48h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 2.0).ToString("N0") },
-                        new { label = "Dừng >3D", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 3.0).ToString("N0") },
-                        new { label = "Dừng >7D", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
-                        new { label = "Không có scan mới", count = "0" }
+                        new { key = "halt_12h", label = "Dừng >12h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 0.5).ToString("N0") },
+                        new { key = "halt_24h", label = "Dừng >24h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 1.0).ToString("N0") },
+                        new { key = "halt_48h", label = "Dừng >48h", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 2.0).ToString("N0") },
+                        new { key = "halt_3d", label = "Dừng >3D", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 3.0).ToString("N0") },
+                        new { key = "halt_7d", label = "Dừng >7D", count = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 7.0).ToString("N0") },
+                        new { key = "no_new_scan", label = "Không có scan mới", count = "0" }
                     } },
                     { "star", new System.Collections.Generic.List<object> {
-                        new { label = "Đơn đã ghim", count = starCount.ToString("N0") },
-                        new { label = "Đang theo dõi", count = starCount.ToString("N0") },
-                        new { label = "Chưa xử lý", count = _cloudData.Count(x => StarredWaybills.Contains(x.WaybillNo) && IsNeedsAction(x)).ToString("N0") },
-                        new { label = "Đã xử lý", count = _cloudData.Count(x => StarredWaybills.Contains(x.WaybillNo) && !IsNeedsAction(x)).ToString("N0") }
+                        new { key = "starred", label = "Đơn đã ghim", count = starCount.ToString("N0") },
+                        new { key = "watching", label = "Đang theo dõi", count = starCount.ToString("N0") },
+                        new { key = "star_unresolved", label = "Chưa xử lý", count = _cloudData.Count(x => StarredWaybills.Contains(x.WaybillNo) && IsNeedsAction(x)).ToString("N0") },
+                        new { key = "star_resolved", label = "Đã xử lý", count = _cloudData.Count(x => StarredWaybills.Contains(x.WaybillNo) && !IsNeedsAction(x)).ToString("N0") }
                     } }
                 };
 
                 var waybillsList = _cloudData.Select(MapWaybillToDto).ToList();
+                // "Đã đến" is a count only (no list). "Chưa quét đến" shows its list.
+                if (_arrivalNotScanned != null && _arrivalNotScanned.Count > 0)
+                    waybillsList.AddRange(_arrivalNotScanned);
+                AppLogger.Info($"[FullStackOperation] PostStateToWebView2 waybills mapped: source={_cloudData.Count}, mapped={waybillsList.Count}, arrivedTotal={_arrivalArrivedTotal}, notScanned={_arrivalNotScanned?.Count ?? 0}");
 
                 var starredCodesObj = new System.Collections.Generic.Dictionary<string, bool>();
                 lock (StarredWaybills)
@@ -958,7 +1126,8 @@ namespace AutoJMS
                     selectedSource = tabDash_dataSource?.Text ?? "LOCAL",
                     selectedTimeInterval = tabDash_timeUpdateData?.Text ?? "2 PHÚT",
                     selectedStatusSelect = tabDash_statusSelect?.Text ?? "Tất cả tồn kho",
-                    searchText = _dashSearchBox?.Text ?? ""
+                    searchText = _dashSearchBox?.Text ?? "",
+                    userName = JmsAuthStateService.CurrentUserName ?? ""
                 };
 
                 var options = new System.Text.Json.JsonSerializerOptions

@@ -1787,10 +1787,18 @@ namespace AutoJMS
                     } catch(e){}
                 }
 
+                var userName = '';
+                try {
+                    var udRaw = (window.localStorage && localStorage.getItem('userData'))
+                             || (window.sessionStorage && sessionStorage.getItem('userData'));
+                    if (udRaw) { var udObj = JSON.parse(udRaw); if (udObj && udObj.name) userName = String(udObj.name); }
+                } catch(e){}
+
                 return JSON.stringify({
                     found: !!hit,
                     key:   hit ? hit.key   : '',
-                    value: hit ? hit.value : ''
+                    value: hit ? hit.value : '',
+                    name:  userName
                 });
             })();";
 
@@ -1808,6 +1816,14 @@ namespace AutoJMS
 
                     using var doc = JsonDocument.Parse(unescaped);
                     var root = doc.RootElement;
+
+                    // Capture the logged-in JMS user's display name (used by the dashboard note author).
+                    if (root.TryGetProperty("name", out var nameProp))
+                    {
+                        var jmsUserName = nameProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(jmsUserName)) JmsAuthStateService.CurrentUserName = jmsUserName;
+                    }
+
                     if (!root.GetProperty("found").GetBoolean()) continue;
 
                     string freshToken = root.GetProperty("value").GetString() ?? "";

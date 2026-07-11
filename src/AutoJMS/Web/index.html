@@ -17,7 +17,7 @@ body { margin: 0; }
 .aj-scroll::-webkit-scrollbar-thumb { background: #cfd6e0; border-radius: 4px; }
 .aj-scroll::-webkit-scrollbar-track { background: transparent; }
 @keyframes ajspin { to { transform: rotate(360deg); } }
-.aj-spin { animation: ajspin 0.3s linear infinite; }
+.aj-spin { animation: ajspin 0.9s linear infinite; transform-origin: 50% 50%; }
 </style>
 </helmet>
 
@@ -63,7 +63,7 @@ body { margin: 0; }
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg> Tìm kiếm
     </div>
     <div onclick="{{ onSyncClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: {{ accent }}; color: #fff; border: 1px solid {{ accent }}; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="filter: brightness(1.07); border-color: #1b4fc0;" style-active="filter: brightness(0.92); border-color: #173f99; transform: scale(0.97);">
-      <svg class="{{ syncSpinClass }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Đồng bộ
+      <svg class="{{ syncSpinClass }}" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.3"></circle><path d="M21 12a9 9 0 0 0-9-9"></path></svg> Đồng bộ
     </div>
     <div onclick="{{ onExportClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; border: 1px solid #d7dde6; color: #3a4555; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #e8f7ee; border-color: #0f5e2f; color: #157a3e;" style-active="background: #d3f0de; border-color: #0a4423; color: #0f5e2f; transform: scale(0.97);">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Xuất dữ liệu
@@ -170,34 +170,40 @@ body { margin: 0; }
           <span style="margin-left: auto; font-size: 12px; color: #9aa4b4; display: flex; align-items: center; gap: 5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l2 2"></path></svg> Bấm đúp vào một dòng để mở chi tiết</span>
         </div>
 
-        <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
-              </sc-for><table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <sc-if value="{{ hasOrders }}" hint-placeholder-val="{{ true }}">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
               <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
               <th style="padding: {{ cellPad }}; font-weight: 600;">Mã vận đơn</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Người nhận</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Địa chỉ nhận</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Trạng thái</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">SLA</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Nguồn</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600; text-align: right;">COD</th>
+              <th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác hiện tại</th>
+              <th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác cuối cùng</th>
+              <th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</th>
+              <th style="padding: {{ cellPad }}; font-weight: 600;">Tồn kho</th>
             </tr>
           </thead>
           <tbody>
+            <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
             <tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
                 <td style="padding: {{ cellPad }}; color: #6b7588; border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</td>
                 <td style="padding: {{ cellPad }}; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span><span onclick="{{ o.onOpen }}" title="Bấm để xem chi tiết" style="color: {{ o.codeColor }}; font-weight: 600; cursor: pointer;">{{ o.code }}</span></td>
-                <td style="padding: {{ cellPad }}; color: #2d3645;">{{ o.recipient }}</td>
-                <td style="padding: {{ cellPad }}; color: #6b7588; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ o.addr }}</td>
-                <td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ activeStatusBg }}; color: {{ activeStatusColor }}; white-space: nowrap;">{{ activeStatusText }}</span></td>
-                <td style="padding: {{ cellPad }}; color: {{ o.slaColor }}; font-weight: 600; white-space: nowrap;">{{ o.sla }}</td>
-                <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ o.source }}</td>
-                <td style="padding: {{ cellPad }}; color: #2d3645; text-align: right; white-space: nowrap;">{{ o.cod }}</td>
+                <td style="padding: {{ cellPad }}; color: #2d3645; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ o.curOp }}">{{ o.curOp }}</td>
+                <td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: #eef1f5; color: #3a4555; white-space: nowrap;">{{ o.lastOp }}</span></td>
+                <td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ o.opTime }}</td>
+                <td style="padding: {{ cellPad }}; font-weight: 600; white-space: nowrap; color: {{ o.tonKhoColor }};">{{ o.tonKho }}</td>
               </tr>
-            
+            </sc-for>
           </tbody>
         </table>
+        </sc-if>
+
+        <sc-if value="{{ noOrders }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; border-top: 1px solid #eef1f5; color: #7b8798; text-align: center;">
+          <div style="font-size: 13px; font-weight: 700; color: #3a4555;">Không có đơn trong queue hiện tại</div>
+          <div style="font-size: 12px;">waybills={{ debugWaybillCount }} · orders={{ debugOrderCount }}</div>
+          <div style="font-size: 12px;">mainKey={{ debugMainKey }} · subKey={{ debugSubKey }} · {{ debugSubLabel }}</div>
+        </div>
+        </sc-if>
 
         <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid #eef1f5; font-size: 12.5px; color: #6b7588;">
           <span>Hiển thị {{ pageRangeText }} / {{ centerCountText }} đơn · tối đa 100 đơn/trang</span>
@@ -229,8 +235,8 @@ body { margin: 0; }
           </span>
         </div>
 
-        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
-              </sc-for><table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <sc-if value="{{ hasJourneyRows }}" hint-placeholder-val="{{ true }}">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <thead>
             <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
               <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
@@ -244,7 +250,8 @@ body { margin: 0; }
             </tr>
           </thead>
           <tbody>
-            <tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
+              <tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
                 <td style="padding: {{ cellPad }}; color: #6b7588;">{{ r.stt }}</td>
                 <td style="padding: {{ cellPad }};"><span style="display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid {{ r.dotColor }}; background: {{ r.dotFill }};"></span></td>
                 <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.t1 }}</td>
@@ -254,9 +261,17 @@ body { margin: 0; }
                 <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.source }}</td>
                 <td style="padding: {{ cellPad }}; color: #3a4555;">{{ wbWeight }}</td>
               </tr>
-            
+            </sc-for>
           </tbody>
         </table>
+        </sc-if>
+
+        <sc-if value="{{ noJourneyRows }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; color: #7b8798; text-align: center;">
+          <div style="font-size: 13px; font-weight: 700; color: #3a4555;">Not found {{ wbCode }}</div>
+          <div style="font-size: 12px;">Bấm "Làm mới" để tải lại.</div>
+        </div>
+        </sc-if>
 
         <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid #eef1f5; font-size: 12.5px; color: #6b7588;">
           <span>Hiển thị 1 - 20 / 65 sự kiện</span>
@@ -309,8 +324,8 @@ body { margin: 0; }
       <sc-if value="{{ showInfo }}" hint-placeholder-val="{{ true }}">
       <div style="display: flex; flex-direction: column; gap: 15px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
         <sc-for list="{{ detailGroups }}" as="g" hint-placeholder-count="3">
-          <div>
-            <div style="font-size: 11px; font-weight: 700; letter-spacing: .5px; color: #97a1b2; margin-bottom: 8px;">{{ g.title }}</div>
+          <div style="border: 1px solid #dce2ec; border-radius: 10px; padding: 12px 14px 13px; background: #fbfcfe; box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
+            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: #1f2937; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e4e8ef; text-transform: uppercase;">{{ g.title }}</div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <sc-for list="{{ g.rows }}" as="d" hint-placeholder-count="3">
                 <div style="display: flex; align-items: flex-start; gap: 12px;">
@@ -330,6 +345,17 @@ body { margin: 0; }
             </div>
           </div>
         </sc-for>
+        <div style="border: 1px solid #dce2ec; border-radius: 10px; padding: 10px 14px; background: #fbfcfe; box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: #1f2937; text-transform: uppercase;">Hình ảnh</div>
+            <sc-if value="{{ hasOrderMedia }}" hint-placeholder-val="{{ false }}">
+              <span onclick="{{ viewOrderMedia }}" style="display: inline-flex; align-items: center; gap: 6px; background: #2f6fed; color: #fff; border: 1px solid #2f6fed; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: filter 0.15s ease, transform 0.05s ease;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.92); transform: scale(0.97);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Xem ảnh</span>
+            </sc-if>
+            <sc-if value="{{ noOrderMedia }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size: 12px; color: #aab2c0;">Chưa có hình ảnh</span>
+            </sc-if>
+          </div>
+        </div>
       </div>
       </sc-if>
 
@@ -337,21 +363,27 @@ body { margin: 0; }
       <div onclick="{{ onRegisterIssue }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid #f0c9c4; background: #fff6f5; color: #d23a2e; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:#fdeeec;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Đăng ký kiện vấn đề
       </div>
-      <div style="display: flex; flex-direction: column; gap: 11px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+      <sc-if value="{{ hasIssues }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
         <sc-for list="{{ issueHistory }}" as="h" hint-placeholder-count="3">
-          <div style="display: flex; gap: 10px;">
-            <span style="width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex: none; background: {{ h.tagColor }};"></span>
-            <div style="flex: 1;">
-              <div style="display: flex; align-items: center; gap: 7px;">
-                <span style="font-size: 12.5px; font-weight: 600; color: #2d3645;">{{ h.title }}</span>
-                <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: {{ h.tagBg }}; color: {{ h.tagColor }};">{{ h.tag }}</span>
+          <div style="border: 1px solid #e7ebf1; border-radius: 9px; padding: 10px 11px; background: #fbfcfe;">
+            <div style="font-size: 12.5px; font-weight: 700; color: #d23a2e;">{{ h.abnormalPieceName }}</div>
+            <div style="font-size: 11.5px; color: #6b7588; margin-top: 4px;"><span style="font-weight: 600; color: #3a4555;">{{ h.scanNetworkCode }}</span> {{ h.scanNetworkName }}</div>
+            <div style="display: flex; align-items: flex-start; gap: 10px; margin-top: 6px;">
+              <div style="flex: 1; min-width: 0; font-size: 12px; color: #2d3645; line-height: 1.45; white-space: pre-wrap;">{{ h.remark }}</div>
+              <div style="flex: none;">
+                <sc-if value="{{ h.hasPod }}" hint-placeholder-val="{{ false }}"><span onclick="{{ h.onViewPod }}" title="Xem ảnh POD" style="font-size: 12px; color: #2f6fed; cursor: pointer; text-decoration: underline; font-weight: 600;">Xem</span></sc-if>
+                <sc-if value="{{ h.noPod }}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: #aab2c0;">--</span></sc-if>
               </div>
-              <div style="font-size: 11.5px; color: #8a94a6; margin-top: 2px;">{{ h.desc }}</div>
-              <div style="font-size: 11px; color: #aab2c0; margin-top: 1px;">{{ h.t }}</div>
             </div>
+            <div style="font-size: 11px; color: #97a1b2; margin-top: 7px;">{{ h.scanTime }} · {{ h.operatorCode }} {{ h.operatorName }}</div>
           </div>
         </sc-for>
       </div>
+      </sc-if>
+      <sc-if value="{{ noIssues }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size: 12px; color: #aab2c0; padding: 4px 2px 14px;">Chưa có lịch sử kiện vấn đề cho vận đơn này.</div>
+      </sc-if>
       </sc-if>
 
       <sc-if value="{{ showComplaint }}" hint-placeholder-val="{{ false }}">
@@ -374,12 +406,12 @@ body { margin: 0; }
         <sc-if value="{{ hasNotes }}" hint-placeholder-val="{{ false }}">
         <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px;">
           <sc-for list="{{ notes }}" as="n" hint-placeholder-count="2">
-            <div style="background: #f6f8fb; border: 1px solid #e7ebf1; border-radius: 8px; padding: 8px 10px;">
-              <div style="font-size: 12.5px; color: #2d3645; line-height: 1.45; white-space: pre-wrap;">{{ n.text }}</div>
-              <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
-                <span style="font-size: 10.5px; color: #97a1b2;">{{ n.author }}</span>
-                <span style="font-size: 10.5px; color: #c3cad6;">·</span>
-                <span style="font-size: 10.5px; color: #97a1b2;">{{ n.time }}</span>
+            <div style="display: flex; align-items: flex-start; gap: 8px; background: {{ n.cardBg }}; border: 1px solid {{ n.cardBorder }}; border-radius: 8px; padding: 8px 10px;">
+              <span onclick="{{ n.onToggle }}" title="{{ n.tickTitle }}" style="flex: none; margin-top: 1px; color: {{ n.iconColor }}; display: flex; cursor: pointer;"><sc-if value="{{ n.done }}" hint-placeholder-val="{{ false }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="8 12 11 15 16 9"></polyline></svg></sc-if><sc-if value="{{ n.notDone }}" hint-placeholder-val="{{ true }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle></svg></sc-if></span>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 11px; color: {{ n.metaColor }};"><span style="font-weight: 600; color: {{ n.authorColor }};">{{ n.author }}</span> đã từng nói: {{ n.time }}</div>
+                <div style="font-size: 12.5px; color: {{ n.textColor }}; line-height: 1.45; white-space: pre-wrap; margin-top: 3px; text-decoration: {{ n.textDecoration }};">{{ n.text }}</div>
+                <sc-if value="{{ n.done }}" hint-placeholder-val="{{ false }}"><span style="display: inline-block; margin-top: 5px; font-size: 10px; font-weight: 700; color: #1c8a3c; background: #e3f4e8; padding: 1px 7px; border-radius: 5px;">Đã xử lý</span></sc-if>
               </div>
             </div>
           </sc-for>
@@ -411,6 +443,140 @@ body { margin: 0; }
       </sc-if>
     </div>
 
+    <sc-if value="{{ podOverlayOpen }}" hint-placeholder-val="{{ false }}">
+    <div onclick="{{ closePodOverlay }}" title="Bấm ra vùng tối để đóng · bấm đúp ảnh để phóng to" style="position: fixed; inset: 0; background: rgba(15,23,42,0.8); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 28px; cursor: zoom-out; overflow: hidden;">
+      <div onclick="{{ stopEvt }}" style="position: fixed; top: 16px; right: 18px; z-index: 100000;">
+        <span onclick="{{ closePodOverlay }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #d23a2e; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
+      </div>
+      <div onclick="{{ stopEvt }}" class="aj-scroll" style="max-width: 96%; max-height: 92%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <sc-for list="{{ podImages }}" as="m" hint-placeholder-count="1">
+          <sc-if value="{{ m.isImage }}" hint-placeholder-val="{{ true }}"><img ondoubleclick="{{ m.onFocus }}" title="Bấm đúp để phóng to" src="{{ m.url }}" alt="" style="max-width: 84vw; max-height: 86vh; border-radius: 8px; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.45); cursor: zoom-in;"></sc-if>
+          <sc-if value="{{ m.isVideo }}" hint-placeholder-val="{{ false }}"><video ondoubleclick="{{ m.onFocus }}" src="{{ m.url }}" controls style="max-width: 84vw; max-height: 86vh; border-radius: 8px; background: #000; box-shadow: 0 8px 30px rgba(0,0,0,0.45);"></video></sc-if>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ podFocused }}" hint-placeholder-val="{{ false }}">
+      <div onclick="{{ closePodFocus }}" onwheel="{{ onFocusWheel }}" title="Cuộn để phóng to tại con trỏ · kéo để di chuyển · bấm ra ngoài để đóng" style="position: fixed; inset: 0; background: rgba(8,12,20,0.9); display: flex; align-items: center; justify-content: center; z-index: 100001; overflow: hidden; cursor: zoom-out;">
+        <div onclick="{{ stopEvt }}" style="position: fixed; top: 16px; right: 18px; display: flex; align-items: center; gap: 8px; z-index: 100002;">
+          <span onclick="{{ podZoomOut }}" title="Thu nhỏ" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">−</span>
+          <span onclick="{{ podZoomReset }}" title="Kích thước gốc" style="height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">1:1</span>
+          <span onclick="{{ podZoomIn }}" title="Phóng to" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">+</span>
+          <span onclick="{{ closePodFocus }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #d23a2e; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
+        </div>
+        <sc-if value="{{ podFocusIsImage }}" hint-placeholder-val="{{ true }}"><img onclick="{{ stopEvt }}" onmousedown="{{ onFocusMouseDown }}" src="{{ podFocusUrl }}" alt="" style="{{ podFocusImgStyle }}"></sc-if>
+        <sc-if value="{{ podFocusIsVideo }}" hint-placeholder-val="{{ false }}"><video onclick="{{ stopEvt }}" src="{{ podFocusUrl }}" controls autoplay style="max-width: 88vw; max-height: 88vh; border: 3px solid #e0453a; border-radius: 6px; background: #000; box-shadow: 0 0 0 3px rgba(224,69,58,0.28), 0 12px 40px rgba(0,0,0,0.6);"></video></sc-if>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ issueOpen }}" hint-placeholder-val="{{ false }}">
+    <div onclick="{{ requestCancelIssue }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: flex; align-items: center; justify-content: center; z-index: 99998; padding: 24px;">
+      <div onclick="{{ stopEvt }}" style="width: 440px; max-width: 94%; background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #eef1f5;">
+          <span style="font-size: 15px; font-weight: 700; color: #1f2937;">Đăng ký kiện vấn đề</span>
+          <span style="font-size: 12.5px; color: #6b7588;">{{ wbCode }}</span>
+          <span onclick="{{ requestCancelIssue }}" title="Đóng" style="margin-left: auto; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #6b7588; cursor: pointer; font-size: 15px;" style-hover="background:#f1f4f8;">✕</span>
+        </div>
+        <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Vấn đề cấp 1</span>
+            <select value="{{ issLevel1 }}" onchange="{{ onIssLevel1Change }}" style="height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937;">
+              <option value="603">Phát kiện</option>
+              <option value="604">Lấy kiện</option>
+              <option value="696">Trung chuyển</option>
+              <option value="34753">Hư tổn</option>
+            </select>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Vấn đề cấp 2</span>
+            <select value="{{ issLevel2Code }}" onchange="{{ onIssLevel2Change }}" style="height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937;">
+              <sc-for list="{{ iss2Options }}" as="o2" hint-placeholder-count="3">
+                <option value="{{ o2.code }}" label="{{ o2.name }}"></option>
+              </sc-for>
+            </select>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Bưu cục tiếp nhận</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="position: relative; flex: 1; min-width: 0;">
+                <input type="text" value="{{ issNetQuery }}" oninput="{{ onNetQueryInput }}" onkeydown="{{ onNetKeyDown }}" onblur="{{ onNetBlur }}" placeholder="Nhập mã bưu cục" style="width: 100%; height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937; box-sizing: border-box;">
+                <sc-if value="{{ issNetOpen }}" hint-placeholder-val="{{ false }}">
+                <div class="aj-scroll" style="position: absolute; top: 41px; left: 0; right: 0; z-index: 5; background: #fff; border: 1px solid #d7dde6; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); max-height: 200px; overflow: auto;">
+                  <sc-for list="{{ issNetResults }}" as="nr" hint-placeholder-count="3">
+                    <div onmousedown="{{ nr.onSelect }}" onclick="{{ nr.onSelect }}" style="padding: 8px 10px; font-size: 12.5px; color: #2d3645; cursor: pointer; background: {{ nr.bg }};" style-hover="background:#f4f8ff;">{{ nr.label }}</div>
+                  </sc-for>
+                </div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ issNetCaption }}" hint-placeholder-val="{{ false }}">
+              <span title="{{ issNetCaption }}" style="flex: none; max-width: 48%; display: inline-block; font-size: 14px; font-weight: 800; color: #157a3e; background: #e3f4e8; border: 1px solid #bfe3c8; border-radius: 8px; padding: 6px 12px; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ issNetCaption }}</span>
+              </sc-if>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Mô tả vấn đề</span>
+            <textarea value="{{ issDesc }}" oninput="{{ onIssDescChange }}" placeholder="Nhập mô tả vấn đề" class="aj-scroll" wrap="soft" style="display: block; width: 100%; height: {{ issDescHeight }}px; max-height: 218px; resize: none; overflow-x: hidden; overflow-y: {{ issDescOverflow }}; scrollbar-gutter: stable; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; word-wrap: break-word; border: 1px solid #d7dde6; border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 20px; background: #fff; outline: none; color: #1f2937; font-family: inherit; box-sizing: border-box;"></textarea>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Hình ảnh <sc-if value="{{ picRequired }}" hint-placeholder-val="{{ false }}"><span style="color: #e0453a;">* (bắt buộc)</span></sc-if></span>
+            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssImageDrop }}" style="border: 1.5px dashed #c7cfda; border-radius: 8px; padding: 12px; text-align: center; background: #fafbfd;">
+              <label style="font-size: 12px; color: #6b7588; cursor: pointer;">Kéo thả hoặc <span style="color: #2f6fed; font-weight: 600;">chọn ảnh</span><input type="file" accept="image/*" multiple onchange="{{ onIssImagePick }}" style="display: none;"></label>
+              <sc-if value="{{ hasIssImages }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center;">
+                  <sc-for list="{{ issImages }}" as="im" hint-placeholder-count="1">
+                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e7ee; background: #000;">
+                      <img src="{{ im.url }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
+                      <span onclick="{{ im.onRemove }}" title="Xóa" style="position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; cursor: pointer;">✕</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Video <sc-if value="{{ vidRequired }}" hint-placeholder-val="{{ false }}"><span style="color: #e0453a;">* (bắt buộc)</span></sc-if></span>
+            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssVideoDrop }}" style="border: 1.5px dashed #c7cfda; border-radius: 8px; padding: 12px; text-align: center; background: #fafbfd;">
+              <label style="font-size: 12px; color: #6b7588; cursor: pointer;">Kéo thả hoặc <span style="color: #2f6fed; font-weight: 600;">chọn video</span><input type="file" accept="video/*" multiple onchange="{{ onIssVideoPick }}" style="display: none;"></label>
+              <sc-if value="{{ hasIssVideos }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center;">
+                  <sc-for list="{{ issVideos }}" as="vd" hint-placeholder-count="1">
+                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e7ee; background: #000;">
+                      <video src="{{ vd.url }}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+                      <span onclick="{{ vd.onRemove }}" title="Xóa" style="position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; cursor: pointer;">✕</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid #eef1f5;">
+          <span onclick="{{ requestCancelIssue }}" style="font-size: 13px; font-weight: 600; color: #3a4555; background: #f1f4f8; border-radius: 8px; padding: 9px 16px; cursor: pointer;">Hủy</span>
+          <span onclick="{{ onIssSubmit }}" style="font-size: 13px; font-weight: 600; color: #fff; background: {{ issueSubmitBg }}; border-radius: 8px; padding: 9px 18px; cursor: {{ issueSubmitCursor }};">{{ issueSubmitLabel }}</span>
+        </div>
+      </div>
+    </div>
+      <sc-if value="{{ issConfirmCancel }}" hint-placeholder-val="{{ false }}">
+      <div onclick="{{ backToIssueForm }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.42); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 24px;">
+        <div onclick="{{ stopEvt }}" style="width: 372px; max-width: 92%; background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); overflow: hidden;">
+          <div style="padding: 20px 20px 6px; display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 14.5px; font-weight: 700; color: #1f2937;">Đăng ký kiện vấn đề chưa hoàn tất</span>
+            <span style="font-size: 13px; color: #55606f; line-height: 1.45;">Xác nhận hủy thao tác? Thông tin đã nhập sẽ không được lưu.</span>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px;">
+            <span onclick="{{ backToIssueForm }}" style="font-size: 13px; font-weight: 600; color: #3a4555; background: #f1f4f8; border-radius: 8px; padding: 9px 16px; cursor: pointer;" style-hover="background:#e7ecf3;">Quay lại</span>
+            <span onclick="{{ confirmCancelIssue }}" style="font-size: 13px; font-weight: 600; color: #fff; background: #e0453a; border-radius: 8px; padding: 9px 18px; cursor: pointer;" style-hover="background:#c93b31;">Hủy thao tác</span>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </sc-if>
+
+    <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100050; background: {{ toastBg }}; color: #fff; font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.3);">{{ toastText }}</div>
+    </sc-if>
+
   </div>
 </div>
 </x-dc>
@@ -424,9 +590,41 @@ class Component extends DCLogic {
   state = {
     starred: false,
     mainKey: 'tong-ton',
+    subKey: 'all',
     subLabel: 'Tất cả',
     mode: 'list',
     waybill: null,
+    waybillDetail: null,
+    issueData: null,
+    orderImages: null,
+    podImages: null,
+    podZoom: 1,
+    podFocus: null,
+    panX: 0,
+    panY: 0,
+    userName: '',
+    issueOpen: false,
+    issLevel1: '603',
+    issLevel2: '746',
+    issLevel2Code: 'PTWTJ16',
+    issLevel2Name: 'Đơn gửi chưa đến',
+    issNetwork: '214GW0',
+    issDesc: '',
+    issDescHeight: 58,
+    issDescScroll: false,
+    issImages: [],
+    issVideos: [],
+    issueSubmitting: false,
+    issConfirmCancel: false,
+    toast: null,
+    receiverNetCode: '',
+    receiverNetName: '',
+    networkNames: {},
+    issNetQuery: '',
+    issNetName: '',
+    issNetResults: [],
+    issNetOpen: false,
+    issNetActive: -1,
     copied: false,
     starredCodes: {},
     siteId: '214A02',
@@ -450,20 +648,56 @@ class Component extends DCLogic {
       window.chrome.webview.addEventListener('message', event => {
         const msg = event.data;
         if (msg && msg.type === 'UPDATE_DATA') {
+          const incomingWaybills = msg.waybills || [];
+          console.info('[AutoJMS] WebView2 UPDATE_DATA waybills received:', incomingWaybills.length);
+          // Fresh data arrived => the sync/tracking round-trip is complete; stop the sync spinner.
+          clearTimeout(this._syncT);
           this.setState({
             siteId: msg.siteId,
             lastUpdateTime: msg.lastUpdateTime,
             syncStatus: msg.syncStatus,
             counts: msg.counts || {},
-            waybills: msg.waybills || [],
+            waybills: incomingWaybills,
             starredCodes: msg.starredCodes || {},
             selectedSource: msg.selectedSource || 'LOCAL',
             selectedTimeInterval: msg.selectedTimeInterval || '1 giờ',
             selectedStatusSelect: msg.selectedStatusSelect || 'Tất cả tồn kho',
-            searchText: msg.searchText || ''
+            searchText: msg.searchText || '',
+            userName: (msg.userName && msg.userName.length) ? msg.userName : (this.state.userName || ''),
+            syncing: false
           });
         } else if (msg && msg.type === 'JOURNEY_DATA') {
           this.setState({ journeyRows: msg.journeyRows || [] });
+        } else if (msg && msg.type === 'WAYBILL_DETAIL') {
+          this.setState({ waybillDetail: msg.detail || null });
+        } else if (msg && msg.type === 'ISSUE_HISTORY') {
+          this.setState({ issueData: msg });
+        } else if (msg && msg.type === 'ORDER_IMAGES') {
+          this.setState({ orderImages: msg });
+        } else if (msg && msg.type === 'RECEIVER_NETWORK') {
+          const wb = this.state.waybill;
+          if (!wb || msg.code === wb.code) {
+            this.setState(s => {
+              const upd = { receiverNetCode: msg.netCode || '', receiverNetName: msg.netName || '' };
+              if (s.issLevel2Code !== 'PTWTJ16' && msg.netCode) { upd.issNetwork = msg.netCode; upd.issNetQuery = msg.netCode; upd.issNetName = msg.netName || ''; }
+              return upd;
+            });
+          }
+        } else if (msg && msg.type === 'NETWORK_INFO') {
+          const key = msg.reqCode || msg.netCode;
+          if (key) this.setState(s => {
+            const upd = { networkNames: Object.assign({}, s.networkNames, { [key]: msg.netName || '' }) };
+            if (s.issNetwork === key && !s.issNetName) upd.issNetName = msg.netName || '';
+            return upd;
+          });
+        } else if (msg && msg.type === 'NETWORK_SEARCH_RESULTS') {
+          const list = Array.isArray(msg.results) ? msg.results : [];
+          this.setState({ issNetResults: list, issNetOpen: list.length > 0, issNetActive: list.length ? 0 : -1 });
+        } else if (msg && msg.type === 'ISSUE_RESULT') {
+          console.info('[AutoJMS] ISSUE_RESULT <-', msg);
+          this.setState({ issueSubmitting: false });
+          if (msg.success) { this.showToast('Đăng ký kiện vấn đề thành công', true); this.setState({ issueOpen: false }); }
+          else { this.showToast(msg.msg || 'Đăng ký thất bại', false); }
         }
       });
       try { window.chrome.webview.postMessage({ action: 'READY' }); } catch (e) {}
@@ -471,11 +705,13 @@ class Component extends DCLogic {
   }
 
   onSyncClick = () => {
-    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SYNC' });
     if (this.state.syncing) return;
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SYNC' });
+    // Spin until the sync + tracking round-trip finishes (signalled by the next
+    // UPDATE_DATA). Safety stop after 120s so the icon never spins forever.
     this.setState({ syncing: true });
     clearTimeout(this._syncT);
-    this._syncT = setTimeout(() => this.setState({ syncing: false }), 300);
+    this._syncT = setTimeout(() => this.setState({ syncing: false }), 120000);
   };
   onExportClick = () => { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'EXPORT' }); };
   onSourceChange = (e) => { const val = e.target.value; this.setState({ selectedSource: val }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_SOURCE', source: val }); };
@@ -525,7 +761,203 @@ class Component extends DCLogic {
   onToTimeBlur = (e) => this._commitTime('to', e.target.value);
   onTimeKeyDown = (e) => { if (e.key === 'Enter') e.target.blur(); };
   onCreateComplaint = () => {};
-  onRegisterIssue = () => { if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'REGISTER_ISSUE', waybillNo: this.state.waybill ? this.state.waybill.code : '' }); };
+  // Level-2 problem types per level-1 parent (from JMS comboBox/levelTwoTypeList).
+  level2Data() {
+    // pic/vid: 1 = required (isPictureRequired / isVideoRequired = 是), 0 = optional.
+    return {
+      '603': [
+        { id: 746, name: 'Đơn gửi chưa đến', code: 'PTWTJ16', pic: 0, vid: 0 }, { id: 32753, name: 'Trạm/Tủ bất thường', code: 'PTWTJ28', pic: 0, vid: 0 },
+        { id: 6753, name: 'Thay đổi địa chỉ giao hàng (Nội tỉnh)', code: 'PTWTJ016', pic: 1, vid: 0 }, { id: 7753, name: 'Từ chối-Không đặt hàng', code: 'PTWTJ015', pic: 0, vid: 0 },
+        { id: 11753, name: 'Từ chối - Không có khả năng thanh toán', code: 'PTWTJ011', pic: 0, vid: 0 }, { id: 8753, name: 'Từ chối-Không cho xem hàng/không được dùng thử', code: 'PTWTJ014', pic: 0, vid: 0 },
+        { id: 31753, name: 'Trạm/Tủ - KH yêu cầu giao hàng tận nơi', code: 'PTWTJ27', pic: 1, vid: 0 }, { id: 10753, name: 'Từ chối - Sau khi mở hàng, khách từ chối nhận', code: 'PTWTJ012', pic: 1, vid: 1 },
+        { id: 28753, name: 'Lưu kho cuối tuần', code: 'PTWTJ23', pic: 0, vid: 0 }, { id: 5753, name: 'Thông tin địa chỉ không đúng (Liên tỉnh)', code: 'PTWTJ017', pic: 0, vid: 0 },
+        { id: 43753, name: 'Quá hạn chưa nhận hàng', code: 'PTWTJ30', pic: 0, vid: 0 }, { id: 33753, name: 'Hệ thống hiển thị bưu cục phát không đúng', code: 'PTWTJ29', pic: 0, vid: 0 },
+        { id: 663, name: 'Hàng hoàn không người nhận', code: 'PTWTJ07', pic: 0, vid: 0 }, { id: 668, name: 'Từ chối - Đổi ý không muốn nhận hàng', code: 'PTWTJ14', pic: 0, vid: 0 },
+        { id: 30753, name: 'Trạm/Tủ - Khách hàng không đến nhận hàng', code: 'PTWTJ26', pic: 1, vid: 0 }, { id: 29753, name: 'Từ chối - Đặt trùng đơn', code: 'PTWTJ25', pic: 0, vid: 0 },
+        { id: 664, name: 'Đợi hàng nhiều kiện đến đủ', code: 'PTWTJ10', pic: 0, vid: 0 }, { id: 666, name: 'TTTC phân sai', code: 'PTWTJ08', pic: 0, vid: 0 },
+        { id: 670, name: 'Người mua hẹn lại ngày nhận', code: 'PTWTJ06', pic: 0, vid: 0 }, { id: 678, name: 'Hàng thất lạc', code: 'PTWTJ03', pic: 0, vid: 0 },
+        { id: 680, name: 'Không liên lạc được Khách hàng/khóa máy', code: 'PTWTJ09', pic: 0, vid: 0 }, { id: 693, name: 'Người gửi yêu cầu chuyển hoàn', code: 'PTWTJ15', pic: 0, vid: 0 }
+      ],
+      '604': [
+        { id: 14753, name: 'Hàng cấm gửi', code: 'QJWTJ010', pic: 1, vid: 0 }, { id: 44753, name: 'Người gửi hủy đơn', code: 'QJWT10', pic: 0, vid: 0 },
+        { id: 656, name: 'Đóng gói không đảm bảo', code: 'QJWTJ07', pic: 1, vid: 0 }, { id: 661, name: 'Người gửi hẹn lại ngày lấy', code: 'QJWTJ06', pic: 1, vid: 0 },
+        { id: 677, name: 'Không liên lạc được người gửi/khóa máy', code: 'QJWTJ05', pic: 1, vid: 0 }, { id: 654, name: 'Quá khổ quá tải', code: 'QJWTJ01', pic: 1, vid: 0 },
+        { id: 655, name: 'Chưa có hàng để lấy', code: 'QJWTJ08', pic: 1, vid: 0 }, { id: 659, name: 'Khách báo hủy đơn', code: 'QJWTJ04', pic: 1, vid: 0 },
+        { id: 662, name: 'Người gửi đăng ký sai trọng lượng', code: 'QJWTJ09', pic: 1, vid: 0 }
+      ],
+      '696': [
+        { id: 699, name: 'Hàng cấm', code: '131003', pic: 1, vid: 1 }, { id: 697, name: 'Hàng thất lạc', code: '131001', pic: 0, vid: 0 }
+      ],
+      '34753': [
+        { id: 37753, name: 'Hư tổn-Ngoại quan không hư tổn, bên trong hư tổn', code: 'PSWGB01', pic: 1, vid: 0 }, { id: 35753, name: 'Hư tổn-Ngoại quan hư tổn, bên trong không hư tổn', code: 'PSWG01', pic: 1, vid: 0 },
+        { id: 36753, name: 'Hư tổn-Ngoại quan hư tổn, bên trong hư tổn', code: 'PSWG02', pic: 1, vid: 1 }, { id: 41753, name: 'Hư tổn-Thùng xe dột nước', code: 'PSCLL01', pic: 1, vid: 0 },
+        { id: 42753, name: 'Hư tổn-Nguyên nhân thiết bị', code: 'PSCLL02', pic: 1, vid: 0 }, { id: 39753, name: 'Hư tổn-Ngoại quan hư tổn, bên trong mất hàng', code: 'PSWG04', pic: 1, vid: 0 },
+        { id: 38753, name: 'Hư tổn-Ngoại quan hư tổn, bên trong thiếu hàng', code: 'PSWG03', pic: 1, vid: 0 }, { id: 40753, name: 'Hư tổn-Đóng gói không đảm bảo', code: 'PSBZB01', pic: 1, vid: 0 }
+      ]
+    };
+  }
+  currentLevel2() { return this.level2For(this.state.issLevel1).find(o => String(o.code) === String(this.state.issLevel2Code)) || {}; }
+  level2For(l1) { return this.level2Data()[String(l1)] || []; }
+
+  // Default "Bưu cục tiếp nhận": "Đơn gửi chưa đến" (PTWTJ16) is fixed 214GW0;
+  // otherwise the network from queryReceiverNetwork (fallback: current site).
+  defaultNetworkFor(level2Code) {
+    if (level2Code === 'PTWTJ16') return '214GW0';
+    return this.state.receiverNetCode || this.state.siteId || '214A02';
+  }
+  // Normalize a network code to its canonical name (cached) for display.
+  ensureNetworkInfo(code) {
+    if (!code) return;
+    const known = this.state.networkNames || {};
+    if (known[code] != null) return;
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'FETCH_NETWORK_INFO', code: code });
+  }
+
+  // Open the "Đăng ký kiện vấn đề" pop-up form (resets to defaults).
+  onRegisterIssue = () => {
+    const first = this.level2For('603')[0] || {};
+    const wb = this.state.waybill;
+    this.setState({
+      issueOpen: true,
+      issLevel1: '603',
+      issLevel2: String(first.id || ''),
+      issLevel2Code: first.code || '',
+      issLevel2Name: first.name || '',
+      issNetwork: this.defaultNetworkFor(first.code || ''),
+      issNetQuery: this.defaultNetworkFor(first.code || ''),
+      issNetName: '',
+      issNetResults: [],
+      issNetOpen: false,
+      issNetActive: -1,
+      issDesc: '',
+      issDescHeight: 58,
+      issDescScroll: false,
+      issImages: [],
+      issVideos: [],
+      issConfirmCancel: false,
+      receiverNetCode: '',
+      receiverNetName: ''
+    });
+    if (wb && window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage({ action: 'FETCH_RECEIVER_NETWORK', waybillNo: wb.code });
+    }
+    this.ensureNetworkInfo(this.defaultNetworkFor(first.code || ''));
+  };
+  closeIssueForm = () => this.setState({ issueOpen: false, issConfirmCancel: false });
+  onIssDescChange = (e) => {
+    const el = e.target;
+    const v = el.value;
+    // Auto-grow to fit content, capped at 10 lines (line-height 20 + 16 pad + 2 border).
+    var h = 58, scroll = false;
+    try {
+      var prev = el.style.height;
+      el.style.height = 'auto';
+      var box = el.scrollHeight + 2; // scrollHeight = content+padding; +2 border (border-box)
+      el.style.height = prev;
+      var minH = 58, maxH = 218;
+      h = Math.min(Math.max(box, minH), maxH);
+      scroll = box > maxH;
+    } catch (_) {}
+    this.setState({ issDesc: v, issDescHeight: h, issDescScroll: scroll });
+  };
+  // Confirm before discarding the form (accidental outside-click / cancel).
+  requestCancelIssue = () => this.setState({ issConfirmCancel: true });
+  backToIssueForm = () => this.setState({ issConfirmCancel: false });
+  confirmCancelIssue = () => this.setState({ issueOpen: false, issConfirmCancel: false });
+  onIssLevel1Change = (e) => {
+    const l1 = e.target.value;
+    const first = this.level2For(l1)[0] || {};
+    const net1 = this.defaultNetworkFor(first.code || '');
+    this.setState({ issLevel1: l1, issLevel2: String(first.id || ''), issLevel2Code: first.code || '', issLevel2Name: first.name || '', issNetwork: net1, issNetQuery: net1, issNetName: (this.state.networkNames || {})[net1] || '', issNetResults: [], issNetOpen: false });
+    this.ensureNetworkInfo(net1);
+  };
+  onIssLevel2Change = (e) => {
+    const code = e.target.value;
+    const sel = this.level2For(this.state.issLevel1).find(o => String(o.code) === String(code)) || {};
+    const net2 = this.defaultNetworkFor(code);
+    this.setState({ issLevel2: String(sel.id || ''), issLevel2Code: code, issLevel2Name: sel.name || '', issNetwork: net2, issNetQuery: net2, issNetName: (this.state.networkNames || {})[net2] || '', issNetResults: [], issNetOpen: false });
+    this.ensureNetworkInfo(net2);
+  };
+  onIssNetworkChange = (e) => this.setState({ issNetwork: e.target.value });
+
+  // "Bưu cục tiếp nhận" typeahead: query network/select/all by name/code.
+  doNetSearch(q) {
+    const query = String(q || '').trim();
+    if (!query) { this.setState({ issNetResults: [], issNetOpen: false, issNetActive: -1 }); return; }
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'FETCH_NETWORK_SEARCH', query: query });
+  }
+  onNetQueryInput = (e) => {
+    const val = e.target.value;
+    // Typing clears the confirmed selection until a result is chosen.
+    this.setState({ issNetQuery: val, issNetwork: '', issNetName: '' });
+    clearTimeout(this._netT);
+    this._netT = setTimeout(() => this.doNetSearch(val), 500);
+  };
+  onNetKeyDown = (e) => {
+    const res = this.state.issNetResults || [];
+    if (e.key === 'ArrowDown') { try { e.preventDefault(); } catch (_) {} this.setState(s => ({ issNetOpen: true, issNetActive: Math.min((s.issNetResults || []).length - 1, (s.issNetActive < 0 ? 0 : s.issNetActive + 1)) })); }
+    else if (e.key === 'ArrowUp') { try { e.preventDefault(); } catch (_) {} this.setState(s => ({ issNetActive: Math.max(0, s.issNetActive - 1) })); }
+    else if (e.key === 'Enter') {
+      try { e.preventDefault(); } catch (_) {}
+      clearTimeout(this._netT);
+      if (this.state.issNetOpen && res.length && this.state.issNetActive >= 0) this.pickNet(res[this.state.issNetActive]);
+      else this.doNetSearch(this.state.issNetQuery);
+    }
+    else if (e.key === 'Escape') { this.setState({ issNetOpen: false }); }
+  };
+  pickNet(item) {
+    if (!item) return;
+    this.setState({ issNetwork: item.code, issNetQuery: item.code, issNetName: item.name || '', issNetResults: [], issNetOpen: false, issNetActive: -1 });
+  }
+  onNetBlur = () => { clearTimeout(this._netBlurT); this._netBlurT = setTimeout(() => this.setState({ issNetOpen: false }), 180); };
+  issueValid() { return !!(this.state.issLevel1 && this.state.issLevel2 && this.state.issNetwork); }
+
+  // Separate image / video attachment fields (drag-drop + picker). In-memory for now.
+  addIssMedia(kind, fileList) {
+    const wantVideo = kind === 'video';
+    const files = Array.prototype.slice.call(fileList || []).filter(f => wantVideo ? /^video\//.test(f.type || '') : /^image\//.test(f.type || ''));
+    if (!files.length) return;
+    const maker = (window.URL || window.webkitURL);
+    const items = files.map(f => ({ name: f.name, url: maker ? maker.createObjectURL(f) : '', file: f }));
+    if (wantVideo) this.setState(s => ({ issVideos: (s.issVideos || []).concat(items) }));
+    else this.setState(s => ({ issImages: (s.issImages || []).concat(items) }));
+  }
+  onIssDragOver = (e) => { try { e.preventDefault(); } catch (_) {} };
+  onIssImageDrop = (e) => { try { e.preventDefault(); } catch (_) {} if (e.dataTransfer) this.addIssMedia('image', e.dataTransfer.files); };
+  onIssVideoDrop = (e) => { try { e.preventDefault(); } catch (_) {} if (e.dataTransfer) this.addIssMedia('video', e.dataTransfer.files); };
+  onIssImagePick = (e) => { this.addIssMedia('image', e.target.files); try { e.target.value = ''; } catch (_) {} };
+  onIssVideoPick = (e) => { this.addIssMedia('video', e.target.files); try { e.target.value = ''; } catch (_) {} };
+  removeIssImage(i) { this.setState(s => ({ issImages: (s.issImages || []).filter((_, idx) => idx !== i) })); }
+  removeIssVideo(i) { this.setState(s => ({ issVideos: (s.issVideos || []).filter((_, idx) => idx !== i) })); }
+  // Full submit validation incl. required image/video for the selected level-2.
+  issueSubmittable() {
+    const l2 = this.currentLevel2();
+    const imgOk = l2.pic !== 1 || (this.state.issImages || []).length > 0;
+    const vidOk = l2.vid !== 1 || (this.state.issVideos || []).length > 0;
+    return !!(this.state.issLevel1 && this.state.issLevel2 && this.state.issNetwork) && imgOk && vidOk;
+  }
+  showToast(text, ok) {
+    this.setState({ toast: { text: text, ok: !!ok } });
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toast: null }), 3200);
+  }
+  onIssSubmit = () => {
+    if (!this.issueSubmittable() || this.state.issueSubmitting) return;
+    const wb = this.state.waybill;
+    const payload = {
+      action: 'SUBMIT_ISSUE',
+      waybillNo: wb ? wb.code : '',
+      level1: this.state.issLevel1,
+      level2: this.state.issLevel2,
+      level2Code: this.state.issLevel2Code,
+      level2Name: this.state.issLevel2Name,
+      network: this.state.issNetwork,
+      description: (this.state.issDesc || '').trim()
+    };
+    console.info('[AutoJMS] SUBMIT_ISSUE ->', payload);
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(payload);
+    this.setState({ issueSubmitting: true });
+  };
   copyWaybill = () => {
     const wb = this.state.waybill;
     if (!wb) return;
@@ -547,18 +979,103 @@ class Component extends DCLogic {
     const time = pad(now.getDate()) + '/' + pad(now.getMonth() + 1) + '/' + now.getFullYear() + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
     this.setState(s => {
       const all = Object.assign({}, s.notesByCode || {});
-      all[wb.code] = (all[wb.code] || []).concat([{ text: text, author: 'Lê Quang Vinh', time: time }]);
+      all[wb.code] = (all[wb.code] || []).concat([{ id: Date.now(), text: text, author: this.currentUserName(), time: time, done: false }]);
       return { notesByCode: all, noteDraft: '' };
     });
     if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'SAVE_NOTE', waybillNo: wb.code, text: text });
   };
+  // Mark a note as processed (or un-mark). Marked notes stay visible but disabled.
+  toggleNoteDone(code, id) {
+    this.setState(s => {
+      const all = Object.assign({}, s.notesByCode || {});
+      all[code] = (all[code] || []).map(n => (n.id === id ? Object.assign({}, n, { done: !n.done }) : n));
+      return { notesByCode: all };
+    });
+  }
+  // Note author: the logged-in user's name from localStorage `userData`.
+  currentUserName() {
+    // Name provided by the C# host (read from the JMS tabHome/tabDKCH WebView localStorage).
+    if (this.state && this.state.userName) return this.state.userName;
+    // Fallback: this page's own localStorage (works only if userData exists on this origin).
+    try {
+      const raw = (typeof localStorage !== 'undefined' && localStorage.getItem('userData')) || '';
+      if (raw) { const u = JSON.parse(raw); if (u && u.name) return String(u.name); }
+    } catch (e) {}
+    return 'Người dùng';
+  }
+  // Base host for POD / scan-problem images. The API returns an object key like
+  // "osb180low365del/yl-web-jmsvn-app-bc/scan_problem/.../x.png"; prepend the host.
+  podImageBase() { return 'https://pro-jmsvn-file.jtexpress.vn/'; }
+
+  podImageUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    if (/^https?:\/\//i.test(s)) return s;
+    if (s.indexOf('//') === 0) return 'https:' + s;
+    return this.podImageBase().replace(/\/+$/, '') + '/' + s.replace(/^\/+/, '');
+  }
+
+  // A media item for the viewer overlay: image or video (from extension).
+  podMediaItem(raw) {
+    const url = this.podImageUrl(raw);
+    if (!url) return null;
+    const isVideo = /\.(mp4|mov|webm|avi|mkv)(\?|#|$)/i.test(url);
+    return { url: url, isVideo: isVideo, isImage: !isVideo };
+  }
+
+  // Overlay viewer. The wheel only scrolls the list; double-click an image to focus
+  // it (red border, elevated). The focused image zooms at the cursor and can be dragged.
+  openPodOverlay(items) {
+    const list = (items || []).map((it, i) => Object.assign({}, it, { onFocus: () => this.focusPodImage(i) }));
+    this.setState({ podImages: list, podZoom: 1, podFocus: null, panX: 0, panY: 0 });
+  }
+  closePodOverlay = () => this.setState({ podImages: null, podZoom: 1, podFocus: null, panX: 0, panY: 0 });
+  // Initial focus fits within the screen (max-width 88vw bounds it at zoom 1);
+  // the user can then zoom past that manually.
+  focusPodImage(i) { this.setState({ podFocus: i, podZoom: 1, panX: 0, panY: 0 }); }
+  closePodFocus = (e) => { try { e && e.stopPropagation && e.stopPropagation(); } catch (_) {} this.setState({ podFocus: null, podZoom: 1, panX: 0, panY: 0 }); };
+  stopEvt = (e) => { try { e.stopPropagation(); } catch (_) {} };
+
+  podZoomIn = () => this.setState(s => ({ podZoom: Math.min(8, (s.podZoom || 1) + 0.25) }));
+  podZoomOut = () => this.setState(s => ({ podZoom: Math.max(0.3, (s.podZoom || 1) - 0.25) }));
+  podZoomReset = () => this.setState({ podZoom: 1, panX: 0, panY: 0 });
+
+  // Wheel over the focused image zooms toward the cursor position.
+  onFocusWheel = (e) => {
+    try { e.preventDefault(); } catch (_) {}
+    let rect = { left: 0, top: 0, width: 0, height: 0 };
+    try { rect = e.currentTarget.getBoundingClientRect(); } catch (_) {}
+    const cx = e.clientX - (rect.left + rect.width / 2);
+    const cy = e.clientY - (rect.top + rect.height / 2);
+    const old = this.state.podZoom || 1;
+    let nz = old * (((e.deltaY || 0) < 0) ? 1.15 : (1 / 1.15));
+    nz = Math.min(8, Math.max(0.3, nz));
+    const k = nz / old;
+    const px = this.state.panX || 0, py = this.state.panY || 0;
+    this.setState({ podZoom: nz, panX: cx - (cx - px) * k, panY: cy - (cy - py) * k });
+  };
+
+  // Drag the focused image to pan.
+  onFocusMouseDown = (e) => {
+    try { e.preventDefault(); } catch (_) {}
+    this._podDrag = { sx: e.clientX, sy: e.clientY, px: this.state.panX || 0, py: this.state.panY || 0 };
+    window.addEventListener('mousemove', this.onFocusMouseMove);
+    window.addEventListener('mouseup', this.onFocusMouseUp);
+  };
+  onFocusMouseMove = (e) => {
+    if (!this._podDrag) return;
+    this.setState({ panX: this._podDrag.px + (e.clientX - this._podDrag.sx), panY: this._podDrag.py + (e.clientY - this._podDrag.sy) });
+  };
+  onFocusMouseUp = () => {
+    this._podDrag = null;
+    window.removeEventListener('mousemove', this.onFocusMouseMove);
+    window.removeEventListener('mouseup', this.onFocusMouseUp);
+  };
+
+  // Only user-entered notes — no static placeholders.
   notesFor(code) {
     const all = this.state.notesByCode || {};
-    if (all[code]) return all[code];
-    return [
-      { text: 'Khách yêu cầu giao trước 18h, gọi xác nhận trước khi đến.', author: 'Trần Thị Phương Anh', time: '05/06/2026 09:42' },
-      { text: 'Đã liên hệ, khách bận — hẹn giao lại buổi tối.', author: 'Lê Quang Vinh', time: '05/06/2026 15:10' },
-    ];
+    return all[code] || [];
   }
 
   copyOrderList(orders) {
@@ -598,9 +1115,31 @@ class Component extends DCLogic {
   // Honors explicit preferences, otherwise falls back to the first branch.
   defaultSubFor(key) {
     const list = this.subDefs()[key] || [];
-    const pref = { 'hang-den': 'Chưa quét đến', 'phat-hang': 'Chưa phát' };
-    if (pref[key] && list.some(s => s.label === pref[key])) return pref[key];
-    return list.length ? list[0].label : null;
+    const subKey = this.defaultSubKeyFor(key);
+    const item = list.find(s => s.key === subKey) || list[0];
+    return item ? item.label : null;
+  }
+
+  defaultSubKeyFor(key) {
+    const list = this.subDefs()[key] || [];
+    const pref = { 'tong-ton': 'all', 'hang-den': 'not_scanned_in', 'phat-hang': 'not_delivered' };
+    if (pref[key] && list.some(s => s.key === pref[key])) return pref[key];
+    return list.length ? list[0].key : null;
+  }
+
+  normalizeSubKey(label) {
+    const text = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+    return text.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'unknown';
+  }
+
+  normalizeSubList(list) {
+    return (list || []).map(s => Object.assign({}, s, { key: s.key || this.normalizeSubKey(s.label) }));
+  }
+
+  normalizeSubDefs(defs) {
+    const out = {};
+    Object.keys(defs || {}).forEach(key => { out[key] = this.normalizeSubList(defs[key]); });
+    return out;
   }
 
   mainDefs() {
@@ -633,67 +1172,81 @@ class Component extends DCLogic {
 
   subDefs() {
     if (this.state.counts && this.state.counts.subs && Object.keys(this.state.counts.subs).length > 0) {
-      const fromBackend = Object.assign({}, this.state.counts.subs);
+      const defs = this.normalizeSubDefs(Object.assign({}, this.state.counts.subs));
+      // "Tổng tồn" queues are driven by the real last-status values in the data.
       const dyn = this.tongTonStatusSubs();
-      if (dyn) fromBackend['tong-ton'] = dyn;
-      return fromBackend;
+      if (dyn) defs['tong-ton'] = dyn;
+      return defs;
     }
     const defs = {
       'tong-ton': [
-        { label: 'Tất cả', count: '2,505' }, { label: 'Quét phát hàng', count: '1,210' },
-        { label: 'Đăng ký chuyển hoàn', count: '284' }, { label: 'Giao lại hàng', count: '176' },
-        { label: 'Chờ lấy hàng', count: '95' }, { label: 'Lưu kho', count: '740' },
+        { key: 'all', label: 'Tất cả', count: '2,505' }, { key: 'delivery_scan', label: 'Quét phát hàng', count: '1,210' },
+        { key: 'return_registered', label: 'Đăng ký chuyển hoàn', count: '284' }, { key: 'redelivery', label: 'Giao lại hàng', count: '176' },
+        { key: 'awaiting_pickup', label: 'Chờ lấy hàng', count: '95' }, { key: 'warehouse_hold', label: 'Lưu kho', count: '740' },
       ],
-      'hang-den': [ { label: 'Tổng số đơn', count: '2,104' }, { label: 'Chưa quét đến', count: '36' } ],
-      'phat-hang': [ { label: 'Cần phát', count: '0' }, { label: 'Chưa phát', count: '0' } ],
+      'hang-den': [ { key: 'hang_den_all', label: 'Đã đến', count: '2,104' }, { key: 'not_scanned_in', label: 'Chưa quét đến', count: '36' } ],
+      'phat-hang': [ { key: 'need_delivery', label: 'Cần phát', count: '0' }, { key: 'not_delivered', label: 'Chưa phát', count: '0' } ],
       'backlog': [
-        { label: '7D+', count: '1' }, { label: '7D', count: '6' }, { label: '6D', count: '12' },
-        { label: '5D', count: '19' }, { label: '4D', count: '21' }, { label: '3D', count: '38' }, { label: '<2D', count: '141' },
+        { key: 'age_7d_plus', label: '7D+', count: '1' }, { key: 'age_7d', label: '7D', count: '6' }, { key: 'age_6d', label: '6D', count: '12' },
+        { key: 'age_5d', label: '5D', count: '19' }, { key: 'age_4d', label: '4D', count: '21' }, { key: 'age_3d', label: '3D', count: '38' }, { key: 'age_lt_2d', label: '<2D', count: '141' },
       ],
-      'chuyen-hoan': [ { label: 'Đợi xét duyệt', count: '214' }, { label: 'Đã phê duyệt', count: '46' }, { label: 'Phát lại', count: '24' } ],
-      'kiem-kho': [ { label: 'Đơn cần kiểm', count: '554' }, { label: 'Kiểm thiếu', count: '554' } ],
+      'chuyen-hoan': [ { key: 'return_waiting_approval', label: 'Đợi xét duyệt', count: '214' }, { key: 'return_approved', label: 'Đã phê duyệt', count: '46' }, { key: 'return_redelivery', label: 'Phát lại', count: '24' } ],
+      'kiem-kho': [ { key: 'inventory_check', label: 'Đơn cần kiểm', count: '554' }, { key: 'inventory_missing', label: 'Kiểm thiếu', count: '554' } ],
       'cskh': [
-        { label: 'Ticket CSKH', count: '39' }, { label: 'Khiếu nại SLA', count: '12' },
-        { label: 'Khiếu nại chịu trách nhiệm', count: '7' },
+        { key: 'support_ticket', label: 'Ticket CSKH', count: '39' }, { key: 'sla_complaint', label: 'Khiếu nại SLA', count: '12' },
+        { key: 'responsibility_complaint', label: 'Khiếu nại chịu trách nhiệm', count: '7' },
       ],
       'dung-tram': [
-        { label: 'Dừng >12h', count: '17' }, { label: 'Dừng >24h', count: '9' }, { label: 'Dừng >48h', count: '4' },
-        { label: 'Dừng >3D', count: '2' }, { label: 'Dừng >7D', count: '1' }, { label: 'Không có scan mới', count: '6' },
+        { key: 'halt_12h', label: 'Dừng >12h', count: '17' }, { key: 'halt_24h', label: 'Dừng >24h', count: '9' }, { key: 'halt_48h', label: 'Dừng >48h', count: '4' },
+        { key: 'halt_3d', label: 'Dừng >3D', count: '2' }, { key: 'halt_7d', label: 'Dừng >7D', count: '1' }, { key: 'no_new_scan', label: 'Không có scan mới', count: '6' },
       ],
-      'star': [ { label: 'Đơn đã ghim', count: '12' }, { label: 'Đang theo dõi', count: '5' }, { label: 'Chưa xử lý', count: '7' }, { label: 'Đã xử lý', count: '5' } ],
+      'star': [ { key: 'starred', label: 'Đơn đã ghim', count: '12' }, { key: 'watching', label: 'Đang theo dõi', count: '5' }, { key: 'star_unresolved', label: 'Chưa xử lý', count: '7' }, { key: 'star_resolved', label: 'Đã xử lý', count: '5' } ],
     };
     const dyn = this.tongTonStatusSubs();
     if (dyn) defs['tong-ton'] = dyn;
-    return defs;
+    return this.normalizeSubDefs(defs);
   }
 
   // Build "Tổng tồn" sub-branches from the distinct statuses found in the
   // database (waybills). Every status present becomes one queue + its count;
   // "Tất cả" leads with the grand total. Returns null when there is no DB data
   // (falls back to the static list).
+  // Last-status label of a waybill ("Trạng thái cuối cùng"): prefer the last
+  // operation (op / ThaoTacCuoi), fall back to current status.
+  waybillStatusLabel(o) {
+    if (!o) return 'Không xác định';
+    const op = (o.op == null ? '' : String(o.op)).trim();
+    if (op && op !== '-') return op;
+    const st = (o.status == null ? '' : String(o.status)).trim();
+    if (st && st !== '-') return st;
+    return 'Không xác định';
+  }
+
+  waybillStatusKey(o) {
+    return 'status_' + this.normalizeSubKey(this.waybillStatusLabel(o));
+  }
+
   tongTonStatusSubs() {
     const wbs = this.state.waybills;
     if (!wbs || wbs.length === 0) return null;
-    const inTongTon = wbs.filter(o => o && o.mains && o.mains.includes('tong-ton'));
+    const inTongTon = wbs.filter(o => {
+      const mk = Array.isArray(o && o.mainKeys) ? o.mainKeys : (Array.isArray(o && o.mains) ? o.mains : []);
+      return mk.includes('tong-ton');
+    });
     if (inTongTon.length === 0) return null;
+    // Bucket by the actual last-status value so the queues mirror the data.
     const counts = {};
+    const labelFor = {};
     const order = [];
     inTongTon.forEach(o => {
-      // status field, else fall back to the order's sub labels
-      let sts = [];
-      if (o.op != null && o.op !== '') sts = [o.op];
-      else if (o.status != null && o.status !== '') sts = [o.status];
-      else if (Array.isArray(o.statuses)) sts = o.statuses;
-      else if (Array.isArray(o.subs)) sts = o.subs;
-      sts.forEach(s => {
-        if (s == null || s === '' || s === 'Tất cả') return;
-        if (!(s in counts)) { counts[s] = 0; order.push(s); }
-        counts[s]++;
-      });
+      const label = this.waybillStatusLabel(o);
+      const key = 'status_' + this.normalizeSubKey(label);
+      if (!(key in counts)) { counts[key] = 0; labelFor[key] = label; order.push(key); }
+      counts[key]++;
     });
     const fmt = n => n.toLocaleString('en-US');
-    const list = [{ label: 'Tất cả', count: fmt(inTongTon.length) }];
-    order.forEach(s => list.push({ label: s, count: fmt(counts[s]) }));
+    const list = [{ key: 'all', label: 'Tất cả', count: fmt(inTongTon.length) }];
+    order.forEach(k => list.push({ key: k, label: labelFor[k], count: fmt(counts[k]) }));
     return list;
   }
 
@@ -716,9 +1269,9 @@ class Component extends DCLogic {
     if (!sub) return false;
     const c = this.num(sub.count);
     if (c === 0 || c > 100) return false;
-    if (key === 'star') return sub.label === 'Đơn đã ghim' || c <= 50;
-    if (key === 'hang-den') return sub.label === 'Chưa quét đến';
-    if (key === 'phat-hang') return sub.label === 'Chưa phát' && c < 50;
+    if (key === 'star') return sub.key === 'starred' || c <= 50;
+    if (key === 'hang-den') return sub.key === 'not_scanned_in';
+    if (key === 'phat-hang') return sub.key === 'not_delivered' && c < 50;
     if (key === 'backlog') return !/^<\s*2d/i.test(sub.label) && c <= 100;
     if (key === 'dung-tram') return c <= 50;
     return false;
@@ -853,6 +1406,37 @@ class Component extends DCLogic {
     ];
   }
 
+  // Detail groups from the live JMS waybill detail (WAYBILL_DETAIL message).
+  buildDetailGroupsFromDetail(d) {
+    const val = v => (v == null || v === '') ? '-' : String(v);
+    return [
+      { title: 'THÔNG TIN GỬI HÀNG', rows: [
+        { k: 'Bưu cục gửi', v: val(d.pickNetworkName) },
+        { k: 'Khách hàng', v: val(d.customerName) },
+        { k: 'Người gửi', v: val(d.senderName) },
+        { k: 'Địa chỉ gửi hàng', v: val(d.senderAddress) },
+        { k: 'SĐT gửi', v: val(d.senderPhone) },
+      ] },
+      { title: 'THÔNG TIN NHẬN HÀNG', rows: [
+        { k: 'Bưu cục nhận hàng', v: val(d.dispatchNetworkName) },
+        { k: 'Người nhận', v: val(d.receiverName) },
+        { k: 'Địa chỉ nhận hàng', v: val(d.receiverAddress) },
+        { k: 'SĐT nhận', v: val(d.receiverPhone) },
+      ] },
+      { title: 'THÔNG TIN ĐƠN HÀNG', rows: [
+        { k: 'Phân loại hàng hóa', v: val(d.goodsTypeName) },
+        { k: 'Nội dung hàng hóa', v: val(d.goodsName) },
+        { k: 'Giá trị hàng hóa', v: val(d.goodsValue) },
+        { k: 'Giao một phần', v: val(d.partSign) },
+        { k: 'Trọng lượng tính phí', v: val(d.packageChargeWeight) },
+        { k: 'Tiền thu hộ COD', v: val(d.codMoney) },
+        { k: 'COD gốc', v: val(d.oldCod) },
+        { k: 'Mã đoạn 1', v: val(d.terminalDispatchCode) },
+        { k: 'Ghi chú', v: val(d.remarks) },
+      ] },
+    ];
+  }
+
   renderVals() {
     const accent = this.props.accent ?? '#2f6fed';
     const density = this.props.density ?? 'Tiêu chuẩn';
@@ -861,18 +1445,22 @@ class Component extends DCLogic {
 
     const mainKey = this.state.mainKey;
     const subLabel = this.state.subLabel;
+    const subKey = this.state.subKey;
     const mode = this.state.mode;
 
     const mainDefs = this.mainDefs();
     const subDefs = this.subDefs();
     const activeMain = mainDefs.find(m => m.key === mainKey) || mainDefs[0];
     const subList = subDefs[mainKey] || [];
-    const activeSub = subLabel ? (subList.find(s => s.label === subLabel) || null) : null;
+    const activeSub = subKey
+      ? (subList.find(s => s.key === subKey) || subList.find(s => s.label === subLabel) || null)
+      : (subLabel ? (subList.find(s => s.label === subLabel) || null) : null);
+    const activeSubKey = activeSub ? activeSub.key : null;
     const status = this.statusForMain(mainKey);
 
     const mains = mainDefs.map(m => {
       const active = m.key === mainKey;
-      m.onSelect = () => this.setState({ mainKey: m.key, subLabel: this.defaultSubFor(m.key), mode: 'list', waybill: null, page: 0 });
+      m.onSelect = () => this.setState({ mainKey: m.key, subKey: this.defaultSubKeyFor(m.key), subLabel: this.defaultSubFor(m.key), mode: 'list', waybill: null, page: 0 });
       m.bg = active ? '#f3f8ff' : '#fbfcfe';
       m.border = active ? accent : '#e7ebf1';
       m.labelColor = active ? '#1f2937' : '#6b7588';
@@ -881,10 +1469,10 @@ class Component extends DCLogic {
     });
 
     const subs = subList.map(s => {
-      const active = subLabel === s.label;
+      const active = activeSubKey === s.key;
       return {
-        label: s.label, count: s.count,
-        onSelect: () => this.setState({ subLabel: s.label, mode: 'list', waybill: null, page: 0 }),
+        key: s.key, label: s.label, count: s.count,
+        onSelect: () => this.setState({ subKey: s.key, subLabel: s.label, mode: 'list', waybill: null, page: 0 }),
         bg: active ? accent : '#f4f6f9',
         border: active ? accent : '#e7ebf1',
         color: active ? '#fff' : '#3a4555',
@@ -905,10 +1493,16 @@ class Component extends DCLogic {
     let page = this.state.page || 0;
     if (this.state.waybills && this.state.waybills.length > 0) {
       const all = this.state.waybills.filter(o => {
-        const matchesMain = o.mains && o.mains.includes(mainKey);
+        const mainKeys = Array.isArray(o.mainKeys) ? o.mainKeys : (Array.isArray(o.mains) ? o.mains : []);
+        const subKeys = Array.isArray(o.subKeys) ? o.subKeys : [];
+        const matchesMain = mainKeys.includes(mainKey);
         if (!matchesMain) return false;
         if (activeSub) {
-          const matchesSub = (o.subs && o.subs.includes(activeSub.label)) || (o.op != null && o.op === activeSub.label);
+          const k = activeSub.key;
+          let matchesSub;
+          if (k === 'all') matchesSub = subKeys.includes('all') || mainKeys.includes(mainKey);
+          else if (typeof k === 'string' && k.indexOf('status_') === 0) matchesSub = this.waybillStatusKey(o) === k;
+          else matchesSub = subKeys.includes(k);
           if (!matchesSub) return false;
         }
         return true;
@@ -924,7 +1518,8 @@ class Component extends DCLogic {
 
     const wb = this.state.waybill;
     const starredCodes = this.state.starredCodes || {};
-    orders.forEach(o => {
+    orders.forEach((o, idx) => {
+      o.stt = page * perPage + idx + 1;
       o.onOpen = () => {
         this.setState({ mode: 'journey', waybill: o });
         if (window.chrome && window.chrome.webview) {
@@ -990,11 +1585,18 @@ class Component extends DCLogic {
 
     const hasWaybill = mode === 'journey' && !!wb;
     const starActive = hasWaybill && !!starredCodes[wb.code];
-    let summary = [], details = [], detailGroups = [], badges = [], suggestions = [], wbCode = '', wbWeight = '1.20 kg';
+    let summary = [], details = [], detailGroups = [], badges = [], suggestions = [], wbCode = '', wbWeight = '1.20 kg', orderMedia = [];
     if (hasWaybill) {
       summary = this.buildSummary(wb, status);
       details = this.buildDetails(wb);
-      detailGroups = this.buildDetailGroups(wb);
+      const wd = this.state.waybillDetail;
+      detailGroups = (wd && wd.code === wb.code)
+        ? this.buildDetailGroupsFromDetail(wd)
+        : this.buildDetailGroups(wb);
+      // "Hình ảnh" — all order-related media (excludes problem-piece images), from ORDER_IMAGES.
+      const oimg = this.state.orderImages;
+      orderMedia = (oimg && oimg.code === wb.code && Array.isArray(oimg.images))
+        ? oimg.images.map(u => this.podMediaItem(u)).filter(m => m) : [];
       detailGroups.forEach(g => g.rows.forEach(r => { r.isList = !!r.isList; r.isText = !r.isList; }));
       badges = [
         { t: status.text, bg: status.bg, c: status.color },
@@ -1009,12 +1611,69 @@ class Component extends DCLogic {
     const rtDefs = [['info', 'Thông tin cơ bản'], ['history', 'Lịch sử kiện vấn đề'], ['complaint', 'Khiếu nại']];
     const rightTabs = rtDefs.map(d => ({ label: d[1], onSelect: () => this.setState({ rightTab: d[0] }), bg: rt === d[0] ? accent : '#f1f4f8', fg: rt === d[0] ? '#fff' : '#6b7588', weight: rt === d[0] ? '600' : '500' }));
     const showInfo = rt === 'info', showHistory = rt === 'history', showComplaint = rt === 'complaint';
-    const noteList = hasWaybill ? this.notesFor(wb.code) : [];
-    const issueHistory = [
-      { title: 'Giao thất bại lần 1', desc: 'Khách không nghe máy, hẹn giao lại.', tag: 'Sự cố', tagBg: '#fde7e5', tagColor: '#d23a2e', t: '05/06/2026 21:30' },
-      { title: 'Cập nhật lịch giao', desc: 'Khách hẹn nhận hàng buổi tối.', tag: 'Cập nhật', tagBg: '#e4eefe', tagColor: '#2f6fed', t: '05/06/2026 14:10' },
-      { title: 'Phát sinh phí lưu kho', desc: 'Đơn tồn quá 24h tại bưu cục.', tag: 'Cảnh báo', tagBg: '#fdf0db', tagColor: '#c77a14', t: '05/06/2026 09:05' },
-    ];
+    const rawNotes = hasWaybill ? this.notesFor(wb.code) : [];
+    const noteList = rawNotes.map(n => ({
+      text: n.text, author: n.author, time: n.time, done: !!n.done, notDone: !n.done,
+      onToggle: () => this.toggleNoteDone(wb.code, n.id),
+      cardBg: n.done ? '#eef4ee' : '#f6f8fb',
+      cardBorder: n.done ? '#cfe3cf' : '#e7ebf1',
+      textColor: n.done ? '#9aa7a0' : '#2d3645',
+      authorColor: n.done ? '#9aa7a0' : '#6b7588',
+      metaColor: n.done ? '#a9b3ad' : '#97a1b2',
+      textDecoration: n.done ? 'line-through' : 'none',
+      iconColor: n.done ? '#1c8a3c' : '#c3cad6',
+      tickTitle: n.done ? 'Bỏ đánh dấu đã xử lý' : 'Đánh dấu đã xử lý xong',
+    }));
+    const idata = this.state.issueData;
+    const matchIssue = hasWaybill && idata && idata.code === wb.code;
+    const rawIssues = (matchIssue && Array.isArray(idata.issues)) ? idata.issues : [];
+    // POD images come from the problemPiece endpoint (waybill-level); fall back to per-record keys.
+    const waybillPod = (matchIssue && Array.isArray(idata.podImages))
+      ? idata.podImages.map(u => this.podMediaItem(u)).filter(m => m) : [];
+    const issueHistory = rawIssues.map(it => {
+      const own = (Array.isArray(it.images) ? it.images : []).map(u => this.podMediaItem(u)).filter(m => m);
+      const imgs = waybillPod.length ? waybillPod : own;
+      return {
+        onViewPod: () => this.openPodOverlay(imgs),
+        abnormalPieceName: (it.abnormalPieceName == null || it.abnormalPieceName === '') ? '-' : it.abnormalPieceName,
+        scanNetworkCode: (it.scanNetworkCode == null || it.scanNetworkCode === '') ? '-' : it.scanNetworkCode,
+        scanNetworkName: (it.scanNetworkName == null || it.scanNetworkName === '') ? '-' : it.scanNetworkName,
+        remark: (it.remark == null || it.remark === '') ? '-' : it.remark,
+        scanTime: (it.scanTime == null || it.scanTime === '') ? '-' : it.scanTime,
+        operatorCode: (it.operatorCode == null || it.operatorCode === '') ? '-' : it.operatorCode,
+        operatorName: (it.operatorName == null || it.operatorName === '') ? '-' : it.operatorName,
+        hasPod: imgs.length > 0,
+        noPod: imgs.length === 0,
+      };
+    });
+    const hasIssues = issueHistory.length > 0;
+    const noIssues = issueHistory.length === 0;
+
+    const pods = this.state.podImages || [];
+    const podFocusIdx = this.state.podFocus;
+    const podFocusItem = (podFocusIdx != null && pods[podFocusIdx]) ? pods[podFocusIdx] : null;
+    const podZoomV = this.state.podZoom || 1;
+    const panXV = this.state.panX || 0, panYV = this.state.panY || 0;
+    const podFocusImgStyle = 'max-width: 88vw; max-height: 88vh; border: 3px solid #e0453a; border-radius: 6px; background: #fff; box-shadow: 0 0 0 3px rgba(224,69,58,0.28), 0 12px 40px rgba(0,0,0,0.6); transform: translate(' + panXV + 'px, ' + panYV + 'px) scale(' + podZoomV + '); transform-origin: center center; cursor: grab; user-select: none;';
+
+    // "Bưu cục tiếp nhận" typeahead results + caption ("[code] name").
+    const issNetResultsView = (this.state.issNetResults || []).map((r, i) => ({
+      code: r.code, label: '[' + r.code + '] ' + (r.name || ''),
+      bg: (this.state.issNetActive === i) ? '#eef4ff' : '#fff',
+      onSelect: () => this.pickNet(r)
+    }));
+    const issNetCaption = this.state.issNetwork
+      ? ('[' + this.state.issNetwork + ']' + (this.state.issNetName ? ' ' + this.state.issNetName : ''))
+      : '';
+
+    // Attachment requirements from the selected level-2 (isPictureRequired / isVideoRequired).
+    const issL2 = this.currentLevel2();
+    const picRequired = issL2.pic === 1;
+    const vidRequired = issL2.vid === 1;
+    const imgOk = !picRequired || (this.state.issImages || []).length > 0;
+    const vidOk = !vidRequired || (this.state.issVideos || []).length > 0;
+    const issueCanSubmit = !!(this.state.issLevel1 && this.state.issLevel2 && this.state.issNetwork) && imgOk && vidOk && !this.state.issueSubmitting;
+    const toast = this.state.toast;
 
     return {
       accent, cellPad, showNav,
@@ -1033,10 +1692,53 @@ class Component extends DCLogic {
       noteCountText: noteList.length > 0 ? '(' + noteList.length + ')' : '',
       noteDraft: this.state.noteDraft || '',
       onNoteDraftChange: this.onNoteDraftChange, onSaveNote: this.onSaveNote,
-      rightTabs, showInfo, showHistory, showComplaint, issueHistory,
+      rightTabs, showInfo, showHistory, showComplaint, issueHistory, hasIssues, noIssues,
+      podImages: pods,
+      podOverlayOpen: pods.length > 0,
+      podFocused: !!podFocusItem,
+      podFocusIsImage: podFocusItem ? podFocusItem.isImage : false,
+      podFocusIsVideo: podFocusItem ? podFocusItem.isVideo : false,
+      podFocusUrl: podFocusItem ? podFocusItem.url : '',
+      podFocusImgStyle: podFocusImgStyle,
+      closePodOverlay: this.closePodOverlay, closePodFocus: this.closePodFocus, stopEvt: this.stopEvt,
+      onFocusWheel: this.onFocusWheel, onFocusMouseDown: this.onFocusMouseDown,
+      podZoomIn: this.podZoomIn, podZoomOut: this.podZoomOut, podZoomReset: this.podZoomReset,
+      issueOpen: this.state.issueOpen,
+      issLevel1: this.state.issLevel1, issLevel2: this.state.issLevel2, issLevel2Code: this.state.issLevel2Code, issNetwork: this.state.issNetwork,
+      iss2Options: this.level2For(this.state.issLevel1),
+      issNetQuery: this.state.issNetQuery, issNetCaption: issNetCaption,
+      issNetResults: issNetResultsView, issNetOpen: this.state.issNetOpen && issNetResultsView.length > 0,
+      onNetQueryInput: this.onNetQueryInput, onNetKeyDown: this.onNetKeyDown, onNetBlur: this.onNetBlur,
+      issImages: (this.state.issImages || []).map((f, i) => ({ url: f.url, onRemove: () => this.removeIssImage(i) })),
+      issVideos: (this.state.issVideos || []).map((f, i) => ({ url: f.url, onRemove: () => this.removeIssVideo(i) })),
+      hasIssImages: (this.state.issImages || []).length > 0,
+      hasIssVideos: (this.state.issVideos || []).length > 0,
+      picRequired: picRequired, vidRequired: vidRequired,
+      onIssDragOver: this.onIssDragOver,
+      onIssImageDrop: this.onIssImageDrop, onIssVideoDrop: this.onIssVideoDrop,
+      onIssImagePick: this.onIssImagePick, onIssVideoPick: this.onIssVideoPick,
+      closeIssueForm: this.closeIssueForm,
+      issDesc: this.state.issDesc, onIssDescChange: this.onIssDescChange,
+      issDescHeight: this.state.issDescHeight || 58, issDescOverflow: this.state.issDescScroll ? 'auto' : 'hidden',
+      issConfirmCancel: !!this.state.issConfirmCancel,
+      requestCancelIssue: this.requestCancelIssue, backToIssueForm: this.backToIssueForm, confirmCancelIssue: this.confirmCancelIssue,
+      onIssLevel1Change: this.onIssLevel1Change, onIssLevel2Change: this.onIssLevel2Change, onIssNetworkChange: this.onIssNetworkChange,
+      onIssSubmit: this.onIssSubmit,
+      issueCanSubmit: issueCanSubmit,
+      issueSubmitBg: issueCanSubmit ? '#2f6fed' : '#c7cfda',
+      issueSubmitCursor: issueCanSubmit ? 'pointer' : 'not-allowed',
+      issueSubmitLabel: this.state.issueSubmitting ? 'Đang gửi...' : 'Đăng ký',
+      toastShow: !!toast, toastText: toast ? toast.text : '', toastBg: (toast && toast.ok) ? '#1c8a3c' : '#d23a2e',
       mains, subs, activeMainLabel: activeMain.label, activeColor: activeMain.color,
       isList: mode === 'list', isJourney: mode === 'journey',
       orders, orderCount: orders.length,
+      hasOrders: orders.length > 0,
+      noOrders: orders.length === 0,
+      debugWaybillCount: (this.state.waybills || []).length,
+      debugOrderCount: orders.length,
+      debugMainKey: mainKey,
+      debugSubKey: activeSub ? activeSub.key : '',
+      debugSubLabel: activeSub ? activeSub.label : '',
       pageRangeText: (this.num(realCount) === 0 || orders.length === 0) ? '0 - 0' : ((page * perPage + 1) + ' - ' + (page * perPage + orders.length)),
       pages: this.buildPageButtons(page, pageCount),
       pagePrev: () => this.setState(s => ({ page: Math.max(0, (s.page || 0) - 1) })),
@@ -1063,8 +1765,12 @@ class Component extends DCLogic {
       refreshJourney: this.refreshJourney,
       refreshSpinClass: this.state.journeyRefreshing ? 'aj-spin' : '',
       rows, wbCode, wbWeight,
+      hasJourneyRows: rows.length > 0,
+      noJourneyRows: rows.length === 0,
       leftEmpty, leftCodes, leftStats, leftTop, leftSubLabel, leftCountText, leftWarn,
       hasWaybill, noWaybill: !hasWaybill, summary, details, detailGroups, badges, suggestions,
+      hasOrderMedia: orderMedia.length > 0, noOrderMedia: orderMedia.length === 0,
+      viewOrderMedia: () => this.openPodOverlay(orderMedia),
       copyWaybill: this.copyWaybill,
       wbCopied: this.state.wbCopied, wbNotCopied: !this.state.wbCopied,
       wbCopyLabel: this.state.wbCopied ? 'Đã copy' : 'Copy',

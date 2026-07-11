@@ -2,7 +2,7 @@ namespace AutoJMS.FullStack.LocalDb
 {
     public static class FullStackMigrations
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         public const string SchemaV1 = @"
 CREATE TABLE IF NOT EXISTS fs_schema_version (
@@ -210,6 +210,38 @@ CREATE VIEW IF NOT EXISTS vw_stopped_7_days AS
 CREATE INDEX IF NOT EXISTS idx_fs_waybills_checked ON fs_waybills(is_checked, checked_at);
 CREATE INDEX IF NOT EXISTS idx_fs_waybills_enriched ON fs_waybills(is_enriched, enriched_at);
 CREATE INDEX IF NOT EXISTS idx_fs_order_checks_waybill ON fs_order_checks(waybill_no, checked_at);
+";
+
+        // V2 — Hybrid local-first + Supabase sync (docs/hybrid-supabase-sync-plan.md).
+        // fs_outbox: local writes queued for cloud push (offline-safe).
+        public const string SchemaV2 = @"
+CREATE TABLE IF NOT EXISTS fs_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    ref_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    synced_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_outbox_pending ON fs_outbox(synced_at, id);
+";
+
+        // client_id: idempotency key ""<clientId>:<local id>"" so pushes/pulls never duplicate
+        // rows across machines. origin: 'local' (this machine) or 'cloud' (merged from Supabase).
+        public static readonly (string TableName, string ColumnName, string Sql)[] SyncColumnGuards =
+        {
+            ("fs_order_notes", "client_id", "ALTER TABLE fs_order_notes ADD COLUMN client_id TEXT NULL;"),
+            ("fs_order_notes", "origin", "ALTER TABLE fs_order_notes ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';"),
+            ("fs_dispatch_tasks", "client_id", "ALTER TABLE fs_dispatch_tasks ADD COLUMN client_id TEXT NULL;"),
+            ("fs_dispatch_tasks", "origin", "ALTER TABLE fs_dispatch_tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'local';")
+        };
+
+        public const string SchemaV2PostColumnIndexes = @"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_order_notes_client_id ON fs_order_notes(client_id) WHERE client_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_dispatch_tasks_client_id ON fs_dispatch_tasks(client_id) WHERE client_id IS NOT NULL;
 ";
     }
 }

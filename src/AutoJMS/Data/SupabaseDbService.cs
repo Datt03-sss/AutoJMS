@@ -9,7 +9,7 @@ using AutoJMS.Diagnostics;
 
 namespace AutoJMS
 {
-    public static class SupabaseDbService
+    public static partial class SupabaseDbService
     {
         private static Supabase.Client _client;
         private static readonly SemaphoreSlim _initGate = new(1, 1);

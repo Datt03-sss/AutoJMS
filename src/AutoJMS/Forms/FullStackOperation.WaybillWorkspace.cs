@@ -366,6 +366,7 @@ namespace AutoJMS
                     SetJourneyAuxButtons(false, !string.IsNullOrWhiteSpace(refresh.RawJson));
                     QueueJourneySnapshotSave(journeyWaybill, refresh);
                     _ = _journeyHistoryService.StoreRowsAsync(journeyWaybill, refresh.ViewModel.Rows);
+                    _ = GatherAndPostOrderImagesAsync(journeyWaybill, refresh.RawJson);
                 }
                 else if (refresh.Success)
                 {

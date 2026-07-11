@@ -1,6 +1,7 @@
 using AutoJMS.FullStack.LocalDb;
 using AutoJMS.FullStack.Models;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -32,16 +33,40 @@ namespace AutoJMS.FullStack.Services
             if (string.IsNullOrWhiteSpace(waybillNo) || string.IsNullOrWhiteSpace(note)) return;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
+            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
+            var createdAt = DateTime.UtcNow;
+            string createdByValue = string.IsNullOrWhiteSpace(createdBy) ? "operator" : createdBy.Trim();
+
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = @"
-INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at)
-VALUES ($waybillNo, $note, $createdBy, $createdAt);";
-            command.Parameters.AddWithValue("$waybillNo", waybillNo);
-            command.Parameters.AddWithValue("$note", note.Trim());
-            command.Parameters.AddWithValue("$createdBy", string.IsNullOrWhiteSpace(createdBy) ? "operator" : createdBy.Trim());
-            command.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
-            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+            long noteId;
+            await using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = @"
+INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at, client_id, origin)
+VALUES ($waybillNo, $note, $createdBy, $createdAt, NULL, 'local');
+SELECT last_insert_rowid();";
+                command.Parameters.AddWithValue("$waybillNo", waybillNo);
+                command.Parameters.AddWithValue("$note", note.Trim());
+                command.Parameters.AddWithValue("$createdBy", createdByValue);
+                command.Parameters.AddWithValue("$createdAt", createdAt.ToString("O"));
+                noteId = Convert.ToInt64(await command.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
+            }
+
+            await StampNoteClientIdAsync(connection, transaction, noteId, $"{clientId}:note:{noteId}", ct).ConfigureAwait(false);
+            await EnqueueOutboxAsync(connection, transaction, "NOTE", waybillNo, new JObject
+            {
+                ["waybill_no"] = waybillNo,
+                ["note"] = note.Trim(),
+                ["created_by"] = createdByValue,
+                ["created_at"] = createdAt.ToString("O"),
+                ["client_id"] = $"{clientId}:note:{noteId}"
+            }, ct).ConfigureAwait(false);
+
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+            FullStackCloudSyncService.NotifyLocalWrite();
         }
 
         public async Task CreateTaskAsync(
@@ -56,38 +81,82 @@ VALUES ($waybillNo, $note, $createdBy, $createdAt);";
             if (string.IsNullOrWhiteSpace(waybillNo)) return;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
+            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
+            var now = DateTime.UtcNow;
+            string taskTypeValue = string.IsNullOrWhiteSpace(taskType) ? "CHECK_PHYSICAL_STOCK" : taskType;
+            string dueAt = now.AddHours(4).ToString("O");
+
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
+            long taskId;
             await using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = @"
-INSERT INTO fs_dispatch_tasks(waybill_no, task_type, priority, status, assigned_to, due_at, created_at)
-VALUES ($waybillNo, $taskType, $priority, 'OPEN', $assignedTo, $dueAt, $createdAt);";
+INSERT INTO fs_dispatch_tasks(waybill_no, task_type, priority, status, assigned_to, due_at, created_at, origin)
+VALUES ($waybillNo, $taskType, $priority, 'OPEN', $assignedTo, $dueAt, $createdAt, 'local');
+SELECT last_insert_rowid();";
                 command.Parameters.AddWithValue("$waybillNo", waybillNo);
-                command.Parameters.AddWithValue("$taskType", string.IsNullOrWhiteSpace(taskType) ? "CHECK_PHYSICAL_STOCK" : taskType);
+                command.Parameters.AddWithValue("$taskType", taskTypeValue);
                 command.Parameters.AddWithValue("$priority", priority);
                 command.Parameters.AddWithValue("$assignedTo", string.IsNullOrWhiteSpace(assignedTo) ? DBNull.Value : assignedTo.Trim());
-                command.Parameters.AddWithValue("$dueAt", DateTime.UtcNow.AddHours(4).ToString("O"));
-                command.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
-                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                command.Parameters.AddWithValue("$dueAt", dueAt);
+                command.Parameters.AddWithValue("$createdAt", now.ToString("O"));
+                taskId = Convert.ToInt64(await command.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
             }
+
+            await using (var stamp = connection.CreateCommand())
+            {
+                stamp.Transaction = transaction;
+                stamp.CommandText = "UPDATE fs_dispatch_tasks SET client_id = $clientId WHERE id = $id;";
+                stamp.Parameters.AddWithValue("$clientId", $"{clientId}:task:{taskId}");
+                stamp.Parameters.AddWithValue("$id", taskId);
+                await stamp.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            await EnqueueOutboxAsync(connection, transaction, "TASK", waybillNo, new JObject
+            {
+                ["waybill_no"] = waybillNo,
+                ["task_type"] = taskTypeValue,
+                ["priority"] = priority,
+                ["status"] = "OPEN",
+                ["assigned_to"] = string.IsNullOrWhiteSpace(assignedTo) ? "" : assignedTo.Trim(),
+                ["due_at"] = dueAt,
+                ["created_at"] = now.ToString("O"),
+                ["updated_at"] = now.ToString("O"),
+                ["client_id"] = $"{clientId}:task:{taskId}"
+            }, ct).ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(note))
             {
-                await using var noteCommand = connection.CreateCommand();
-                noteCommand.Transaction = transaction;
-                noteCommand.CommandText = @"
-INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at)
-VALUES ($waybillNo, $note, 'task', $createdAt);";
-                noteCommand.Parameters.AddWithValue("$waybillNo", waybillNo);
-                noteCommand.Parameters.AddWithValue("$note", note.Trim());
-                noteCommand.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
-                await noteCommand.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                long noteId;
+                await using (var noteCommand = connection.CreateCommand())
+                {
+                    noteCommand.Transaction = transaction;
+                    noteCommand.CommandText = @"
+INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at, client_id, origin)
+VALUES ($waybillNo, $note, 'task', $createdAt, NULL, 'local');
+SELECT last_insert_rowid();";
+                    noteCommand.Parameters.AddWithValue("$waybillNo", waybillNo);
+                    noteCommand.Parameters.AddWithValue("$note", note.Trim());
+                    noteCommand.Parameters.AddWithValue("$createdAt", now.ToString("O"));
+                    noteId = Convert.ToInt64(await noteCommand.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
+                }
+
+                await StampNoteClientIdAsync(connection, transaction, noteId, $"{clientId}:note:{noteId}", ct).ConfigureAwait(false);
+                await EnqueueOutboxAsync(connection, transaction, "NOTE", waybillNo, new JObject
+                {
+                    ["waybill_no"] = waybillNo,
+                    ["note"] = note.Trim(),
+                    ["created_by"] = "task",
+                    ["created_at"] = now.ToString("O"),
+                    ["client_id"] = $"{clientId}:note:{noteId}"
+                }, ct).ConfigureAwait(false);
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            FullStackCloudSyncService.NotifyLocalWrite();
         }
 
         public async Task MarkCheckedAsync(string waybillNo, CancellationToken ct = default)
@@ -105,6 +174,7 @@ VALUES ($waybillNo, $note, 'task', $createdAt);";
             var now = DateTime.UtcNow;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
+            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
@@ -139,20 +209,68 @@ WHERE waybill_no = $waybillNo;";
                 await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
+            long checkNoteId;
             await using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = @"
-INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at)
-VALUES ($waybillNo, $note, $createdBy, $createdAt);";
+INSERT INTO fs_order_notes(waybill_no, note, created_by, created_at, client_id, origin)
+VALUES ($waybillNo, $note, $createdBy, $createdAt, NULL, 'local');
+SELECT last_insert_rowid();";
                 command.Parameters.AddWithValue("$waybillNo", waybillNo);
                 command.Parameters.AddWithValue("$note", $"[{checkedBy}] {note}");
                 command.Parameters.AddWithValue("$createdBy", checkedBy);
                 command.Parameters.AddWithValue("$createdAt", now.ToString("O"));
-                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                checkNoteId = Convert.ToInt64(await command.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
             }
 
+            await StampNoteClientIdAsync(connection, transaction, checkNoteId, $"{clientId}:note:{checkNoteId}", ct).ConfigureAwait(false);
+
+            await EnqueueOutboxAsync(connection, transaction, "CHECK", waybillNo, new JObject
+            {
+                ["waybill_no"] = waybillNo,
+                ["is_checked"] = true,
+                ["checked_at"] = now.ToString("O"),
+                ["checked_by"] = checkedBy,
+                ["note"] = note,
+                ["updated_at"] = now.ToString("O")
+            }, ct).ConfigureAwait(false);
+
+            await EnqueueOutboxAsync(connection, transaction, "NOTE", waybillNo, new JObject
+            {
+                ["waybill_no"] = waybillNo,
+                ["note"] = $"[{checkedBy}] {note}",
+                ["created_by"] = checkedBy,
+                ["created_at"] = now.ToString("O"),
+                ["client_id"] = $"{clientId}:note:{checkNoteId}"
+            }, ct).ConfigureAwait(false);
+
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            FullStackCloudSyncService.NotifyLocalWrite();
+        }
+
+        private static async Task StampNoteClientIdAsync(SqliteConnection connection, SqliteTransaction transaction, long noteId, string clientId, CancellationToken ct)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE fs_order_notes SET client_id = $clientId WHERE id = $id;";
+            command.Parameters.AddWithValue("$clientId", clientId);
+            command.Parameters.AddWithValue("$id", noteId);
+            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        private static async Task EnqueueOutboxAsync(SqliteConnection connection, SqliteTransaction transaction, string kind, string refKey, JObject payload, CancellationToken ct)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = @"
+INSERT INTO fs_outbox(kind, ref_key, payload, created_at)
+VALUES ($kind, $refKey, $payload, $createdAt);";
+            command.Parameters.AddWithValue("$kind", kind);
+            command.Parameters.AddWithValue("$refKey", refKey ?? "");
+            command.Parameters.AddWithValue("$payload", payload.ToString(Newtonsoft.Json.Formatting.None));
+            command.Parameters.AddWithValue("$createdAt", DateTime.UtcNow.ToString("O"));
+            await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
         public async Task<FullStackOperationMetadataSnapshot> LoadOperationMetadataAsync(IEnumerable<string> waybillNos, CancellationToken ct = default)

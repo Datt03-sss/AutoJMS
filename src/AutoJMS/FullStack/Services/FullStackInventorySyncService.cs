@@ -28,7 +28,17 @@ namespace AutoJMS.FullStack.Services
             _repository = repository;
         }
 
-        public async Task<FullStackSyncResult> SyncInventoryAsync(DateTime? startOverride = null, DateTime? endOverride = null, CancellationToken ct = default)
+        public Task<FullStackSyncResult> SyncInventoryAsync(DateTime? startOverride = null, DateTime? endOverride = null, CancellationToken ct = default)
+            => SyncInventoryAsync(startOverride, endOverride, null, ct);
+
+        // onPageCodes (optional): invoked right after each inventory page is fetched, with the new
+        // waybill codes found on that page. Lets a caller start tracking those codes immediately
+        // (producer/consumer) while the next page is still downloading.
+        public async Task<FullStackSyncResult> SyncInventoryAsync(
+            DateTime? startOverride,
+            DateTime? endOverride,
+            Func<IReadOnlyList<string>, CancellationToken, Task> onPageCodes,
+            CancellationToken ct = default)
         {
             DateTime startedAt = DateTime.UtcNow;
             DateTime endDate = endOverride ?? DateTime.Today.AddDays(1).AddSeconds(-1);
@@ -65,7 +75,7 @@ namespace AutoJMS.FullStack.Services
             string dbgTokMask = dbgTok.Length >= 8 ? $"{dbgTok.Substring(0, 4)}...{dbgTok.Substring(dbgTok.Length - 4)}" : (dbgTok.Length == 0 ? "<none>" : "<short>");
             AppLogger.Info($"[FullStackSync] inventory sync started actionSiteCode={actionSiteCode}, startDate={startDate:yyyy-MM-dd HH:mm:ss}, endDate={endDate:yyyy-MM-dd HH:mm:ss}, token={dbgTokMask}");
 
-            var fetchResult = await FetchInventoryAsync(actionSiteCode, startDate, endDate, ct).ConfigureAwait(false);
+            var fetchResult = await FetchInventoryAsync(actionSiteCode, startDate, endDate, onPageCodes, ct).ConfigureAwait(false);
 
             if (!fetchResult.Success)
             {
@@ -104,7 +114,7 @@ namespace AutoJMS.FullStack.Services
             return result;
         }
 
-        private async Task<InventoryFetchResult> FetchInventoryAsync(string actionSiteCode, DateTime startDate, DateTime endDate, CancellationToken ct)
+        private async Task<InventoryFetchResult> FetchInventoryAsync(string actionSiteCode, DateTime startDate, DateTime endDate, Func<IReadOnlyList<string>, CancellationToken, Task> onPageCodes, CancellationToken ct)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<InventoryFetchItem>();
@@ -121,6 +131,7 @@ namespace AutoJMS.FullStack.Services
                 bool pageSuccess = false;
                 int recordsOnPage = 0;
                 int pagesOnPage = 0;
+                List<string> pageNewCodes = null;
 
                 for (int retry = 1; retry <= MaxRetriesPerPage && !pageSuccess; retry++)
                 {
@@ -219,14 +230,19 @@ namespace AutoJMS.FullStack.Services
                         if (recordsNode.ValueKind == JsonValueKind.Array)
                         {
                             recordsOnPage = recordsNode.GetArrayLength();
+                            var collected = new List<string>();
                             foreach (var record in recordsNode.EnumerateArray())
                             {
                                 var waybill = ExtractBillcode(record);
                                 if (string.IsNullOrWhiteSpace(waybill)) continue;
                                 waybill = waybill.Trim().ToUpperInvariant();
                                 if (seen.Add(waybill))
+                                {
                                     items.Add(new InventoryFetchItem { WaybillNo = waybill, PageNo = currentPage });
+                                    collected.Add(waybill);
+                                }
                             }
+                            pageNewCodes = collected;
                         }
                         else if (detectedTotal > 0)
                         {
@@ -263,6 +279,20 @@ namespace AutoJMS.FullStack.Services
 
                 if (pageSuccess)
                 {
+                    // Hand this page's new codes to the consumer immediately (start tracking now).
+                    if (onPageCodes != null && pageNewCodes != null && pageNewCodes.Count > 0)
+                    {
+                        try
+                        {
+                            await onPageCodes(pageNewCodes, ct).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception cbEx)
+                        {
+                            AppLogger.Warning($"[FullStackSync] onPageCodes callback error page={currentPage}: {cbEx.Message}");
+                        }
+                    }
+
                     if (recordsOnPage == 0) break;
                     if (totalPages == null && pagesOnPage > 0) totalPages = pagesOnPage;
                     if (totalPages.HasValue && currentPage >= totalPages.Value) break;
