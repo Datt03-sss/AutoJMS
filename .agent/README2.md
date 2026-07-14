@@ -8,7 +8,7 @@ This workspace has local agent skills under `.agent/skills`.
 
 ## AutoJMS Usage Policy
 
-Use `find-skills` only when a task would benefit from discovering or installing an additional agent skill.
+**Skills First**: at the start of every task, check `.agent/skills/` for a matching local skill. If none matches, prioritize using `find-skills` to discover and install a suitable skill before falling back to general knowledge.
 
 Before applying any external skill guidance, keep the project rules authoritative:
 

@@ -18,6 +18,14 @@ git status
 
 Never start editing on a dirty or stale working tree.
 
+### Skills First Rule
+
+Before starting work on any task:
+
+1. Check `.agent/skills/` for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, Supabase manifest, WebView2, etc.) and follow it.
+2. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
+3. Skills are helpers — project rules in this file and `AGENTS.md` always take precedence over any skill guidance.
+
 ---
 
 ## Workflow: After Every Edit

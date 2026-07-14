@@ -40,6 +40,14 @@ git status
 
 Never start editing on a stale or dirty working tree.
 
+### Skills First Rule
+
+Before starting work on any task:
+
+1. Check `.agent/skills/` for a local skill matching the task domain and follow it.
+2. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
+3. Skills are helpers — the rules in this file always take precedence over any skill guidance.
+
 ### After Every Edit — Build
 ```powershell
 dotnet restore .\AutoJMS.slnx
