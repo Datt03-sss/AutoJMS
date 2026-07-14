@@ -12,9 +12,12 @@ This folder is for developer documentation: audit, architecture, manual operatio
 docs/
 ├── README.md                          ← You are here
 ├── START_HERE.md                      ← First-read guide
-├── IMPLEMENTATION_PLAN.md             ← Safe implementation order
-├── WORKFLOW_SUMMARY.md                ← Short workflow reference
 ├── VIBE_CODING_GUIDE.md               ← AI/vibe coding guardrails
+├── project/                           ← Project charter & status
+│   ├── PROJECT.md
+│   ├── PROJECT_OVERVIEW_CURRENT.vi.md
+│   ├── ORIGINAL_REQUEST.md
+│   └── TEST_READY.md
 ├── architecture/                      ← Architecture documentation
 │   ├── system-overview.md
 │   ├── client-architecture.md
@@ -38,6 +41,7 @@ docs/
 │   ├── MANUAL_OPERATIONS.md
 │   └── QUICK_RELEASE_CHECKLIST.md
 ├── dev/                               ← Development workflow and codebase index
+│   ├── WORKFLOW_SUMMARY.md
 │   ├── DEVELOPMENT_WORKFLOW.md
 │   ├── CODING_STANDARDS.md
 │   ├── CODEBASE_INDEX.md
@@ -45,6 +49,7 @@ docs/
 │   ├── RISK_REGISTER.md
 │   └── ONBOARDING.md
 ├── roadmap/                           ← Phase roadmap and backlog
+│   ├── IMPLEMENTATION_PLAN.md
 │   ├── DEVELOPMENT_ROADMAP.md
 │   ├── PRIORITY_TASKS.md
 │   ├── SAFE_REFACTOR_PLAN.md
@@ -70,8 +75,9 @@ docs/
 ## Quick Links
 
 - [Start Here](START_HERE.md)
-- [Implementation Plan](IMPLEMENTATION_PLAN.md)
-- [Workflow Summary](WORKFLOW_SUMMARY.md)
+- [Project Charter](project/PROJECT.md)
+- [Implementation Plan](roadmap/IMPLEMENTATION_PLAN.md)
+- [Workflow Summary](dev/WORKFLOW_SUMMARY.md)
 - [Vibe Coding Guide](VIBE_CODING_GUIDE.md)
 - [Codebase Audit](audit/CODEBASE_AUDIT.md)
 - [System Overview](architecture/system-overview.md)

@@ -1,6 +1,6 @@
 # AutoJMS Workspace Skills
 
-This workspace has local agent skills under `.agents/skills`.
+This workspace has local agent skills under `.agent/skills`.
 
 ## Installed Skills
 
