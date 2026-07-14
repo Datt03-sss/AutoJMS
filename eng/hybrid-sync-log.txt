@@ -1,0 +1,51 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20260712214824
+Username: DAT\DAT
+RunAs User: DAT\DAT
+Configuration Name: 
+Machine: DAT (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -file  D:\v1.2605.2(new-test)\eng\complete-hybrid-sync.ps1 
+Process ID: 18776
+PSVersion: 5.1.26100.8737
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.8737
+BuildVersion: 10.0.26100.8737
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+
+=== 1/5 Push origin/main ===
+[OK] 1/5 Push origin/main
+
+=== 2/5 Supabase CLI ===
+[OK] 2/5 Supabase CLI
+
+=== 3/5 Login Supabase ===
+supabase : Cannot find project ref. Have you run supabase link?
+At D:\v1.2605.2(new-test)\eng\complete-hybrid-sync.ps1:55 char:9
++         supabase projects list *> $null
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Cannot find pro... supabase link?:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+A new version of Supabase CLI is available: v2.109.1 (currently installed v2.102.0)
+We recommend updating regularly for new features and bug fixes: 
+https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
+Da dang nhap san.
+[OK] 3/5 Login Supabase
+
+=== 4/5 Link project bnsnnrlwfzxemmizknwy ===
+[OK] 4/5 Link project bnsnnrlwfzxemmizknwy
+
+=== 5/5 Apply migrations (db push) ===
+[OK] 5/5 Apply migrations (db push)
+
+==========================================
+HOAN TAT - tat ca buoc OK.
+==========================================
+**********************
+Windows PowerShell transcript end
+End time: 20260712214838
+**********************
