@@ -97,6 +97,22 @@ Sau mỗi vòng đồng bộ, so tập mã 2 nguồn:
 - Đơn thường: theo policy đã triển khai — "Ký nhận CPN" xóa ngay, "Kết thúc" giữ tới khi `is_handled`, còn lại retention 30 ngày.
 - **Đơn nhảy mã (`suspected_stray`)**: **chỉ loại khi** (a) xuất hiện **hành trình mới hơn** (last_seen dịch chuyển sang bưu cục/thao tác khác) **hoặc** (b) được đánh dấu **`is_handled`** (Đã xử lý). Trước đó **giữ nguyên** để theo dõi.
 
+## 5b. ĐÃ TRIỂN KHAI (migration `202607150005_dual_source_union`)
+
+Cột mới trên `waybills`: `seen_in_bigdata`, `seen_in_stockcheck`, `bigdata_first/last_seen_at`,
+`stockcheck_first/last_seen_at`, `suspected_stray`; index `idx_waybills_suspected_stray`.
+
+RPC:
+- `merge_bigdata_detail(site, jsonb)` — đẩy chi tiết Nguồn #1 + tự đóng dấu `seen_in_bigdata`.
+- `ingest_bigdata_waybills(site, text[])` — đóng dấu Nguồn #1 (dùng khi chỉ có danh sách mã).
+- `ingest_stockcheck_waybills(site, text[])` — nạp Nguồn #2 (insert-if-missing + đóng dấu).
+- `reconcile_inventory_sources(site)` — đặt `suspected_stray = seen_in_stockcheck AND NOT seen_in_bigdata`; tự xoá cờ khi Big Data xác nhận sau.
+- `run_retention_cleanup` cập nhật: **không xoá** đơn `suspected_stray` chưa `is_handled` (giữ tới khi có hành trình mới đẩy vào Big Data hoặc đánh dấu Đã xử lý).
+
+Luồng đồng bộ mỗi chu kỳ: `merge_bigdata_detail(...)` (Nguồn #1) → `ingest_stockcheck_waybills(...)` (Nguồn #2) → `reconcile_inventory_sources(site)`.
+
+Đã smoke test: đơn chỉ có ở kiểm kho → `suspected_stray=true`; retention giữ đơn stray chưa xử lý dù 45 ngày; Big Data xác nhận sau → cờ tự xoá; đơn thường >30 ngày vẫn bị xoá. (Kèm fix `202607150006`: bật lại RLS cho `waybills`.)
+
 ## 6. Việc cần làm tiếp (khi Chrome kết nối lại)
 1. Khảo sát live Nguồn #2 (Thống kê kiểm kho): xác nhận cột export, endpoint, ý nghĩa "Số đơn tồn", có mã vận đơn trong file export không.
 2. Xác nhận đầy đủ các lựa chọn "Phạm vi lựa chọn" của Nguồn #1 và hành vi từng lựa chọn (đặc biệt "Thời gian hàng đến bưu cục" — có thể vá điểm mù nhảy mã ngay trong Nguồn #1).
