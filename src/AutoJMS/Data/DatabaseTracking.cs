@@ -14,6 +14,14 @@ namespace AutoJMS
     {
         private const int BatchSize = 40;
         private const int MaxDegreeOfParallelism = 3;
+        // Order-detail ("Thông tin đơn hàng") is essentially static per waybill (sender,
+        // address, COD, goods, weight...). Fetch it once per waybill, then skip on later
+        // cycles so large inventories don't re-download it every sync. Concurrency is
+        // globally bounded to protect against JMS IP-locking.
+        private const int OrderDetailConcurrency = 3;
+        private static readonly SemaphoreSlim _orderDetailGate = new(OrderDetailConcurrency, OrderDetailConcurrency);
+        private static readonly HashSet<string> _orderDetailDone = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _orderDetailLock = new();
         private static readonly JsonSerializerOptions JsonOptions = AppConfig.CreateJsonOptions();
         private static readonly Dictionary<string, string> _cloudRowFingerprintCache = new(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, string> _phatLaiRowFingerprintCache = new(StringComparer.OrdinalIgnoreCase);
@@ -181,14 +189,35 @@ namespace AutoJMS
             Dictionary<string, WaybillDbModel> dict,
             CancellationToken ct)
         {
-            foreach (var waybill in batch)
+            // Skip waybills whose static order detail was already fetched in a prior cycle.
+            string[] todo;
+            lock (_orderDetailLock)
             {
-                ct.ThrowIfCancellationRequested();
-                await CallOrderDetailAsync(waybill, dict, ct);
+                todo = batch.Where(w => !_orderDetailDone.Contains(w)).ToArray();
             }
+            if (todo.Length == 0) return;
+
+            // Fetch the remaining details concurrently (globally bounded by _orderDetailGate).
+            var tasks = todo.Select(async waybill =>
+            {
+                await _orderDetailGate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    bool applied = await CallOrderDetailAsync(waybill, dict, ct).ConfigureAwait(false);
+                    if (applied)
+                    {
+                        lock (_orderDetailLock) { _orderDetailDone.Add(waybill); }
+                    }
+                }
+                finally
+                {
+                    _orderDetailGate.Release();
+                }
+            });
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
-        private static async Task CallOrderDetailAsync(string waybill, Dictionary<string, WaybillDbModel> dict, CancellationToken ct)
+        private static async Task<bool> CallOrderDetailAsync(string waybill, Dictionary<string, WaybillDbModel> dict, CancellationToken ct)
         {
             var url = AppConfig.Current.BuildJmsApiUrl("operatingplatform/order/getOrderDetail");
             var payload = new { waybillNo = waybill };
@@ -197,19 +226,20 @@ namespace AutoJMS
                 JsonSerializer.Serialize(payload, JsonOptions),
                 routeName: "trackingExpress",
                 ct: ct);
-            if (response == null) return;
-            if (!response.IsSuccessStatusCode) return;
+            if (response == null) return false;
+            if (!response.IsSuccessStatusCode) return false;
 
             var json = await response.Content.ReadAsStringAsync(ct);
-            if (string.IsNullOrWhiteSpace(json)) return;
+            if (string.IsNullOrWhiteSpace(json)) return false;
 
             var result = JsonSerializer.Deserialize<OrderDetailResponse>(json, JsonOptions);
-            if (result?.succ != true || result.data?.details == null) return;
+            if (result?.succ != true || result.data?.details == null) return false;
 
             if (dict.TryGetValue(waybill, out var row))
             {
                 ApplyOrderDetail(row, result.data.details);
             }
+            return true;
         }
 
         private static void ApplyOrderDetail(WaybillDbModel row, OrderDetailInfo info)

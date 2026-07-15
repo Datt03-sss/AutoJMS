@@ -17,6 +17,8 @@ namespace AutoJMS.FullStack.Services
     {
         private const int PageSize = 100;
         private const int MaxRetriesPerPage = 3;
+        // Pages 2..N are fetched concurrently (page 1 first gives the total page count).
+        private const int PageConcurrency = 5;
         private const string InventoryRouteName = "DetentionMonitoringDB";
         private const string InventoryRouterNameList = "%E7%BB%8F%E8%90%A5%E6%8C%87%E6%A0%87%3E%E6%B4%BE%E4%BB%B6%E7%AB%AF%3E%E7%95%99%E4%BB%93%E7%9B%91%E6%8E%A7DB";
         private const string InventoryDimension = "3";
@@ -118,198 +120,207 @@ namespace AutoJMS.FullStack.Services
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<InventoryFetchItem>();
+            var collectLock = new object();
             string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/take_ret_mon_detail_doris2");
             string start = startDate.ToString("yyyy-MM-dd HH:mm:ss");
             string end = endDate.ToString("yyyy-MM-dd HH:mm:ss");
-            int currentPage = 1;
-            int? totalPages = null;
-            int totalRecords = 0;
-            bool isNoData = false;
 
-            while (!ct.IsCancellationRequested)
+            // Collect new codes from a page under lock, then hand them to the consumer (tracking).
+            async Task AbsorbPageAsync(int page, IReadOnlyList<string> waybills)
             {
-                bool pageSuccess = false;
-                int recordsOnPage = 0;
-                int pagesOnPage = 0;
-                List<string> pageNewCodes = null;
-
-                for (int retry = 1; retry <= MaxRetriesPerPage && !pageSuccess; retry++)
+                List<string> newCodes = new();
+                lock (collectLock)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    try
+                    foreach (var raw in waybills)
                     {
-                        var payload = new Dictionary<string, object>
+                        if (string.IsNullOrWhiteSpace(raw)) continue;
+                        var wb = raw.Trim().ToUpperInvariant();
+                        if (seen.Add(wb))
                         {
-                            { "current", currentPage },
-                            { "size", PageSize },
-                            { "dimension", InventoryDimension },
-                            { "isFlag", "1" },
-                            { "actionSiteCode", actionSiteCode },
-                            { "startDate", start },
-                            { "endDate", end },
-                            { "countryId", "1" }
-                        };
-
-                        var body = JsonSerializer.Serialize(payload, AppConfig.CreateJsonOptions());
-
-                        string dbgTok = JmsAuthStateService.HasToken ? (JmsAuthStateService.CurrentToken ?? "") : "";
-                        string dbgTokMask = dbgTok.Length >= 8 ? $"{dbgTok.Substring(0, 4)}...{dbgTok.Substring(dbgTok.Length - 4)}" : (dbgTok.Length == 0 ? "<none>" : "<short>");
-
-                        AppLogger.Info($"[FullStackSync] endpoint={url}");
-                        AppLogger.Info($"[FullStackSync] method=POST");
-                        AppLogger.Info($"[FullStackSync] actionSiteCode={actionSiteCode}");
-                        AppLogger.Info($"[FullStackSync] startDate={start}");
-                        AppLogger.Info($"[FullStackSync] endDate={end}");
-                        AppLogger.Info($"[FullStackSync] page={currentPage}");
-                        AppLogger.Info($"[FullStackSync] pageSize={PageSize}");
-                        AppLogger.Info($"[FullStackSync] dimension={InventoryDimension}");
-                        AppLogger.Info($"[FullStackSync] isFlag=1");
-                        AppLogger.Info($"[FullStackSync] tokenSource=memory/webview/config");
-                        AppLogger.Info($"[FullStackSync] tokenPresent={!string.IsNullOrEmpty(dbgTok)}");
-
-                        using var res = await JmsApiClient.PostJsonAsync(
-                            url,
-                            body,
-                            routeName: InventoryRouteName,
-                            routerNameList: InventoryRouterNameList,
-                            origin: "https://jms.jtexpress.vn",
-                            ct: ct).ConfigureAwait(false);
-
-                        if (res == null)
-                        {
-                            AppLogger.Error("[FullStackSync] FULLSTACK_SYNC_HTTP_ERROR: null response.");
-                            throw new Exception("JMS API transport error (null response).");
+                            items.Add(new InventoryFetchItem { WaybillNo = wb, PageNo = page });
+                            newCodes.Add(wb);
                         }
-
-                        AppLogger.Info($"[FullStackSync] httpStatus={(int)res.StatusCode}");
-
-                        if ((int)res.StatusCode == 401)
-                        {
-                            AppLogger.Warning("[FullStackSync] FULLSTACK_SYNC_AUTH_ERROR: 401 Unauthorized.");
-                            return new InventoryFetchResult { Success = false, ErrorCode = "AUTH_ERROR", ErrorMessage = "JMS auth expired or invalid." };
-                        }
-
-                        var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-
-                        AppLogger.Info($"[FullStackSync] rawLength={json.Length}");
-                        AppLogger.Info($"[FullStackSync] rawFirst500={Truncate(json, 500)}");
-
-                        if (!res.IsSuccessStatusCode)
-                        {
-                            AppLogger.Error($"[FullStackSync] FULLSTACK_SYNC_HTTP_ERROR: HTTP {(int)res.StatusCode}");
-                            throw new Exception($"HTTP {(int)res.StatusCode}: {Truncate(json, 300)}");
-                        }
-
-                        if (string.IsNullOrWhiteSpace(json))
-                        {
-                            AppLogger.Error("[FullStackSync] FULLSTACK_SYNC_HTTP_ERROR: empty body");
-                            throw new Exception("API JMS trả về body rỗng");
-                        }
-
-                        using var doc = JsonDocument.Parse(json);
-                        var root = doc.RootElement;
-
-                        int jsonCode = root.TryGetProperty("code", out var codeEl) && codeEl.ValueKind == JsonValueKind.Number && codeEl.TryGetInt32(out var cVal) ? cVal : -1;
-                        string jsonMsg = root.TryGetProperty("msg", out var msgEl) && msgEl.ValueKind == JsonValueKind.String ? (msgEl.GetString() ?? "") : "";
-                        bool succFlag = root.TryGetProperty("succ", out var succEl) && succEl.ValueKind == JsonValueKind.True;
-                        AppLogger.Info($"[FullStackSync] json.code={jsonCode}");
-                        AppLogger.Info($"[FullStackSync] json.msg={jsonMsg}");
-
-                        if (jsonCode != 1 && !succFlag)
-                        {
-                            AppLogger.Error($"[FullStackSync] FULLSTACK_SYNC_JMS_ERROR: code={jsonCode}, msg={jsonMsg}");
-                            return new InventoryFetchResult { Success = false, ErrorCode = "JMS_ERROR", ErrorMessage = string.IsNullOrEmpty(jsonMsg) ? $"JMS code={jsonCode}" : jsonMsg };
-                        }
-
-                        var recordsNode = FindRecordsArray(root, out string detectedRecordsPath);
-                        int detectedTotal = FindTotal(root, out string detectedTotalPath);
-                        int detectedPages = FindPages(root);
-                        AppLogger.Info($"[FullStackSync] detectedRecordsPath={detectedRecordsPath}");
-                        AppLogger.Info($"[FullStackSync] detectedTotalPath={detectedTotalPath}");
-
-                        if (recordsNode.ValueKind == JsonValueKind.Array)
-                        {
-                            recordsOnPage = recordsNode.GetArrayLength();
-                            var collected = new List<string>();
-                            foreach (var record in recordsNode.EnumerateArray())
-                            {
-                                var waybill = ExtractBillcode(record);
-                                if (string.IsNullOrWhiteSpace(waybill)) continue;
-                                waybill = waybill.Trim().ToUpperInvariant();
-                                if (seen.Add(waybill))
-                                {
-                                    items.Add(new InventoryFetchItem { WaybillNo = waybill, PageNo = currentPage });
-                                    collected.Add(waybill);
-                                }
-                            }
-                            pageNewCodes = collected;
-                        }
-                        else if (detectedTotal > 0)
-                        {
-                            AppLogger.Error($"[FullStackSync] FULLSTACK_SYNC_PARSER_ERROR: total={detectedTotal} but no records array. keys=[{string.Join(",", EnumerateKeys(root))}]");
-                            return new InventoryFetchResult { Success = false, ErrorCode = "PARSER_ERROR", ErrorMessage = "Có dữ liệu nhưng không tìm thấy mảng records." };
-                        }
-                        else
-                        {
-                            AppLogger.Warning("[FullStackSync] FULLSTACK_SYNC_NO_DATA: total=0 and no records.");
-                            isNoData = true;
-                            recordsOnPage = 0;
-                        }
-
-                        if (detectedTotal > 0) totalRecords = detectedTotal;
-                        pagesOnPage = detectedPages;
-
-                        AppLogger.Info($"[FullStackSync] page={currentPage} records={recordsOnPage} pages={pagesOnPage} collected={items.Count}");
-                        Debug.WriteLine($"[FullStackSync] page={currentPage}, records={recordsOnPage}, pages={pagesOnPage}, collected={items.Count}");
-                        pageSuccess = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        if (retry >= MaxRetriesPerPage)
-                        {
-                            AppLogger.Error($"[FullStackSync] FULLSTACK_SYNC_HTTP_ERROR: page={currentPage} failed after retry={retry}", ex);
-                            return new InventoryFetchResult { Success = false, ErrorCode = "HTTP_ERROR", ErrorMessage = ex.Message };
-                        }
-
-                        var delay = TimeSpan.FromSeconds(Math.Min(10, retry * 2));
-                        AppLogger.Warning($"[FullStackSync] page={currentPage} retry={retry}/{MaxRetriesPerPage} after {delay.TotalSeconds}s: {ex.Message}");
-                        await Task.Delay(delay, ct).ConfigureAwait(false);
                     }
                 }
-
-                if (pageSuccess)
+                if (onPageCodes != null && newCodes.Count > 0)
                 {
-                    // Hand this page's new codes to the consumer immediately (start tracking now).
-                    if (onPageCodes != null && pageNewCodes != null && pageNewCodes.Count > 0)
-                    {
-                        try
-                        {
-                            await onPageCodes(pageNewCodes, ct).ConfigureAwait(false);
-                        }
-                        catch (OperationCanceledException) { throw; }
-                        catch (Exception cbEx)
-                        {
-                            AppLogger.Warning($"[FullStackSync] onPageCodes callback error page={currentPage}: {cbEx.Message}");
-                        }
-                    }
-
-                    if (recordsOnPage == 0) break;
-                    if (totalPages == null && pagesOnPage > 0) totalPages = pagesOnPage;
-                    if (totalPages.HasValue && currentPage >= totalPages.Value) break;
+                    try { await onPageCodes(newCodes, ct).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception cbEx) { AppLogger.Warning($"[FullStackSync] onPageCodes callback error page={page}: {cbEx.Message}"); }
                 }
-
-                currentPage++;
-                await Task.Delay(250, ct).ConfigureAwait(false);
             }
 
+            // Page 1 first — it establishes total page count for parallel fetching.
+            var first = await FetchOnePageAsync(url, actionSiteCode, start, end, 1, ct).ConfigureAwait(false);
+            if (!first.Ok)
+                return new InventoryFetchResult { Success = false, ErrorCode = first.ErrorCode, ErrorMessage = first.ErrorMessage };
+
+            int totalRecords = first.Total;
+            await AbsorbPageAsync(1, first.Waybills).ConfigureAwait(false);
+
+            if (first.IsNoData || first.Waybills.Count == 0)
+            {
+                return new InventoryFetchResult
+                {
+                    Success = true,
+                    IsNoData = items.Count == 0,
+                    Items = items,
+                    TotalPages = 1,
+                    TotalRecords = totalRecords > 0 ? totalRecords : items.Count
+                };
+            }
+
+            // Determine total pages: prefer reported pages, else derive from total, else -1 (unknown).
+            int totalPages = first.Pages > 0
+                ? first.Pages
+                : (first.Total > 0 ? (int)Math.Ceiling(first.Total / (double)PageSize) : -1);
+
+            if (totalPages > 1)
+            {
+                // Fetch pages 2..N concurrently (bounded), absorbing each as it arrives.
+                var pageNumbers = Enumerable.Range(2, totalPages - 1).ToList();
+                await Parallel.ForEachAsync(
+                    pageNumbers,
+                    new ParallelOptions { MaxDegreeOfParallelism = PageConcurrency, CancellationToken = ct },
+                    async (page, token) =>
+                    {
+                        var pr = await FetchOnePageAsync(url, actionSiteCode, start, end, page, token).ConfigureAwait(false);
+                        if (!pr.Ok)
+                        {
+                            // Don't abort the whole sync for one bad page — log and continue.
+                            AppLogger.Warning($"[FullStackSync] page={page} skipped: {pr.ErrorCode}/{pr.ErrorMessage}");
+                            return;
+                        }
+                        if (pr.Total > 0) System.Threading.Interlocked.Exchange(ref totalRecords, pr.Total);
+                        await AbsorbPageAsync(page, pr.Waybills).ConfigureAwait(false);
+                    }).ConfigureAwait(false);
+            }
+            else if (totalPages < 0)
+            {
+                // Unknown page count: fall back to sequential paging until an empty page.
+                int page = 2;
+                while (!ct.IsCancellationRequested)
+                {
+                    var pr = await FetchOnePageAsync(url, actionSiteCode, start, end, page, ct).ConfigureAwait(false);
+                    if (!pr.Ok)
+                    {
+                        AppLogger.Warning($"[FullStackSync] page={page} stop (fallback): {pr.ErrorCode}/{pr.ErrorMessage}");
+                        break;
+                    }
+                    if (pr.Waybills.Count == 0) break;
+                    if (pr.Total > 0) totalRecords = pr.Total;
+                    await AbsorbPageAsync(page, pr.Waybills).ConfigureAwait(false);
+                    page++;
+                }
+            }
+
+            AppLogger.Info($"[FullStackSync] fetch done pages~{Math.Max(totalPages, 1)} collected={items.Count} totalRecords={totalRecords}");
             return new InventoryFetchResult
             {
                 Success = true,
-                IsNoData = isNoData || items.Count == 0,
+                IsNoData = items.Count == 0,
                 Items = items,
-                TotalPages = totalPages ?? currentPage,
+                TotalPages = totalPages > 0 ? totalPages : 1,
                 TotalRecords = totalRecords > 0 ? totalRecords : items.Count
             };
+        }
+
+        private sealed class PageFetch
+        {
+            public bool Ok;
+            public string ErrorCode;
+            public string ErrorMessage;
+            public List<string> Waybills = new();
+            public int Pages;
+            public int Total;
+            public bool IsNoData;
+        }
+
+        // Fetches a single inventory page with retries. Returns the raw billcodes on the page
+        // (deduplication is done by the caller under a lock).
+        private async Task<PageFetch> FetchOnePageAsync(string url, string actionSiteCode, string start, string end, int page, CancellationToken ct)
+        {
+            for (int retry = 1; retry <= MaxRetriesPerPage; retry++)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var payload = new Dictionary<string, object>
+                    {
+                        { "current", page },
+                        { "size", PageSize },
+                        { "dimension", InventoryDimension },
+                        { "isFlag", "1" },
+                        { "actionSiteCode", actionSiteCode },
+                        { "startDate", start },
+                        { "endDate", end },
+                        { "countryId", "1" }
+                    };
+                    var body = JsonSerializer.Serialize(payload, AppConfig.CreateJsonOptions());
+
+                    using var res = await JmsApiClient.PostJsonAsync(
+                        url, body,
+                        routeName: InventoryRouteName,
+                        routerNameList: InventoryRouterNameList,
+                        origin: "https://jms.jtexpress.vn",
+                        ct: ct).ConfigureAwait(false);
+
+                    if (res == null) throw new Exception("JMS API transport error (null response).");
+                    if ((int)res.StatusCode == 401)
+                        return new PageFetch { Ok = false, ErrorCode = "AUTH_ERROR", ErrorMessage = "JMS auth expired or invalid." };
+
+                    var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) throw new Exception($"HTTP {(int)res.StatusCode}: {Truncate(json, 200)}");
+                    if (string.IsNullOrWhiteSpace(json)) throw new Exception("API JMS trả về body rỗng");
+
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    int jsonCode = root.TryGetProperty("code", out var codeEl) && codeEl.ValueKind == JsonValueKind.Number && codeEl.TryGetInt32(out var cVal) ? cVal : -1;
+                    string jsonMsg = root.TryGetProperty("msg", out var msgEl) && msgEl.ValueKind == JsonValueKind.String ? (msgEl.GetString() ?? "") : "";
+                    bool succFlag = root.TryGetProperty("succ", out var succEl) && succEl.ValueKind == JsonValueKind.True;
+                    if (jsonCode != 1 && !succFlag)
+                        return new PageFetch { Ok = false, ErrorCode = "JMS_ERROR", ErrorMessage = string.IsNullOrEmpty(jsonMsg) ? $"JMS code={jsonCode}" : jsonMsg };
+
+                    var recordsNode = FindRecordsArray(root, out _);
+                    int detectedTotal = FindTotal(root, out _);
+                    int detectedPages = FindPages(root);
+                    var result = new PageFetch { Ok = true, Pages = detectedPages, Total = detectedTotal };
+
+                    if (recordsNode.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var record in recordsNode.EnumerateArray())
+                        {
+                            var waybill = ExtractBillcode(record);
+                            if (!string.IsNullOrWhiteSpace(waybill)) result.Waybills.Add(waybill);
+                        }
+                    }
+                    else if (detectedTotal > 0)
+                    {
+                        return new PageFetch { Ok = false, ErrorCode = "PARSER_ERROR", ErrorMessage = "Có dữ liệu nhưng không tìm thấy mảng records." };
+                    }
+                    else
+                    {
+                        result.IsNoData = true;
+                    }
+
+                    AppLogger.Info($"[FullStackSync] page={page} records={result.Waybills.Count} pages={detectedPages} total={detectedTotal}");
+                    return result;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    if (retry >= MaxRetriesPerPage)
+                    {
+                        AppLogger.Error($"[FullStackSync] FULLSTACK_SYNC_HTTP_ERROR: page={page} failed after retry={retry}", ex);
+                        return new PageFetch { Ok = false, ErrorCode = "HTTP_ERROR", ErrorMessage = ex.Message };
+                    }
+                    var delay = TimeSpan.FromSeconds(Math.Min(10, retry * 2));
+                    AppLogger.Warning($"[FullStackSync] page={page} retry={retry}/{MaxRetriesPerPage} after {delay.TotalSeconds}s: {ex.Message}");
+                    await Task.Delay(delay, ct).ConfigureAwait(false);
+                }
+            }
+            return new PageFetch { Ok = false, ErrorCode = "HTTP_ERROR", ErrorMessage = "exhausted retries" };
         }
 
         private static IEnumerable<string> EnumerateKeys(JsonElement obj)
