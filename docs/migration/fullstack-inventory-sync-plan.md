@@ -83,6 +83,31 @@ Nguyên tắc: **không bao giờ DELETE**. Chỉ INSERT mã mới + UPDATE mã 
 - **Trigger tự dừng** đảm bảo vận đơn "Ký nhận CPN"/"Kết thúc" không bao giờ bị lên lịch tracking lại, kể cả khi client quên gọi `finalize_waybills`.
 - Index partial `where is_active` giữ scheduler chỉ quét tập đang mở.
 
-## 4. Kiểm thử
+## 4. Tăng tốc tracking toàn bộ mã đã lấy
 
-Đã smoke test trên `autojms_database`: finalize dừng đúng, trigger tự dừng khi merge "Kết thúc", mark_left_inventory giữ active cho mã rời kho, và **không dòng nào bị xoá**. Dữ liệu test đã dọn.
+- **Ghi theo lô**: đẩy cả tập waybill vào 1 lần gọi `merge_waybill_rows_v2(site, jsonb[...])` (chunk 500–1000 dòng), không insert từng dòng.
+- **Scheduler dựa index partial** `idx_waybills_site_due_active (site_code, next_track_at) where is_active`: mỗi vòng tracking chỉ quét đúng tập đơn **còn active + tới hạn**, bỏ qua toàn bộ đơn đã terminal → giảm mạnh khối lượng quét khi DB lớn.
+- **Realtime**: bảng `waybills` đã nằm trong publication `supabase_realtime` → client nhận thay đổi tức thời, không cần poll toàn bảng.
+- **Delta pull** `pull_waybill_delta(site, since, limit)` chỉ trả dòng có `updated_at > since` → đồng bộ xuống client cực nhẹ.
+- **Dừng tracking sớm**: trigger `waybills_stop_on_final` + `finalize_waybills` loại đơn "Ký nhận CPN"/"Kết thúc" khỏi vòng lặp tracking ngay khi đạt trạng thái cuối → không tốn công theo dõi đơn đã xong.
+
+## 5. Chính sách lưu trữ 30 ngày & dọn dữ liệu (migration `202607150004`)
+
+Quy tắc (chủ dự án chốt 2026-07-15):
+
+| Trạng thái | Xử lý |
+|---|---|
+| **Ký nhận CPN** | **Xóa ngay** khỏi DB (bất kể tuổi). App gọi `purge_signed_receipts(site)` sau mỗi lần sync; cron dọn nốt hằng ngày. |
+| **Kết thúc** (chưa xử lý) | **Giữ vô thời hạn** để xử lý khiếu nại "Trọng tài". Không bị retention 30 ngày đụng tới. |
+| **Kết thúc** (đã xử lý) | Đánh dấu `mark_waybill_handled(site, [mã], true)` → cron xóa ở lần chạy kế. |
+| Còn lại (đang theo dõi...) | **Retention 30 ngày** theo `updated_at`, quá hạn thì xóa. |
+
+Cơ chế tự động: **pg_cron** job `autojms-retention-daily` chạy `0 18 * * *` (UTC = 01:00 giờ VN) gọi `run_retention_cleanup(30)`. Hàm này KHÔNG cấp quyền cho anon/authenticated (chỉ cron chạy). Trả về JSON đếm số dòng đã purge mỗi loại.
+
+## 6. Kiểm thử
+
+Đã smoke test trên `autojms_database`:
+
+- Sync: finalize dừng đúng, trigger tự dừng khi merge "Kết thúc", mark_left_inventory giữ active cho mã rời kho, **không dòng nào bị xoá ngoài ý muốn**.
+- Retention: "Ký nhận CPN" → xóa ngay; "Kết thúc" chưa xử lý (kể cả 90 ngày tuổi) → giữ; "Kết thúc" đã xử lý → xóa; đơn thường >30 ngày → xóa; đơn mới → giữ. `purge_signed_receipts` xóa tức thì đúng. Cron job `autojms-retention-daily` active.
+- Dữ liệu test đã dọn sạch.
