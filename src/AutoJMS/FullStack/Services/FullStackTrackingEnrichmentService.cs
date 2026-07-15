@@ -72,8 +72,14 @@ namespace AutoJMS.FullStack.Services
 
             var codeList = queryCodes.ToList();
 
-            // Stage 1 — bulk tracking status (up to 40 waybills per request), parallel across batches.
-            // This is what drives the dashboard queues, so it lands first and fast.
+            // Stage 1 — route history only ("Hành trình vận chuyển"): bulk tracking status
+            // (up to 40 waybills per request), parallel across batches. This is the ONLY network
+            // work the background sync does now — the dashboard queues land first and fast.
+            //
+            // Order detail ("Thông tin đơn hàng": sender / COD / weight / address / mã đoạn) is NO
+            // LONGER fetched here. It is static per waybill and is fetched on demand when the user
+            // opens a single waybill (double-click) — see FullStackOperation.WaybillDetail — which
+            // persists it back to the DB. Cached detail is preserved on merge (see repository Keep()).
             var batches = codeList.Chunk(BatchSize).ToList();
             await Parallel.ForEachAsync(
                 batches,
@@ -83,23 +89,7 @@ namespace AutoJMS.FullStack.Services
                     await ProcessTrackingBatchAsync(batch.ToArray(), dict, eventDict, token).ConfigureAwait(false);
                 }).ConfigureAwait(false);
 
-            // Cache-once: order detail (sender/COD/weight/address/mã đoạn) is static per waybill, so
-            // only fetch it for codes not already cached in the DB. Re-syncs of the same inventory then
-            // cost just the bulk tracking calls above. Cached detail is preserved on merge (see Keep()).
-            var cached = await _repository.GetWaybillsWithDetailAsync(codeList, ct).ConfigureAwait(false);
-            var detailCodes = codeList.Where(c => !cached.Contains(c)).ToList();
-            AppLogger.Info($"[FullStackTracking] order-detail fetch={detailCodes.Count} new, skipped={cached.Count} cached");
-
-            // Stage 2 — order detail (1 request per waybill, the bottleneck), fully parallel across
-            // the new codes at the full degree of parallelism instead of serially within a batch.
-            await Parallel.ForEachAsync(
-                detailCodes,
-                new ParallelOptions { MaxDegreeOfParallelism = MaxDegreeOfParallelism, CancellationToken = ct },
-                async (code, token) =>
-                {
-                    await CallOrderDetailAsync(code, dict, token).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-
+            // Copy tracking-derived fields from root code to dash-suffixed aliases.
             foreach (var kv in aliasMap)
             {
                 if (dict.TryGetValue(kv.Value, out var src) && dict.TryGetValue(kv.Key, out var dst))
@@ -126,7 +116,11 @@ namespace AutoJMS.FullStack.Services
                 finalRows.Add(ToTrackingRowModel(row));
             }
 
+            // Primary write — route history first, so the dashboard reflects movement immediately.
             await _repository.UpsertTrackingRowsAsync(finalRows, ct).ConfigureAwait(false);
+
+            // Supplemental write — tracking events / journey history land AFTER the route upsert so
+            // they don't delay the dashboard-critical row update.
             var finalEvents = BuildFinalEvents(list, eventDict, aliasMap);
             await _repository.UpsertTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
             try
