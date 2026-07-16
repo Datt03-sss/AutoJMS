@@ -8,29 +8,33 @@ using System.Threading.Tasks;
 
 namespace AutoJMS
 {
-    // Source #2 inventory list: JMS "Chỉ số vận hành → Khâu phát → Thống kê kiểm kho".
-    // Flow surveyed 2026-07-16:
-    //   * aggregate  -> POST bigdataReport/detail/opt_stocktaking_sum
-    //   * "Số đơn tồn" drill-down (the waybill list we need)
-    //                -> POST bigdataReport/detail/opt_stocktaking_ret_detail
-    // Window = "Thời gian tồn 1 ngày" (today 00:00:00 -> today 23:59:59). PageSize fixed at 100.
-    // Same bigdataReport/detail framework as source #1, so the request/response shapes mirror
-    // take_ret_mon_detail_doris2. Pages 2..N are fetched concurrently (page 1 gives total pages).
+    // Source #2 inventory list: JMS "Chỉ số vận hành → Khâu phát → Thống kê kiểm kho → tồn 1 ngày
+    // (today→today) → click Số đơn tồn". Endpoints + exact payloads captured 2026-07-16:
     //
-    // NOTE: the exact request field set for opt_stocktaking_ret_detail could not be captured from
-    // the cross-origin console frame; it is inferred from the sibling source-#1 payload. The succ
-    // check + tolerant parser make a wrong field set fail safe (returns empty, logged) rather than
-    // crash. Verify the first real run via the [StockCheckSync] page logs and adjust BuildPayload
-    // if records come back 0 while the console shows a non-zero "Số đơn tồn".
+    //   aggregate (has scanAgentCode + reserveNum):
+    //     POST bigdataReport/detail/opt_stocktaking_total
+    //     { current, size, dimension:"Network", scanNetworkCode, startDate, endDate, startTime, endTime, countryId }
+    //
+    //   waybill list ("Số đơn tồn" drill-down — what we need):
+    //     POST bigdataReport/detail/opt_stocktaking_ret_detail
+    //     { current, size, scanAgentCode, scanNetworkCode, isFlag:"1", startDate, endDate, countryId }
+    //     -> data.records[].billcode, data.total, data.pages
+    //
+    // scanNetworkCode = AppConfig.ActionSiteCode ("214A02"). scanAgentCode (branch, "208001") is not
+    // in config, so it is resolved once from opt_stocktaking_total. PageSize fixed at 100; pages 2..N
+    // fetched concurrently (page 1 gives total pages).
     public static class StockCheckSyncService
     {
         private const int PageSize = 100;
         private const int MaxRetriesPerPage = 3;
         private const int PageConcurrency = 5;
-        private const string StockCheckRouteName = "MonitoringBi";
-        private const string InventoryDimension = "3";
+        private const string RouteName = "MonitoringBi|crisbiIndex";
+        private const string RouterNameList =
+            "%E7%BB%8F%E8%90%A5%E6%8C%87%E6%A0%87%3E%E6%B4%BE%E4%BB%B6%E7%AB%AF%3E%E7%9B%98%E5%BA%93%E6%8A%A5%E8%A1%A8";
+        private const string TotalPath = "businessindicator/bigdataReport/detail/opt_stocktaking_total";
+        private const string DetailPath = "businessindicator/bigdataReport/detail/opt_stocktaking_ret_detail";
 
-        private static string GetActionSiteCode()
+        private static string GetNetworkCode()
         {
             if (!string.IsNullOrWhiteSpace(AppConfig.Current.ActionSiteCode))
                 return AppConfig.Current.ActionSiteCode.Trim();
@@ -50,10 +54,14 @@ namespace AutoJMS
 
             var waybills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var collectLock = new object();
-            string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/opt_stocktaking_ret_detail");
-            string actionSiteCode = GetActionSiteCode();
+            string detailUrl = AppConfig.Current.BuildJmsApiUrl(DetailPath);
+            string networkCode = GetNetworkCode();
             string startDate = DateTime.Now.ToString("yyyy-MM-dd 00:00:00");
             string endDate = DateTime.Now.ToString("yyyy-MM-dd 23:59:59");
+
+            // Resolve the branch/agent code (scanAgentCode) once from the aggregate endpoint.
+            string agentCode = await ResolveAgentCodeAsync(networkCode, startDate, endDate, ct).ConfigureAwait(false);
+            AppLogger.Info($"[StockCheckSync] start network={networkCode}, agent={agentCode}, window={startDate}..{endDate}, pageSize={PageSize}");
 
             void Absorb(List<string> codes)
             {
@@ -67,9 +75,7 @@ namespace AutoJMS
                 }
             }
 
-            AppLogger.Info($"[StockCheckSync] start actionSiteCode={actionSiteCode}, window={startDate}..{endDate}, pageSize={PageSize}");
-
-            var first = await FetchOnePageAsync(url, actionSiteCode, startDate, endDate, 1, ct).ConfigureAwait(false);
+            var first = await FetchOnePageAsync(detailUrl, agentCode, networkCode, startDate, endDate, 1, ct).ConfigureAwait(false);
             if (!first.Ok)
             {
                 AppLogger.Error($"[StockCheckSync] page 1 failed: {first.ErrorMessage}");
@@ -90,7 +96,7 @@ namespace AutoJMS
                     new ParallelOptions { MaxDegreeOfParallelism = PageConcurrency, CancellationToken = ct },
                     async (page, token) =>
                     {
-                        var pr = await FetchOnePageAsync(url, actionSiteCode, startDate, endDate, page, token).ConfigureAwait(false);
+                        var pr = await FetchOnePageAsync(detailUrl, agentCode, networkCode, startDate, endDate, page, token).ConfigureAwait(false);
                         if (!pr.Ok) { AppLogger.Warning($"[StockCheckSync] page={page} skipped: {pr.ErrorMessage}"); return; }
                         Absorb(pr.Codes);
                     }).ConfigureAwait(false);
@@ -100,7 +106,7 @@ namespace AutoJMS
                 int page = 2;
                 while (!ct.IsCancellationRequested)
                 {
-                    var pr = await FetchOnePageAsync(url, actionSiteCode, startDate, endDate, page, ct).ConfigureAwait(false);
+                    var pr = await FetchOnePageAsync(detailUrl, agentCode, networkCode, startDate, endDate, page, ct).ConfigureAwait(false);
                     if (!pr.Ok) { AppLogger.Warning($"[StockCheckSync] page={page} stop (fallback): {pr.ErrorMessage}"); break; }
                     if (pr.Codes.Count == 0) break;
                     Absorb(pr.Codes);
@@ -112,6 +118,43 @@ namespace AutoJMS
             return waybills.ToList();
         }
 
+        // Aggregate call — returns scanAgentCode (branch) for the network. Best-effort; on any
+        // failure returns "" and the detail call proceeds with scanNetworkCode only.
+        private static async Task<string> ResolveAgentCodeAsync(string networkCode, string startDate, string endDate, CancellationToken ct)
+        {
+            try
+            {
+                string url = AppConfig.Current.BuildJmsApiUrl(TotalPath);
+                var payload = new Dictionary<string, object>
+                {
+                    { "current", 1 }, { "size", 20 }, { "dimension", "Network" },
+                    { "scanNetworkCode", networkCode },
+                    { "startDate", startDate }, { "endDate", endDate },
+                    { "startTime", startDate }, { "endTime", endDate },
+                    { "countryId", "1" }
+                };
+                using var res = await JmsApiClient.PostJsonAsync(
+                    url, JsonSerializer.Serialize(payload, AppConfig.CreateJsonOptions()),
+                    routeName: RouteName, routerNameList: RouterNameList,
+                    origin: "https://jms.jtexpress.vn", ct: ct).ConfigureAwait(false);
+                if (res == null || !res.IsSuccessStatusCode) return "";
+                var json = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(json)) return "";
+                using var doc = JsonDocument.Parse(json);
+                var records = FindRecordsArray(doc.RootElement);
+                if (records.ValueKind == JsonValueKind.Array)
+                    foreach (var r in records.EnumerateArray())
+                        if (r.ValueKind == JsonValueKind.Object && r.TryGetProperty("scanAgentCode", out var a))
+                        {
+                            var v = a.ValueKind == JsonValueKind.String ? a.GetString() : a.GetRawText();
+                            if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+                        }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { AppLogger.Warning($"[StockCheckSync] resolve agentCode failed: {ex.Message}"); }
+            return "";
+        }
+
         private sealed class PageFetch
         {
             public bool Ok;
@@ -121,30 +164,34 @@ namespace AutoJMS
             public int Total;
         }
 
-        private static object BuildPayload(int page, string actionSiteCode, string startDate, string endDate) =>
-            new Dictionary<string, object>
+        private static object BuildDetailPayload(int page, string agentCode, string networkCode, string startDate, string endDate)
+        {
+            var p = new Dictionary<string, object>
             {
                 { "current", page },
                 { "size", PageSize },
-                { "dimension", InventoryDimension },
+                { "scanNetworkCode", networkCode },
                 { "isFlag", "1" },
-                { "actionSiteCode", actionSiteCode },
                 { "startDate", startDate },
                 { "endDate", endDate },
                 { "countryId", "1" }
             };
+            if (!string.IsNullOrWhiteSpace(agentCode)) p["scanAgentCode"] = agentCode;
+            return p;
+        }
 
-        private static async Task<PageFetch> FetchOnePageAsync(string url, string actionSiteCode, string startDate, string endDate, int page, CancellationToken ct)
+        private static async Task<PageFetch> FetchOnePageAsync(string url, string agentCode, string networkCode, string startDate, string endDate, int page, CancellationToken ct)
         {
             for (int retry = 1; retry <= MaxRetriesPerPage; retry++)
             {
                 ct.ThrowIfCancellationRequested();
                 try
                 {
-                    var body = JsonSerializer.Serialize(BuildPayload(page, actionSiteCode, startDate, endDate), AppConfig.CreateJsonOptions());
+                    var body = JsonSerializer.Serialize(BuildDetailPayload(page, agentCode, networkCode, startDate, endDate), AppConfig.CreateJsonOptions());
                     using var res = await JmsApiClient.PostJsonAsync(
                         url, body,
-                        routeName: StockCheckRouteName,
+                        routeName: RouteName,
+                        routerNameList: RouterNameList,
                         origin: "https://jms.jtexpress.vn",
                         ct: ct).ConfigureAwait(false);
                     if (res == null) throw new Exception("JMS API transport error (null response).");
@@ -204,15 +251,15 @@ namespace AutoJMS
                 new[] { "data", "records" }, new[] { "data", "list" }, new[] { "data", "rows" },
                 new[] { "data", "result" }, new[] { "records" }, new[] { "rows" }, new[] { "list" }
             };
-            foreach (var c in candidates)
-                if (TryGetByPath(root, c, out var el) && el.ValueKind == JsonValueKind.Array) return el;
+            foreach (var cand in candidates)
+                if (TryGetByPath(root, cand, out var el) && el.ValueKind == JsonValueKind.Array) return el;
             return default;
         }
 
         private static int FindInt(JsonElement root, string[][] candidates)
         {
-            foreach (var c in candidates)
-                if (TryGetByPath(root, c, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var v)) return v;
+            foreach (var cand in candidates)
+                if (TryGetByPath(root, cand, out var el) && el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var v)) return v;
             return 0;
         }
 
