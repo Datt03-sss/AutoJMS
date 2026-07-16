@@ -27,6 +27,14 @@ namespace AutoJMS
 
         private static readonly HttpClient _http = CreateClient();
 
+        // Global JMS concurrency governor. Every JMS POST goes through this gate, so the TOTAL
+        // number of in-flight requests to the JMS gateway is bounded app-wide regardless of how
+        // many callers (inventory paging, stock-check paging, route tracking, order detail) run
+        // in parallel at once. This prevents their independent parallelism from stacking and
+        // tripping JMS IP-locking, while still allowing high throughput up to the cap.
+        private const int MaxConcurrentJmsRequests = 12;
+        private static readonly SemaphoreSlim _jmsGate = new(MaxConcurrentJmsRequests, MaxConcurrentJmsRequests);
+
         private static HttpClient CreateClient()
         {
             var handler = new HttpClientHandler
@@ -94,44 +102,53 @@ namespace AutoJMS
             string origin,
             CancellationToken ct)
         {
-            // Ensure we start from the best token we can find.
-            string token = await JmsAuthTokenService.ResolveTokenAsync(ct).ConfigureAwait(false);
-
-            // ---- Attempt 1 -------------------------------------------------
-            var resp = await SendOnceAsync(url, jsonBody, token, routeName, routerNameList, origin, ct)
-                            .ConfigureAwait(false);
-
-            var (expired1, body1) = await ClassifyAsync(resp).ConfigureAwait(false);
-            if (!expired1)
+            // Global governor: cap total in-flight JMS requests app-wide.
+            await _jmsGate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                // success or non-auth error — return as-is, do NOT touch token.
-                return resp;
+                // Ensure we start from the best token we can find.
+                string token = await JmsAuthTokenService.ResolveTokenAsync(ct).ConfigureAwait(false);
+
+                // ---- Attempt 1 -------------------------------------------------
+                var resp = await SendOnceAsync(url, jsonBody, token, routeName, routerNameList, origin, ct)
+                                .ConfigureAwait(false);
+
+                var (expired1, body1) = await ClassifyAsync(resp).ConfigureAwait(false);
+                if (!expired1)
+                {
+                    // success or non-auth error — return as-is, do NOT touch token.
+                    return resp;
+                }
+
+                AppLogger.Warning($"[JmsApi] first401 endpoint={Shorten(url)} status={(int)resp.StatusCode} body={BodyPreview(body1)}");
+                resp.Dispose();
+
+                // ---- Force refresh from WebView2 (UI thread, single-flight) ----
+                string oldToken = token;
+                string refreshed = await JmsAuthTokenService.ForceRefreshFromWebViewAsync().ConfigureAwait(false);
+                bool tokenChanged = !string.Equals(oldToken, refreshed, StringComparison.Ordinal);
+                AppLogger.Info($"[JmsApi] refresh result: changed={(tokenChanged ? "yes" : "no")}, len={(refreshed?.Length ?? 0)} " +
+                               $"(unchanged token is fine — JMS authToken can stay constant for a whole session).");
+
+                // ---- Retry EXACTLY ONCE, even if the token is unchanged --------
+                var resp2 = await SendOnceAsync(url, jsonBody, refreshed, routeName, routerNameList, origin, ct)
+                                 .ConfigureAwait(false);
+
+                var (expired2, body2) = await ClassifyAsync(resp2).ConfigureAwait(false);
+                if (expired2)
+                {
+                    AppLogger.Warning($"[JmsApi] retry result=still-expired endpoint={Shorten(url)} status={(int)resp2.StatusCode} body={BodyPreview(body2)}. Confirmed expired.");
+                    JmsAuthTokenService.NotifyReallyExpired();
+                    return resp2; // caller sees the 401 and bails gracefully
+                }
+
+                AppLogger.Info($"[JmsApi] retry result=success endpoint={Shorten(url)} (no login prompt needed).");
+                return resp2;
             }
-
-            AppLogger.Warning($"[JmsApi] first401 endpoint={Shorten(url)} status={(int)resp.StatusCode} body={BodyPreview(body1)}");
-            resp.Dispose();
-
-            // ---- Force refresh from WebView2 (UI thread, single-flight) ----
-            string oldToken = token;
-            string refreshed = await JmsAuthTokenService.ForceRefreshFromWebViewAsync().ConfigureAwait(false);
-            bool tokenChanged = !string.Equals(oldToken, refreshed, StringComparison.Ordinal);
-            AppLogger.Info($"[JmsApi] refresh result: changed={(tokenChanged ? "yes" : "no")}, len={(refreshed?.Length ?? 0)} " +
-                           $"(unchanged token is fine — JMS authToken can stay constant for a whole session).");
-
-            // ---- Retry EXACTLY ONCE, even if the token is unchanged --------
-            var resp2 = await SendOnceAsync(url, jsonBody, refreshed, routeName, routerNameList, origin, ct)
-                             .ConfigureAwait(false);
-
-            var (expired2, body2) = await ClassifyAsync(resp2).ConfigureAwait(false);
-            if (expired2)
+            finally
             {
-                AppLogger.Warning($"[JmsApi] retry result=still-expired endpoint={Shorten(url)} status={(int)resp2.StatusCode} body={BodyPreview(body2)}. Confirmed expired.");
-                JmsAuthTokenService.NotifyReallyExpired();
-                return resp2; // caller sees the 401 and bails gracefully
+                _jmsGate.Release();
             }
-
-            AppLogger.Info($"[JmsApi] retry result=success endpoint={Shorten(url)} (no login prompt needed).");
-            return resp2;
         }
 
         private static async Task<byte[]> GetByteArrayInternalAsync(string url, CancellationToken ct)
