@@ -355,6 +355,116 @@ LIMIT 2000;";
             AppLogger.Info($"[HybridSync] pushed waybills={rows.Count} merged={pushed} site={site}");
         }
 
+        // Scoped push (any machine, no lease, no cursor): pushes the current local rows for a small
+        // set of waybills straight to Supabase so other machines see them within seconds. Reuses the
+        // same SELECT/mapping as PushDashboardRowsAsync but filters by waybill_no and does NOT touch
+        // the cloud_push_waybills_at cursor (that belongs to the leader's full push).
+        public async Task PushWaybillRowsAsync(IReadOnlyList<string> waybillNos, CancellationToken ct)
+        {
+            if (!IsEnabled || waybillNos == null) return;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var codes = new List<string>();
+            foreach (var w in waybillNos)
+            {
+                if (string.IsNullOrWhiteSpace(w)) continue;
+                var c = w.Trim().ToUpperInvariant();
+                if (seen.Add(c)) codes.Add(c);
+            }
+            if (codes.Count == 0) return;
+
+            var site = ResolveSiteCode();
+            var rows = new List<object>();
+
+            await using (var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false))
+            await using (var command = connection.CreateCommand())
+            {
+                var names = new List<string>(codes.Count);
+                for (int i = 0; i < codes.Count; i++)
+                {
+                    string p = "$w" + i;
+                    names.Add(p);
+                    command.Parameters.AddWithValue(p, codes[i]);
+                }
+
+                command.CommandText = @"
+SELECT waybill_no, is_in_current_inventory, left_inventory_at, first_seen_at, last_seen_at,
+       current_state, current_status, last_action, last_action_time, last_site_code,
+       last_site_name, employee_code, employee_name, receiver_name, receiver_phone_masked,
+       age_hours, days_in_inventory, risk_score, risk_level, risk_reasons, sla_status,
+       sla_deadline, trang_thai_hien_tai, thao_tac_cuoi, thoi_gian_thao_tac,
+       thoi_gian_yeu_cau_phat_lai, nhan_vien_kien_van_de, nguyen_nhan_kien_van_de,
+       buu_cuc_thao_tac, nguoi_thao_tac, dau_chuyen_hoan, dia_chi_nhan_hang, phuong,
+       noi_dung_hang_hoa, cod_thuc_te, pttt, nhan_vien_nhan_hang, dia_chi_lay_hang,
+       thoi_gian_nhan_hang, ten_nguoi_gui, trong_luong, ma_doan_full, ma_doan_1,
+       ma_doan_2, ma_doan_3, reback_status, in_hoan_scan_time, print_count, updated_at
+FROM fs_waybills
+WHERE waybill_no IN (" + string.Join(",", names) + @");";
+
+                await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    string updatedAt = S(reader, 48);
+                    rows.Add(new
+                    {
+                        waybill_no = S(reader, 0),
+                        is_in_current_inventory = I(reader, 1) != 0,
+                        left_inventory_at = S(reader, 2),
+                        first_seen_at = S(reader, 3),
+                        last_seen_at = S(reader, 4),
+                        current_state = S(reader, 5),
+                        current_status = S(reader, 6),
+                        last_action = S(reader, 7),
+                        last_action_time = S(reader, 8),
+                        last_site_code = S(reader, 9),
+                        last_site_name = S(reader, 10),
+                        employee_code = S(reader, 11),
+                        employee_name = S(reader, 12),
+                        receiver_name = S(reader, 13),
+                        receiver_phone_masked = S(reader, 14),
+                        age_hours = D(reader, 15),
+                        days_in_inventory = D(reader, 16),
+                        risk_score = I(reader, 17),
+                        risk_level = S(reader, 18),
+                        risk_reasons = S(reader, 19),
+                        sla_status = S(reader, 20),
+                        sla_deadline = S(reader, 21),
+                        trang_thai_hien_tai = S(reader, 22),
+                        thao_tac_cuoi = S(reader, 23),
+                        thoi_gian_thao_tac = S(reader, 24),
+                        thoi_gian_yeu_cau_phat_lai = S(reader, 25),
+                        nhan_vien_kien_van_de = S(reader, 26),
+                        nguyen_nhan_kien_van_de = S(reader, 27),
+                        buu_cuc_thao_tac = S(reader, 28),
+                        nguoi_thao_tac = S(reader, 29),
+                        dau_chuyen_hoan = S(reader, 30),
+                        dia_chi_nhan_hang = S(reader, 31),
+                        phuong = S(reader, 32),
+                        noi_dung_hang_hoa = S(reader, 33),
+                        cod_thuc_te = S(reader, 34),
+                        pttt = S(reader, 35),
+                        nhan_vien_nhan_hang = S(reader, 36),
+                        dia_chi_lay_hang = S(reader, 37),
+                        thoi_gian_nhan_hang = S(reader, 38),
+                        ten_nguoi_gui = S(reader, 39),
+                        trong_luong = S(reader, 40),
+                        ma_doan_full = S(reader, 41),
+                        ma_doan_1 = S(reader, 42),
+                        ma_doan_2 = S(reader, 43),
+                        ma_doan_3 = S(reader, 44),
+                        reback_status = S(reader, 45),
+                        in_hoan_scan_time = S(reader, 46),
+                        print_count = I(reader, 47),
+                        updated_at = ParseIsoUtc(updatedAt)
+                    });
+                }
+            }
+
+            if (rows.Count == 0) return;
+            int pushed = await SupabaseDbService.MergeWaybillRowsV2Async(site, rows).ConfigureAwait(false);
+            AppLogger.Info($"[HybridSync] scoped push waybills={rows.Count} merged={pushed} site={site}");
+        }
+
         // ------------------------------------------------------------------
         // Delta pull (all machines): waybills + notes + checks + tasks
         // ------------------------------------------------------------------
