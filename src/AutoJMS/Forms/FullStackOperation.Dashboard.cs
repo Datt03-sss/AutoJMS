@@ -135,7 +135,7 @@ namespace AutoJMS
 
             tabDash_timeUpdateData = CreateHeaderComboBox("tabDash_timeUpdateData");
             tabDash_timeUpdateData.Items.AddRange(new object[] { "2 PHÚT", "5 PHÚT", "10 PHÚT", "30 PHÚT", "1 GIỜ" });
-            tabDash_timeUpdateData.Text = "2 PHÚT";
+            tabDash_timeUpdateData.Text = "30 PHÚT";
 
             tabDash_updateData = CreateHeaderButton("Đồng bộ", 61473, AccentBlue);
             tabDash_updateData.Size = new Size(104, 34);

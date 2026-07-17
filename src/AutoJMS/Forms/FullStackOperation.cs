@@ -145,7 +145,7 @@ namespace AutoJMS
             InitializeEnhancedUI();
             SetupDashToolbar();
             tabDash_dataSource.SelectedIndex = 1;
-            tabDash_timeUpdateData.Text = "2 PHÚT";
+            tabDash_timeUpdateData.Text = "30 PHÚT";
 
             // UI (including _thoiHieuGrid) is now fully built — safe to update grids.
             _uiReady = true;
@@ -436,7 +436,7 @@ namespace AutoJMS
         {
             if (_isSyncRunning) return;
             tabDash_updateData.Enabled = false;
-            tabDash_updateData.Text = "Đang đồng bộ...";
+            tabDash_updateData.Text = "Đang đồng bộ";
             _isSyncRunning = true;
             try
             {
