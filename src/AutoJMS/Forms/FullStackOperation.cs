@@ -178,8 +178,10 @@ namespace AutoJMS
             SetFullStackStatus("AuthToken sẵn sàng - local-first SQLite");
 
             _autoRefreshTimer = new System.Windows.Forms.Timer();
-            _autoRefreshTimer.Interval = 2 * 60 * 1000;
-            _autoRefreshTimer.Tick += async (s, ev) => await LoadDataAndRefreshViewsAsync();
+            // Auto-sync cadence follows the "Cập nhật sau" dropdown (default 30 phút) and runs the
+            // same sync as the manual button (silent — no modal popups).
+            _autoRefreshTimer.Tick += async (s, ev) => await RunSyncAsync(silent: true);
+            tabDash_timeUpdateData_SelectedIndexChanged(null, null); // set interval from the combo
             _autoRefreshTimer.Start();
 
             await LoadDataAndRefreshViewsAsync();
@@ -434,6 +436,14 @@ namespace AutoJMS
 
         private async void tabDash_updateData_Click(object sender, EventArgs e)
         {
+            await RunSyncAsync(silent: false);
+        }
+
+        // Shared sync for the manual "Đồng bộ" button and the auto-refresh timer. The button is
+        // disabled and shows "Đang đồng bộ" for the whole run (manual OR auto) to prevent spam.
+        // Auto (silent) runs skip modal popups and just update the status line.
+        private async Task RunSyncAsync(bool silent)
+        {
             if (_isSyncRunning) return;
             tabDash_updateData.Enabled = false;
             tabDash_updateData.Text = "Đang đồng bộ";
@@ -444,7 +454,8 @@ namespace AutoJMS
                 if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
                 {
                     SetFullStackStatus("Đang chờ đăng nhập / authToken");
-                    MessageBox.Show("Đang chờ đăng nhập JMS / authToken. Vui lòng đăng nhập JMS trước khi đồng bộ tồn kho.", "FullStack local-first", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (!silent)
+                        MessageBox.Show("Đang chờ đăng nhập JMS / authToken. Vui lòng đăng nhập JMS trước khi đồng bộ tồn kho.", "FullStack local-first", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
@@ -484,7 +495,8 @@ namespace AutoJMS
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Lỗi làm mới dữ liệu: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!silent)
+                    MessageBox.Show("Lỗi làm mới dữ liệu: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 SetFullStackStatus("Sync failed");
             }
             finally
@@ -1398,17 +1410,6 @@ namespace AutoJMS
             }
 
             NormalizeGridEmptyCell(e);
-
-            // Format date columns to dd/MM/yyyy
-            if (colName == "Thời gian thao tác" || colName == "Thời gian đến bưu cục")
-            {
-                if (e.Value != null && DateTime.TryParse(e.Value.ToString(), out DateTime dt))
-                {
-                    e.Value = dt.ToString("dd/MM/yyyy");
-                    e.FormattingApplied = true;
-                    return;
-                }
-            }
 
             // Set row background based on state (priority order)
             if (IsSlaBreached(model.ThoiGianNhanHang))
