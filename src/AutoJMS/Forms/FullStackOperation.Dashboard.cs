@@ -173,8 +173,8 @@ namespace AutoJMS
             };
             _dashSearchBox.TextChanged += (s, e) => { if (_lastDashSourceData.Count == 0) return; RefreshFilteredGrid(); UpdateFilterInfo(); };
 
-            _dashDateFrom = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false };
-            _dashDateTo = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false };
+            _dashDateFrom = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false, Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy" };
+            _dashDateTo = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false, Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy" };
 
             layout.Controls.Add(CreateFilterField("Bưu cục", tabDash_dataSource), 0, 0);
             layout.Controls.Add(CreateFilterField("Cập nhật sau", tabDash_timeUpdateData), 1, 0);
