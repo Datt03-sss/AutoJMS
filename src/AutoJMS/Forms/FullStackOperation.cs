@@ -752,12 +752,12 @@ namespace AutoJMS
             {
                 if (_dashDateFrom != null && _dashDateFrom.Checked)
                 {
-                    DateTime from = _dashDateFrom.Value.Date;
+                    DateTime from = _dashDateFrom.Value;
                     filtered = filtered.Where(x => DateTime.TryParse(x.ThoiGianThaoTac, out DateTime t) && t >= from).ToList();
                 }
                 if (_dashDateTo != null && _dashDateTo.Checked)
                 {
-                    DateTime to = _dashDateTo.Value.Date.AddDays(1);
+                    DateTime to = _dashDateTo.Value;
                     filtered = filtered.Where(x => DateTime.TryParse(x.ThoiGianThaoTac, out DateTime t) && t <= to).ToList();
                 }
             }
@@ -2276,8 +2276,8 @@ namespace AutoJMS
                     parts.Add($"🔍 \"{search}\"");
                 if (hasDate)
                 {
-                    string from = _dashDateFrom.Checked ? _dashDateFrom.Value.ToString("dd/MM") : "...";
-                    string to = _dashDateTo.Checked ? _dashDateTo.Value.ToString("dd/MM") : "...";
+                    string from = _dashDateFrom.Checked ? _dashDateFrom.Value.ToString("dd/MM/yyyy HH:mm") : "...";
+                    string to = _dashDateTo.Checked ? _dashDateTo.Value.ToString("dd/MM/yyyy HH:mm") : "...";
                     parts.Add($"📅 {from} - {to}");
                 }
                 _dashFilterInfo.Text = string.Join(" | ", parts);

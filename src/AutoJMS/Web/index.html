@@ -45,13 +45,11 @@ body { margin: 0; }
       <span style="font-size: 11px; color: #8a94a6;">Thời gian tồn kho</span>
       <div style="display: flex; align-items: center; gap: 6px;">
         <div style="display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
-          <input type="date" value="{{ fromDateOnly }}" onchange="{{ onFromDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
-          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="{{ fromTimeOnly }}" oninput="{{ onFromTimeInput }}" onblur="{{ onFromTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; border-left: 1px solid #e7ebf1; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+          <input type="text" inputmode="numeric" maxlength="16" placeholder="dd/MM/yyyy HH:mm" value="{{ fromDateDisplay }}" oninput="{{ onFromDateTimeInput }}" onblur="{{ onFromDateTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 142px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
         </div>
         <span style="color: #8a94a6; font-size: 13px;">–</span>
         <div style="display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
-          <input type="date" value="{{ toDateOnly }}" max="{{ toDateMax }}" onchange="{{ onToDateOnly }}" style="width: 116px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
-          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" value="{{ toTimeOnly }}" oninput="{{ onToTimeInput }}" onblur="{{ onToTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; border-left: 1px solid #e7ebf1; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+          <input type="text" inputmode="numeric" maxlength="16" placeholder="dd/MM/yyyy HH:mm" value="{{ toDateDisplay }}" oninput="{{ onToDateTimeInput }}" onblur="{{ onToDateTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 142px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
         </div>
       </div>
     </div>
@@ -723,8 +721,57 @@ class Component extends DCLogic {
   onFromDateChange = (e) => { this.setState({ fromDate: e.target.value }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: e.target.value, to: this.state.toDate }); };
   onToDateChange = (e) => { this.setState({ toDate: e.target.value }); if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: this.state.fromDate, to: e.target.value }); };
 
-  // --- "Thời gian tồn kho": native date picker + free-typed HH:MM ---
+  // --- "Thời gian tồn kho": display dd/MM/yyyy HH:mm, send ISO to WinForms ---
   _splitDT(v) { const s = String(v || ''); const i = s.indexOf('T'); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1, i + 6)]; }
+  _pad2(n) { return String(n).padStart(2, '0'); }
+  _formatDateTimeDisplay(v) {
+    const parts = this._splitDT(v);
+    const d = parts[0] || '';
+    const t = parts[1] || '';
+    const dm = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dm) return '';
+    return dm[3] + '/' + dm[2] + '/' + dm[1] + ' ' + (t || '00:00');
+  }
+  _coerceDateTimeText(raw) {
+    return String(raw || '').replace(/[^\d/: ]/g, '').slice(0, 16);
+  }
+  _parseDateTimeDisplay(raw, fallback) {
+    const s = String(raw || '').trim();
+    let m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})(?:\s+(\d{1,2})(?::?(\d{1,2}))?)?$/);
+    if (!m) {
+      const d = s.replace(/\D/g, '');
+      if (d.length < 8) return fallback;
+      m = [s, d.slice(0, 2), d.slice(2, 4), d.slice(4, 8), d.slice(8, 10), d.slice(10, 12)];
+    }
+
+    let day = parseInt(m[1], 10) || 1;
+    let month = parseInt(m[2], 10) || 1;
+    let year = parseInt(m[3], 10) || new Date().getFullYear();
+    if (year < 100) year += 2000;
+    month = Math.min(12, Math.max(1, month));
+    const maxDay = new Date(year, month, 0).getDate();
+    day = Math.min(maxDay, Math.max(1, day));
+
+    const fallbackTime = this._splitDT(fallback)[1] || '00:00';
+    const fallbackTimeParts = fallbackTime.split(':');
+    let hour = m[4] === undefined || m[4] === '' ? parseInt(fallbackTimeParts[0], 10) : parseInt(m[4], 10);
+    let minute = m[5] === undefined || m[5] === '' ? parseInt(fallbackTimeParts[1], 10) : parseInt(m[5], 10);
+    hour = Math.min(23, Math.max(0, hour || 0));
+    minute = Math.min(59, Math.max(0, minute || 0));
+
+    return year + '-' + this._pad2(month) + '-' + this._pad2(day) + 'T' + this._pad2(hour) + ':' + this._pad2(minute);
+  }
+  _commitDateTimeDisplay = (which, raw) => {
+    const key = which === 'from' ? 'fromDate' : 'toDate';
+    const draftKey = which === 'from' ? 'fromDateDraft' : 'toDateDraft';
+    const val = this._parseDateTimeDisplay(raw, this.state[key]);
+    this.setState({ [key]: val, [draftKey]: null });
+    if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage({ action: 'CHANGE_DATE_RANGE', from: which === 'from' ? val : this.state.fromDate, to: which === 'to' ? val : this.state.toDate });
+  };
+  onFromDateTimeInput = (e) => this.setState({ fromDateDraft: this._coerceDateTimeText(e.target.value) });
+  onToDateTimeInput = (e) => this.setState({ toDateDraft: this._coerceDateTimeText(e.target.value) });
+  onFromDateTimeBlur = (e) => this._commitDateTimeDisplay('from', e.target.value);
+  onToDateTimeBlur = (e) => this._commitDateTimeDisplay('to', e.target.value);
   // While typing: keep only digits + one colon, max 5 chars — show exactly what's typed
   _coerceTime = (raw) => {
     let t = String(raw || '').replace(/[^\d:]/g, '');
@@ -1678,9 +1725,13 @@ class Component extends DCLogic {
     return {
       accent, cellPad, showNav,
       fromDate: this.state.fromDate, toDate: this.state.toDate,
+      fromDateDisplay: this.state.fromDateDraft != null ? this.state.fromDateDraft : this._formatDateTimeDisplay(this.state.fromDate),
+      toDateDisplay: this.state.toDateDraft != null ? this.state.toDateDraft : this._formatDateTimeDisplay(this.state.toDate),
       fromDateOnly: this._splitDT(this.state.fromDate)[0], fromTimeOnly: this._splitDT(this.state.fromDate)[1],
       toDateOnly: this._splitDT(this.state.toDate)[0], toTimeOnly: this._splitDT(this.state.toDate)[1],
       toDateMax: (function () { const d = new Date(); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })(),
+      onFromDateTimeInput: this.onFromDateTimeInput, onToDateTimeInput: this.onToDateTimeInput,
+      onFromDateTimeBlur: this.onFromDateTimeBlur, onToDateTimeBlur: this.onToDateTimeBlur,
       onFromDateOnly: this.onFromDateOnly, onToDateOnly: this.onToDateOnly,
       onFromTimeInput: this.onFromTimeInput, onToTimeInput: this.onToTimeInput,
       onFromTimeBlur: this.onFromTimeBlur, onToTimeBlur: this.onToTimeBlur, onTimeKeyDown: this.onTimeKeyDown,
