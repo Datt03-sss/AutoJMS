@@ -1399,6 +1399,17 @@ namespace AutoJMS
 
             NormalizeGridEmptyCell(e);
 
+            // Format date columns to dd/MM/yyyy
+            if (colName == "Thời gian thao tác" || colName == "Thời gian đến bưu cục")
+            {
+                if (e.Value != null && DateTime.TryParse(e.Value.ToString(), out DateTime dt))
+                {
+                    e.Value = dt.ToString("dd/MM/yyyy");
+                    e.FormattingApplied = true;
+                    return;
+                }
+            }
+
             // Set row background based on state (priority order)
             if (IsSlaBreached(model.ThoiGianNhanHang))
             {
