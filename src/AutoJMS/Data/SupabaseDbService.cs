@@ -105,6 +105,28 @@ namespace AutoJMS
             return await RpcAsync<int>("upsert_new_waybills", new { p_waybills = arr });
         }
 
+        private static string[] CleanCodes(IEnumerable<string> codes) =>
+            codes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant())
+                 .Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>();
+
+        // Dual-source union: mark provenance so reconcile can flag suspected_stray.
+        public static async Task<int> IngestBigDataWaybillsAsync(string siteCode, IEnumerable<string> codes)
+        {
+            var arr = CleanCodes(codes);
+            if (arr.Length == 0) return 0;
+            return await RpcAsync<int>("ingest_bigdata_waybills", new { p_site_code = siteCode ?? "", p_waybill_nos = arr });
+        }
+
+        public static async Task<int> IngestStockCheckWaybillsAsync(string siteCode, IEnumerable<string> codes)
+        {
+            var arr = CleanCodes(codes);
+            if (arr.Length == 0) return 0;
+            return await RpcAsync<int>("ingest_stockcheck_waybills", new { p_site_code = siteCode ?? "", p_waybill_nos = arr });
+        }
+
+        public static Task<int> ReconcileInventorySourcesAsync(string siteCode) =>
+            RpcAsync<int>("reconcile_inventory_sources", new { p_site_code = siteCode ?? "" });
+
         public static async Task<List<WaybillDbModel>> GetActiveWaybillsAsync(int pageSize = 1000)
         {
             if (_client == null) await InitializeAsync();

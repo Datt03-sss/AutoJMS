@@ -75,15 +75,30 @@ namespace AutoJMS
 
             try
             {
-                // 3. Kéo toàn bộ danh sách Tồn kho (Có cơ chế Retry nếu rớt mạng)
-                List<string> inventoryWaybills = await FetchAllInventoryWaybillsWithRetryAsync(ct);
+                string site = GetActionSiteCode();
 
-                if (inventoryWaybills.Count > 0 && !ct.IsCancellationRequested)
+                // 3. Kéo tồn kho từ CẢ HAI nguồn SONG SONG (governor toàn cục chặn khóa IP):
+                //    #1 Big Data (take_ret_mon_detail_doris2), #2 Thống kê kiểm kho (opt_stocktaking_ret_detail).
+                var bigDataTask = FetchAllInventoryWaybillsWithRetryAsync(ct);
+                var stockCheckTask = StockCheckSyncService.FetchStockCheckWaybillsAsync(ct);
+                await Task.WhenAll(bigDataTask, stockCheckTask).ConfigureAwait(false);
+
+                var bigData = bigDataTask.Result ?? new List<string>();
+                var stockCheck = stockCheckTask.Result ?? new List<string>();
+                var union = new HashSet<string>(bigData, StringComparer.OrdinalIgnoreCase);
+                union.UnionWith(stockCheck);
+
+                if (union.Count > 0 && !ct.IsCancellationRequested)
                 {
-                    await DumpBillcodesToFileAsync(inventoryWaybills, ct);
-                    // 4. Bơm danh sách lên Database (DB sẽ tự động chỉ thêm mã mới bằng ON CONFLICT DO NOTHING)
-                    int inserted = await SupabaseDbService.UpsertNewWaybillsOnlyAsync(inventoryWaybills);
-                    AppLogger.Info($"[InventorySync] Hoàn tất. Lấy {inventoryWaybills.Count} mã, thêm mới {inserted} mã.");
+                    await DumpBillcodesToFileAsync(union, ct);
+
+                    // 4. Hợp nhất union vào DB + đánh dấu nguồn (provenance) + reconcile suspected_stray.
+                    //    ingest_* tự insert-if-missing nên không cần upsert_new riêng.
+                    int n1 = await SupabaseDbService.IngestBigDataWaybillsAsync(site, bigData);
+                    int n2 = await SupabaseDbService.IngestStockCheckWaybillsAsync(site, stockCheck);
+                    int reconciled = await SupabaseDbService.ReconcileInventorySourcesAsync(site);
+
+                    AppLogger.Info($"[InventorySync] Hoàn tất union={union.Count} (bd={bigData.Count}, sc={stockCheck.Count}), ingest bd={n1} sc={n2}, reconcile={reconciled}.");
                 }
 
                 success = true;
