@@ -19,5 +19,8 @@ namespace AutoJMS.FullStack.Repositories
         Task IncrementReminderCountAsync(IEnumerable<string> waybillNos, CancellationToken ct = default);
         Task<string> GetSyncStateAsync(string key, CancellationToken ct = default);
         Task SetSyncStateAsync(string key, string value, CancellationToken ct = default);
+        // Local last_action_time for one waybill — used by the opportunistic detail-open refresh
+        // to detect whether an enrich actually moved tracking forward before a scoped cloud push.
+        Task<string> GetWaybillLastActionTimeAsync(string waybillNo, CancellationToken ct = default);
     }
 }

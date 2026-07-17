@@ -2582,6 +2582,76 @@ namespace AutoJMS
 
             AppLogger.Info($"[FullStackJourney] double-click waybill={waybillNo}; row={e.RowIndex}; source=Fresh Tracking API");
             ShowWaybillJourneyWorkspace(waybillNo);
+
+            // Opportunistic near-realtime refresh: fetch the latest tracking for THIS waybill in the
+            // background, merge local, and scoped-push to Supabase so other machines see it in seconds.
+            // UI already shows above; this never blocks the detail view. Applies to leader + follower.
+            FireOpportunisticWaybillRefresh(waybillNo);
+        }
+
+        private readonly Dictionary<string, DateTime> _opportunisticLastRun = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _opportunisticLock = new();
+        private static readonly TimeSpan OpportunisticDebounce = TimeSpan.FromSeconds(45);
+
+        private void FireOpportunisticWaybillRefresh(string waybillNo)
+        {
+            if (string.IsNullOrWhiteSpace(waybillNo)) return;
+            string code = waybillNo.Trim().ToUpperInvariant();
+
+            lock (_opportunisticLock)
+            {
+                if (_opportunisticLastRun.TryGetValue(code, out var last) &&
+                    (DateTime.UtcNow - last) < OpportunisticDebounce)
+                {
+                    AppLogger.Info($"[Opportunistic] skipped debounce waybill={code}");
+                    return;
+                }
+                _opportunisticLastRun[code] = DateTime.UtcNow;
+            }
+
+            _ = OpportunisticWaybillRefreshAsync(code);
+        }
+
+        private async Task OpportunisticWaybillRefreshAsync(string code)
+        {
+            try
+            {
+                var ct = _cts.Token;
+                if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
+                    return;
+
+                // before snapshot (local last_action_time)
+                string before = await _fullStackDashboardService.GetWaybillLastActionTimeAsync(code, ct).ConfigureAwait(false);
+
+                // fetch fresh route history for this single waybill + merge into local DB
+                var results = await _fullStackDashboardService.EnrichTrackingWithResultAsync(new[] { code }, ct).ConfigureAwait(false);
+                int events = 0;
+                foreach (var r in results)
+                    if (string.Equals(r.WaybillNo, code, StringComparison.OrdinalIgnoreCase)) events = r.TrackingEventCount;
+
+                // after snapshot
+                string after = await _fullStackDashboardService.GetWaybillLastActionTimeAsync(code, ct).ConfigureAwait(false);
+
+                bool changed = !string.IsNullOrEmpty(after) &&
+                               !string.Equals(before ?? string.Empty, after, StringComparison.Ordinal);
+                if (!changed)
+                {
+                    AppLogger.Info($"[Opportunistic] enriched no change waybill={code} events={events}");
+                    return;
+                }
+
+                // scoped push (no-op if cloud disabled; no lease required)
+                await FullStackCloudSyncService.Instance.PushWaybillRowsAsync(new[] { code }, ct).ConfigureAwait(false);
+                AppLogger.Info($"[Opportunistic] enriched pushed waybill={code} events={events}");
+
+                // refresh grid / WebView from the freshly merged local row
+                await OnSyncBatchPersistedAsync().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[Opportunistic] refresh error waybill={code}: {ex.Message}");
+            }
         }
 
         private static string ResolveWaybillNoFromDashRow(DataGridViewRow row)

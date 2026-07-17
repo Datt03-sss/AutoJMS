@@ -139,5 +139,11 @@ namespace AutoJMS.FullStack.Services
             await InitializeAsync(ct).ConfigureAwait(false);
             return await _trackingEnrichmentService.EnrichWithResultAsync(waybillNos, ct).ConfigureAwait(false);
         }
+
+        public async Task<string> GetWaybillLastActionTimeAsync(string waybillNo, CancellationToken ct = default)
+        {
+            await InitializeAsync(ct).ConfigureAwait(false);
+            return await _repository.GetWaybillLastActionTimeAsync(waybillNo, ct).ConfigureAwait(false);
+        }
     }
 }

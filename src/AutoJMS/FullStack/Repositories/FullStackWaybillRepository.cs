@@ -304,6 +304,17 @@ WHERE waybill_no = $waybillNo;";
             await transaction.CommitAsync(ct).ConfigureAwait(false);
         }
 
+        public async Task<string> GetWaybillLastActionTimeAsync(string waybillNo, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(waybillNo)) return string.Empty;
+            await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT last_action_time FROM fs_waybills WHERE waybill_no = $w LIMIT 1;";
+            command.Parameters.AddWithValue("$w", waybillNo.Trim().ToUpperInvariant());
+            var result = await command.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            return result?.ToString() ?? string.Empty;
+        }
+
         private static async Task<long> InsertRunAsync(SqliteConnection connection, SqliteTransaction transaction, InventoryRun run, int totalRecords, CancellationToken ct)
         {
             await using var command = connection.CreateCommand();
