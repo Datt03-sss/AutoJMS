@@ -116,6 +116,66 @@ namespace AutoJMS.FullStack.Services
             return result;
         }
 
+        // Result of a cheap inventory "head probe" (page 1 only).
+        public sealed class InventoryHead
+        {
+            public bool Success;
+            public bool IsNoData;
+            public string ErrorCode;
+            public string ErrorMessage;
+            public int Total;
+            public int Pages;
+            public IReadOnlyList<string> Billcodes = Array.Empty<string>();
+            public string Hash = string.Empty;
+        }
+
+        // Phase 2 T0 probe: fetch inventory page 1 only (1 request) to detect whether the working set
+        // changed since the last probe. Returns total/pages, the page-1 billcodes, and a content hash
+        // (total|pages|count|sha256(sorted codes)) so the leader can decide whether to run a hot-set sync.
+        public async Task<InventoryHead> FetchInventoryHeadAsync(CancellationToken ct = default)
+        {
+            DateTime endDate = DateTime.Today.AddDays(1).AddSeconds(-1);
+            DateTime startDate = endDate.Date.AddDays(-30);
+            string actionSiteCode = GetActionSiteCode();
+            if (string.IsNullOrWhiteSpace(actionSiteCode) || actionSiteCode == "0000")
+                return new InventoryHead { Success = false, ErrorCode = "SITE_CODE_MISSING" };
+            if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
+                return new InventoryHead { Success = false, ErrorCode = "AUTH_ERROR" };
+
+            string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/take_ret_mon_detail_doris2");
+            string start = startDate.ToString("yyyy-MM-dd HH:mm:ss");
+            string end = endDate.ToString("yyyy-MM-dd HH:mm:ss");
+
+            var pr = await FetchOnePageAsync(url, actionSiteCode, start, end, 1, ct).ConfigureAwait(false);
+            if (!pr.Ok)
+                return new InventoryHead { Success = false, ErrorCode = pr.ErrorCode, ErrorMessage = pr.ErrorMessage };
+
+            var codes = new List<string>(pr.Waybills.Count);
+            foreach (var w in pr.Waybills)
+            {
+                if (string.IsNullOrWhiteSpace(w)) continue;
+                codes.Add(w.Trim().ToUpperInvariant());
+            }
+            codes.Sort(StringComparer.Ordinal);
+
+            string joined = string.Join(",", codes);
+            string sha;
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                sha = Convert.ToHexString(sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(joined)));
+            string hash = $"{pr.Total}|{pr.Pages}|{codes.Count}|{sha}";
+
+            AppLogger.Info($"[FullStackHead] total={pr.Total} pages={pr.Pages} page1Codes={codes.Count}");
+            return new InventoryHead
+            {
+                Success = true,
+                IsNoData = codes.Count == 0,
+                Total = pr.Total,
+                Pages = pr.Pages,
+                Billcodes = codes,
+                Hash = hash
+            };
+        }
+
         private async Task<InventoryFetchResult> FetchInventoryAsync(string actionSiteCode, DateTime startDate, DateTime endDate, Func<IReadOnlyList<string>, CancellationToken, Task> onPageCodes, CancellationToken ct)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
