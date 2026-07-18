@@ -36,6 +36,14 @@ namespace AutoJMS
         private bool _isZaloLoaded = false;
         private bool _isRefreshingStatusCombos = false;
         private System.Windows.Forms.Timer _autoRefreshTimer;
+        // Phase 2 leader tiered sync: T0 head probe (this timer) + T1 hot-set. T2 = the auto full sync.
+        private System.Windows.Forms.Timer _leaderTierTimer;
+        private string _lastHeadHash = string.Empty;
+        private readonly HashSet<string> _lastHeadBillcodes = new(StringComparer.OrdinalIgnoreCase);
+        private DateTime _lastHotSetAtUtc = DateTime.MinValue;
+        private volatile bool _leaderTierBusy;
+        private const int LeaderHeadProbeMs = 90 * 1000;                 // T0 heartbeat
+        private static readonly TimeSpan LeaderHotSetInterval = TimeSpan.FromMinutes(3); // T1 cadence
         private readonly CancellationTokenSource _cts = new();
         private TabPage _tabDetail;
         private readonly System.Windows.Forms.Timer _alertCheckTimer = new();
@@ -184,6 +192,11 @@ namespace AutoJMS
             tabDash_timeUpdateData_SelectedIndexChanged(null, null); // set interval from the combo
             _autoRefreshTimer.Start();
 
+            // Leader tiered sync (only fires work when THIS machine holds the lease).
+            _leaderTierTimer = new System.Windows.Forms.Timer { Interval = LeaderHeadProbeMs };
+            _leaderTierTimer.Tick += async (s, ev) => await LeaderTierTickAsync();
+            _leaderTierTimer.Start();
+
             await LoadDataAndRefreshViewsAsync();
 
             // Hybrid local-first + Supabase sync (docs/hybrid-supabase-sync-plan.md):
@@ -238,6 +251,8 @@ namespace AutoJMS
             _isClosing = true;
             _autoRefreshTimer?.Stop();
             _autoRefreshTimer?.Dispose();
+            _leaderTierTimer?.Stop();
+            _leaderTierTimer?.Dispose();
             _thoiHieuTimer?.Stop();
             _thoiHieuTimer?.Dispose();
             _alertCheckTimer?.Stop();
@@ -504,6 +519,66 @@ namespace AutoJMS
                 tabDash_updateData.Enabled = true;
                 tabDash_updateData.Text = "Đồng bộ";
                 _isSyncRunning = false;
+            }
+        }
+
+        // Phase 2 leader tiered sync tick (T0 head probe + T1 hot-set). Only the lease-holding machine
+        // does work; followers rely on opportunistic refresh + cloud delta pull. T2 full sync is the
+        // dropdown-driven auto sync (RunSyncAsync), left untouched.
+        private async Task LeaderTierTickAsync()
+        {
+            if (_leaderTierBusy || _isSyncRunning) return;
+            if (!FullStackCloudSyncService.Instance.HasLease) return;
+            if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated) return;
+
+            _leaderTierBusy = true;
+            try
+            {
+                var ct = _cts.Token;
+
+                // T0 — cheap page-1 head probe (1 request) to detect working-set changes.
+                var head = await _fullStackDashboardService.FetchInventoryHeadAsync(ct).ConfigureAwait(false);
+                bool headChanged = false;
+                var newCodes = new List<string>();
+                if (head.Success)
+                {
+                    headChanged = !string.Equals(head.Hash, _lastHeadHash, StringComparison.Ordinal);
+                    if (headChanged)
+                    {
+                        foreach (var c in head.Billcodes)
+                            if (!_lastHeadBillcodes.Contains(c)) newCodes.Add(c);
+                        _lastHeadHash = head.Hash;
+                        _lastHeadBillcodes.Clear();
+                        foreach (var c in head.Billcodes) _lastHeadBillcodes.Add(c);
+                    }
+                }
+
+                // T1 — hot-set enrich when the head changed OR the hot-set cadence elapsed.
+                bool dueHotSet = (DateTime.UtcNow - _lastHotSetAtUtc) >= LeaderHotSetInterval;
+                if (headChanged || dueHotSet)
+                {
+                    _lastHotSetAtUtc = DateTime.UtcNow;
+                    int n = await _fullStackDashboardService.SyncHotSetAsync(newCodes, cap: 300, ct).ConfigureAwait(false);
+                    if (n > 0)
+                    {
+                        if (FullStackCloudSyncService.IsEnabled && FullStackCloudSyncService.Instance.HasLease)
+                        {
+                            try { await FullStackCloudSyncService.Instance.PushDashboardRowsAsync(ct).ConfigureAwait(false); }
+                            catch (Exception pushEx) { AppLogger.Warning("[LeaderTier] push failed: " + pushEx.Message); }
+                        }
+                        await OnSyncBatchPersistedAsync().ConfigureAwait(false);
+                        AppLogger.Info($"[LeaderTier] hot-set enriched={n} headChanged={headChanged} newCodes={newCodes.Count}");
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[LeaderTier] tick error: " + ex.Message);
+            }
+            finally
+            {
+                _leaderTierBusy = false;
             }
         }
 
