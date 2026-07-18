@@ -13,6 +13,10 @@ namespace AutoJMS
         private static readonly Color AccentSlate = Color.FromArgb(75, 85, 99);
         private static readonly Color AccentWarning = Color.FromArgb(245, 158, 11);
         private static readonly Color HeaderDark = Color.FromArgb(17, 36, 63); // #11243f
+        // Dark grid palette (data grids render dark bg + white text for every cell).
+        private static readonly Color GridDarkBg = Color.FromArgb(24, 24, 27);    // #18181b
+        private static readonly Color GridDarkAltBg = Color.FromArgb(32, 33, 37); // #202125 (row stripe)
+        private static readonly Color GridDarkLine = Color.FromArgb(55, 55, 60);  // #37373c (grid lines)
         private static readonly Color WorkspaceBackColor = Color.FromArgb(244, 246, 249); // #f4f6f9
         private static readonly Color BorderColor = Color.FromArgb(228, 232, 239); // #e4e8ef
         private static readonly Color TextPrimary = Color.FromArgb(31, 41, 55); // #1f2937

@@ -370,18 +370,26 @@ namespace AutoJMS
             grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
             grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", 7.5F, FontStyle.Bold);
             grid.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            // Dark theme: render EVERY cell like the selected one — dark background, white text.
+            grid.BackgroundColor = GridDarkBg;
+            grid.GridColor = GridDarkLine;
             grid.DefaultCellStyle.Font = new Font("Segoe UI", 7.5F);
-            grid.DefaultCellStyle.ForeColor = TextPrimary;
+            grid.DefaultCellStyle.BackColor = GridDarkBg;
+            grid.DefaultCellStyle.ForeColor = Color.White;
             grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(37, 99, 235);
             grid.DefaultCellStyle.SelectionForeColor = Color.White;
+            grid.RowsDefaultCellStyle.BackColor = GridDarkBg;
+            grid.RowsDefaultCellStyle.ForeColor = Color.White;
+            grid.AlternatingRowsDefaultCellStyle.BackColor = GridDarkAltBg;
+            grid.AlternatingRowsDefaultCellStyle.ForeColor = Color.White;
             grid.EnableHeadersVisualStyles = false;
             grid.DataError -= FullStackGrid_DataError;
             grid.DataError += FullStackGrid_DataError;
             if (grid is Sunny.UI.UIDataGridView uiGrid)
             {
-                uiGrid.StripeOddColor = Color.White;
-                uiGrid.StripeEvenColor = Color.FromArgb(249, 250, 251);
-                uiGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 251);
+                uiGrid.Style = UIStyle.Custom;               // freeze theme so SunnyUI won't re-light the cells
+                uiGrid.StripeOddColor = GridDarkBg;
+                uiGrid.StripeEvenColor = GridDarkAltBg;
             }
         }
 
