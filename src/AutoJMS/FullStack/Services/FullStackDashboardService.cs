@@ -154,7 +154,10 @@ namespace AutoJMS.FullStack.Services
         }
 
         // Phase 2 T1: enrich only a bounded "hot set" (route history) instead of the whole inventory.
-        // Priority: new-from-head arrivals -> backlog/CSKH problems -> due-by-next_track_at -> active.
+        // Hot set = new-from-head arrivals + backlog/CSKH problems + orders DUE by next_track_at.
+        // There is deliberately NO blanket "all active" fallback: active orders are refreshed as they
+        // fall due (next_track_at), which spreads JMS load over time; the T2 full sync covers the rest.
+        // This keeps each T1 tick cheap and avoids re-enriching hundreds of unchanged orders every cycle.
         public async Task<int> SyncHotSetAsync(IReadOnlyCollection<string> newFromHead, int cap = 300, CancellationToken ct = default)
         {
             await InitializeAsync(ct).ConfigureAwait(false);
@@ -171,16 +174,18 @@ namespace AutoJMS.FullStack.Services
             }
             bool Real(string s) => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, "empty", StringComparison.OrdinalIgnoreCase);
 
-            if (newFromHead != null) foreach (var c in newFromHead) Add(c);
-            foreach (var r in rows) if (r.IsActive && Real(r.NguyenNhanKienVanDe)) Add(r.WaybillNo);            // backlog / CSKH / problem
-            foreach (var r in rows.Where(r => r.IsActive && r.NextTrackAt.ToUniversalTime() <= now).OrderBy(r => r.NextTrackAt)) Add(r.WaybillNo); // due
-            foreach (var r in rows.Where(r => r.IsActive).OrderBy(r => r.NextTrackAt)) Add(r.WaybillNo);        // active fallback (oldest first)
+            if (newFromHead != null) foreach (var c in newFromHead) Add(c);                                     // 1) new arrivals
+            int nNew = hot.Count;
+            foreach (var r in rows) if (r.IsActive && Real(r.NguyenNhanKienVanDe)) Add(r.WaybillNo);            // 2) backlog / CSKH / problem
+            int nProblem = hot.Count - nNew;
+            foreach (var r in rows.Where(r => r.IsActive && r.NextTrackAt.ToUniversalTime() <= now).OrderBy(r => r.NextTrackAt)) Add(r.WaybillNo); // 3) due
+            int nDue = hot.Count - nNew - nProblem;
 
             if (hot.Count > cap) hot = hot.GetRange(0, cap);
             if (hot.Count == 0) return 0;
 
             await _trackingEnrichmentService.EnrichWithResultAsync(hot, ct).ConfigureAwait(false);
-            AppLogger.Info($"[FullStackHotSet] enriched={hot.Count} newHead={(newFromHead?.Count ?? 0)} cap={cap}");
+            AppLogger.Info($"[FullStackHotSet] enriched={hot.Count} (new={nNew} problem={nProblem} due={nDue}) cap={cap}");
             return hot.Count;
         }
     }

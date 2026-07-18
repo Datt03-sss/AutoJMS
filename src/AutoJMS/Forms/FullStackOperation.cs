@@ -42,6 +42,8 @@ namespace AutoJMS
         private readonly HashSet<string> _lastHeadBillcodes = new(StringComparer.OrdinalIgnoreCase);
         private DateTime _lastHotSetAtUtc = DateTime.MinValue;
         private volatile bool _leaderTierBusy;
+        private int _headProbeFailures;
+        private DateTime _headBackoffUntilUtc = DateTime.MinValue;
         private const int LeaderHeadProbeMs = 90 * 1000;                 // T0 heartbeat
         private static readonly TimeSpan LeaderHotSetInterval = TimeSpan.FromMinutes(3); // T1 cadence
         private readonly CancellationTokenSource _cts = new();
@@ -463,6 +465,7 @@ namespace AutoJMS
             tabDash_updateData.Enabled = false;
             tabDash_updateData.Text = "Đang đồng bộ";
             _isSyncRunning = true;
+            _leaderTierTimer?.Stop(); // pause T0/T1 while the full sync (T2) runs — no overlap
             try
             {
                 var ct = _cts.Token;
@@ -519,6 +522,9 @@ namespace AutoJMS
                 tabDash_updateData.Enabled = true;
                 tabDash_updateData.Text = "Đồng bộ";
                 _isSyncRunning = false;
+                // T2 just refreshed everything → reset hot-set cadence and resume the tiered timer.
+                _lastHotSetAtUtc = DateTime.UtcNow;
+                if (!_isClosing) _leaderTierTimer?.Start();
             }
         }
 
@@ -530,6 +536,7 @@ namespace AutoJMS
             if (_leaderTierBusy || _isSyncRunning) return;
             if (!FullStackCloudSyncService.Instance.HasLease) return;
             if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated) return;
+            if (DateTime.UtcNow < _headBackoffUntilUtc) return; // JMS backoff after repeated head failures
 
             _leaderTierBusy = true;
             try
@@ -538,19 +545,27 @@ namespace AutoJMS
 
                 // T0 — cheap page-1 head probe (1 request) to detect working-set changes.
                 var head = await _fullStackDashboardService.FetchInventoryHeadAsync(ct).ConfigureAwait(false);
-                bool headChanged = false;
-                var newCodes = new List<string>();
-                if (head.Success)
+                if (!head.Success)
                 {
-                    headChanged = !string.Equals(head.Hash, _lastHeadHash, StringComparison.Ordinal);
-                    if (headChanged)
-                    {
-                        foreach (var c in head.Billcodes)
-                            if (!_lastHeadBillcodes.Contains(c)) newCodes.Add(c);
-                        _lastHeadHash = head.Hash;
-                        _lastHeadBillcodes.Clear();
-                        foreach (var c in head.Billcodes) _lastHeadBillcodes.Add(c);
-                    }
+                    _headProbeFailures++;
+                    // exponential-ish backoff, capped ~9 min, so a slow/down JMS isn't hammered every 90s.
+                    int backoffTicks = Math.Min(_headProbeFailures, 6);
+                    _headBackoffUntilUtc = DateTime.UtcNow.AddMilliseconds((double)LeaderHeadProbeMs * backoffTicks);
+                    AppLogger.Warning($"[LeaderTier] head probe failed ({head.ErrorCode}); backoff x{backoffTicks}");
+                    return;
+                }
+                _headProbeFailures = 0;
+                _headBackoffUntilUtc = DateTime.MinValue;
+
+                bool headChanged = !string.Equals(head.Hash, _lastHeadHash, StringComparison.Ordinal);
+                var newCodes = new List<string>();
+                if (headChanged)
+                {
+                    foreach (var c in head.Billcodes)
+                        if (!_lastHeadBillcodes.Contains(c)) newCodes.Add(c);
+                    _lastHeadHash = head.Hash;
+                    _lastHeadBillcodes.Clear();
+                    foreach (var c in head.Billcodes) _lastHeadBillcodes.Add(c);
                 }
 
                 // T1 — hot-set enrich when the head changed OR the hot-set cadence elapsed.
