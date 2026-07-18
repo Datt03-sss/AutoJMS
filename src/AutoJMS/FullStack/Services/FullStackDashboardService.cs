@@ -145,5 +145,43 @@ namespace AutoJMS.FullStack.Services
             await InitializeAsync(ct).ConfigureAwait(false);
             return await _repository.GetWaybillLastActionTimeAsync(waybillNo, ct).ConfigureAwait(false);
         }
+
+        // Phase 2 T0: cheap page-1 head probe (1 request) to detect working-set changes.
+        public async Task<FullStackInventorySyncService.InventoryHead> FetchInventoryHeadAsync(CancellationToken ct = default)
+        {
+            await InitializeAsync(ct).ConfigureAwait(false);
+            return await _inventorySyncService.FetchInventoryHeadAsync(ct).ConfigureAwait(false);
+        }
+
+        // Phase 2 T1: enrich only a bounded "hot set" (route history) instead of the whole inventory.
+        // Priority: new-from-head arrivals -> backlog/CSKH problems -> due-by-next_track_at -> active.
+        public async Task<int> SyncHotSetAsync(IReadOnlyCollection<string> newFromHead, int cap = 300, CancellationToken ct = default)
+        {
+            await InitializeAsync(ct).ConfigureAwait(false);
+            var rows = await _repository.GetDashboardRowsAsync(ct).ConfigureAwait(false);
+            var now = DateTime.UtcNow;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hot = new List<string>();
+            void Add(string wb)
+            {
+                if (string.IsNullOrWhiteSpace(wb)) return;
+                var c = wb.Trim().ToUpperInvariant();
+                if (seen.Add(c)) hot.Add(c);
+            }
+            bool Real(string s) => !string.IsNullOrWhiteSpace(s) && !string.Equals(s, "empty", StringComparison.OrdinalIgnoreCase);
+
+            if (newFromHead != null) foreach (var c in newFromHead) Add(c);
+            foreach (var r in rows) if (r.IsActive && Real(r.NguyenNhanKienVanDe)) Add(r.WaybillNo);            // backlog / CSKH / problem
+            foreach (var r in rows.Where(r => r.IsActive && r.NextTrackAt.ToUniversalTime() <= now).OrderBy(r => r.NextTrackAt)) Add(r.WaybillNo); // due
+            foreach (var r in rows.Where(r => r.IsActive).OrderBy(r => r.NextTrackAt)) Add(r.WaybillNo);        // active fallback (oldest first)
+
+            if (hot.Count > cap) hot = hot.GetRange(0, cap);
+            if (hot.Count == 0) return 0;
+
+            await _trackingEnrichmentService.EnrichWithResultAsync(hot, ct).ConfigureAwait(false);
+            AppLogger.Info($"[FullStackHotSet] enriched={hot.Count} newHead={(newFromHead?.Count ?? 0)} cap={cap}");
+            return hot.Count;
+        }
     }
 }
