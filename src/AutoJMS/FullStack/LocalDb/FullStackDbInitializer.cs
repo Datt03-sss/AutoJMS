@@ -34,6 +34,7 @@ namespace AutoJMS.FullStack.LocalDb
                 await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV2, ct).ConfigureAwait(false);
                 await EnsureSyncColumnsAsync(connection, transaction, ct).ConfigureAwait(false);
                 await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV2PostColumnIndexes, ct).ConfigureAwait(false);
+                await ExecuteAsync(connection, transaction, FullStackMigrations.SchemaV3, ct).ConfigureAwait(false);
                 await ExecuteAsync(
                     connection,
                     transaction,

@@ -40,6 +40,7 @@ try {
     Write-Host "XONG. Kiem tra nhanh tren Dashboard > Table Editor:" -ForegroundColor Green
     Write-Host "  - Bang moi: order_notes, order_checks, dispatch_tasks"
     Write-Host "  - Bang waybills co them cot site_code"
+    Write-Host "  - Event store: waybill_events (migration 202607110002)"
 }
 finally {
     Pop-Location

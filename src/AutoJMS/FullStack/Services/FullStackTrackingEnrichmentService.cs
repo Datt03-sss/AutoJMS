@@ -132,6 +132,16 @@ namespace AutoJMS.FullStack.Services
                 AppLogger.Warning($"[FullStackTracking] journey_history persist skipped: {jhEx.Message}");
             }
             await _repository.MarkEnrichedAsync(list, ct).ConfigureAwait(false);
+
+            // Event-sourcing-lite (shadow): emit observations additively. No-op unless enabled.
+            if (Events.FullStackEventPipeline.IsEnabled)
+            {
+                foreach (var row in finalRows)
+                {
+                    try { await Events.FullStackEventPipeline.EmitTrackingAsync(row, ct).ConfigureAwait(false); }
+                    catch (Exception evEx) { AppLogger.Warning($"[FullStackTracking] event emit skipped {row.WaybillNo}: {evEx.Message}"); }
+                }
+            }
             AppLogger.Info($"[FullStackTracking] enrichment finished count={finalRows.Count}");
 
             return list.Select(x =>

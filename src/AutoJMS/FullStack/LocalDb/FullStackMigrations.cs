@@ -2,7 +2,7 @@ namespace AutoJMS.FullStack.LocalDb
 {
     public static class FullStackMigrations
     {
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         public const string SchemaV1 = @"
 CREATE TABLE IF NOT EXISTS fs_schema_version (
@@ -242,6 +242,31 @@ CREATE INDEX IF NOT EXISTS idx_fs_outbox_pending ON fs_outbox(synced_at, id);
         public const string SchemaV2PostColumnIndexes = @"
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_order_notes_client_id ON fs_order_notes(client_id) WHERE client_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fs_dispatch_tasks_client_id ON fs_dispatch_tasks(client_id) WHERE client_id IS NOT NULL;
+";
+
+        // V3 — Event-sourcing-lite (docs/roadmap: Event Pipeline + ODS).
+        // fs_events: append-only unified event log. fingerprint UNIQUE = dedupe key
+        // (same observation from any machine collapses to one row). remote_seq is the
+        // server-assigned monotonic sequence used as the cloud delta-pull cursor.
+        public const string SchemaV3 = @"
+CREATE TABLE IF NOT EXISTS fs_events (
+    event_id TEXT PRIMARY KEY,
+    waybill_no TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_time TEXT NOT NULL,
+    source TEXT,
+    source_client TEXT,
+    fingerprint TEXT NOT NULL UNIQUE,
+    payload TEXT NOT NULL DEFAULT '{}',
+    observed_at TEXT NOT NULL,
+    schema_version INTEGER NOT NULL DEFAULT 1,
+    origin TEXT NOT NULL DEFAULT 'local',
+    remote_seq INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_fs_events_waybill_time ON fs_events(waybill_no, event_time);
+CREATE INDEX IF NOT EXISTS idx_fs_events_remote_seq ON fs_events(remote_seq);
+CREATE INDEX IF NOT EXISTS idx_fs_events_type_time ON fs_events(event_type, event_time);
 ";
     }
 }

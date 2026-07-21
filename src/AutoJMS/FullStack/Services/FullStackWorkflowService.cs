@@ -66,6 +66,10 @@ SELECT last_insert_rowid();";
             }, ct).ConfigureAwait(false);
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            await Events.FullStackEventPipeline.EmitWorkflowAsync(
+                Events.FullStackEventTypes.ManualNoteAdded, waybillNo,
+                new JObject { ["note"] = note.Trim(), ["created_by"] = createdByValue },
+                $"{clientId}:note:{noteId}", ct).ConfigureAwait(false);
             FullStackCloudSyncService.NotifyLocalWrite();
         }
 
@@ -156,6 +160,10 @@ SELECT last_insert_rowid();";
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            await Events.FullStackEventPipeline.EmitWorkflowAsync(
+                Events.FullStackEventTypes.DispatchTaskUpdated, waybillNo,
+                new JObject { ["task_type"] = taskTypeValue, ["priority"] = priority, ["status"] = "OPEN" },
+                $"{clientId}:task:{taskId}", ct).ConfigureAwait(false);
             FullStackCloudSyncService.NotifyLocalWrite();
         }
 
@@ -246,6 +254,10 @@ SELECT last_insert_rowid();";
             }, ct).ConfigureAwait(false);
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
+            await Events.FullStackEventPipeline.EmitWorkflowAsync(
+                Events.FullStackEventTypes.CheckUpdated, waybillNo,
+                new JObject { ["is_checked"] = true, ["checked_by"] = checkedBy, ["checked_at"] = now.ToString("O") },
+                $"{clientId}:check:{waybillNo}:{now:yyyyMMddHHmmss}", ct).ConfigureAwait(false);
             FullStackCloudSyncService.NotifyLocalWrite();
         }
 

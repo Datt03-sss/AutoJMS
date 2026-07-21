@@ -58,6 +58,10 @@ namespace AutoJMS
         [JsonPropertyName("GoogleSheetsTokenRefreshSkewMinutes")] public int GoogleSheetsTokenRefreshSkewMinutes { get; set; } = 5;
         [JsonPropertyName("CloudSyncEnabled")] public bool CloudSyncEnabled { get; set; } = true;
         [JsonPropertyName("CloudSyncIntervalSeconds")] public int CloudSyncIntervalSeconds { get; set; } = 45;
+        // Event-sourcing-lite pipeline (docs/roadmap). Off by default: when true, sync/workflow
+        // writes also emit append-only events to fs_events + the remote event store (shadow of
+        // the row-sync, no behavior change to the dashboard until the scope-C projection cutover).
+        [JsonPropertyName("EventPipelineEnabled")] public bool EventPipelineEnabled { get; set; } = false;
     }
 
     [Obfuscation(Exclude = true, ApplyToMembers = true)]
@@ -249,6 +253,7 @@ namespace AutoJMS
             Set(root, "GoogleSheetsTokenRefreshSkewMinutes", settings.GoogleSheetsTokenRefreshSkewMinutes);
             Set(root, "CloudSyncEnabled", settings.CloudSyncEnabled);
             Set(root, "CloudSyncIntervalSeconds", settings.CloudSyncIntervalSeconds);
+            Set(root, "EventPipelineEnabled", settings.EventPipelineEnabled);
             return root.ToJsonString(JsonOptions);
         }
 
@@ -287,7 +292,7 @@ namespace AutoJMS
                 "ArchiveLegacyServiceAccountAfterBrokerSuccess",
                 "DeleteLegacyServiceAccountAfterBrokerSuccess",
                 "GoogleSheetsTokenRefreshSkewMinutes",
-                "CloudSyncEnabled", "CloudSyncIntervalSeconds"
+                "CloudSyncEnabled", "CloudSyncIntervalSeconds", "EventPipelineEnabled"
             };
 
             foreach (var name in names)

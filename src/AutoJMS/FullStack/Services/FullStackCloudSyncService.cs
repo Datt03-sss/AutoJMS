@@ -1,3 +1,4 @@
+using AutoJMS.FullStack.Events;
 using AutoJMS.FullStack.LocalDb;
 using Microsoft.Data.Sqlite;
 using Newtonsoft.Json.Linq;
@@ -27,6 +28,7 @@ namespace AutoJMS.FullStack.Services
 
         private readonly FullStackDbConnectionFactory _connectionFactory = new();
         private readonly FullStackDbInitializer _initializer;
+        private readonly FullStackEventLog _eventLog = new();
         private readonly SemaphoreSlim _cycleGate = new(1, 1);
         private System.Threading.Timer _timer;
         private volatile bool _started;
@@ -476,6 +478,8 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
             merged += await PullNotesAsync(ct).ConfigureAwait(false);
             merged += await PullChecksAsync(ct).ConfigureAwait(false);
             merged += await PullTasksAsync(ct).ConfigureAwait(false);
+            if (FullStackEventPipeline.IsEnabled)
+                merged += await PullEventsAsync(ct).ConfigureAwait(false);
             return merged;
         }
 
@@ -779,6 +783,44 @@ ON CONFLICT(client_id) WHERE client_id IS NOT NULL DO UPDATE SET
             return applied;
         }
 
+        // Event store delta pull (docs/roadmap Phase 2): cursor = max remote seq.
+        private async Task<int> PullEventsAsync(CancellationToken ct)
+        {
+            var site = ResolveSiteCode();
+            long sinceSeq = await _eventLog.GetMaxRemoteSeqAsync(ct).ConfigureAwait(false);
+            var rows = await SupabaseDbService.PullEventsDeltaAsync(site, sinceSeq).ConfigureAwait(false);
+            if (rows.Count == 0) return 0;
+
+            var events = new List<FullStackEvent>(rows.Count);
+            foreach (var row in rows)
+            {
+                var payloadToken = row["payload"];
+                string payload = payloadToken == null || payloadToken.Type == JTokenType.Null
+                    ? "{}"
+                    : (payloadToken.Type == JTokenType.String ? payloadToken.ToString() : payloadToken.ToString(Newtonsoft.Json.Formatting.None));
+
+                events.Add(new FullStackEvent
+                {
+                    EventId = row.Value<string>("event_id") ?? Guid.NewGuid().ToString("N"),
+                    WaybillNo = row.Value<string>("waybill_no") ?? "",
+                    EventType = row.Value<string>("event_type") ?? "",
+                    EventTime = row.Value<DateTime?>("event_time")?.ToUniversalTime() ?? DateTime.UtcNow,
+                    Source = row.Value<string>("source") ?? "",
+                    SourceClient = row.Value<string>("source_client") ?? "",
+                    Fingerprint = row.Value<string>("fingerprint") ?? "",
+                    Payload = payload,
+                    ObservedAt = row.Value<DateTime?>("observed_at")?.ToUniversalTime() ?? DateTime.UtcNow,
+                    SchemaVersion = row.Value<int?>("schema_version") ?? 1,
+                    Seq = row.Value<long?>("seq")
+                });
+            }
+
+            var affected = await _eventLog.MergeRemoteAsync(events, ct).ConfigureAwait(false);
+            if (affected.Count > 0)
+                AppLogger.Info($"[HybridSync] pulled events rows={rows.Count} affected={affected.Count}");
+            return affected.Count;
+        }
+
         // ------------------------------------------------------------------
         // Outbox flush (Phase 3 — offline-safe local writes)
         // ------------------------------------------------------------------
@@ -837,6 +879,9 @@ LIMIT 300;";
                             break;
                         case "TASK":
                             await SupabaseDbService.MergeDispatchTasksAsync(site, payloads).ConfigureAwait(false);
+                            break;
+                        case "EVENT":
+                            await SupabaseDbService.AppendWaybillEventsAsync(site, payloads).ConfigureAwait(false);
                             break;
                         default:
                             AppLogger.Warning($"[HybridSync] unknown outbox kind={group.Key}, skipping");

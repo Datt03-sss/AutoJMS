@@ -68,6 +68,19 @@ Check "realtime publication (4 tables)" {
         finally { Pop-Location }
     }
 }
+Check "table waybill_events (event store)" {
+    Invoke-RestMethod -Uri "$url/rest/v1/waybill_events?select=seq&limit=1" -Headers $headers
+}
+Check "rpc append + dedupe + pull events" {
+    $fp = "verify-" + [Guid]::NewGuid().ToString("N")
+    $body = '{"p_site_code":"VERIFY","p_events":[{"waybill_no":"VERIFYWB","event_type":"TrackingObserved","event_time":"2026-01-01T00:00:00Z","fingerprint":"' + $fp + '","payload":{"k":"v"}}]}'
+    $n1 = Invoke-RestMethod -Method Post -Uri "$url/rest/v1/rpc/append_waybill_events" -Headers $headers -Body $body
+    if ($n1 -lt 1) { throw "append returned $n1 (expected 1)" }
+    $n2 = Invoke-RestMethod -Method Post -Uri "$url/rest/v1/rpc/append_waybill_events" -Headers $headers -Body $body
+    if ($n2 -ne 0) { throw "dedupe failed: second append returned $n2 (expected 0)" }
+    Invoke-RestMethod -Method Post -Uri "$url/rest/v1/rpc/pull_events_delta" -Headers $headers `
+        -Body '{"p_site_code":"VERIFY","p_since_seq":0,"p_limit":5}' | Out-Null
+}
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Yellow

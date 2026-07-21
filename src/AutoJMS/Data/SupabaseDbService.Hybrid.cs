@@ -95,6 +95,25 @@ namespace AutoJMS
             return ParseRows(content);
         }
 
+        // ------------------------------------------------------------------
+        // Event store (docs/roadmap Phase 2): append/dedupe + seq-cursor pull
+        // ------------------------------------------------------------------
+        public static async Task<int> AppendWaybillEventsAsync(string siteCode, IReadOnlyList<object> events)
+        {
+            if (events == null || events.Count == 0) return 0;
+            int total = 0;
+            foreach (var chunk in events.Chunk(500))
+                total += await RpcAsync<int>("append_waybill_events", new { p_site_code = siteCode, p_events = chunk }).ConfigureAwait(false);
+            return total;
+        }
+
+        public static async Task<List<JObject>> PullEventsDeltaAsync(string siteCode, long sinceSeq, int limit = 2000)
+        {
+            var content = await RpcRawAsync("pull_events_delta",
+                new { p_site_code = siteCode, p_since_seq = sinceSeq, p_limit = limit }).ConfigureAwait(false);
+            return ParseRows(content);
+        }
+
         private static List<JObject> ParseRows(string content)
         {
             if (string.IsNullOrWhiteSpace(content)) return new List<JObject>();
@@ -123,7 +142,7 @@ namespace AutoJMS
         {
             if (_client == null) await InitializeAsync().ConfigureAwait(false);
 
-            var tables = new[] { "waybills", "order_notes", "order_checks", "dispatch_tasks" };
+            var tables = new[] { "waybills", "order_notes", "order_checks", "dispatch_tasks", "waybill_events" };
             bool anySubscribed = false;
             foreach (var table in tables)
             {
