@@ -85,3 +85,6 @@ secrets/
 service_account*.json
 service_accout*.json
 .claude/settings.local.json
+
+# Cursor IDE tooling — local to each machine, not for committing (like .codegraph/)
+.cursor/
