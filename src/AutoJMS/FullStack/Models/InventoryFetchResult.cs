@@ -11,6 +11,12 @@ namespace AutoJMS.FullStack.Models
         // Outcome classification (consumed by FullStackInventorySyncService).
         public bool Success { get; set; }
         public bool IsNoData { get; set; }
+
+        // G0 inventory finalize integrity: true only when EVERY page was fetched OK and the
+        // collected count covers the reported total. When false the run is INCOMPLETE and callers
+        // MUST NOT mark unseen waybills as "left" (prevents mass-left on a single failed page).
+        public bool IsComplete { get; set; }
+        public int FailedPages { get; set; }
         public string ErrorCode { get; set; } = "";
         public string ErrorMessage { get; set; } = "";
         public string DetectedRecordsPath { get; set; } = "";

@@ -88,7 +88,38 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
                 else newCount++;
             }
 
-            int leftCount = await MarkLeftInventoryAsync(connection, transaction, runId, now, ct).ConfigureAwait(false);
+            // G0 inventory finalize integrity: only mark unseen orders "left" when the run is COMPLETE.
+            // INCOMPLETE run (a page failed) → keep membership, upsert seen only (prevents mass-left).
+            // Empty COMPLETE run → require 2 consecutive empty runs before mass mark-left (double-confirm).
+            int leftCount = 0;
+            bool isIncomplete = string.Equals(run.Status, "INCOMPLETE", StringComparison.OrdinalIgnoreCase);
+            if (isIncomplete)
+            {
+                // G0: an INCOMPLETE run gives no reliable "empty" signal → break the empty streak
+                // (require 2 CONSECUTIVE clean empty runs, with nothing incomplete in between).
+                await SetSyncStateAsync(connection, transaction, "consecutive_empty_inventory_runs", "0", ct).ConfigureAwait(false);
+                AppLogger.Warning($"[FullStackLocalDb] inventory run INCOMPLETE → SKIP mark-left (kept existing membership); upserted {uniqueItems.Count} seen only; empty-streak reset.");
+            }
+            else if (uniqueItems.Count == 0)
+            {
+                string rawStreak = await GetSyncStateAsync(connection, transaction, "consecutive_empty_inventory_runs", ct).ConfigureAwait(false);
+                int emptyStreak = (int.TryParse(rawStreak, out var s) ? s : 0) + 1;
+                if (emptyStreak >= 2)
+                {
+                    leftCount = await MarkLeftInventoryAsync(connection, transaction, runId, now, ct).ConfigureAwait(false);
+                    await SetSyncStateAsync(connection, transaction, "consecutive_empty_inventory_runs", "0", ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    AppLogger.Warning($"[FullStackLocalDb] empty inventory run (streak={emptyStreak}) → DEFER mark-left until 2 consecutive empty runs (double-confirm).");
+                    await SetSyncStateAsync(connection, transaction, "consecutive_empty_inventory_runs", emptyStreak.ToString(CultureInfo.InvariantCulture), ct).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                leftCount = await MarkLeftInventoryAsync(connection, transaction, runId, now, ct).ConfigureAwait(false);
+                await SetSyncStateAsync(connection, transaction, "consecutive_empty_inventory_runs", "0", ct).ConfigureAwait(false);
+            }
 
             await SetSyncStateAsync(connection, transaction, "last_inventory_sync_at", now.ToString("O"), ct).ConfigureAwait(false);
             await SetSyncStateAsync(connection, transaction, "last_inventory_run_id", runId.ToString(CultureInfo.InvariantCulture), ct).ConfigureAwait(false);
@@ -814,6 +845,16 @@ ON CONFLICT(waybill_no) DO UPDATE SET
             Add(command, "$print_count", row.PrintCount);
             Add(command, "$is_active", row.IsActive ? 1 : 0);
             Add(command, "$tracking_interval_mins", row.TrackingIntervalMins <= 0 ? 30 : row.TrackingIntervalMins);
+        }
+
+        private static async Task<string> GetSyncStateAsync(SqliteConnection connection, SqliteTransaction transaction, string key, CancellationToken ct)
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "SELECT value FROM fs_sync_state WHERE key = $key;";
+            Add(command, "$key", key);
+            var result = await command.ExecuteScalarAsync(ct).ConfigureAwait(false);
+            return result?.ToString();
         }
 
         private static async Task SetSyncStateAsync(SqliteConnection connection, SqliteTransaction transaction, string key, string value, CancellationToken ct)

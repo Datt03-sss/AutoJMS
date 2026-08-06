@@ -9,10 +9,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>favicon.ico</ApplicationIcon>
-    <Version>1.26.6</Version>
-    <AssemblyVersion>1.26.6.0</AssemblyVersion>
-    <FileVersion>1.26.6.0</FileVersion>
-    <InformationalVersion>1.26.6</InformationalVersion>
+    <Version>1.26.9</Version>
+    <AssemblyVersion>1.26.9.0</AssemblyVersion>
+    <FileVersion>1.26.9.0</FileVersion>
+    <InformationalVersion>1.26.9</InformationalVersion>
 
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
@@ -53,6 +53,7 @@
     <Content Include="modules\modules-cache.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('modules\modules-cache.json')" />
     <Content Include="modules\selectors.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('modules\selectors.json')" />
     <Content Include="modules\config.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('modules\config.json')" />
+    <Content Include="modules\tab2config.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('modules\tab2config.json')" />
     <Content Include="tier-definitions.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -130,6 +130,7 @@
             splitContainer1 = new SplitContainer();
             tabDKCH_inputNewBill = new Sunny.UI.UIRichTextBox();
             tabDKCH_newBillDone = new Sunny.UI.UIRichTextBox();
+            tabDKCH_result = new Sunny.UI.UIRichTextBox();
             tabDKCH_nowTracking = new Sunny.UI.UIRichTextBox();
             uiTitlePanel1 = new Sunny.UI.UITitlePanel();
             uiTableLayoutPanel9 = new Sunny.UI.UITableLayoutPanel();
@@ -139,16 +140,9 @@
             tabDKCH_btnDKCH2 = new Sunny.UI.UIButton();
             tabDKCH_btnStop = new Sunny.UI.UIButton();
             tabDKCH_Home = new Sunny.UI.UISymbolButton();
+            // Mục DATA (nhãn, dropdown Sheet/Chế độ, ô số Cột, toggle Dùng sheet, Tổng/OK)
+            // KHÔNG còn dựng ở đây — xem Main.DkchData.cs (BuildDkchDataSection).
             tabDKCH_dataSrc = new Sunny.UI.UITitlePanel();
-            uiTableLayoutPanel8 = new Sunny.UI.UITableLayoutPanel();
-            uiLabel1 = new Sunny.UI.UILabel();
-            uiLabel2 = new Sunny.UI.UILabel();
-            uiLabel4 = new Sunny.UI.UILabel();
-            tabDKCH_sheetName = new Sunny.UI.UIComboBox();
-            tabDKCH_numRow = new Sunny.UI.UIIntegerUpDown();
-            tabDKCH_countSum = new Sunny.UI.UILabel();
-            tabDKCH_countSave = new Sunny.UI.UILabel();
-            tabDKCH_useSheet = new Sunny.UI.UISwitch();
             tabHome = new TabPage();
             tabHome_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
             tabHome_navBar = new Sunny.UI.UIPanel();
@@ -214,7 +208,6 @@
             uiPanel1.SuspendLayout();
             uiTableLayoutPanel10.SuspendLayout();
             tabDKCH_dataSrc.SuspendLayout();
-            uiTableLayoutPanel8.SuspendLayout();
             tabHome.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)tabHome_webView).BeginInit();
             tabHome_navBar.SuspendLayout();
@@ -1663,13 +1656,18 @@
             uiTableLayoutPanel33.ColumnCount = 1;
             uiTableLayoutPanel33.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel33.Controls.Add(splitContainer1, 0, 0);
-            uiTableLayoutPanel33.Controls.Add(tabDKCH_nowTracking, 0, 1);
+            uiTableLayoutPanel33.Controls.Add(tabDKCH_result, 0, 1);
+            uiTableLayoutPanel33.Controls.Add(tabDKCH_nowTracking, 0, 2);
             uiTableLayoutPanel33.Dock = DockStyle.Fill;
             uiTableLayoutPanel33.Location = new Point(1, 20);
             uiTableLayoutPanel33.Name = "uiTableLayoutPanel33";
-            uiTableLayoutPanel33.RowCount = 2;
-            uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Absolute, 200F));
-            uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            uiTableLayoutPanel33.RowCount = 3;
+            // Hàng 0 và 2 dùng Percent để cả cột trái co giãn được ở MinimumSize 1024x700:
+            // trước đây hàng 0 là Absolute 200F + hàng 1 Absolute 88F, cộng với mục DATA cao thêm
+            // 33px là vượt chiều cao khả dụng, khiến ô lịch sử hành trình bị bóp về 0.
+            uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Percent, 52F));
+            uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Absolute, 86F));
+            uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Percent, 48F));
             uiTableLayoutPanel33.Size = new Size(270, 0);
             uiTableLayoutPanel33.TabIndex = 4;
             uiTableLayoutPanel33.TagString = null;
@@ -1722,9 +1720,26 @@
             tabDKCH_newBillDone.Size = new Size(132, 194);
             tabDKCH_newBillDone.TabIndex = 0;
             tabDKCH_newBillDone.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
+            //
+            // tabDKCH_result
+            //
+            tabDKCH_result.Dock = DockStyle.Fill;
+            tabDKCH_result.FillColor = Color.White;
+            tabDKCH_result.Font = new Font("Microsoft Sans Serif", 9F);
+            tabDKCH_result.Location = new Point(4, 205);
+            tabDKCH_result.Margin = new Padding(4, 5, 4, 5);
+            tabDKCH_result.MinimumSize = new Size(1, 1);
+            tabDKCH_result.Name = "tabDKCH_result";
+            tabDKCH_result.Padding = new Padding(4);
+            tabDKCH_result.ReadOnly = true;
+            tabDKCH_result.ShowText = false;
+            tabDKCH_result.Size = new Size(262, 82);
+            tabDKCH_result.TabIndex = 8;
+            tabDKCH_result.TextAlignment = ContentAlignment.MiddleLeft;
+            tabDKCH_result.WordWrap = false;
+            //
             // tabDKCH_nowTracking
-            // 
+            //
             tabDKCH_nowTracking.Dock = DockStyle.Fill;
             tabDKCH_nowTracking.FillColor = Color.White;
             tabDKCH_nowTracking.Font = new Font("Microsoft Sans Serif", 12F);
@@ -1735,7 +1750,7 @@
             tabDKCH_nowTracking.Padding = new Padding(2);
             tabDKCH_nowTracking.ShowText = false;
             tabDKCH_nowTracking.Size = new Size(262, 1);
-            tabDKCH_nowTracking.TabIndex = 8;
+            tabDKCH_nowTracking.TabIndex = 9;
             tabDKCH_nowTracking.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // uiTitlePanel1
@@ -1907,7 +1922,8 @@
             // 
             // tabDKCH_dataSrc
             // 
-            tabDKCH_dataSrc.Controls.Add(uiTableLayoutPanel8);
+            // Nội dung mục DATA do BuildDkchDataSection() trong Main.DkchData.cs dựng
+            // lúc chạy (đo bề rộng chữ thật), nên ở đây panel để TRỐNG.
             tabDKCH_dataSrc.Dock = DockStyle.Top;
             tabDKCH_dataSrc.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
             tabDKCH_dataSrc.Location = new Point(0, 0);
@@ -1921,146 +1937,6 @@
             tabDKCH_dataSrc.Text = "DATA";
             tabDKCH_dataSrc.TextAlignment = ContentAlignment.MiddleLeft;
             tabDKCH_dataSrc.TitleHeight = 20;
-            // 
-            // uiTableLayoutPanel8
-            // 
-            uiTableLayoutPanel8.ColumnCount = 2;
-            uiTableLayoutPanel8.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            uiTableLayoutPanel8.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-            uiTableLayoutPanel8.Controls.Add(uiLabel1, 0, 0);
-            uiTableLayoutPanel8.Controls.Add(uiLabel2, 0, 1);
-            uiTableLayoutPanel8.Controls.Add(uiLabel4, 0, 2);
-            uiTableLayoutPanel8.Controls.Add(tabDKCH_sheetName, 1, 0);
-            uiTableLayoutPanel8.Controls.Add(tabDKCH_numRow, 1, 1);
-            uiTableLayoutPanel8.Controls.Add(tabDKCH_countSum, 0, 3);
-            uiTableLayoutPanel8.Controls.Add(tabDKCH_countSave, 1, 3);
-            uiTableLayoutPanel8.Controls.Add(tabDKCH_useSheet, 1, 2);
-            uiTableLayoutPanel8.Dock = DockStyle.Fill;
-            uiTableLayoutPanel8.Location = new Point(1, 20);
-            uiTableLayoutPanel8.Margin = new Padding(0);
-            uiTableLayoutPanel8.Name = "uiTableLayoutPanel8";
-            uiTableLayoutPanel8.RowCount = 4;
-            uiTableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            uiTableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            uiTableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            uiTableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
-            uiTableLayoutPanel8.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
-            uiTableLayoutPanel8.Size = new Size(270, 132);
-            uiTableLayoutPanel8.TabIndex = 0;
-            uiTableLayoutPanel8.TagString = null;
-            // 
-            // uiLabel1
-            // 
-            uiLabel1.Anchor = AnchorStyles.Left;
-            uiLabel1.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel1.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel1.Location = new Point(3, 5);
-            uiLabel1.Name = "uiLabel1";
-            uiLabel1.Size = new Size(100, 23);
-            uiLabel1.TabIndex = 0;
-            uiLabel1.Text = "SHEET:";
-            // 
-            // uiLabel2
-            // 
-            uiLabel2.Anchor = AnchorStyles.Left;
-            uiLabel2.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel2.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel2.Location = new Point(3, 38);
-            uiLabel2.Name = "uiLabel2";
-            uiLabel2.Size = new Size(100, 23);
-            uiLabel2.TabIndex = 0;
-            uiLabel2.Text = "Cột:";
-            // 
-            // uiLabel4
-            // 
-            uiLabel4.Anchor = AnchorStyles.Left;
-            uiLabel4.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel4.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel4.Location = new Point(3, 71);
-            uiLabel4.Name = "uiLabel4";
-            uiLabel4.Size = new Size(100, 23);
-            uiLabel4.TabIndex = 0;
-            uiLabel4.Text = "Dùng sheet:";
-            // 
-            // tabDKCH_sheetName
-            // 
-            tabDKCH_sheetName.Anchor = AnchorStyles.Left;
-            tabDKCH_sheetName.DataSource = null;
-            tabDKCH_sheetName.FillColor = Color.White;
-            tabDKCH_sheetName.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabDKCH_sheetName.ItemHoverColor = Color.FromArgb(155, 200, 255);
-            tabDKCH_sheetName.Items.AddRange(new object[] { "DKCH", "PHATLAI" });
-            tabDKCH_sheetName.ItemSelectForeColor = Color.FromArgb(235, 243, 255);
-            tabDKCH_sheetName.Location = new Point(138, 4);
-            tabDKCH_sheetName.Margin = new Padding(3, 0, 3, 0);
-            tabDKCH_sheetName.MinimumSize = new Size(63, 0);
-            tabDKCH_sheetName.Name = "tabDKCH_sheetName";
-            tabDKCH_sheetName.Padding = new Padding(0, 0, 30, 2);
-            tabDKCH_sheetName.Radius = 11;
-            tabDKCH_sheetName.Size = new Size(105, 25);
-            tabDKCH_sheetName.SymbolSize = 24;
-            tabDKCH_sheetName.TabIndex = 1;
-            tabDKCH_sheetName.Text = "DKCH";
-            tabDKCH_sheetName.TextAlignment = ContentAlignment.MiddleCenter;
-            tabDKCH_sheetName.Watermark = "";
-            // 
-            // tabDKCH_numRow
-            // 
-            tabDKCH_numRow.Anchor = AnchorStyles.Left;
-            tabDKCH_numRow.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabDKCH_numRow.Location = new Point(135, 37);
-            tabDKCH_numRow.Margin = new Padding(0);
-            tabDKCH_numRow.Maximum = 31D;
-            tabDKCH_numRow.Minimum = 1D;
-            tabDKCH_numRow.MinimumSize = new Size(1, 16);
-            tabDKCH_numRow.Name = "tabDKCH_numRow";
-            tabDKCH_numRow.Padding = new Padding(5);
-            tabDKCH_numRow.Radius = 10;
-            tabDKCH_numRow.ShowText = false;
-            tabDKCH_numRow.Size = new Size(85, 25);
-            tabDKCH_numRow.TabIndex = 2;
-            tabDKCH_numRow.Text = "1";
-            tabDKCH_numRow.TextAlignment = ContentAlignment.MiddleCenter;
-            tabDKCH_numRow.Value = 1;
-            // 
-            // tabDKCH_countSum
-            // 
-            tabDKCH_countSum.Anchor = AnchorStyles.Left;
-            tabDKCH_countSum.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabDKCH_countSum.ForeColor = Color.FromArgb(48, 48, 48);
-            tabDKCH_countSum.Location = new Point(3, 104);
-            tabDKCH_countSum.Name = "tabDKCH_countSum";
-            tabDKCH_countSum.Size = new Size(100, 23);
-            tabDKCH_countSum.TabIndex = 0;
-            tabDKCH_countSum.Text = "Tổng:";
-            // 
-            // tabDKCH_countSave
-            // 
-            tabDKCH_countSave.Anchor = AnchorStyles.Left;
-            tabDKCH_countSave.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabDKCH_countSave.ForeColor = Color.FromArgb(48, 48, 48);
-            tabDKCH_countSave.Location = new Point(140, 104);
-            tabDKCH_countSave.Margin = new Padding(5);
-            tabDKCH_countSave.Name = "tabDKCH_countSave";
-            tabDKCH_countSave.Size = new Size(100, 23);
-            tabDKCH_countSave.TabIndex = 0;
-            tabDKCH_countSave.Text = "OK:";
-            // 
-            // tabDKCH_useSheet
-            // 
-            tabDKCH_useSheet.ActiveColor = Color.FromArgb(128, 128, 255);
-            tabDKCH_useSheet.ActiveText = "";
-            tabDKCH_useSheet.Anchor = AnchorStyles.Left;
-            tabDKCH_useSheet.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabDKCH_useSheet.InActiveText = "";
-            tabDKCH_useSheet.Location = new Point(140, 72);
-            tabDKCH_useSheet.Margin = new Padding(5);
-            tabDKCH_useSheet.MinimumSize = new Size(1, 1);
-            tabDKCH_useSheet.Name = "tabDKCH_useSheet";
-            tabDKCH_useSheet.Size = new Size(40, 20);
-            tabDKCH_useSheet.TabIndex = 3;
-            tabDKCH_useSheet.Text = "uiSwitch1";
-            tabDKCH_useSheet.ActiveChanged += tabDKCH_btnStop_Click;
             // 
             // tabHome
             // 
@@ -2371,7 +2247,6 @@
             uiPanel1.ResumeLayout(false);
             uiTableLayoutPanel10.ResumeLayout(false);
             tabDKCH_dataSrc.ResumeLayout(false);
-            uiTableLayoutPanel8.ResumeLayout(false);
             tabHome.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)tabHome_webView).EndInit();
             tabHome_navBar.ResumeLayout(false);
@@ -2472,6 +2347,7 @@
         private SplitContainer splitContainer1;
         private Sunny.UI.UIRichTextBox tabDKCH_inputNewBill;
         private Sunny.UI.UIRichTextBox tabDKCH_newBillDone;
+        private Sunny.UI.UIRichTextBox tabDKCH_result;
         private Sunny.UI.UIRichTextBox tabDKCH_nowTracking;
         private Sunny.UI.UITitlePanel uiTitlePanel1;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel9;
@@ -2482,15 +2358,7 @@
         private Sunny.UI.UIButton tabDKCH_btnStop;
         private Sunny.UI.UISymbolButton tabDKCH_Home;
         private Sunny.UI.UITitlePanel tabDKCH_dataSrc;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel8;
-        private Sunny.UI.UILabel uiLabel1;
-        private Sunny.UI.UILabel uiLabel2;
-        private Sunny.UI.UILabel uiLabel4;
-        private Sunny.UI.UIComboBox tabDKCH_sheetName;
-        private Sunny.UI.UIIntegerUpDown tabDKCH_numRow;
-        private Sunny.UI.UILabel tabDKCH_countSum;
-        private Sunny.UI.UILabel tabDKCH_countSave;
-        private Sunny.UI.UISwitch tabDKCH_useSheet;
+        // Các control BÊN TRONG tabDKCH_dataSrc được khai báo ở Main.DkchData.cs.
         private TabPage tabHome;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabHome_webView;
         private Sunny.UI.UIPanel tabHome_navBar;

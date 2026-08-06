@@ -49,6 +49,30 @@ Before starting work on any task:
 3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
 3. Skills are helpers — the rules in this file always take precedence over any skill guidance.
 
+### Agent Tooling Rule
+
+Two extra toolsets are available and **every agent should use them proactively when they fit**:
+
+| Tool | Kind | Who has it | Skill file |
+|---|---|---|---|
+| `desktop-commander` | MCP server, repo-scoped in `.mcp.json` | any client loading `.mcp.json` | `.agent/skills/desktop-commander-skill.md` |
+| `superpowers` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/skills/superpowers-skill.md` |
+
+Binding rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md).
+
+Non-negotiables, restated because these tools make it easy to break them:
+
+- Built-in `Read`/`Edit`/`Write`/`Grep` remain the default for repo files; `desktop-commander` is for
+  what they cannot do (terminal, long-running processes, paths outside the repo, process kill,
+  streaming search).
+- The single-writer lock, Protected Files, Secret Policy, "no `git add .`", "no deletes" and
+  "no push without a passing Release build" apply to `execute_command`, `edit_block` and any
+  superpowers-generated plan exactly as they do to hand edits.
+- Do not widen `desktop-commander`'s `allowedDirectories`/`blockedCommands` via `set_config_value`
+  without an explicit owner request.
+- `superpowers` TDD covers pure-logic classes only — not WinForms Designer code or WebView2
+  automation.
+
 ### After Every Edit — Build
 ```powershell
 dotnet restore .\AutoJMS.slnx

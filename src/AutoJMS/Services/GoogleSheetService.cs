@@ -1,4 +1,5 @@
 using Google;
+using Sunny.UI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,7 +17,14 @@ namespace AutoJMS
         public static string LICENSE_SPREADSHEET_ID => AppConfig.Current.LicenseSpreadsheetId;
 
         private static readonly GoogleSheetAccessService Access = new GoogleSheetAccessService(ResolveCredentialPath);
-        private static bool _sheetWarningShown;
+
+        /// <summary>
+        /// Chống spam cảnh báo Google Sheet. Dùng mốc thời gian thay vì cờ một-lần-mỗi-phiên để
+        /// sau khi người dùng bổ sung credential, lần lỗi tiếp theo vẫn được báo lại.
+        /// </summary>
+        private static DateTime _lastSheetWarningAt = DateTime.MinValue;
+        private static readonly TimeSpan SheetWarningCooldown = TimeSpan.FromMinutes(5);
+        private static readonly object _sheetWarningLock = new object();
 
         // ==========================================
         // BỨC TƯỜNG THÀNH 1: BỘ NHỚ TẠM (CACHE 30 GIÂY)
@@ -96,9 +104,56 @@ namespace AutoJMS
         public static void NotifyGoogleSheetFeatureUse(string featureName)
         {
             if (IsGoogleSheetAvailable()) return;
-            if (_sheetWarningShown) return;
-            _sheetWarningShown = true;
-            MessageBox.Show($"Tính năng '{featureName}' cần Google Sheet nhưng hiện chưa có token broker hoặc credential local fallback hợp lệ.\nCác chức năng liên quan sẽ không hoạt động cho đến khi cấu hình được bổ sung.", "Cảnh báo Google Sheet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ShowSheetToast($"Google Sheet chưa sẵn sàng — '{featureName}' tạm không dùng được.");
+        }
+
+        /// <summary>
+        /// Cảnh báo Google Sheet dạng TOAST góc màn hình, KHÔNG chặn.
+        /// <para>
+        /// Bản trước dùng <c>MessageBox.Show</c>: vì hai luồng nền lúc khởi động (đếm số dòng sheet
+        /// của tab DKCH và refresh chat PHATLAI) có thể chạm Google Sheet trước khi token license
+        /// kịp về, người dùng thi thoảng bị một hộp thoại modal không có owner chặn ngang lúc mở app.
+        /// </para>
+        /// </summary>
+        private static void ShowSheetToast(string message)
+        {
+            AppLogger.Warning($"[GoogleSheets] {message}");
+
+            lock (_sheetWarningLock)
+            {
+                if (DateTime.UtcNow - _lastSheetWarningAt < SheetWarningCooldown) return;
+                _lastSheetWarningAt = DateTime.UtcNow;
+            }
+
+            try
+            {
+                Form owner = null;
+                foreach (Form form in Application.OpenForms)
+                {
+                    if (form != null && !form.IsDisposed && form.IsHandleCreated)
+                    {
+                        owner = form;
+                        break;
+                    }
+                }
+
+                // Chưa có cửa sổ nào (vẫn đang khởi động) → chỉ ghi log, không cố vẽ toast.
+                if (owner == null) return;
+
+                if (owner.InvokeRequired)
+                    owner.BeginInvoke(new Action(() => SafeShowTip(message)));
+                else
+                    SafeShowTip(message);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[GoogleSheets] không hiển thị được toast: {ex.Message}");
+            }
+        }
+
+        private static void SafeShowTip(string message)
+        {
+            try { UIMessageTip.ShowWarning(message); } catch { }
         }
 
         public static bool CanUseGoogleSheetFeature()
@@ -130,8 +185,9 @@ namespace AutoJMS
 
         private static void WarnGoogleSheetUnavailable(string reason)
         {
-            AppLogger.Warning($"Google Sheet unavailable: {reason}");
-            MessageBox.Show($"Google Sheet chưa sẵn sàng.\n{reason}", "Cảnh báo Google Sheet", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            // Dùng chung toast + cooldown với NotifyGoogleSheetFeatureUse. Bản trước là MessageBox
+            // KHÔNG có throttle nào, nên chỉ cần một vòng lặp nền gọi vào là bắn liên tục.
+            ShowSheetToast($"Google Sheet chưa sẵn sàng. {reason}");
         }
 
         private static bool IsNetworkError(Exception ex)

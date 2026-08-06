@@ -52,9 +52,71 @@ namespace AutoJMS
 
         public string ProviderName => "TokenBroker";
 
-        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
+        /// <summary>Thời điểm process bắt đầu — mốc tính cửa sổ chờ token license.</summary>
+        private static readonly DateTime ProcessStartUtc = ResolveProcessStartUtc();
+
+        /// <summary>
+        /// Cửa sổ chờ token license kể từ lúc mở app. Verify license lúc khởi động có hạn 12 giây và
+        /// heartbeat còn có thể verify lại sau đó, nên trong ~25 giây đầu "chưa có token" chưa chắc
+        /// là "chưa cấu hình".
+        /// </summary>
+        private const int TokenSettleWindowSeconds = 25;
+        private const int TokenPollIntervalMs = 250;
+
+        private static bool HasLicenseToken => !string.IsNullOrWhiteSpace(LicenseApiService.CurrentAccessToken);
+
+        /// <summary>
+        /// Sẵn sàng khi đã có token license trong bộ nhớ.
+        /// <para>
+        /// Trước đây trả về ngay <c>false</c> nếu token còn rỗng. Đó là nguồn gốc của cảnh báo
+        /// "Google Sheet chưa sẵn sàng" xuất hiện THI THOẢNG lúc mở app: token được điền bởi luồng
+        /// verify/heartbeat bất đồng bộ, còn hai luồng nền lúc khởi động lại chạm Google Sheet ở
+        /// thời điểm dao động vài giây. Token về trước thì im lặng, check chạy trước thì cảnh báo —
+        /// cùng máy, cùng cấu hình, khác kết quả. Nay trong cửa sổ khởi động ta chờ token một chút
+        /// rồi mới kết luận, nhờ vậy tính năng Sheet thật sự chạy được thay vì bị coi là chưa cấu
+        /// hình suốt cả phiên.
+        /// </para>
+        /// </summary>
+        public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult(!string.IsNullOrWhiteSpace(LicenseApiService.CurrentAccessToken));
+            if (HasLicenseToken) return true;
+
+            // KHÔNG chờ khi đang ở UI thread: IsGoogleSheetAvailable() gọi hàm này qua
+            // .GetAwaiter().GetResult(), chờ trên UI thread vừa treo giao diện vừa có nguy cơ
+            // deadlock. Trên UI thread thì trả kết luận ngay.
+            if (SynchronizationContext.Current != null) return false;
+
+            var deadline = ProcessStartUtc.AddSeconds(TokenSettleWindowSeconds);
+            if (DateTime.UtcNow >= deadline) return false;
+
+            AppLogger.Info("[GoogleSheets] chưa có token license — chờ trong cửa sổ khởi động...");
+
+            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TokenPollIntervalMs, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (HasLicenseToken)
+                {
+                    AppLogger.Info("[GoogleSheets] token license đã về — token broker sẵn sàng.");
+                    return true;
+                }
+            }
+
+            AppLogger.Warning("[GoogleSheets] hết cửa sổ chờ mà vẫn chưa có token license.");
+            return HasLicenseToken;
+        }
+
+        private static DateTime ResolveProcessStartUtc()
+        {
+            try { return System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(); }
+            catch { return DateTime.UtcNow; }
         }
 
         public async Task<GoogleSheetReadResult> ReadAsync(GoogleSheetReadRequest request, CancellationToken cancellationToken)
@@ -265,6 +327,17 @@ namespace AutoJMS
             string path = AppPaths.GoogleServiceAccountJson;
             if (!File.Exists(path))
                 return;
+
+            // KHÔNG được xoá lớp fallback CUỐI CÙNG.
+            // Token broker phụ thuộc token license — thứ có thể về muộn hoặc không về (offline, API
+            // license lỗi). Nếu service_account.json bị xoá mà chưa có service_account.sec thì mọi
+            // phiên sau đó không còn đường nào để dùng Google Sheet.
+            if (!File.Exists(AppPaths.EncryptedGoogleServiceAccount))
+            {
+                AppLogger.Info("[GoogleSheets] giữ lại service_account.json — chưa có service_account.sec " +
+                               "làm fallback, xoá đi sẽ mất hẳn đường dự phòng khi token license không về.");
+                return;
+            }
 
             try
             {

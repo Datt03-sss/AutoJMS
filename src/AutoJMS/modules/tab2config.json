@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-29",
+
+  "_readme": [
+    "Cấu hình nội dung ô kết quả tabDKCH_result (tab CHUYỂN HOÀN). Tối đa 4 dòng:",
+    "  dòng 1 = thao tác cuối cùng  (app tự lấy từ lịch sử hành trình, KHÔNG cấu hình ở đây)",
+    "  dòng 2 = result              (thông điệp kết quả/lỗi — in đậm, tô màu theo mức độ)",
+    "  dòng 3 = actionPrefix + actRecommend   (CHỈ hiện khi chế độ Newbie VÀ nhập lẻ 1 mã)",
+    "  dòng 4 = statsLine           (số lần ĐKCH + số lần phát lại, CÙNG 1 dòng, in đậm)",
+    "Dòng nào rỗng thì bỏ hẳn.",
+    "",
+    "Vì dòng 1 đã là thao tác cuối cùng, ĐỪNG đặt result = {lastAction} nữa (sẽ bị lặp).",
+    "App có chốt chống lặp: nếu result trùng nội dung dòng 1 hoặc dòng 2 thì dòng đó bị bỏ hẳn.",
+    "",
+    "QUAN TRỌNG — app đọc file NÀO: bản có thời điểm SỬA MỚI HƠN trong 2 đường dẫn ở cuối ghi chú.",
+    "  Ship build mới -> bản trong InstallDir mới hơn nên thắng.",
+    "  Bạn tự sửa bản AppData -> bản đó mới hơn nên thắng.",
+    "  Dòng log 'Tab2Config: loaded N case(s) from <đường dẫn> (sửa lúc ...)' cho biết bản nào đang chạy.",
+    "",
+    "Chế độ ở mục DATA của tab DKCH:",
+    "  Normal : không hiện dòng 3",
+    "  Newbie : hiện dòng 3 khi nhập LẺ 1 mã; nhập danh sách thì như Normal",
+    "  Ở Newbie, ô kết quả TỰ CAO THÊM (86 -> ~103px) cho đủ 5 dòng; hàng trên/dưới của",
+    "  uiTableLayoutPanel33 dùng Percent nên tự nhường phần chênh.",
+    "",
+    "Các case phase='beforeSave' + outcomes=['readyToRegister'] hiện KHÔNG được kích hoạt: app đã bỏ",
+    "bước vẽ trước khi Lưu để tăng tốc. Chỉ 2 mốc được vẽ: đơn bị CHẶN, và sau khi bấm Lưu.",
+    "",
+    "Ô này chỉ cập nhật ở mốc CUỐI CÙNG của một mã: bị chặn (không bấm Lưu) hoặc sau khi bấm Lưu.",
+    "Không có trạng thái 'đang chờ'/'đang xử lý'/'đổi mode'. Sau khi Lưu app KHÔNG tracking lại",
+    "(để xử lý mã tiếp theo nhanh hơn), nên dòng 1 là trạng thái TRƯỚC lúc Lưu.",
+    "",
+    "Cách hoạt động: duyệt 'cases' TỪ TRÊN XUỐNG, case đầu tiên có enabled=true và khớp toàn bộ",
+    "'match' sẽ được dùng. Không case nào khớp thì dùng 'fallback'. Vì vậy case càng cụ thể phải",
+    "đặt càng lên trên.",
+    "",
+    "match — mọi khoá đều tuỳ chọn, khoá nào bỏ trống/vắng mặt thì bỏ qua (coi như khớp):",
+    "  phase              : 'beforeSave' | 'afterSave' | 'any'",
+    "  outcomes           : mảng, khớp nếu trùng 1 phần tử. Giá trị hợp lệ:",
+    "                       readyToRegister, blocked, blockedViolation, skipped, skippedInSession,",
+    "                       success, failed, unverified, noData, modeSwitchFailed, error",
+    "  modes              : mảng ['DKCH1'] | ['DKCH2'] — mode đang chạy khi bấm Lưu",
+    "  jmsCodes           : mảng mã lỗi số của JMS, ví dụ ['999010051']",
+    "  msgContains        : mảng chuỗi con của msg JMS (nguyên văn, có thể tiếng Trung)",
+    "  registered         : 'yes' | 'no' | 'any' — đơn ĐÃ có mốc 'Đăng ký chuyển hoàn' chưa",
+    "  redelivered        : 'yes' | 'no' | 'any' — đơn ĐÃ có mốc 'Giao lại hàng' chưa",
+    "  lastActionContains : mảng chuỗi con của thao tác gần nhất, ví dụ ['Ký nhận CPN','快件签收']",
+    "  problemScanAfter   : 'HH:mm' — chỉ khớp khi 'Quét kiện vấn đề' gần nhất xảy ra SAU giờ này",
+    "",
+    "Placeholder dùng được trong result / actRecommend / statsLine:",
+    "  {waybill} {ratio} {message} {rawMessage} {code} {mode}",
+    "  {lastAction} {lastActionType} {lastActionTime}",
+    "  {registerCount} {redeliverCount} {dispatchCount}",
+    "  {problemScanTime} {problemScanReason} {errorMessage}",
+    "  {ratio} lấy từ 'x/y' trong msg JMS (出仓次数：1/2 -> 1/2, 问题件次数：1/3 -> 1/3).",
+    "  {lastAction} vẫn dùng được nhưng thường không cần vì dòng 1 đã có sẵn.",
+    "",
+    "=== NHÃN GIAO DIỆN JMS — HOẠT ĐỘNG VỚI CẢ TIẾNG VIỆT VÀ TIẾNG TRUNG ===",
+    "Trang JMS đổi được ngôn ngữ và đã từng đổi cả tên nhãn. Mọi chuỗi phụ thuộc ngôn ngữ đều",
+    "nằm ở đây, KHÔNG hardcode trong code. Nguyên tắc chung của 4 khoá dưới đây:",
+    "  - mỗi khoá là một DANH SÁCH, app thử lần lượt và dùng cái nào đang thật sự có trên trang;",
+    "  - cấu hình được GỘP với bản mặc định trong code, không thay thế -> thêm chuỗi mới là an toàn;",
+    "  - JMS đổi tên/đổi ngôn ngữ: chỉ thêm chuỗi mới vào ĐẦU danh sách, KHÔNG cần build lại app;",
+    "  - không khớp được thì log in ra DANH SÁCH những gì JMS đang có, để biết chuỗi mới mà điền.",
+    "",
+    "dropdownOptions — dropdown 'Loại đơn' / '申请类型', theo từng mode:",
+    "  DKCH1: 'Từ chối' | 'Chuyển hoàn' (tên cũ) | 退回",
+    "  DKCH2: 'Chuyển hoàn lần 2' | 二次退件",
+    "",
+    "saveButtonTitles — nút Lưu: 'Lưu và thêm mới' | 保存并新增.",
+    "  App khớp theo title HOẶC chữ hiển thị trên nút.",
+    "",
+    "collapseHeaders — các panel thu gọn trước khi điền mã (khớp theo chuỗi con của tiêu đề):",
+    "  'Thông tin người gửi' | 'hóa đơn gốc' | 'đơn hàng mới' | 原单收寄件人信息 | 新单收寄件人信息",
+    "",
+    "jmsMessages — từ khoá nhận diện thông điệp lỗi của JMS:",
+    "  needDkch1 : JMS báo phải dùng mode chuyển hoàn LẦN ĐẦU",
+    "  needDkch2 : JMS báo phải dùng mode chuyển hoàn LẦN 2",
+    "  noData    : vận đơn không tồn tại / không có dữ liệu",
+    "  LƯU Ý: hướng đổi mode được quyết định TRƯỚC TIÊN bằng MÃ LỖI SỐ (999006328 -> DKCH1,",
+    "  137043004 / 999006082 -> DKCH2) vì mã không phụ thuộc ngôn ngữ. Từ khoá văn bản chỉ là",
+    "  lớp phụ. needDkch1/needDkch2 hiện CHỈ có tiếng Việt: chưa có capture thật của thông điệp",
+    "  tiếng Trung nên không đoán bừa — đoán sai sẽ làm đổi mode ngược hướng. Khi gặp đơn bị JMS",
+    "  từ chối lúc chạy tiếng Trung, lấy nguyên văn ở dòng log '❌ JMS từ chối — … | <nguyên văn>'",
+    "  rồi thêm vào đúng nhóm.",
+    "  (Riêng 'chưa đủ ca phát' nhận theo 出仓次数 / 问题件次数 — đã cứng trong code vì là mã số",
+    "   nghiệp vụ, không phụ thuộc ngôn ngữ giao diện.)",
+    "",
+    "Sửa file này KHÔNG cần build lại app. App đọc theo thứ tự:",
+    "  1) {InstallRoot}\\AppData\\modules\\tab2config.json   (bản người dùng sửa được)",
+    "  2) {InstallDir}\\modules\\tab2config.json             (bản ship kèm app)"
+  ],
+
+  "dropdownOptions": {
+    "DKCH1": [ "Từ chối", "Chuyển hoàn", "退回" ],
+    "DKCH2": [ "Chuyển hoàn lần 2", "Từ chối lần 2", "二次退件" ]
+  },
+
+  "saveButtonTitles": [ "Lưu và thêm mới", "保存并新增" ],
+
+  "collapseHeaders": [
+    "Thông tin người gửi", "hóa đơn gốc", "đơn hàng mới",
+    "原单收寄件人信息", "新单收寄件人信息"
+  ],
+
+  "jmsMessages": {
+    "needDkch1": [ "Chưa có", "hoàn lần 2" ],
+    "needDkch2": [],
+    "noData": [
+      "không có dữ liệu", "Vận đơn không tồn tại",
+      "没有数据", "无数据", "运单不存在", "单号不存在"
+    ]
+  },
+
+  "actionPrefix": "→ ",
+  "statsLine": "Số lần đã ĐKCH: {registerCount} · Số lần phát lại: {redeliverCount}",
+
+  "cases": [
+    {
+      "id": "success-dkch2",
+      "enabled": true,
+      "group": "3. Thao tác thành công",
+      "note": "Đăng ký chuyển hoàn LẦN 2 thành công.",
+      "match": { "phase": "afterSave", "outcomes": ["success"], "modes": ["DKCH2"] },
+      "result": "Đã đăng ký chuyển hoàn lần 2.",
+      "actRecommend": "Kiểm tra trạng thái duyệt chuyển hoàn."
+    },
+    {
+      "id": "success-dkch1",
+      "enabled": true,
+      "group": "3. Thao tác thành công",
+      "note": "Đăng ký chuyển hoàn LẦN ĐẦU thành công.",
+      "match": { "phase": "afterSave", "outcomes": ["success"] },
+      "result": "Đã đăng ký chuyển hoàn.",
+      "actRecommend": "Kiểm tồn kho."
+    },
+
+    {
+      "id": "not-enough-problem-scan",
+      "enabled": true,
+      "group": "1. Chưa ghi nhận đăng ký chuyển hoàn",
+      "note": "JMS — 此单的问题件次数不满足登记条件，问题件次数：1/3 (đơn mới, thiếu ca kiện vấn đề). Nhận diện theo chuỗi 问题件次数 nên không phụ thuộc mã lỗi. Đơn ca phát đầu (Xuống kiện -> Quét phát hàng, chưa kiện) VẪN được bấm Lưu và rơi vào đây.",
+      "match": { "outcomes": ["failed"], "msgContains": ["问题件次数"] },
+      "result": "Đơn mới chưa đủ ca ({ratio}).",
+      "actRecommend": "Kiểm tồn kho và Phát lại ngày hôm sau."
+    },
+    {
+      "id": "not-enough-dispatch-scan",
+      "enabled": true,
+      "group": "2. Đã ghi nhận đăng ký chuyển hoàn",
+      "note": "JMS 999010051 — 此单的出仓次数不满足登记条件，出仓次数：1/2 (đơn phát lại, thiếu ca phát). Đơn Giao lại hàng -> Quét phát -> Quét kiện vấn đề là HỢP LỆ với luật của app nên vẫn bấm Lưu đúng 1 lần, JMS từ chối thì rơi vào đây.",
+      "match": { "outcomes": ["failed"], "msgContains": ["出仓次数"] },
+      "result": "Đơn phát lại chưa đủ ca ({ratio}).",
+      "actRecommend": "Kiểm tồn kho và Phát lại ngày hôm sau."
+    },
+
+    {
+      "id": "complaint",
+      "enabled": false,
+      "group": "1. Chưa ghi nhận đăng ký chuyển hoàn",
+      "note": "TODO: đơn dính khiếu nại. Cần điền jmsCodes và/hoặc msgContains đúng chuỗi JMS trả về (lấy từ log dòng '❌ JMS từ chối — … | <nguyên văn>'), rồi đổi enabled=true.",
+      "match": { "outcomes": ["failed"], "jmsCodes": [], "msgContains": [] },
+      "result": "Đơn dính khiếu nại.",
+      "actRecommend": "Điền link giải trình đơn khiếu nại."
+    },
+    {
+      "id": "late-problem-scan",
+      "enabled": false,
+      "group": "1. Chưa ghi nhận đăng ký chuyển hoàn",
+      "note": "TODO: đơn kiện muộn sau giờ hành chính. Đặt problemScanAfter = giờ kết thúc hành chính, điền 2 chỗ trống trong actRecommend, rồi đổi enabled=true.",
+      "match": { "phase": "beforeSave", "outcomes": ["readyToRegister"], "problemScanAfter": "17:30", "registered": "no" },
+      "result": "Đơn kiện muộn sau giờ hành chính ( {problemScanTime} ).",
+      "actRecommend": "Phát lại ngày hôm sau và kiện vấn đề {không liên lạc/hẹn} trước ( ... giờ)."
+    },
+
+    {
+      "id": "blocked-self-dispatch-violation",
+      "enabled": true,
+      "group": "2. Đã ghi nhận đăng ký chuyển hoàn",
+      "note": "Giao lại hàng -> Quét phát -> Quét kiện vấn đề -> Quét phát hàng: đã kiện rồi vẫn tự ý phát thêm ca. TUYỆT ĐỐI không bấm Lưu.",
+      "match": { "outcomes": ["blockedViolation"] },
+      "result": "Chưa quét kiện vấn đề, vi phạm tự ý chuyển hoàn, chặn đăng ký chuyển hoàn.",
+      "actRecommend": ""
+    },
+    {
+      "id": "blocked-redeliver-no-problem-scan",
+      "enabled": true,
+      "group": "2. Đã ghi nhận đăng ký chuyển hoàn",
+      "note": "Giao lại hàng -> Quét phát hàng, chưa 'Quét kiện vấn đề' lần nào trong chu kỳ phát lại. KHÔNG bấm Lưu.",
+      "match": { "outcomes": ["blocked"] },
+      "result": "Chưa quét kiện vấn đề, chặn đăng ký chuyển hoàn.",
+      "actRecommend": ""
+    },
+    {
+      "id": "already-registered",
+      "enabled": false,
+      "group": "2. Đã ghi nhận đăng ký chuyển hoàn",
+      "note": "TẮT: app KHÔNG còn bỏ qua đơn đã đăng ký — vẫn thử Lưu 1 lần, JMS tự từ chối rồi app đổi sang 'Chuyển hoàn lần 2'. Vì vậy outcome 'skipped' không bao giờ được publish nữa. Giữ lại để tham chiếu.",
+      "match": { "phase": "beforeSave", "outcomes": ["skipped"] },
+      "result": "Đã ghi nhận đăng ký chuyển hoàn ( {registerCount} lần ) — vẫn thử đăng ký.",
+      "actRecommend": ""
+    },
+
+    {
+      "id": "signed-cpn",
+      "enabled": false,
+      "group": "4. Ký nhận CPN",
+      "note": "TẮT: các case 'beforeSave/readyToRegister' không còn được vẽ vì app đã bỏ bước hiển thị trước khi Lưu để tăng tốc. Thông tin 'Ký nhận CPN' vẫn thấy ở DÒNG 1 (thao tác cuối cùng). Chỉ giữ lại để tham chiếu cấu hình.",
+      "match": { "phase": "beforeSave", "outcomes": ["readyToRegister"], "lastActionContains": ["Ký nhận CPN", "快件签收"] },
+      "result": "Đã ký nhận.",
+      "actRecommend": "Thực hiện in đơn hoàn 1 phần (nếu có thể)."
+    },
+    {
+      "id": "dispatch-pending-problem-scan",
+      "enabled": false,
+      "group": "5. Quét phát hàng",
+      "note": "TẮT: cùng lý do với signed-cpn. Thao tác 'Quét phát hàng' vẫn hiện ở DÒNG 1.",
+      "match": { "phase": "beforeSave", "outcomes": ["readyToRegister"], "lastActionContains": ["Quét phát hàng", "出仓扫描"] },
+      "result": "Chưa kiện vấn đề.",
+      "actRecommend": ""
+    },
+
+    {
+      "id": "saved-in-session",
+      "enabled": false,
+      "group": "Khác",
+      "note": "TẮT: app KHÔNG còn bỏ qua mã đã Lưu trong phiên — nhập lại là làm lại. Case này không còn được kích hoạt.",
+      "match": { "outcomes": ["skippedInSession"] },
+      "result": "Đã đăng ký thành công trong phiên này.",
+      "actRecommend": ""
+    },
+    {
+      "id": "unverified",
+      "enabled": true,
+      "group": "Khác",
+      "note": "Đã bấm Lưu nhưng không đọc được phản hồi và lịch sử chưa ghi nhận. App KHÔNG bấm Lưu lại.",
+      "match": { "outcomes": ["unverified"] },
+      "result": "Không xác minh được kết quả Lưu.",
+      "actRecommend": "Kiểm tra tay trên JMS trước khi thử lại."
+    },
+    {
+      "id": "no-data",
+      "enabled": true,
+      "group": "Khác",
+      "match": { "outcomes": ["noData"] },
+      "result": "Vận đơn không có dữ liệu trên JMS.",
+      "actRecommend": ""
+    },
+    {
+      "id": "mode-switch-failed",
+      "enabled": true,
+      "group": "Khác",
+      "note": "Đã thử cả 'Chuyển hoàn' và 'Chuyển hoàn lần 2' nhưng JMS vẫn từ chối.",
+      "match": { "outcomes": ["modeSwitchFailed"] },
+      "result": "Sai mode chuyển hoàn — JMS từ chối cả 2 mode.",
+      "actRecommend": "Kiểm tra tay trên JMS."
+    },
+    {
+      "id": "error",
+      "enabled": true,
+      "group": "Khác",
+      "match": { "outcomes": ["error"] },
+      "result": "Lỗi: {errorMessage}",
+      "actRecommend": ""
+    },
+    {
+      "id": "before-save-default",
+      "enabled": false,
+      "group": "Khác",
+      "note": "TẮT MẶC ĐỊNH. Đây là bản xem trước chung chung (hiện thao tác cuối cùng của mọi đơn hợp lệ) — chính nó làm ô kết quả trễ hơn thao tác đang chạy vì bị kết quả Lưu ghi đè ngay sau đó. Chỉ bật khi bạn muốn thấy trạng thái trước lúc Lưu.",
+      "match": { "phase": "beforeSave", "outcomes": ["readyToRegister"] },
+      "result": "{lastAction}",
+      "actRecommend": ""
+    }
+  ],
+
+  "fallback": {
+    "note": "Dùng khi không case nào khớp. {message} là msg JMS đã dịch/rút gọn, rỗng thì hiện nguyên văn.",
+    "result": "{message}",
+    "actRecommend": ""
+  }
+}

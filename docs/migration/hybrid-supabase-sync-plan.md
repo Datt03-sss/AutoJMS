@@ -1,5 +1,17 @@
 # AutoJMS — Kế hoạch Hybrid Local-first + Supabase (đồng bộ realtime)
 
+> ⚠️ **TÀI LIỆU LỊCH SỬ / TRANSITION (không còn là kế hoạch hiện hành).** Phần Phase 1–2 đã triển khai
+> (migration `202607110001`, event-sourcing `202607110002`) **nhưng chưa đạt hợp đồng bảo mật + cursor
+> mới**: RLS còn cho JWT không `site_code` đọc toàn bộ và cấp RPC cho `anon`; fingerprint/cursor có
+> defect. Kế hoạch hiện hành + cách khắc phục: **`datahub-master-plan.md` (Draft v3)** và
+> **`datahub-p0-contract.md` (P0-A..P0-E)**. Giữ tài liệu này để tham chiếu bối cảnh, **không** dùng
+> để triển khai tiếp.
+>
+> ⚠️ **§1 "Hiện trạng" bên dưới đã LỖI THỜI:** nó mô tả trạng thái *trước* hybrid (cụm `Main.cs` với 2
+> `[TEMP DISABLE]`). **Thực tế hiện tại:** `FullStackOperation.StartCloudSync()` đã chạy và
+> `CloudSyncEnabled` **mặc định `true`** ⇒ cloud sync (hybrid + event-sourcing shadow) **đang bật** ở
+> đường FullStack, không còn "tắt runtime". Đọc §1 chỉ để hiểu bối cảnh cũ.
+>
 > Phân tích hiện trạng lưu trữ/xử lý dữ liệu, so sánh với mô hình hybrid, và kế hoạch triển khai cụ thể.
 > Mô hình mục tiêu (theo yêu cầu): **local-first → sync lên Supabase → realtime, nhiều máy cùng xử lý; mỗi lần máy nào truy vấn sẽ tự lấy dữ liệu mới nhất (newest-wins).**
 

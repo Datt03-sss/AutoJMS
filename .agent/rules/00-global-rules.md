@@ -7,6 +7,7 @@
 3. Always read `.agent/rules` before changing code.
 4. Always read `docs/audit/CODEBASE_AUDIT.md` if available.
 5. Read `.agent\skills/SKILL.md `
+6. Use `.codegraph`
 
 ## MANDATORY GLOBAL RULES
 

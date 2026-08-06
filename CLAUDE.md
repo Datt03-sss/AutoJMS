@@ -22,10 +22,36 @@ Never start editing on a dirty or stale working tree.
 
 Before starting work on any task:
 
-1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, Supabase manifest, WebView2, etc.) and follow it.
+1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, Supabase manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
 2. For any Supabase work (MCP, migrations, RLS, edge functions) follow `.agents/skills/supabase/SKILL.md`; for Postgres SQL tuning follow `.agents/skills/supabase-postgres-best-practices/SKILL.md`.
 3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
 3. Skills are helpers — project rules in this file and `AGENTS.md` always take precedence over any skill guidance.
+
+---
+
+## Agent Tooling — desktop-commander & superpowers
+
+Full rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md).
+Skills: [.agent/skills/desktop-commander-skill.md](./.agent/skills/desktop-commander-skill.md),
+[.agent/skills/superpowers-skill.md](./.agent/skills/superpowers-skill.md).
+
+| Tool | Kind | Who has it | Use it for |
+|---|---|---|---|
+| `desktop-commander` | MCP server, repo-scoped in `.mcp.json` | any client that loads `.mcp.json` | terminal + long-running processes, files **outside** the repo (runtime logs, `AppData\modules`, WebView2 captures), `list_processes`/`kill_process` for build file locks, streaming search, `write_pdf` |
+| `superpowers` | Claude Code **plugin** (`.claude/settings.json`) | Claude Code CLI only | `brainstorm` before non-trivial work, `write-plan`/`execute-plan`, systematic debugging, TDD on pure-logic classes |
+
+Use them proactively when they fit — but note:
+
+- **Built-in `Read`/`Edit`/`Write`/`Grep` stay the default for repo files.** Reach for
+  `desktop-commander` only when the built-ins genuinely cannot do the job.
+- **No tool exempts you from this file.** Minimal Edit Rule, Protected Files, Secret Policy, the
+  single-writer lock in `.agent-lock.md`, and "never push without a passing Release build" apply
+  identically to `execute_command`, `edit_block` and any superpowers-generated plan.
+- **Never** use `set_config_value` to widen desktop-commander's `allowedDirectories` /
+  `blockedCommands` without an explicit owner request; never `git add .`; never delete files.
+- `superpowers` TDD applies to pure-logic classes only (`DkchJourneyAnalyzer`, `Tab2Config`, the
+  response parsers, `TierDefinitions`) — **not** to WinForms Designer code or WebView2 automation,
+  which are verified by the Owner Manual Test Checklist instead.
 
 ---
 

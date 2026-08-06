@@ -1,4 +1,4 @@
-using AutoJMS.Data;
+﻿using AutoJMS.Data;
 using AutoJMS.Automation.DevTools;
 using AutoJMS.Diagnostics;
 using AutoJMS.Diagnostics.AppCapture;
@@ -152,6 +152,9 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
+            // Mục DATA của tab DKCH được dựng bằng code (không qua designer) để bề rộng
+            // luôn khớp bề rộng chữ thật. Phải chạy TRƯỚC mọi code đọc/ghi các control đó.
+            BuildDkchDataSection();
             AlignLeftPanelControls();
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
@@ -172,6 +175,9 @@ namespace AutoJMS
             }
             UI.AppTheme.Apply(this);
             ApplyWaybillInputBoldFonts();
+            // AppTheme gán Font = "Segoe UI" 10F cho MỌI control, nên phải đo và xếp lại
+            // mục DATA SAU khi theme chạy, nếu không chữ sẽ bị cắt.
+            LayoutDkchDataSection();
 
             tabPrint_AutoMode.Active = _settings.PrintDefaultAutoPrint;
             _printerPreflightService = new PrinterPreflightService(() => _settings);
@@ -287,6 +293,22 @@ namespace AutoJMS
                 }
             };
             _dkchManager.OnWaybillCompleted += AppendDoneWaybill;
+            tabDKCH_guideMode.SelectedIndex = 0;   // 0 = Normal, 1 = Newbie
+            tabDKCH_guideMode.SelectedIndexChanged += (s2, e2) => ApplyDkchGuideMode();
+            ApplyDkchGuideMode();
+
+            _dkchManager.OnResultChanged += (info) =>
+            {
+                if (this.InvokeRequired)
+                {
+                    this.Invoke(new Action(() => FormatDkchResult(info)));
+                }
+                else
+                {
+                    FormatDkchResult(info);
+                }
+            };
+            ShowDkchResultPlaceholder();
 
         }
 
@@ -472,6 +494,9 @@ namespace AutoJMS
             }
             UI.AppTheme.Apply(this);
             ApplyWaybillInputBoldFonts();
+            // AppTheme gán Font = "Segoe UI" 10F cho MỌI control, nên phải đo và xếp lại
+            // mục DATA SAU khi theme chạy, nếu không chữ sẽ bị cắt.
+            LayoutDkchDataSection();
 
             if (this.IsDisposed) return;
 
@@ -1010,18 +1035,11 @@ namespace AutoJMS
         }
 
 
+
         private void AlignLeftPanelControls()
         {
-            // DATA section inputs alignment
-            if (tabDKCH_sheetName != null && tabDKCH_numRow != null && tabDKCH_useSheet != null)
-            {
-                tabDKCH_sheetName.Margin = new Padding(10, 0, 0, 0);
-                tabDKCH_numRow.Margin = new Padding(10, 0, 0, 0);
-                tabDKCH_useSheet.Margin = new Padding(12, 0, 0, 0);
-
-                tabDKCH_sheetName.Size = new Size(115, 28);
-                tabDKCH_numRow.Size = new Size(115, 28);
-            }
+            // Mục DATA tự lo bố cục của nó — xem Main.DkchData.cs.
+            LayoutDkchDataSection();
 
             // CONTROL section buttons full width & matching height alignment
             if (tabDKCH_Home != null && tabDKCH_btnDKCH1 != null && tabDKCH_btnDKCH2 != null && uiTableLayoutPanel9 != null)
@@ -1127,6 +1145,7 @@ namespace AutoJMS
                     {
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
+                        LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
                         this.Invalidate(true);
                         this.Update();
                     }
@@ -2329,7 +2348,9 @@ namespace AutoJMS
   const waybillInput = container ? container.querySelector('input') : null;
   const dropdown = document.querySelector('.el-select .el-input__inner');
   const searchButton = container ? container.querySelector('button.el-button--primary') : document.querySelector('button.el-button--primary');
-  const hasDkchText = bodyText.includes('chuyển hoàn') || bodyText.includes('chuyen hoan') || bodyText.includes('đăng ký chuyển hoàn') || bodyText.includes('dang ky chuyen hoan');
+  const dkchMarkers = ['chuyển hoàn', 'chuyen hoan', 'từ chối', 'tu choi', 'mã vận đơn', 'loại đơn',
+                       '退回', '退件', '二次退件', '申请类型', '单号'];
+  const hasDkchText = dkchMarkers.some(m => bodyText.includes(m));
   return JSON.stringify({
     href,
     hasRoute,
@@ -2367,9 +2388,17 @@ namespace AutoJMS
                     return new DkchPageProbe { State = DkchPageState.WrongPage, Url = currentUrl, Detail = "route-mismatch" };
                 }
 
-                if (hasWaybillInput && hasDropdown && hasSearchButton && hasDkchText)
+                // hasDkchText chỉ là dấu hiệu PHỤ: route đã khớp + đủ 3 control của form là sẵn sàng.
+                // Trước đây nó là điều kiện BẮT BUỘC và chỉ chứa chuỗi tiếng Việt, nên khi JMS chạy
+                // ở tiếng Trung thì probe mãi trả về Loading và DKCH không bao giờ start được.
+                if (hasWaybillInput && hasDropdown && hasSearchButton)
                 {
-                    return new DkchPageProbe { State = DkchPageState.Ready, Url = currentUrl, Detail = "route+form-marker" };
+                    return new DkchPageProbe
+                    {
+                        State = DkchPageState.Ready,
+                        Url = currentUrl,
+                        Detail = hasDkchText ? "route+form-marker" : "route+form (no-text-marker)"
+                    };
                 }
 
                 if (hasPassword || hasLoginText)
@@ -2480,6 +2509,10 @@ namespace AutoJMS
                     if (!await EnsureDkchPageReadyAsync(_appCts.Token)) return;
 
                     tabDKCH_inputNewBill.Text = "";
+
+                    // Nhập lẻ 1 mã mới được hiện dòng đề xuất (chế độ Newbie); danh sách thì không.
+                    _dkchManager.BeginManualBatch(allLines.Count);
+
                     foreach (var waybill in allLines)
                     {
                         AppendToNewBillDone(waybill);
@@ -2536,6 +2569,419 @@ namespace AutoJMS
         {
             if (string.IsNullOrWhiteSpace(waybill)) return false;
             return DkchWaybillRegex.IsMatch(waybill.Trim());
+        }
+
+        /// <summary>Chế độ hướng dẫn đang chọn ở mục DATA của tab DKCH.</summary>
+        private DkchGuideMode _dkchGuideMode = DkchGuideMode.Normal;
+
+        /// <summary>
+        /// Đọc lựa chọn Normal/Newbie từ dropdown và đẩy xuống DkchManager.
+        /// <para>
+        /// Newbie: hiện thêm dòng đề xuất thao tác tiếp theo, nhưng CHỈ khi nhập lẻ 1 mã — nhập
+        /// danh sách thì hành xử như Normal để không làm rối lúc chạy hàng loạt.
+        /// </para>
+        /// </summary>
+        private void ApplyDkchGuideMode()
+        {
+            _dkchGuideMode = (tabDKCH_guideMode?.SelectedIndex == 1)
+                ? DkchGuideMode.Newbie
+                : DkchGuideMode.Normal;
+
+            if (_dkchManager != null)
+                _dkchManager.GuideMode = _dkchGuideMode;
+
+            AppLogger.Info($"[DKCH] chế độ hướng dẫn = {_dkchGuideMode}");
+        }
+
+        /// <summary>Màu nhấn của ô kết quả DKCH theo mức độ thông báo.</summary>
+        private static System.Drawing.Color DkchResultAccent(DkchResultLevel level) => level switch
+        {
+            DkchResultLevel.Success => System.Drawing.Color.ForestGreen,
+            DkchResultLevel.Error => System.Drawing.Color.Red,
+            DkchResultLevel.Warning => System.Drawing.Color.DarkOrange,
+            DkchResultLevel.Pending => System.Drawing.Color.Gray,
+            _ => System.Drawing.Color.DodgerBlue
+        };
+
+        /// <summary>Nội dung mặc định của ô kết quả khi chưa xử lý mã nào.</summary>
+        private void ShowDkchResultPlaceholder()
+        {
+            FormatDkchResult(new DkchResultInfo
+            {
+                Level = DkchResultLevel.Pending,
+                Message = "Nhập mã vận đơn rồi Enter."
+            });
+        }
+
+        /// <summary>
+        /// Vẽ ô kết quả DKCH (tabDKCH_result):
+        /// <list type="number">
+        /// <item><b>Thao tác cuối cùng</b> (in đậm, tô màu nổi bật) <c>|</c> thời gian (chữ mờ)</item>
+        /// <item><b>Nguyên nhân kiện vấn đề</b> — thụt lề, in đậm, tô màu nổi bật</item>
+        /// <item>Thông điệp kết quả/lỗi — in đậm, tô màu theo mức độ</item>
+        /// <item>Đề xuất bước tiếp theo — CHỈ khi chế độ Newbie và nhập lẻ 1 mã</item>
+        /// <item>Số lần đã ĐKCH · số lần phát lại — chữ mờ</item>
+        /// </list>
+        /// Dòng nào rỗng thì bỏ hẳn. Nội dung dòng 3-5 do <c>modules/tab2config.json</c> quyết định.
+        /// <para>
+        /// Tên thao tác dùng CÙNG bảng màu với ô lịch sử hành trình (<see cref="DkchActionColor"/>)
+        /// để hai ô đọc liền mạch, không phải nhớ hai hệ màu khác nhau.
+        /// </para>
+        /// </summary>
+        private void FormatDkchResult(DkchResultInfo info)
+        {
+            if (info == null) return;
+            if (tabDKCH_result == null || tabDKCH_result.IsDisposed) return;
+
+            var accent = DkchResultAccent(info.Level);
+
+            string actionType = (info.LastActionType ?? "").Trim();
+            string actionTime = (info.LastActionTime ?? "").Trim();
+            string note = (info.LastActionNote ?? "").Trim();
+            string message = (info.Message ?? "").Trim();
+
+            // Chưa có thành phần rời (ví dụ lỗi lúc chưa đọc được hành trình) thì dùng chuỗi ghép.
+            if (actionType.Length == 0 && actionTime.Length == 0)
+                actionType = (info.LastAction ?? "").Trim();
+
+            // KHÔNG lặp lại nội dung đã có ở dòng trên. Xảy ra khi cấu hình đặt
+            // result = {lastAction}: dòng 3 sẽ y hệt dòng 1, vừa vô nghĩa vừa đẩy dòng thống kê
+            // ra ngoài. Chốt ở đây để bất kỳ bản tab2config.json nào cũng an toàn.
+            if (SameDkchText(message, actionType) || SameDkchText(message, note)
+                || (actionTime.Length > 0 && SameDkchText(message, actionType + " | " + actionTime)))
+            {
+                message = "";
+            }
+
+            string act = (info.ActRecommend ?? "").Trim();
+            string recommend = (info.ShowRecommend && act.Length > 0)
+                ? (info.ActionPrefix ?? "\u2192 ") + act
+                : "";
+
+            string stats = (info.Stats ?? "").Trim();
+
+            // ── Ép MỖI DÒNG nằm gọn trên ĐÚNG 1 dòng ─────────────────────────────────
+            // WordWrap=false để RichTextBox không tự xuống dòng; sau đó tự hạ cỡ chữ, và nếu
+            // cỡ nhỏ nhất vẫn không vừa thì cắt bớt phần biến động và thêm dấu "…".
+            tabDKCH_result.WordWrap = false;
+
+            int available = Math.Max(40, tabDKCH_result.ClientSize.Width
+                                         - tabDKCH_result.Padding.Horizontal - 10);
+
+            float size = FitDkchFontSize(available, actionType, actionTime, note, message, recommend, stats);
+            var baseFont = new System.Drawing.Font(tabDKCH_result.Font.FontFamily, size);
+            var boldFont = new System.Drawing.Font(baseFont, System.Drawing.FontStyle.Bold);
+
+            // Cắt phần BIẾN ĐỘNG của từng dòng, giữ nguyên phần cố định (thời gian, tiền tố "→ ").
+            int timeWidth = actionTime.Length > 0 ? MeasureDkch(" | " + actionTime, baseFont) : 0;
+            actionType = TruncateToWidth(actionType, boldFont, available - timeWidth);
+            note = TruncateToWidth(note, boldFont, available);
+            message = TruncateToWidth(message, boldFont, available);
+            stats = TruncateToWidth(stats, boldFont, available);
+
+            string recommendBody = "";
+            if (recommend.Length > 0)
+            {
+                string prefix = info.ActionPrefix ?? "\u2192 ";
+                string body = recommend.StartsWith(prefix, StringComparison.Ordinal)
+                    ? recommend.Substring(prefix.Length) : recommend;
+                recommendBody = prefix + TruncateToWidth(body, boldFont, available - MeasureDkch(prefix, boldFont));
+
+                // Đệm khoảng trắng cho hết bề rộng: dải nền highlight sẽ trải kín dòng, trông như
+                // một khung liền chứ không phải vệt màu bó sát chữ.
+                recommend = PadToWidth(recommendBody, boldFont, available);
+            }
+
+            string line1 = actionType;
+            if (actionTime.Length > 0)
+                line1 = line1.Length > 0 ? actionType + " | " + actionTime : actionTime;
+
+            var sb = new StringBuilder();
+            int lineCount = 0;
+            foreach (var line in new[] { line1, note, message, recommend, stats })
+            {
+                if (string.IsNullOrEmpty(line)) continue;
+                if (sb.Length > 0) sb.Append(Environment.NewLine);
+                sb.Append(line);
+                lineCount++;
+            }
+
+            tabDKCH_result.Clear();
+            tabDKCH_result.Font = baseFont;
+            tabDKCH_result.Text = sb.ToString();
+            tabDKCH_result.RectColor = accent;
+
+            // Chế độ Newbie có thêm dòng đề xuất → ô phải cao thêm, nếu không dòng thống kê bị
+            // đẩy ra ngoài vùng thấy được (đã tắt wrap nên không có thanh cuộn dọc để bù).
+            EnsureDkchResultHeight(lineCount, baseFont);
+
+            // Tô từ trên xuống, mỗi đoạn tìm từ vị trí sau đoạn trước → không nhặt nhầm khi hai
+            // đoạn chứa cùng chuỗi.
+            int cursor = 0;
+
+            // Dòng 1: tên thao tác NỔI BẬT, thời gian để mờ.
+            cursor = PaintDkchLine(actionType, cursor, DkchActionColor(actionType), bold: true);
+            cursor = PaintDkchLine(actionTime, cursor, System.Drawing.Color.Gray, bold: false);
+
+            // Dòng 2: nguyên nhân kiện vấn đề — in đậm, màu chữ mặc định.
+            // Dùng ForeColor thay vì Color.Black cứng để theme tối vẫn đọc được (đen trên nền tối
+            // là vô hình); ở theme sáng ForeColor đã là đen.
+            cursor = PaintDkchLine(note, cursor, tabDKCH_result.ForeColor, bold: true);
+
+            // Dòng 3: thông điệp kết quả — màu theo mức độ.
+            cursor = PaintDkchLine(message, cursor, accent, bold: true);
+
+            // Dòng đề xuất (Newbie): đóng khung bằng dải nền trải kín dòng + chữ đậm.
+            cursor = PaintDkchBanner(recommendBody, recommend, cursor);
+
+            // Dòng cuối: thống kê — in đậm, màu chữ mặc định (đen ở theme sáng, trắng ở theme tối).
+            PaintDkchLine(stats, cursor, tabDKCH_result.ForeColor, bold: true);
+
+            tabDKCH_result.SelectionStart = 0;
+            tabDKCH_result.SelectionLength = 0;
+            tabDKCH_result.SelectionColor = tabDKCH_result.ForeColor;
+            tabDKCH_result.SelectionBackColor = tabDKCH_result.FillColor;
+            tabDKCH_result.SelectionFont = tabDKCH_result.Font;
+            tabDKCH_result.ScrollToCaret();
+
+            if (!string.IsNullOrEmpty(info.CaseId))
+                AppLogger.Debug($"[tabDKCH_result] case={info.CaseId} mode={_dkchGuideMode} font={size:0.#} " +
+                                $"| {line1} | {note} | {message} | {recommend} | {stats}");
+        }
+
+        /// <summary>
+        /// Chiều cao tối thiểu/tối đa của ô kết quả (px) trong `uiTableLayoutPanel33`.
+        /// Mức tối thiểu 86px vừa đúng 4 dòng ở 9pt — tức mọi trường hợp Normal. Nhờ vậy ô chỉ
+        /// thay đổi chiều cao khi thật sự cần (chế độ Newbie), không co rồi giãn gây nhấp nháy.
+        /// </summary>
+        private const int DkchResultMinHeight = 86;
+        private const int DkchResultMaxHeight = 128;
+
+        /// <summary>
+        /// Co giãn chiều cao hàng chứa ô kết quả theo SỐ DÒNG thực tế.
+        /// <para>
+        /// Cần thiết vì `WordWrap = false` nên ô không có thanh cuộn để bù: chế độ Newbie thêm dòng
+        /// đề xuất mà hàng vẫn cao cố định thì dòng thống kê ở dưới bị cắt mất. Hàng 0 và 2 của
+        /// `uiTableLayoutPanel33` dùng Percent nên chúng tự nhường/lấy lại phần chênh; kẹp trong
+        /// [72, 128] px để ô lịch sử hành trình không bị bóp quá.
+        /// </para>
+        /// </summary>
+        private void EnsureDkchResultHeight(int lineCount, System.Drawing.Font font)
+        {
+            if (uiTableLayoutPanel33 == null || uiTableLayoutPanel33.RowStyles.Count < 2) return;
+
+            int lineHeight = font.Height + 2;
+            int chrome = tabDKCH_result.Padding.Vertical + 10;   // padding trong + viền
+
+            int wanted = Math.Max(1, lineCount) * lineHeight + chrome;
+            wanted = Math.Min(DkchResultMaxHeight, Math.Max(DkchResultMinHeight, wanted));
+
+            var row = uiTableLayoutPanel33.RowStyles[1];
+
+            // Chỉ đổi khi lệch đáng kể — tránh gọi layout lại ở mỗi lần publish kết quả.
+            if (row.SizeType == SizeType.Absolute && Math.Abs(row.Height - wanted) < 2) return;
+
+            uiTableLayoutPanel33.RowStyles[1] = new RowStyle(SizeType.Absolute, wanted);
+        }
+
+        /// <summary>Cỡ chữ nhỏ nhất được phép — dưới mức này thì không đọc nổi, thà cắt chữ.</summary>
+        private const float DkchMinFontSize = 7f;
+
+        /// <summary>Cỡ chữ mong muốn khi mọi dòng đều vừa.</summary>
+        private const float DkchMaxFontSize = 9f;
+
+        /// <summary>
+        /// Chọn cỡ chữ LỚN NHẤT mà mọi dòng vẫn nằm gọn trong <paramref name="available"/> px.
+        /// Đo bằng font ĐẬM vì đó là trường hợp rộng nhất (dòng 1, 2, 3 và thống kê đều in đậm).
+        /// <para>
+        /// Nếu KHÔNG cỡ nào cứu được (thường do một thông điệp rất dài), trả về cỡ LỚN NHẤT chứ
+        /// không phải nhỏ nhất: hạ cả 5 dòng xuống 7pt rồi vẫn phải cắt thì vừa khó đọc vừa mất
+        /// chữ. Thà giữ cỡ dễ đọc và cắt đúng dòng bị tràn.
+        /// </para>
+        /// </summary>
+        private float FitDkchFontSize(int available, params string[] lines)
+        {
+            var family = tabDKCH_result.Font.FontFamily;
+
+            for (float size = DkchMaxFontSize; size >= DkchMinFontSize; size -= 0.5f)
+            {
+                using var probe = new System.Drawing.Font(family, size, System.Drawing.FontStyle.Bold);
+                bool allFit = true;
+
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrEmpty(line)) continue;
+                    if (MeasureDkch(line, probe) > available) { allFit = false; break; }
+                }
+
+                if (allFit) return size;
+            }
+
+            return DkchMaxFontSize;
+        }
+
+        /// <summary>Nền của dải "đóng khung" dòng đề xuất — luôn sáng để bắt mắt ở cả 2 theme.</summary>
+        private static readonly System.Drawing.Color DkchBannerBack = System.Drawing.Color.FromArgb(255, 244, 214);
+
+        /// <summary>
+        /// Chữ trên dải đề xuất.
+        /// <para>
+        /// Theme Dark dùng ĐEN THUẦN: nền dải luôn sáng, mà ở Dark thì màu chữ mặc định của ô là
+        /// trắng — nếu có bất kỳ lượt áp lại theme nào ghi đè màu ký tự thì chữ trắng trên nền sáng
+        /// sẽ không đọc được. Đen là lựa chọn an toàn tuyệt đối trên nền sáng.
+        /// </para>
+        /// </summary>
+        private static System.Drawing.Color DkchBannerFore =>
+            UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark
+                ? System.Drawing.Color.Black
+                : System.Drawing.Color.FromArgb(120, 63, 4);
+
+        /// <summary>
+        /// Vẽ dòng đề xuất thành một DẢI có nền, trải kín bề rộng ô — trông như đóng khung.
+        /// <para>
+        /// RichTextBox không vẽ được viền quanh một dòng, nên dùng <c>SelectionBackColor</c> phủ nền:
+        /// hiệu quả thu hút mắt tương đương mà không phải tự vẽ (owner-draw) lên control của Sunny.UI.
+        /// </para>
+        /// <param name="body">Phần chữ thật, dùng để định vị.</param>
+        /// <param name="padded">Chữ đã đệm khoảng trắng — độ dài này quyết định dải nền rộng bao nhiêu.</param>
+        /// </summary>
+        private int PaintDkchBanner(string body, string padded, int from)
+        {
+            if (string.IsNullOrEmpty(body) || string.IsNullOrEmpty(padded)) return from;
+
+            int start = tabDKCH_result.Find(body, from, RichTextBoxFinds.None);
+            if (start < 0) return from;
+
+            tabDKCH_result.SelectionStart = start;
+            tabDKCH_result.SelectionLength = padded.Length;
+            tabDKCH_result.SelectionBackColor = DkchBannerBack;
+            tabDKCH_result.SelectionColor = DkchBannerFore;
+            tabDKCH_result.SelectionFont =
+                new System.Drawing.Font(tabDKCH_result.Font, System.Drawing.FontStyle.Bold);
+
+            return start + padded.Length;
+        }
+
+        /// <summary>
+        /// Đệm khoảng trắng vào cuối cho tới khi chạm <paramref name="available"/> px.
+        /// Dùng để dải nền highlight trải kín dòng. Đã tắt WordWrap nên khoảng trắng cuối không
+        /// làm xuống dòng.
+        /// </summary>
+        private static string PadToWidth(string text, System.Drawing.Font font, int available)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+
+            int spaceWidth = Math.Max(1, MeasureDkch("  ", font) - MeasureDkch(" ", font));
+            int missing = available - MeasureDkch(text, font);
+            if (missing <= spaceWidth) return text;
+
+            return text + new string(' ', Math.Min(400, missing / spaceWidth));
+        }
+
+        /// <summary>
+        /// Hai đoạn có coi là TRÙNG nội dung không — bỏ qua khoảng trắng, dấu chấm cuối và
+        /// dấu "…" do bị cắt bớt, để bản bị cắt vẫn bị nhận ra là trùng.
+        /// </summary>
+        private static bool SameDkchText(string a, string b)
+        {
+            static string Norm(string v) =>
+                (v ?? "").Trim().TrimEnd('…', '.', ' ').Trim();
+
+            string x = Norm(a), y = Norm(b);
+            if (x.Length == 0 || y.Length == 0) return false;
+
+            return string.Equals(x, y, StringComparison.OrdinalIgnoreCase)
+                || x.StartsWith(y, StringComparison.OrdinalIgnoreCase)
+                || y.StartsWith(x, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Bề rộng thực tế của một đoạn chữ, tính bằng pixel.</summary>
+        private static int MeasureDkch(string text, System.Drawing.Font font)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            return TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue),
+                                            TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+        }
+
+        /// <summary>
+        /// Cắt bớt cuối chuỗi và thêm "…" cho vừa <paramref name="available"/> px.
+        /// Dùng chặt nhị phân nên không phụ thuộc độ dài chuỗi.
+        /// </summary>
+        private static string TruncateToWidth(string text, System.Drawing.Font font, int available)
+        {
+            if (string.IsNullOrEmpty(text) || available <= 0) return text ?? "";
+            if (MeasureDkch(text, font) <= available) return text;
+
+            const string Ellipsis = "…";
+            int ellipsis = MeasureDkch(Ellipsis, font);
+            if (ellipsis >= available) return "";
+
+            int lo = 0, hi = text.Length;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (MeasureDkch(text.Substring(0, mid), font) + ellipsis <= available) lo = mid;
+                else hi = mid - 1;
+            }
+
+            return lo <= 0 ? Ellipsis : text.Substring(0, lo).TrimEnd() + Ellipsis;
+        }
+
+        /// <summary>
+        /// Màu của TÊN THAO TÁC — dùng chung bảng màu với ô lịch sử hành trình
+        /// (<c>FormatNowTracking</c>) để hai ô nhìn liền mạch. Nhận cả nhãn tiếng Việt và tiếng Trung.
+        /// </summary>
+        private static System.Drawing.Color DkchActionColor(string actionType)
+        {
+            string t = actionType ?? "";
+            bool Has(params string[] keys)
+            {
+                foreach (var k in keys)
+                    if (t.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                return false;
+            }
+
+            if (Has("Đăng ký chuyển hoàn", "退件登记", "再次登记")) return System.Drawing.Color.Red;
+            if (Has("Quét kiện vấn đề", "问题件扫描")) return System.Drawing.Color.Red;
+            if (Has("Giao lại hàng", "重派")) return System.Drawing.Color.DodgerBlue;
+            if (Has("Ký nhận CPN", "快件签收")) return System.Drawing.Color.ForestGreen;
+            if (Has("Xác nhận chuyển hoàn", "退件确认", "Đang chuyển hoàn")) return System.Drawing.Color.DarkOrange;
+            if (Has("Quét phát hàng", "出仓扫描")) return System.Drawing.Color.MediumVioletRed;
+
+            return System.Drawing.Color.DodgerBlue;
+        }
+
+        /// <summary>
+        /// Tô màu/đậm một dòng trong ô kết quả DKCH, tìm từ <paramref name="from"/> trở đi.
+        /// Trả về vị trí ngay sau dòng vừa tô để dòng kế tiếp tìm tiếp từ đó.
+        /// <para>
+        /// Dùng <c>RichTextBox.Find</c> chứ không phải <c>Text.IndexOf</c>: SelectionStart là chỉ số
+        /// trong không gian của RichEdit (mỗi dấu ngắt đoạn tính 1 ký tự), còn <c>Text</c> là dạng
+        /// stream-out — lệch nhau ngay khi có dòng ngắt. Đây là cách <c>FormatNowTracking</c> đã dùng.
+        /// </para>
+        /// </summary>
+        private int PaintDkchLine(string line, int from, System.Drawing.Color color, bool bold)
+        {
+            if (string.IsNullOrEmpty(line)) return from;
+
+            int start = tabDKCH_result.Find(line, from, RichTextBoxFinds.None);
+            if (start < 0) return from;
+
+            tabDKCH_result.SelectionStart = start;
+            tabDKCH_result.SelectionLength = line.Length;
+            tabDKCH_result.SelectionColor = color;
+            if (bold)
+                tabDKCH_result.SelectionFont = new System.Drawing.Font(tabDKCH_result.Font, System.Drawing.FontStyle.Bold);
+
+            return start + line.Length;
+        }
+
+        /// <summary>Chỉ dịch con trỏ qua một dòng, không đổi định dạng.</summary>
+        private int SkipDkchLine(string line, int from)
+        {
+            if (string.IsNullOrEmpty(line)) return from;
+            int start = tabDKCH_result.Find(line, from, RichTextBoxFinds.None);
+            return start < 0 ? from : start + line.Length;
         }
 
         private void FormatNowTracking(string historyText)

@@ -870,7 +870,11 @@ namespace AutoJMS
 
         public async Task<string> GetDKCHHistoryAsync(string waybill) => await GetFullHistoryFromArrival(waybill);
 
-        private async Task<string> GetFullHistoryFromArrival(string waybill)
+        /// <summary>
+        /// Gọi podTracking một lần và trả về chi tiết hành trình thô.
+        /// null = không gọi được API (lỗi mạng / 401 / succ=false); rỗng = đơn không có hành trình.
+        /// </summary>
+        public async Task<List<WaybillDetail>> GetWaybillDetailsAsync(string waybill)
         {
             try
             {
@@ -878,13 +882,38 @@ namespace AutoJMS
                 var payload = new { keywordList = new[] { waybill }, trackingTypeEnum = "WAYBILL", countryId = "1" };
                 var response = await JmsApiClient.PostJsonAsync(
                     url, JsonSerializer.Serialize(payload), routeName: "trackingExpress");
-                if (response == null) return "Lỗi kết nối JMS.";
-                if ((int)response.StatusCode == 401) return "Phiên đăng nhập đã hết hạn.";
+                if (response == null) return null;
+                if ((int)response.StatusCode == 401) return null;
                 var json = await response.Content.ReadAsStringAsync();
                 var result = JsonSerializer.Deserialize<WaybillHistoryResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (result?.succ != true || result?.data?[0]?.details == null)
+                if (result?.succ != true) return null;
+                if (result.data == null || result.data.Count == 0) return new List<WaybillDetail>();
+                return result.data[0]?.details ?? new List<WaybillDetail>();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[DKCH] GetWaybillDetailsAsync({waybill}) lỗi: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task<string> GetFullHistoryFromArrival(string waybill)
+        {
+            var details = await GetWaybillDetailsAsync(waybill);
+            if (details == null) return "Lỗi kết nối JMS hoặc phiên đăng nhập đã hết hạn.";
+            return BuildDkchHistoryText(waybill, details);
+        }
+
+        /// <summary>
+        /// Dựng text lịch sử từ chi tiết đã có (không gọi lại API). Cắt từ lần
+        /// "Xuống hàng kiện đến" tại Kim Tân/(LCI) gần nhất trở về hiện tại.
+        /// </summary>
+        public string BuildDkchHistoryText(string waybill, List<WaybillDetail> details)
+        {
+            try
+            {
+                if (details == null || details.Count == 0)
                     return "Không có dữ liệu hành trình.";
-                var details = result.data[0].details;
                 int arrivalIndex = -1;
                 for (int i = 0; i < details.Count; i++)
                 {
@@ -900,7 +929,12 @@ namespace AutoJMS
                         break;
                     }
                 }
-                if (arrivalIndex == -1) return "";
+                // Không tìm thấy lần về kho Kim Tân/(LCI): trước đây trả về "" làm ô hiển thị
+                // trắng trơn, người vận hành không biết vì sao đơn bị chặn. Nay hiển thị
+                // các thao tác gần nhất để còn đối chiếu được.
+                if (arrivalIndex == -1)
+                    arrivalIndex = Math.Min(details.Count, 12) - 1;
+
                 var sb = new StringBuilder();
                 for (int i = 0; i <= arrivalIndex; i++)
                 {

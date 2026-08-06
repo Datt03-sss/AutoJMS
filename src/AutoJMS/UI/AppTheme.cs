@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Sunny.UI;
@@ -422,7 +422,8 @@ namespace AutoJMS.UI
                 rtxt.Style = UIStyle.Custom;
                 rtxt.StyleCustomMode = true;
                 rtxt.Radius = 6;
-                if (rtxt.Name == "tabDKCH_inputNewBill" || rtxt.Name == "tabDKCH_newBillDone" || rtxt.Name == "tabDKCH_nowTracking")
+                if (rtxt.Name == "tabDKCH_inputNewBill" || rtxt.Name == "tabDKCH_newBillDone" ||
+                    rtxt.Name == "tabDKCH_nowTracking" || rtxt.Name == "tabDKCH_result")
                 {
                     rtxt.FillColor = colors.CardBackground;
                     // Per-theme border: Red -> red, Dark -> soft gray (not glaring white), Light -> blue accent.
@@ -504,7 +505,7 @@ namespace AutoJMS.UI
                 cb.Style = UIStyle.Custom;
                 cb.StyleCustomMode = true;
                 cb.Radius = 6;
-                if (cb.Name == "tabDKCH_sheetName")
+                if (cb.Name == "tabDKCH_sheetName" || cb.Name == "tabDKCH_guideMode")
                 {
                     ApplyThemeToComboBox(cb, colors, CurrentTheme);
                 }

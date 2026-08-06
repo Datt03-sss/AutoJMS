@@ -101,10 +101,15 @@ namespace AutoJMS.FullStack.Services
                 FinishedAt = DateTime.UtcNow,
                 TotalPages = fetchResult.TotalPages,
                 TotalRecords = fetchResult.Items.Count,
-                Status = fetchResult.IsNoData ? "NO_DATA" : "SUCCESS",
+                // G0: mark INCOMPLETE when any page failed / collected count < total. The repository
+                // uses this to SKIP mark-left (prevents a single failed page mass-marking orders "left").
+                Status = !fetchResult.IsComplete ? "INCOMPLETE" : (fetchResult.IsNoData ? "NO_DATA" : "SUCCESS"),
                 Source = "JMS",
                 CreatedAt = DateTime.UtcNow
             };
+
+            if (!fetchResult.IsComplete)
+                AppLogger.Warning($"[FullStackSync] inventory run INCOMPLETE: failedPages={fetchResult.FailedPages}, collected={fetchResult.Items.Count}, total={fetchResult.TotalRecords} → will upsert seen only, NO mark-left.");
 
             // If it's literally NO_DATA, we apply it so we record the run, but we may want to skip overwriting if the repo doesn't support NO_DATA clearing.
             // But applying the run with 0 items is fine. The repository should ideally handle NO_DATA smoothly.
@@ -181,6 +186,7 @@ namespace AutoJMS.FullStack.Services
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<InventoryFetchItem>();
             var collectLock = new object();
+            int failedPages = 0; // G0: any failed page ⇒ run INCOMPLETE (must not mark-left).
             string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/take_ret_mon_detail_doris2");
             string start = startDate.ToString("yyyy-MM-dd HH:mm:ss");
             string end = endDate.ToString("yyyy-MM-dd HH:mm:ss");
@@ -226,7 +232,12 @@ namespace AutoJMS.FullStack.Services
                     IsNoData = items.Count == 0,
                     Items = items,
                     TotalPages = 1,
-                    TotalRecords = totalRecords > 0 ? totalRecords : items.Count
+                    TotalRecords = totalRecords > 0 ? totalRecords : items.Count,
+                    // G0: COMPLETE only if the server ALSO reports no data (IsNoData) or total<=0.
+                    // If page 1 is empty but total>0, that is a suspicious mismatch → INCOMPLETE
+                    // (do NOT let it mass-mark orders "left").
+                    IsComplete = first.IsNoData || totalRecords <= 0,
+                    FailedPages = 0
                 };
             }
 
@@ -247,8 +258,10 @@ namespace AutoJMS.FullStack.Services
                         var pr = await FetchOnePageAsync(url, actionSiteCode, start, end, page, token).ConfigureAwait(false);
                         if (!pr.Ok)
                         {
-                            // Don't abort the whole sync for one bad page — log and continue.
-                            AppLogger.Warning($"[FullStackSync] page={page} skipped: {pr.ErrorCode}/{pr.ErrorMessage}");
+                            // G0: a failed page makes the run INCOMPLETE — record it and continue
+                            // fetching what we can, but the caller MUST NOT mark unseen orders "left".
+                            System.Threading.Interlocked.Increment(ref failedPages);
+                            AppLogger.Warning($"[FullStackSync] page={page} FAILED (run will be INCOMPLETE): {pr.ErrorCode}/{pr.ErrorMessage}");
                             return;
                         }
                         if (pr.Total > 0) System.Threading.Interlocked.Exchange(ref totalRecords, pr.Total);
@@ -264,7 +277,8 @@ namespace AutoJMS.FullStack.Services
                     var pr = await FetchOnePageAsync(url, actionSiteCode, start, end, page, ct).ConfigureAwait(false);
                     if (!pr.Ok)
                     {
-                        AppLogger.Warning($"[FullStackSync] page={page} stop (fallback): {pr.ErrorCode}/{pr.ErrorMessage}");
+                        failedPages++;
+                        AppLogger.Warning($"[FullStackSync] page={page} FAILED (fallback, run INCOMPLETE): {pr.ErrorCode}/{pr.ErrorMessage}");
                         break;
                     }
                     if (pr.Waybills.Count == 0) break;
@@ -281,7 +295,11 @@ namespace AutoJMS.FullStack.Services
                 IsNoData = items.Count == 0,
                 Items = items,
                 TotalPages = totalPages > 0 ? totalPages : 1,
-                TotalRecords = totalRecords > 0 ? totalRecords : items.Count
+                TotalRecords = totalRecords > 0 ? totalRecords : items.Count,
+                // G0: COMPLETE only if no page failed AND collected count covers the reported total.
+                // Otherwise INCOMPLETE → caller keeps existing membership (no mass-left).
+                IsComplete = failedPages == 0 && (totalRecords <= 0 || items.Count >= totalRecords),
+                FailedPages = failedPages
             };
         }
 

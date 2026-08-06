@@ -211,7 +211,11 @@ namespace AutoJMS
 
             Set(root, "zoomFactor", settings.ZoomFactor);
             Set(root, "defaultUrl", settings.DefaultUrl);
-            Set(root, "lastAuthToken", settings.LastAuthToken);
+            // [DataHub Critical-1] STOP persisting the JMS authToken in plaintext to AutoJMS.json.
+            // The key is listed in RemoveKnownSettings() above, so any pre-existing plaintext value is
+            // stripped on the next save (one-way migration). The token now lives only in the WebView2
+            // session at runtime (and, once the DataHub Worker ships, in the Service DPAPI store).
+            // Do NOT re-add: Set(root, "lastAuthToken", settings.LastAuthToken);
             Set(root, "downloadFolder", settings.DownloadFolder);
             Set(root, "defaultSheet", settings.DefaultSheet);
             Set(root, "useSheetByDefault", settings.UseSheetByDefault);
