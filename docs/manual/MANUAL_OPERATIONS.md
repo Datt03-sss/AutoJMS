@@ -59,7 +59,7 @@ AutoJMS/
 | `installer/inno/` | Build bộ cài lần đầu/reinstall/repair bằng Inno Setup. |
 | `installer/inno/redist/` | Chứa runtime prerequisites: .NET 8 Desktop Runtime, WebView2 Evergreen x64, VC++ Redistributable. |
 | `installer/inno/installer-output/` | Output setup cuối cho user mới hoặc reinstall. |
-| `release/` | Build publish, protect bằng .NET Reactor, hash, đóng gói Velopack, upload GitHub/Supabase. |
+| `release/` | Build publish, tính hash, đóng gói Velopack, upload GitHub/Supabase. |
 | `release/output/stable/` | Output release stable. Trong repo hiện có `AutoJMS-stable-Setup.exe`, `RELEASES-stable`, `assets.stable.json`, `releases.stable.json`. |
 | `release/output/beta/` | Output release beta. Nếu chưa có file thì `NEED VERIFY` sau lần build beta đầu tiên. |
 | `backend/render-license-server/` | Source server license/heartbeat dùng deploy lên Render. |
@@ -161,7 +161,7 @@ build-release.bat
 6. Chọn build/upload theo menu script.
 7. Script phải thực hiện:
    - `dotnet publish`
-   - .NET Reactor protect `AutoJMS.dll`
+   - xác minh bản publish self-contained
    - hash `AutoJMS.dll`
    - `vpk pack`
    - tạo `RELEASES`, `.nupkg`, `Setup.exe`
@@ -177,11 +177,21 @@ Ghi chú hiện trạng:
 
 ## 7. File Velopack upload lên GitHub Release
 
-| File                                                    | Upload lên đâu       | Bắt buộc | Ghi chú                         |
-| ------------------------------------------------------- | -------------------- | -------- | ------------------------------- |
-| `RELEASES`                                              | GitHub Release asset | có       | Velopack feed metadata          |
-| `AutoJMS-x.x.x-full.nupkg`                              | GitHub Release asset | có       | file lớn, không upload Supabase |
-| `AutoJMS-win-Setup.exe` hoặc `AutoJMS-stable-Setup.exe` | GitHub Release asset | có       | Velopack setup/update asset     |
+| File                                                    | Upload lên đâu       | Bắt buộc | Ghi chú                                            |
+| ------------------------------------------------------- | -------------------- | -------- | -------------------------------------------------- |
+| `releases.{channel}.json`                               | GitHub Release asset | có       | **index Velopack 1.x thật sự đọc** — thiếu là chết |
+| `RELEASES`                                              | GitHub Release asset | không    | index legacy Squirrel, Velopack 1.x không đọc      |
+| `AutoJMS-x.x.x-full.nupkg`                              | GitHub Release asset | có       | file lớn, không upload Supabase                    |
+| `AutoJMS-win-Setup.exe` hoặc `AutoJMS-stable-Setup.exe` | GitHub Release asset | có       | Velopack setup/update asset                        |
+
+> **Quan trọng — `releases.{channel}.json` là feed thật của Velopack.**
+> Velopack 1.x (`UpdateManager` → `GithubSource` → `GitBase.GetReleaseFeed`) đọc index từ
+> asset có tên **đúng** là `releases.{channel}.json` (`releases.stable.json` /
+> `releases.beta.json`). File text `RELEASES` là index cũ thời Squirrel và Velopack 1.x
+> **không đọc**. Nếu thiếu `releases.{channel}.json` trên GitHub Release thì feed rỗng,
+> `CheckForUpdatesAsync()` trả `null`, và app báo *"Bạn đang dùng phiên bản mới nhất."*
+> dù đã publish bản mới. Ngoài ra `FileName` bên trong index phải khớp đúng tên asset
+> `.nupkg` đã upload, nếu không app sẽ thấy update rồi 404 khi tải.
 
 GitHub repo:
 
@@ -284,7 +294,7 @@ Nhấn mạnh:
 
 Quy tắc hash:
 
-- Hash phải lấy sau khi .NET Reactor protect.
+- Hash phải lấy từ `AutoJMS.dll` sau khi publish hoàn tất.
 - Hash dùng để xác thực app hợp lệ sau update.
 - Không bắt nhập lại key nếu hash mới trùng trusted hash manifest.
 - Nếu hash mismatch, không disable license vội; kiểm tra manifest trước.
@@ -412,13 +422,14 @@ Tạo stable release:
 
 ```powershell
 gh release create v1.26.6-Release --repo Datt03-sss/AutoJMS-Update --title "AutoJMS 1.26.6 Stable" --notes "Stable release"
-gh release upload v1.26.6-Release RELEASES AutoJMS-1.26.6-stable-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
+gh release upload v1.26.6-Release releases.stable.json RELEASES AutoJMS-1.26.6-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
 ```
 
 Tạo beta release:
 
 ```powershell
 gh release create v1.26.6-beta.1-Release --repo Datt03-sss/AutoJMS-Update --title "AutoJMS 1.26.6 Beta 1" --notes "Beta test release" --prerelease
+gh release upload v1.26.6-beta.1-Release releases.beta.json RELEASES AutoJMS-1.26.6-beta.1-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
 ```
 
 Quy tắc:
@@ -466,10 +477,11 @@ Nhấn mạnh:
 [ ] Version đã tăng
 [ ] Build Debug không lỗi nếu có thể
 [ ] Build Release thành công
-[ ] .NET Reactor protect thành công
+[ ] Self-contained publish được xác minh thành công
 [ ] Hash AutoJMS.dll đã ghi vào hash-manifest.json
 [ ] vpk pack thành công
-[ ] GitHub Release có RELEASES
+[ ] GitHub Release có releases.{channel}.json  <-- bắt buộc, Velopack đọc file này
+[ ] FileName trong releases.{channel}.json khớp tên .nupkg đã upload
 [ ] GitHub Release có .nupkg
 [ ] GitHub Release có Setup.exe
 [ ] Supabase version-latest.json đã cập nhật
@@ -506,7 +518,7 @@ Nếu GitHub release lỗi:
 
 Nếu hash manifest sai:
 
-- Lấy lại hash `AutoJMS.dll` đúng sau .NET Reactor.
+- Lấy lại hash `AutoJMS.dll` đúng từ bản publish cuối cùng.
 - Update `hash-manifest.json`.
 - Upload lại Supabase.
 - Test verify license/update flow.
@@ -546,8 +558,8 @@ KHÔNG ĐƯỢC:
 | Velopack unexpected character after patch | `vpk pack` báo lỗi parse version sau patch | Version có 4 segment như `1.26.6.1` hoặc suffix sai SemVer | Đổi VelopackVersion thành `1.26.6` hoặc `1.26.6-beta.1`; dùng `InternalBuild=1.26.6.1` nếu cần 4 số. |
 | GitHub CLI chưa login | `gh release create/upload` lỗi auth | Chưa chạy `gh auth login` hoặc token hết hạn | Chạy `gh auth login`, chọn đúng account có quyền repo `Datt03-sss/AutoJMS-Update`. |
 | Release already exists | `gh release create` báo tag/release tồn tại | Tag version đã được tạo | Nếu asset sai và chưa public rộng, upload lại bằng `--clobber`; nếu đã public, bump version mới. |
-| App không thấy update | About → Check Update báo không có update | `version-latest.json` chưa upload, tag sai, channel sai, version không lớn hơn, hoặc GitHub asset thiếu `RELEASES` | Kiểm tra Supabase manifest, tag `v{VelopackVersion}-Release`, GitHub assets, channel stable/beta và version hiện tại của client. |
-| Hash mismatch sau update | App update xong yêu cầu verify lại hoặc báo hash không hợp lệ | Hash lấy trước .NET Reactor, hash-manifest chưa cập nhật hoặc server `VALID_EXE_HASHES` thiếu hash mới | Lấy hash sau Reactor, cập nhật `hash-manifest.json`, cập nhật `VALID_EXE_HASHES` nếu server còn dùng. |
+| App không thấy update | About → Check Update báo "Bạn đang dùng phiên bản mới nhất." dù đã publish bản mới | GitHub Release thiếu asset `releases.{channel}.json` (nguyên nhân hay gặp nhất — `RELEASES` có mặt cũng không cứu được), hoặc `version-latest.json` chưa upload, tag sai, channel sai, version không lớn hơn | Kiểm tra `gh release view <tag> --json assets`; nếu thiếu index chạy `release\repair-release-index.ps1`. Xem log `[Update] no update reason=` trong `AppData\logs\debug.log`: `NO_UPDATE_BECAUSE_VELOPACK_INDEX_MISSING*` = thiếu index. |
+| Hash mismatch sau update | App update xong yêu cầu verify lại hoặc báo hash không hợp lệ | Hash không lấy từ bản publish cuối cùng, hash-manifest chưa cập nhật hoặc server `VALID_EXE_HASHES` thiếu hash mới | Lấy hash từ bản publish cuối cùng, cập nhật `hash-manifest.json`, cập nhật `VALID_EXE_HASHES` nếu server còn dùng. |
 | User bị yêu cầu nhập key lại | User sau update phải nhập lại license | AppData bị xóa, hash mismatch, secure store lỗi hoặc reinstall không giữ data | Kiểm tra `C:\AutoJMS\AppData`, logs, hash manifest; khi reinstall phải backup/giữ AppData. |
 | Setup repair fail vì app/WebView2 còn chạy | Inno Setup repair/reinstall lỗi file đang bị khóa | `AutoJMS.exe`, `Update.exe` hoặc WebView2 process còn chạy | Thoát app, kill process liên quan nếu cần, chạy lại setup bằng quyền phù hợp. |
 | Thiếu WebView2 Runtime | App mở WebView2 lỗi hoặc browser control không load | Máy user chưa có WebView2 Evergreen Runtime x64 | Chạy Inno Setup có bundled runtime hoặc cài `MicrosoftEdgeWebView2RuntimeInstallerX64.exe`. |

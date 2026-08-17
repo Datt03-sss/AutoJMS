@@ -5,7 +5,9 @@
     Builds a Velopack update package and publishes it to GitHub Releases.
 
     The split is:
-      • GitHub Releases → Velopack binaries (RELEASES, *.nupkg, Setup.exe)
+      • GitHub Releases → Velopack binaries (releases.{channel}.json, RELEASES,
+        *.nupkg, Setup.exe). releases.{channel}.json is the index the Velopack
+        1.x client actually reads; RELEASES is legacy Squirrel and unused by it.
       • update.xml      → small UI/channel manifest read by About dialog
       • Supabase        → version-latest.json + hash-manifest.json control manifests
 
@@ -18,10 +20,9 @@
 
     Steps:
       1. dotnet publish (Release, win-x64, self-contained)
-      2. Protect AutoJMS.dll with .NET Reactor (optional)
-      3. Verify self-contained publish
-      4. vpk pack → produces .nupkg + Setup.exe + RELEASES
-      5. Upload: binaries → GitHub Release (gh), update.xml → GitHub repo,
+      2. Verify self-contained publish
+      3. vpk pack → produces .nupkg + Setup.exe + RELEASES + releases.{channel}.json
+      4. Upload: binaries → GitHub Release (gh), update.xml → GitHub repo,
          Supabase manifests → Storage bucket manifest/
 
     GitHub release tag format:
@@ -43,8 +44,6 @@
     Release notes written into update.xml and GitHub Release notes.
 .PARAMETER ReleaseNotesFile
     Optional text file containing release notes.
-.PARAMETER SkipReactor
-    Skip .NET Reactor protection
 .PARAMETER SkipPublish
     Skip dotnet publish (use existing artifacts\publish\win-x64 folder)
 .PARAMETER Upload
@@ -59,7 +58,7 @@
     .\build-release.ps1 -Version "1.26.6" -Channel stable
     .\build-release.ps1 -Version "1.26.6-beta.1" -Channel beta
     .\build-release.ps1 -Version "1.26.6" -DisplayVersion "1.26.6.1" -Upload
-    .\build-release.ps1 -Version "1.26.6-beta.1" -Channel beta -DisplayVersion "1.26.6.2" -SkipReactor -SkipPublish -Upload
+    .\build-release.ps1 -Version "1.26.6-beta.1" -Channel beta -DisplayVersion "1.26.6.2" -SkipPublish -Upload
 #>
 
 param(
@@ -77,7 +76,6 @@ param(
 
     [string]$ReleaseNotesFile,
 
-    [switch]$SkipReactor,
     [switch]$SkipPublish,
     [switch]$Upload,
 
@@ -319,27 +317,64 @@ function Get-ReleaseTag {
 }
 
 function Rename-VelopackAssets {
+    <#
+    Normalize the file names vpk emits, then return the exact asset set that
+    must be uploaded to the GitHub Release.
+
+    IMPORTANT — the Velopack release index:
+      Velopack 1.x clients (UpdateManager -> GithubSource -> GitBase.GetReleaseFeed)
+      look for a release asset named exactly "releases.{channel}.json"
+      (Velopack.CoreUtil.GetVeloReleaseIndexName). The plain-text "RELEASES" file
+      is the legacy Squirrel index and is NOT read by Velopack 1.x at all.
+      If "releases.{channel}.json" is missing from the GitHub Release, the feed
+      comes back empty, CheckForUpdatesAsync() returns null, and the app shows
+      "Ban dang dung phien ban moi nhat." even though a newer build is published.
+      So the index MUST be part of the upload list.
+
+    IMPORTANT — the file name inside the index:
+      Both "RELEASES" and "releases.{channel}.json" embed the package file name,
+      and Velopack resolves the download by matching that name against the
+      release assets. Because this function renames the nupkg
+      (AutoJMS-1.2.3-{channel}-full.nupkg -> AutoJMS-1.2.3-full.nupkg), both
+      feed files have to be rewritten to match, or the update is detected and
+      then 404s at download time.
+    #>
     param(
         [string]$Dir,
-        [string]$VelopackVersion
+        [string]$VelopackVersion,
+        [ValidateSet("stable", "beta")]
+        [string]$Channel
     )
 
     $releases = Get-ChildItem $Dir -File | Where-Object { $_.Name -like "RELEASES*" } | Select-Object -First 1
     $nupkg = Get-ChildItem $Dir -File -Filter "*.nupkg" | Select-Object -First 1
     $setup = Get-ChildItem $Dir -File -Filter "*Setup.exe" | Select-Object -First 1
 
+    $indexName = "releases.$Channel.json"
+    $releaseIndex = Get-ChildItem $Dir -File -Filter $indexName | Select-Object -First 1
+    if (-not $releaseIndex) {
+        $releaseIndex = Get-ChildItem $Dir -File -Filter "releases.*.json" | Select-Object -First 1
+    }
+
     if (-not $releases) { throw "Velopack RELEASES file not found in $Dir." }
     if (-not $nupkg) { throw "Velopack .nupkg file not found in $Dir." }
     if (-not $setup) { throw "Velopack Setup.exe file not found in $Dir." }
+    if (-not $releaseIndex) { throw "Velopack release index '$indexName' not found in $Dir. Velopack 1.x clients cannot update without it." }
 
     $originalNupkgName = $nupkg.Name
     $targetReleases = Join-Path $Dir "RELEASES"
+    $targetIndex = Join-Path $Dir $indexName
     $targetNupkg = Join-Path $Dir "AutoJMS-$VelopackVersion-full.nupkg"
     $targetSetup = Join-Path $Dir "AutoJMS-win-Setup.exe"
 
     if ($releases.FullName -ne $targetReleases) {
         if (Test-Path $targetReleases) { Remove-Item -LiteralPath $targetReleases -Force }
         Rename-Item -LiteralPath $releases.FullName -NewName "RELEASES" -Force
+    }
+
+    if ($releaseIndex.FullName -ne $targetIndex) {
+        if (Test-Path $targetIndex) { Remove-Item -LiteralPath $targetIndex -Force }
+        Rename-Item -LiteralPath $releaseIndex.FullName -NewName $indexName -Force
     }
 
     if ($nupkg.FullName -ne $targetNupkg) {
@@ -352,19 +387,60 @@ function Rename-VelopackAssets {
         Rename-Item -LiteralPath $setup.FullName -NewName "AutoJMS-win-Setup.exe" -Force
     }
 
+    # Point both feed files at the renamed package. UTF-8 without BOM: the JSON
+    # index must stay byte-clean, and the RELEASES payload is pure ASCII so the
+    # bytes are unchanged from the previous ASCII write.
     $targetNupkgName = Split-Path $targetNupkg -Leaf
-    $releasesContent = [System.IO.File]::ReadAllText($targetReleases)
-    if ($releasesContent.Contains($originalNupkgName)) {
-        $releasesContent = $releasesContent.Replace($originalNupkgName, $targetNupkgName)
-        [System.IO.File]::WriteAllText($targetReleases, $releasesContent, [System.Text.Encoding]::ASCII)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    foreach ($feedFile in @($targetReleases, $targetIndex)) {
+        $feedContent = [System.IO.File]::ReadAllText($feedFile)
+        if ($feedContent.Contains($originalNupkgName)) {
+            $feedContent = $feedContent.Replace($originalNupkgName, $targetNupkgName)
+            [System.IO.File]::WriteAllText($feedFile, $feedContent, $utf8NoBom)
+        }
     }
 
-    return @($targetReleases, $targetNupkg, $targetSetup)
+    Assert-VelopackReleaseIndex -IndexPath $targetIndex -NupkgName $targetNupkgName -VelopackVersion $VelopackVersion
+
+    return @($targetReleases, $targetIndex, $targetNupkg, $targetSetup)
+}
+
+function Assert-VelopackReleaseIndex {
+    <#
+    Fail the build before publishing if the release index does not describe the
+    package we are actually going to upload. Catches the whole class of
+    "app says it is already up to date" bugs at build time instead of after
+    users hit them.
+    #>
+    param(
+        [string]$IndexPath,
+        [string]$NupkgName,
+        [string]$VelopackVersion
+    )
+
+    $index = Get-Content -LiteralPath $IndexPath -Raw | ConvertFrom-Json
+    if (-not $index.Assets -or $index.Assets.Count -eq 0) {
+        throw "Velopack release index '$IndexPath' contains no assets."
+    }
+
+    $full = $index.Assets | Where-Object { $_.Type -eq "Full" } | Select-Object -First 1
+    if (-not $full) { throw "Velopack release index '$IndexPath' has no Full package entry." }
+
+    if ($full.FileName -ne $NupkgName) {
+        throw "Velopack release index FileName '$($full.FileName)' does not match the uploaded asset '$NupkgName'."
+    }
+
+    if ($full.Version -ne $VelopackVersion) {
+        throw "Velopack release index Version '$($full.Version)' does not match the build version '$VelopackVersion'."
+    }
+
+    Write-Log "  Release index verified: $(Split-Path $IndexPath -Leaf) -> $NupkgName ($($full.Version))" "Green"
 }
 
 function Publish-GitHubRelease {
     <#
-    Upload the Velopack assets (RELEASES / *.nupkg / Setup.exe) to a GitHub
+    Upload the Velopack assets (releases.{channel}.json / RELEASES / *.nupkg /
+    Setup.exe) to a GitHub
     Release. Creates the release if the tag does not exist, otherwise uploads
     assets with --clobber. Beta channel marks the release as prerelease.
     #>
@@ -991,7 +1067,6 @@ try {
             -p:SelfContained=true -p:UseAppHost=true `
             -p:PublishSingleFile=false -p:PublishTrimmed=false `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            "-p:RunReactor=false" `
             "-p:UseSharedCompilation=false" `
             "-p:Version=$VelopackVersion" `
             "-p:AssemblyVersion=$AssemblyFileVersion" `
@@ -1008,27 +1083,8 @@ try {
     Write-Log "Step 2: Verifying self-contained..." "Cyan"
     Assert-SelfContainedPublish -Dir $PublishDir
 
-    # Step 3: .NET Reactor (optional)
-    if (-not $SkipReactor) {
-        $ReactorExe = "D:\Cshap\.NET Reactor\dotNET_Reactor.Console.exe"
-        $ReactorProject = Join-Path $ProjectRoot "tools\reactor\AutoJMS_Reactor.nrproj"
-        $TargetDll = Join-Path $PublishDir "AutoJMS.dll"
-
-        if ((Test-Path $ReactorExe) -and (Test-Path $ReactorProject) -and (Test-Path $TargetDll)) {
-            Write-Log "Step 3: Protecting with .NET Reactor..." "Cyan"
-            & $ReactorExe -project "$ReactorProject" -file "$TargetDll" -targetfile "$TargetDll"
-            if ($LASTEXITCODE -ne 0) { throw ".NET Reactor failed." }
-            Assert-SelfContainedPublish -Dir $PublishDir
-            Write-Log "  Reactor complete." "Green"
-        } else {
-            Write-Log "Step 3: .NET Reactor not found, skipping." "Yellow"
-        }
-    } else {
-        Write-Log "Step 3: Skipping .NET Reactor." "Yellow"
-    }
-
-    # Step 4: vpk pack
-    Write-Log "Step 4: Packing with Velopack..." "Cyan"
+    # Step 3: vpk pack
+    Write-Log "Step 3: Packing with Velopack..." "Cyan"
     Remove-PathSafe $OutputDir
     New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -1044,7 +1100,7 @@ try {
 
     if ($LASTEXITCODE -ne 0) { throw "vpk pack failed." }
     Write-Log "  Pack complete." "Green"
-    $releaseAssets = Rename-VelopackAssets -Dir $OutputDir -VelopackVersion $VelopackVersion
+    $releaseAssets = Rename-VelopackAssets -Dir $OutputDir -VelopackVersion $VelopackVersion -Channel $Channel
     Write-Log "  Normalized assets:" "Green"
     foreach ($asset in $releaseAssets) {
         Write-Log "    $(Split-Path $asset -Leaf)" "Gray"
@@ -1071,7 +1127,7 @@ try {
     Write-Log "Release tag:      $releaseTag" "Green"
     Write-Host ""
 
-    Write-Log "Step 4c: Generating Supabase manifests..." "Cyan"
+    Write-Log "Step 3c: Generating Supabase manifests..." "Cyan"
     $versionManifestUrl = Get-SupabasePublicObjectUrl -ProjectRef $SupabaseProjectRef -Bucket $SupabaseBucket -ObjectPath "manifest/version-latest.json"
     $hashManifestUrl = Get-SupabasePublicObjectUrl -ProjectRef $SupabaseProjectRef -Bucket $SupabaseBucket -ObjectPath "manifest/hash-manifest.json"
     $existingVersionManifest = Read-PublicJson -Url $versionManifestUrl
@@ -1103,9 +1159,9 @@ try {
     Write-Log "  version-latest.json generated." "Green"
     Write-Log "  hash-manifest.json generated." "Green"
 
-    # Step 5: Upload (optional)
+    # Step 4: Upload (optional)
     if ($Upload) {
-        Write-Log "Step 5: Publishing release (GitHub Release assets + update.xml + Supabase manifests)..." "Cyan"
+        Write-Log "Step 4: Publishing release (GitHub Release assets + update.xml + Supabase manifests)..." "Cyan"
 
         Assert-GitHubCli
         Publish-GitHubRelease -Repo $GitHubRepo -Tag $releaseTag -Title $releaseTitle `
@@ -1152,7 +1208,7 @@ try {
 
         Write-Log "  Publish complete (assets=GitHub Release, update.xml=GitHub raw, manifests=Supabase)." "Green"
     } else {
-        Write-Log "Step 5: Skipping upload. Run with -Upload to push GitHub Release assets, update.xml, and Supabase manifests." "Yellow"
+        Write-Log "Step 4: Skipping upload. Run with -Upload to push GitHub Release assets, update.xml, and Supabase manifests." "Yellow"
     }
 
     # Summary

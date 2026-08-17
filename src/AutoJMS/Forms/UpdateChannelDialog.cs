@@ -409,17 +409,17 @@ namespace AutoJMS
                 return false;
             }
 
-            if (parts.Length == 4 && string.IsNullOrWhiteSpace(preLabel))
-            {
-                if (!int.TryParse(parts[3], out var revision)) return false;
-                if (revision > 0)
-                {
-                    preLabel = "beta";
-                    preNumber = revision;
-                }
-            }
+            // A 4th segment is an assembly/build revision (Major.Minor.Build.Revision),
+            // NOT a prerelease marker. This used to rewrite "1.26.7.2" as
+            // "1.26.7-beta.2", which sorts BELOW "1.26.7" — so the dialog thought a
+            // revision build was older than its own base version and could offer
+            // 1.26.7 as an "upgrade" over 1.26.7.2. Keep it as a real revision and
+            // order it after the prerelease comparison instead.
+            var revision = 0;
+            if (parts.Length == 4 && !int.TryParse(parts[3], out revision))
+                return false;
 
-            version = new ComparableVersion(major, minor, patch, preLabel, preNumber);
+            version = new ComparableVersion(major, minor, patch, revision, preLabel, preNumber);
             return true;
         }
 
@@ -432,24 +432,33 @@ namespace AutoJMS
             cmp = left.Patch.CompareTo(right.Patch);
             if (cmp != 0) return cmp;
 
+            // Prerelease ranks below the matching release, so this must be decided
+            // before Revision: 1.26.9.5-beta.1 is still older than 1.26.9.
             var leftPre = !string.IsNullOrWhiteSpace(left.PreLabel);
             var rightPre = !string.IsNullOrWhiteSpace(right.PreLabel);
-            if (!leftPre && !rightPre) return 0;
-            if (!leftPre) return 1;
-            if (!rightPre) return -1;
+            if (!leftPre && rightPre) return 1;
+            if (leftPre && !rightPre) return -1;
 
-            cmp = string.Compare(left.PreLabel, right.PreLabel, StringComparison.OrdinalIgnoreCase);
-            if (cmp != 0) return cmp;
-            return left.PreNumber.CompareTo(right.PreNumber);
+            if (leftPre && rightPre)
+            {
+                cmp = string.Compare(left.PreLabel, right.PreLabel, StringComparison.OrdinalIgnoreCase);
+                if (cmp != 0) return cmp;
+                cmp = left.PreNumber.CompareTo(right.PreNumber);
+                if (cmp != 0) return cmp;
+            }
+
+            // Revision breaks the tie last, so 1.26.9 == 1.26.9.0 but 1.26.9.2 > 1.26.9.
+            return left.Revision.CompareTo(right.Revision);
         }
 
         private readonly struct ComparableVersion
         {
-            public ComparableVersion(int major, int minor, int patch, string preLabel, int preNumber)
+            public ComparableVersion(int major, int minor, int patch, int revision, string preLabel, int preNumber)
             {
                 Major = major;
                 Minor = minor;
                 Patch = patch;
+                Revision = revision;
                 PreLabel = preLabel ?? "";
                 PreNumber = preNumber;
             }
@@ -457,6 +466,10 @@ namespace AutoJMS
             public int Major { get; }
             public int Minor { get; }
             public int Patch { get; }
+
+            /// <summary>4th segment of Major.Minor.Build.Revision; 0 when absent.</summary>
+            public int Revision { get; }
+
             public string PreLabel { get; }
             public int PreNumber { get; }
         }

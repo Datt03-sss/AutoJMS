@@ -48,10 +48,10 @@ Trong script:
 [ ] Chọn channel stable hoặc beta
 [ ] Chọn build/upload theo nhu cầu
 [ ] dotnet publish thành công
-[ ] .NET Reactor protect AutoJMS.dll thành công
-[ ] Hash AutoJMS.dll lấy sau Reactor
+[ ] Self-contained publish được xác minh thành công
+[ ] Hash AutoJMS.dll lấy từ bản publish cuối cùng
 [ ] vpk pack thành công
-[ ] Tạo được RELEASES/.nupkg/Setup.exe
+[ ] Tạo được releases.{channel}.json + RELEASES + .nupkg + Setup.exe
 ```
 
 Output thường nằm trong:
@@ -78,7 +78,9 @@ v{VelopackVersion}-Release
 Checklist asset:
 
 ```txt
-[ ] RELEASES hoặc RELEASES-{channel}
+[ ] releases.{channel}.json   <-- index Velopack 1.x đọc; THIẾU LÀ APP BÁO "đã mới nhất"
+[ ] FileName trong releases.{channel}.json khớp tên .nupkg đã upload
+[ ] RELEASES (legacy Squirrel, không bắt buộc)
 [ ] AutoJMS-x.x.x-full.nupkg
 [ ] AutoJMS-win-Setup.exe hoặc AutoJMS-stable-Setup.exe
 [ ] Beta release đã mark prerelease
@@ -90,13 +92,20 @@ Nếu thao tác thủ công bằng GitHub CLI:
 ```powershell
 gh auth login
 gh release create v1.26.6-Release --repo Datt03-sss/AutoJMS-Update --title "AutoJMS 1.26.6 Stable" --notes "Stable release"
-gh release upload v1.26.6-Release RELEASES AutoJMS-1.26.6-stable-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
+gh release upload v1.26.6-Release releases.stable.json RELEASES AutoJMS-1.26.6-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
 ```
 
 Beta:
 
 ```powershell
 gh release create v1.26.6-beta.1-Release --repo Datt03-sss/AutoJMS-Update --title "AutoJMS 1.26.6 Beta 1" --notes "Beta test release" --prerelease
+gh release upload v1.26.6-beta.1-Release releases.beta.json RELEASES AutoJMS-1.26.6-beta.1-full.nupkg AutoJMS-win-Setup.exe --repo Datt03-sss/AutoJMS-Update --clobber
+```
+
+Nếu một release đã publish mà thiếu index, không cần build lại — chạy:
+
+```powershell
+.\release\repair-release-index.ps1
 ```
 
 ## 5. Supabase manifest phải có
@@ -119,7 +128,7 @@ Mỗi release cần kiểm tra:
 
 ```txt
 [ ] version-latest.json trỏ đúng channel/version/tag
-[ ] hash-manifest.json có hash AutoJMS.dll sau Reactor
+[ ] hash-manifest.json có hash AutoJMS.dll từ bản publish cuối cùng
 [ ] Stable: prerelease = false
 [ ] Beta: prerelease = true
 [ ] manualOnly = true cho major update
@@ -182,7 +191,7 @@ Nếu release lỗi:
 [ ] Đổi version-latest.json về version stable cũ
 [ ] Upload lại Supabase manifest
 [ ] Nếu GitHub release lỗi, unpublish/xóa release lỗi hoặc restore asset đúng
-[ ] Nếu hash sai, lấy hash AutoJMS.dll đúng sau Reactor và upload hash-manifest.json lại
+[ ] Nếu hash sai, lấy hash AutoJMS.dll đúng từ bản publish cuối cùng và upload hash-manifest.json lại
 [ ] Nếu Render server lỗi, rollback deploy trên Render
 [ ] Nếu Firebase key sai, sửa tier/hwid/status/skipHashCheck về đúng
 [ ] Test lại About → Check Update
@@ -210,7 +219,7 @@ KHÔNG ĐƯỢC:
 | Velopack báo SemVer invalid | Đổi `1.26.05` thành `1.26.5`; beta dùng `1.26.6-beta.1`; không dùng 4 segment làm VelopackVersion. |
 | Release already exists | Nếu chưa public rộng, upload lại asset `--clobber`; nếu đã public, bump version. |
 | App không thấy update | Kiểm tra `version-latest.json`, GitHub tag, channel, version lớn hơn, asset `RELEASES`. |
-| Hash mismatch | Lấy hash sau Reactor, cập nhật `hash-manifest.json`, kiểm tra `VALID_EXE_HASHES` nếu server còn dùng. |
+| Hash mismatch | Lấy hash từ bản publish cuối cùng, cập nhật `hash-manifest.json`, kiểm tra `VALID_EXE_HASHES` nếu server còn dùng. |
 | User nhập key lại | Kiểm tra `C:\AutoJMS\AppData`, hash manifest, secure store, reinstall có xóa data không. |
 | Setup repair fail | Đóng app/WebView2/Update.exe rồi chạy lại setup. |
 | Thiếu WebView2/.NET Runtime | Chạy Inno Setup hoặc cài runtime trong `installer/inno/redist/`. |

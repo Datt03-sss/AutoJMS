@@ -1,4 +1,4 @@
-﻿namespace AutoJMS
+namespace AutoJMS
 {
     partial class Main
     {
@@ -128,10 +128,6 @@
             uiTitlePanel2 = new Sunny.UI.UITitlePanel();
             uiTableLayoutPanel33 = new Sunny.UI.UITableLayoutPanel();
             splitContainer1 = new SplitContainer();
-            tabDKCH_inputNewBill = new Sunny.UI.UIRichTextBox();
-            tabDKCH_newBillDone = new Sunny.UI.UIRichTextBox();
-            tabDKCH_result = new Sunny.UI.UIRichTextBox();
-            tabDKCH_nowTracking = new Sunny.UI.UIRichTextBox();
             uiTitlePanel1 = new Sunny.UI.UITitlePanel();
             uiTableLayoutPanel9 = new Sunny.UI.UITableLayoutPanel();
             uiPanel1 = new Sunny.UI.UIPanel();
@@ -1656,8 +1652,6 @@
             uiTableLayoutPanel33.ColumnCount = 1;
             uiTableLayoutPanel33.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel33.Controls.Add(splitContainer1, 0, 0);
-            uiTableLayoutPanel33.Controls.Add(tabDKCH_result, 0, 1);
-            uiTableLayoutPanel33.Controls.Add(tabDKCH_nowTracking, 0, 2);
             uiTableLayoutPanel33.Dock = DockStyle.Fill;
             uiTableLayoutPanel33.Location = new Point(1, 20);
             uiTableLayoutPanel33.Name = "uiTableLayoutPanel33";
@@ -1680,78 +1674,12 @@
             // 
             // splitContainer1.Panel1
             // 
-            splitContainer1.Panel1.Controls.Add(tabDKCH_inputNewBill);
             // 
             // splitContainer1.Panel2
             // 
-            splitContainer1.Panel2.Controls.Add(tabDKCH_newBillDone);
             splitContainer1.Size = new Size(264, 194);
             splitContainer1.SplitterDistance = 128;
             splitContainer1.TabIndex = 7;
-            // 
-            // tabDKCH_inputNewBill
-            // 
-            tabDKCH_inputNewBill.Dock = DockStyle.Fill;
-            tabDKCH_inputNewBill.FillColor = Color.White;
-            tabDKCH_inputNewBill.Font = new Font("Microsoft Sans Serif", 12F);
-            tabDKCH_inputNewBill.Location = new Point(0, 0);
-            tabDKCH_inputNewBill.Margin = new Padding(4, 5, 4, 5);
-            tabDKCH_inputNewBill.MinimumSize = new Size(1, 1);
-            tabDKCH_inputNewBill.Name = "tabDKCH_inputNewBill";
-            tabDKCH_inputNewBill.Padding = new Padding(5);
-            tabDKCH_inputNewBill.ShowText = false;
-            tabDKCH_inputNewBill.Size = new Size(128, 194);
-            tabDKCH_inputNewBill.TabIndex = 0;
-            tabDKCH_inputNewBill.TextAlignment = ContentAlignment.MiddleCenter;
-            tabDKCH_inputNewBill.WordWrap = false;
-            tabDKCH_inputNewBill.KeyPress += tabDKCH_inputNewBill_KeyPress;
-            // 
-            // tabDKCH_newBillDone
-            // 
-            tabDKCH_newBillDone.Dock = DockStyle.Fill;
-            tabDKCH_newBillDone.FillColor = Color.White;
-            tabDKCH_newBillDone.Font = new Font("Microsoft Sans Serif", 12F);
-            tabDKCH_newBillDone.Location = new Point(0, 0);
-            tabDKCH_newBillDone.Margin = new Padding(4, 5, 4, 5);
-            tabDKCH_newBillDone.MinimumSize = new Size(1, 1);
-            tabDKCH_newBillDone.Name = "tabDKCH_newBillDone";
-            tabDKCH_newBillDone.Padding = new Padding(2);
-            tabDKCH_newBillDone.ShowText = false;
-            tabDKCH_newBillDone.Size = new Size(132, 194);
-            tabDKCH_newBillDone.TabIndex = 0;
-            tabDKCH_newBillDone.TextAlignment = ContentAlignment.MiddleCenter;
-            //
-            // tabDKCH_result
-            //
-            tabDKCH_result.Dock = DockStyle.Fill;
-            tabDKCH_result.FillColor = Color.White;
-            tabDKCH_result.Font = new Font("Microsoft Sans Serif", 9F);
-            tabDKCH_result.Location = new Point(4, 205);
-            tabDKCH_result.Margin = new Padding(4, 5, 4, 5);
-            tabDKCH_result.MinimumSize = new Size(1, 1);
-            tabDKCH_result.Name = "tabDKCH_result";
-            tabDKCH_result.Padding = new Padding(4);
-            tabDKCH_result.ReadOnly = true;
-            tabDKCH_result.ShowText = false;
-            tabDKCH_result.Size = new Size(262, 82);
-            tabDKCH_result.TabIndex = 8;
-            tabDKCH_result.TextAlignment = ContentAlignment.MiddleLeft;
-            tabDKCH_result.WordWrap = false;
-            //
-            // tabDKCH_nowTracking
-            //
-            tabDKCH_nowTracking.Dock = DockStyle.Fill;
-            tabDKCH_nowTracking.FillColor = Color.White;
-            tabDKCH_nowTracking.Font = new Font("Microsoft Sans Serif", 12F);
-            tabDKCH_nowTracking.Location = new Point(4, 205);
-            tabDKCH_nowTracking.Margin = new Padding(4, 5, 4, 5);
-            tabDKCH_nowTracking.MinimumSize = new Size(1, 1);
-            tabDKCH_nowTracking.Name = "tabDKCH_nowTracking";
-            tabDKCH_nowTracking.Padding = new Padding(2);
-            tabDKCH_nowTracking.ShowText = false;
-            tabDKCH_nowTracking.Size = new Size(262, 1);
-            tabDKCH_nowTracking.TabIndex = 9;
-            tabDKCH_nowTracking.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // uiTitlePanel1
             // 
@@ -2345,10 +2273,6 @@
         private Sunny.UI.UITitlePanel uiTitlePanel2;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel33;
         private SplitContainer splitContainer1;
-        private Sunny.UI.UIRichTextBox tabDKCH_inputNewBill;
-        private Sunny.UI.UIRichTextBox tabDKCH_newBillDone;
-        private Sunny.UI.UIRichTextBox tabDKCH_result;
-        private Sunny.UI.UIRichTextBox tabDKCH_nowTracking;
         private Sunny.UI.UITitlePanel uiTitlePanel1;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel9;
         private Sunny.UI.UIPanel uiPanel1;

@@ -10,7 +10,6 @@ namespace AutoJMS
     {
         private UITabControl uiTabControl1;
         private TabPage tabDash;
-        private UITableLayoutPanel uiTableLayoutPanel4;
         private UIPanel uiPanel10;
         private UIPanel _filterBarPanel;
         private Panel _queueNavPanel;
@@ -55,9 +54,14 @@ namespace AutoJMS
         private FlowLayoutPanel _dashQuickFilterPanel;
         private string _dashQuickFilter = string.Empty;
         private Label _dashQueueInsightLabel;
-        private QueueSidebarControl _operationQueueSidebar;
-        private WaybillDetailPanel _operationDetailPanel;
-        private StatusFooterControl _operationStatusFooter;
+        // Ba control OperationCenter này ĐƯỢC ĐỌC (UpdateOperationCenterChrome,
+        // UpdateOperationQueues, UpdateSelectedOperationDetailFromGrid) nhưng CHƯA CHỖ NÀO GÁN
+        // — phần dựng UI của OperationCenter còn dở. Mọi chỗ đọc đều đã guard null nên app
+        // không crash, chỉ là ba panel này chưa bao giờ hiện ra.
+        // Gán null tường minh để tắt CS0649 mà không xoá field (xoá là vỡ các chỗ đọc trên).
+        private QueueSidebarControl _operationQueueSidebar = null;
+        private WaybillDetailPanel _operationDetailPanel = null;
+        private StatusFooterControl _operationStatusFooter = null;
         private GridFilterToolbarControl _operationGridFilterToolbar;
         private Panel _operationGridHost;
         private Panel _operationInventoryWorkspace;

@@ -17,6 +17,18 @@ namespace AutoJMS
     [Obfuscation(Exclude = true, ApplyToMembers = true)]
     public sealed class DkchResultContext
     {
+        /// <summary>
+        /// Quyết định nghiệp vụ gốc — CHỈ để panel Newbill lấy dữ liệu hiển thị
+        /// (tên bưu tá, ngày tồn, các mốc tiến trình, danh sách hành trình).
+        /// Không dùng cho việc khớp case trong tab2config.json.
+        /// </summary>
+        /// <remarks>
+        /// NULLABLE có chủ ý: BuildContext chỉ gán khi <c>decision != null</c> (xem cờ đi kèm
+        /// <see cref="HasJourney"/>), nên null là trạng thái hợp lệ — không phải thiếu sót.
+        /// Mọi chỗ đọc đã dùng <c>?.</c> hoặc kiểm tra null sẵn.
+        /// </remarks>
+        public DkchJourneyDecision? Journey { get; set; }
+
         /// <summary>"beforeSave" hoặc "afterSave".</summary>
         public string Phase { get; set; } = "beforeSave";
 
@@ -159,6 +171,18 @@ namespace AutoJMS
         [JsonPropertyName("jmsMessages")]
         public Dictionary<string, List<string>> JmsMessages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Thông điệp mặc định THEO TÊN THAO TÁC — khoá là một mẩu tên thao tác
+        /// ("Quét phát hàng", "出仓扫描"…), giá trị là câu hiển thị.
+        /// <para>
+        /// Đây là lớp NỀN: hệ thống <see cref="Cases"/> vẫn được xét trước và đè lên khi
+        /// khớp điều kiện chi tiết hơn (có/không "Giao lại hàng", trước/sau khi Lưu).
+        /// Thao tác không có trong bảng thì hiển thị nguyên văn như cũ.
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("actionMessages")]
+        public Dictionary<string, string> ActionMessages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
         [JsonPropertyName("cases")] public List<Tab2Case> Cases { get; set; } = new();
         [JsonPropertyName("fallback")] public Tab2Fallback Fallback { get; set; } = new();
 
@@ -231,7 +255,9 @@ namespace AutoJMS
         private static List<string> Merge(List<string>? configured, string[] defaults)
         {
             var result = new List<string>();
-            void Add(IEnumerable<string> items)
+            // Tham số nullable: cả hai lời gọi dưới đây đều có thể truyền null (configured lấy
+            // từ TryGetValue). Thân hàm đã guard, chỉ chữ ký là chưa nói đúng sự thật.
+            void Add(IEnumerable<string>? items)
             {
                 if (items == null) return;
                 foreach (var raw in items)
@@ -342,6 +368,8 @@ namespace AutoJMS
                     // vẫn khớp, không im lặng bỏ qua.
                     cfg.DropdownOptions = Normalize(cfg.DropdownOptions);
                     cfg.JmsMessages = Normalize(cfg.JmsMessages);
+                    if (cfg.ActionMessages != null)
+                        cfg.ActionMessages = new Dictionary<string, string>(cfg.ActionMessages, StringComparer.OrdinalIgnoreCase);
                     cfg.SaveButtonTitles ??= new List<string>();
                     cfg.CollapseHeaders ??= new List<string>();
 
@@ -400,6 +428,19 @@ namespace AutoJMS
                 };
             }
 
+            // Lớp nền theo tên thao tác — chỉ dùng khi không case nào khớp.
+            string byAction = ActionMessageFor(ctx.LastActionType);
+            if (!string.IsNullOrWhiteSpace(byAction))
+            {
+                return new DkchResultText
+                {
+                    CaseId = "actionMessage",
+                    Result = Format(byAction, ctx),
+                    ActRecommend = "",
+                    Stats = stats
+                };
+            }
+
             return new DkchResultText
             {
                 CaseId = "fallback",
@@ -407,6 +448,23 @@ namespace AutoJMS
                 ActRecommend = Format(Fallback.ActRecommend, ctx),
                 Stats = stats
             };
+        }
+
+        /// <summary>Tra thông điệp theo tên thao tác; khoá dài khớp trước để không tô nhầm.</summary>
+        internal string ActionMessageFor(string action)
+        {
+            if (string.IsNullOrWhiteSpace(action) || ActionMessages == null || ActionMessages.Count == 0)
+                return "";
+            string t = action.Trim();
+            string best = "";
+            int bestLen = -1;
+            foreach (var kv in ActionMessages)
+            {
+                if (string.IsNullOrWhiteSpace(kv.Key)) continue;
+                if (t.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (kv.Key.Length > bestLen) { bestLen = kv.Key.Length; best = kv.Value ?? ""; }
+            }
+            return best;
         }
 
         internal static bool Matches(Tab2Match m, DkchResultContext ctx)

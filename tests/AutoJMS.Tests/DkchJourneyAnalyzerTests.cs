@@ -7,8 +7,10 @@ namespace AutoJMS.Tests;
 /// <summary>
 /// Kiểm chứng luật nghiệp vụ DKCH đọc từ lịch sử hành trình vận chuyển:
 /// <list type="number">
-/// <item>CHỈ CHẶN khi sau "Giao lại hàng" đã có "Quét phát hàng" mà chưa có "Quét kiện vấn đề"
-/// phía sau. Mọi trạng thái còn lại đều được "Đăng ký chuyển hoàn".</item>
+/// <item>CHẶN mọi đơn đã có "Quét phát hàng" mà chưa có "Quét kiện vấn đề" phía sau — kể cả
+/// ca phát ĐẦU TIÊN, chưa từng "Giao lại hàng". Có "Giao lại hàng" đứng trước hay không chỉ
+/// đổi THÔNG ĐIỆP (<c>NoRedeliverBeforeDispatch</c> / <c>SelfDispatchViolation</c>), không đổi
+/// việc chặn.</item>
 /// <item>Mỗi chu kỳ chỉ đăng ký chuyển hoàn đúng 1 lần (chống spam).</item>
 /// </list>
 /// </summary>
@@ -72,7 +74,7 @@ public sealed class DkchJourneyAnalyzerTests
         Assert.Equal(2, d.RegisterCount);
     }
 
-    // ── Luật CHẶN của chủ sở hữu: "Phát lại có quét phát chưa kiện" ────────────────
+    // ── Luật CHẶN của chủ sở hữu: "Có quét phát mà chưa kiện vấn đề" ──────────────
 
     [Fact]
     public void PhatLai_CoQuetPhat_ChuaCoKienVanDe_ThiCHAN()
@@ -88,15 +90,18 @@ public sealed class DkchJourneyAnalyzerTests
     }
 
     [Fact]
-    public void CaPhatDauTien_ChuaKien_ThiVanDangKy_DeJmsTuBaoThieuCa()
+    public void CaPhatDauTien_ChuaKien_ThiCHAN_NhanhKhongGiaoLaiHang()
     {
-        // Xuống kiện -> Quét phát hàng, chưa kiện, CHƯA từng giao lại: app vẫn bấm Lưu,
-        // JMS sẽ tự trả 问题件次数 nếu chưa đủ ca.
+        // Xuống kiện -> Quét phát hàng, chưa kiện, CHƯA từng giao lại: vẫn CHẶN.
+        // Nhánh này ra outcome riêng "blockedNoProblemScan" trong tab2config.json nên phải
+        // khẳng định cả cờ phân nhánh, không chỉ Action.
         var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
         {
             Ev("卸车到件", 1), Ev("出仓扫描", 2)
         });
-        Assert.Equal(DkchAction.Register, d.Action);
+        Assert.Equal(DkchAction.BlockedPendingProblemScan, d.Action);
+        Assert.True(d.NoRedeliverBeforeDispatch);
+        Assert.False(d.SelfDispatchViolation);
         Assert.Equal(0, d.RedeliverCount);
     }
 
@@ -183,28 +188,35 @@ public sealed class DkchJourneyAnalyzerTests
         Assert.Equal(DkchAction.BlockedPendingProblemScan, d.Action);
     }
 
-    // ── Luật chặn CHỈ áp dụng khi có "Giao lại hàng" trước "Quét phát hàng" ────────
+    // ── Luật chặn áp dụng cho MỌI "Quét phát hàng" chưa được kiện ─────────────────
+    // Có "Giao lại hàng" đứng trước hay không chỉ đổi THÔNG ĐIỆP, không đổi việc chặn.
 
     [Fact]
-    public void QuetPhatDauTien_ChuaTungGiaoLaiHang_ThiVanDangKy()
+    public void QuetPhatDauTien_ChuaTungGiaoLaiHang_ThiVanCHAN()
     {
-        // Ca phát đầu tiên, chưa có "Giao lại hàng" → không thuộc diện chặn.
+        // Ca phát đầu tiên, chưa có "Giao lại hàng" → vẫn chặn, nhưng là nhánh
+        // "chưa kiện vấn đề" chứ không phải nhánh "vi phạm tự ý chuyển hoàn".
         var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
         {
             Ev("卸车到件", 1), Ev("出仓扫描", 2)
         });
-        Assert.Equal(DkchAction.Register, d.Action);
-        Assert.True(d.ShouldRegister);
+        Assert.Equal(DkchAction.BlockedPendingProblemScan, d.Action);
+        Assert.False(d.ShouldRegister);
+        Assert.True(d.NoRedeliverBeforeDispatch);
+        Assert.Contains("Chưa kiện vấn đề không thể đăng ký chuyển hoàn", d.Reason);
     }
 
     [Fact]
-    public void NhieuSauQuetPhatDauTien_VanDangKy()
+    public void NhieuSauQuetPhatDauTien_VanCHAN()
     {
+        // Mốc nhiễu (tồn kho / lịch sử cuộc gọi) bị lọc khỏi timeline nên không cứu được đơn:
+        // sau khi lọc vẫn chỉ còn "Quét phát hàng" chưa được kiện.
         var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
         {
             Ev("出仓扫描", 2), Ev("库存盘点", 3), Ev("Lịch sử cuộc gọi", 4)
         });
-        Assert.Equal(DkchAction.Register, d.Action);
+        Assert.Equal(DkchAction.BlockedPendingProblemScan, d.Action);
+        Assert.True(d.NoRedeliverBeforeDispatch);
     }
 
     [Fact]
@@ -231,14 +243,18 @@ public sealed class DkchJourneyAnalyzerTests
     }
 
     [Fact]
-    public void QuetPhatTruocGiaoLaiHang_ThiVanDangKy()
+    public void QuetPhatTruocGiaoLaiHang_ThiVanCHAN()
     {
-        // "Quét phát hàng" xảy ra TRƯỚC "Giao lại hàng" → không phải trạng thái bị chặn.
+        // "Quét phát hàng" xảy ra TRƯỚC "Giao lại hàng": lần quét phát đó vẫn chưa được kiện
+        // nên vẫn chặn. Không có "Giao lại hàng" ĐỨNG TRƯỚC lần quét phát cuối, nên đây là
+        // nhánh "chưa kiện vấn đề", không phải "vi phạm tự ý".
         var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
         {
             Ev("出仓扫描", 1), Ev("重派", 2)
         });
-        Assert.Equal(DkchAction.Register, d.Action);
+        Assert.Equal(DkchAction.BlockedPendingProblemScan, d.Action);
+        Assert.True(d.NoRedeliverBeforeDispatch);
+        Assert.False(d.SelfDispatchViolation);
     }
 
     [Fact]

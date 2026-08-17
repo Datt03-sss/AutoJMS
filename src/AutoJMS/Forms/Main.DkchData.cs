@@ -44,6 +44,7 @@ namespace AutoJMS
         private DkchToggle tabDKCH_useSheet;
 
         private Font _dkchLabelFont;
+        private Font _dkchCountFont;
         private bool _dkchLayoutBusy;
 
         private const string DkchLabelFamily = "Segoe UI Semibold";
@@ -238,16 +239,26 @@ namespace AutoJMS
 
                 // Đổi font TRƯỚC, huỷ font cũ SAU để không huỷ font đang được vẽ.
                 var newFont = new Font(DkchLabelFamily, pt, FontStyle.Bold);
-                foreach (var lb in new Label[] { tabDKCH_lblMode, tabDKCH_lblSheet, tabDKCH_lblCol,
-                                                 tabDKCH_lblUseSheet, tabDKCH_countSum, tabDKCH_countSave })
+                foreach (var lb in new Label[] { tabDKCH_lblMode, tabDKCH_lblSheet,
+                                                 tabDKCH_lblCol, tabDKCH_lblUseSheet })
                 {
                     if (lb != null && !lb.IsDisposed) lb.Font = newFont;
                 }
                 tabDKCH_sheetName.Font = newFont;
                 tabDKCH_guideMode.Font = newFont;
                 tabDKCH_numRow.Font = newFont;
+
+                // Hai ô đếm là thông tin phụ, để nhỏ hơn nhãn một bậc rưỡi cho đỡ chiếm chỗ.
+                var countFont = new Font(DkchLabelFamily, Math.Max(7f, pt - 1.5f), FontStyle.Bold);
+                foreach (var lb in new Label[] { tabDKCH_countSum, tabDKCH_countSave })
+                {
+                    if (lb != null && !lb.IsDisposed) lb.Font = countFont;
+                }
+
                 _dkchLabelFont?.Dispose();
                 _dkchLabelFont = newFont;
+                _dkchCountFont?.Dispose();
+                _dkchCountFont = countFont;
 
                 // Nhãn đã tự co giãn theo font mới → lấy bề rộng THẬT do WinForms tính.
                 leftLblW = Math.Max(leftLblW, ActualWidest(tabDKCH_lblMode, tabDKCH_lblSheet));
@@ -287,20 +298,22 @@ namespace AutoJMS
                 PlaceLabel(tabDKCH_lblCol, xLblRight, y, rowH);
                 Place(tabDKCH_numRow, xLblRight + colLblW + DkchGapLabel,
                       y + (rowH - fieldH) / 2, spinW, fieldH);
-                y += rowH + DkchRowGap;
+                y += rowH + 2;
 
-                // Đường kẻ ngăn phần đếm.
+                // Đường kẻ ngăn phần đếm — kéo sát lên trên, hàng đếm chỉ có chữ nên
+                // không cần cao bằng hàng có dropdown (rowH ~27px là quá thừa).
                 int lineW = Math.Max(40, Math.Min(avail, xLblRight + rightGroupW));
-                Place(tabDKCH_divider, 0, y + 2, lineW, 1);
-                y += DkchRowGap + 3;
+                Place(tabDKCH_divider, 0, y, lineW, 1);
+                y += 4;
 
                 // Hàng 3 — Tổng / OK, "OK" thẳng cột với nhóm bên phải.
-                PlaceLabel(tabDKCH_countSum, 0, y, rowH);
-                PlaceLabel(tabDKCH_countSave, xLblRight, y, rowH);
-                y += rowH;
+                int countH = countFont.Height + 1;
+                PlaceLabel(tabDKCH_countSum, 0, y, countH);
+                PlaceLabel(tabDKCH_countSave, xLblRight, y, countH);
+                y += countH;
 
                 // Panel cao đúng nội dung (Dock=Top nên đổi Height là an toàn).
-                int wanted = tabDKCH_dataSrc.Padding.Top + y + tabDKCH_dataSrc.Padding.Bottom + 6;
+                int wanted = tabDKCH_dataSrc.Padding.Top + y + tabDKCH_dataSrc.Padding.Bottom + 2;
                 if (tabDKCH_dataSrc.Height != wanted) tabDKCH_dataSrc.Height = wanted;
 
                 AppLogger.Info($"[DKCH] bố cục DATA: {pt:0.#}pt, rộng {avail}px, nhãn trái {leftLblW}, " +
@@ -438,6 +451,27 @@ namespace AutoJMS
             path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
             path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        /// <summary>
+        /// Chữ nhật chỉ bo MỘT PHÍA — để hai ô ghép sát thành một khối, chỉ bo
+        /// hai cạnh ngoài cùng còn hai cạnh giáp nhau thì vuông.
+        /// </summary>
+        public static GraphicsPath RoundSide(Rectangle r, int radius, bool left, bool right)
+        {
+            int d = Math.Max(1, Math.Min(radius * 2, Math.Min(r.Width, r.Height)));
+            var path = new GraphicsPath();
+            if (left) path.AddArc(r.X, r.Y, d, d, 180, 90);
+            else path.AddLine(r.X, r.Y, r.X, r.Y);
+
+            if (right) { path.AddArc(r.Right - d, r.Y, d, d, 270, 90); path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); }
+            else { path.AddLine(r.Right, r.Y, r.Right, r.Bottom); }
+
+            if (left) path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            else path.AddLine(r.X, r.Bottom, r.X, r.Y);
+
             path.CloseFigure();
             return path;
         }

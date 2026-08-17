@@ -95,6 +95,30 @@ namespace AutoJMS
 
         /// <summary>true nếu đây là kết quả SAU khi đã bấm Lưu.</summary>
         public bool AfterSave { get; set; }
+
+        // ── Dữ liệu cho panel Newbill (thiết kế mới) ────────────────────────────────
+        // Chỉ phục vụ hiển thị; không tham gia quyết định nghiệp vụ.
+
+        /// <summary>Tên bưu tá của thao tác gần nhất — in đậm ngay dưới trạng thái.</summary>
+        public string Operator { get; set; } = "";
+
+        /// <summary>Số ngày tồn; <c>null</c> thì ẩn huy hiệu thay vì hiện số bịa.</summary>
+        public int? DaysInStock { get; set; }
+
+        /// <summary>Số lần đã đăng ký chuyển hoàn — chip "ĐKCH n".</summary>
+        public int RegisterCount { get; set; }
+
+        /// <summary>Số lần phát lại — chip "Phát lại n".</summary>
+        public int RedeliverCount { get; set; }
+
+        /// <summary>Nội dung dải "⛔ Vi phạm quy trình". Rỗng thì không vẽ dải.</summary>
+        public string Violation { get; set; } = "";
+
+        /// <summary>Các mốc của thanh "Tiến trình".</summary>
+        public List<DkchStep> Steps { get; set; } = new List<DkchStep>();
+
+        /// <summary>Hành trình đã chuẩn hoá, mới nhất đứng trước.</summary>
+        public List<DkchJourneyEntry> Entries { get; set; } = new List<DkchJourneyEntry>();
     }
 
     /// <summary>
@@ -625,11 +649,18 @@ namespace AutoJMS
                 try {{
                     var wanted = {jsList}.map(function(x) {{ return x.toLowerCase().trim(); }});
 
-                    var input = document.querySelector('.el-select .el-input__inner');
-                    var current = input ? input.value.toLowerCase().trim() : '';
-                    if (current && wanted.indexOf(current) >= 0) return 'already|' + input.value;
+                    // Kiểm tra và bấm phải nhìn CÙNG MỘT ô. Bản trước đọc
+                    // '.el-select .el-input__inner' (ô select ĐẦU TIÊN trên trang, có thể là
+                    // ô khác) rồi lại bấm vào '.el-select .el-input__inner[readonly]'. Hai
+                    // selector lệch nhau nên nhánh 'đã đúng rồi' gần như không bao giờ trúng,
+                    // và mỗi mã đều mở dropdown bấm lại một lần — chậm mà không cần thiết.
+                    var inputs = document.querySelectorAll('.el-select .el-input__inner[readonly]');
+                    for (var i = 0; i < inputs.length; i++) {{
+                        var v = (inputs[i].value || '').toLowerCase().trim();
+                        if (v && wanted.indexOf(v) >= 0) return 'already|' + inputs[i].value;
+                    }}
 
-                    let ddInput = document.querySelector('.el-select .el-input__inner[readonly]');
+                    let ddInput = inputs.length > 0 ? inputs[0] : null;
                     if (!ddInput) return 'no_input|';
 
                     ddInput.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
@@ -1255,6 +1286,12 @@ namespace AutoJMS
                         MarkSaved(waybill, $"Đăng ký chuyển hoàn thành công ({pickedOption}). JMS: {save.Message}");
                         PublishFromCatalog(DkchResultLevel.Success,
                             BuildContext(waybill, "afterSave", "success", gate.Decision, save, modeKey));
+
+                        // Nghỉ sau khi Lưu THÀNH CÔNG: JMS còn phải dựng lại form cho mã kế
+                        // tiếp. Bắn mã mới vào giữa lúc đó thì ô mã hoặc dropdown chưa sẵn
+                        // sàng. Chỉ nghỉ ở nhánh thành công — nhánh lỗi không có form mới nào
+                        // để chờ, nghỉ thêm chỉ làm chậm.
+                        await Task.Delay(DkchAfterSaveDelayMs, token);
                         return true;
                     }
 
@@ -1450,6 +1487,9 @@ namespace AutoJMS
             DkchAction.Register => DkchResultLevel.Info,
             DkchAction.SkipAlreadyRegistered => DkchResultLevel.Success,
             DkchAction.BlockedPendingProblemScan => DkchResultLevel.Error,
+            DkchAction.BlockedForward => DkchResultLevel.Error,
+            DkchAction.BlockedSignedCpn => DkchResultLevel.Error,
+            DkchAction.BlockedReturning => DkchResultLevel.Error,
             _ => DkchResultLevel.Warning
         };
 
@@ -1470,8 +1510,17 @@ namespace AutoJMS
             {
                 DkchAction.Register => "readyToRegister",
                 DkchAction.SkipAlreadyRegistered => "skipped",
+                // Ba nhánh chặn, ba thông điệp: tự ý phát thêm ca · phát lại chưa kiện ·
+                // đơn chưa từng giao lại mà đã quét phát.
                 DkchAction.BlockedPendingProblemScan =>
-                    decision.SelfDispatchViolation ? "blockedViolation" : "blocked",
+                    decision.SelfDispatchViolation ? "blockedViolation"
+                    : decision.NoRedeliverBeforeDispatch ? "blockedNoProblemScan"
+                    : "blocked",
+                // Kiện vấn đề vì đổi địa chỉ → đơn đi tiếp, không chuyển hoàn.
+                DkchAction.BlockedForward => "blockedForward",
+                // Thao tác cuối đã kết thúc luồng chuyển hoàn → không đăng ký, chỉ báo việc còn lại.
+                DkchAction.BlockedSignedCpn => "blockedSignedCpn",
+                DkchAction.BlockedReturning => "blockedReturning",
                 _ => "noData"
             };
 
@@ -1506,7 +1555,17 @@ namespace AutoJMS
                 Stats = text.Stats ?? "",
                 ActionPrefix = Tab2Config.Current.ActionPrefix ?? "→ ",
                 CaseId = text.CaseId ?? "",
-                AfterSave = string.Equals(ctx.Phase, "afterSave", StringComparison.OrdinalIgnoreCase)
+                AfterSave = string.Equals(ctx.Phase, "afterSave", StringComparison.OrdinalIgnoreCase),
+
+                Operator = ctx.Journey?.LastEventOperator ?? "",
+                DaysInStock = ctx.Journey?.DaysInStock,
+                RegisterCount = ctx.RegisterCount,
+                RedeliverCount = ctx.RedeliverCount,
+                Violation = ctx.Journey != null && ctx.Journey.SelfDispatchViolation
+                    ? "Đã quét kiện vấn đề rồi lại quét phát hàng tiếp — tự ý phát thêm ca."
+                    : "",
+                Steps = ctx.Journey?.Steps ?? new List<DkchStep>(),
+                Entries = ctx.Journey?.Entries ?? new List<DkchJourneyEntry>()
             });
         }
 
@@ -1526,6 +1585,7 @@ namespace AutoJMS
 
             if (decision != null)
             {
+                ctx.Journey = decision;
                 ctx.HasJourney = true;
                 ctx.RegisterCount = decision.RegisterCount;
                 ctx.RedeliverCount = decision.RedeliverCount;
@@ -1557,6 +1617,11 @@ namespace AutoJMS
         /// Chọn mode → điền mã → tìm kiếm. Không bấm Lưu ở đây.
         /// Trả về nhãn dropdown thật sự đã chọn được (để ghi log/hiển thị).
         /// </summary>
+        /// <summary>
+        /// Nghỉ sau mỗi lần Lưu thành công, để JMS kịp dựng lại form trống cho mã kế tiếp.
+        /// </summary>
+        private const int DkchAfterSaveDelayMs = 200;
+
         private async Task<string> PrepareFormAsync(string waybill, string modeKey, CancellationToken token)
         {
             var options = Tab2Config.Current.DropdownOptionsFor(modeKey);

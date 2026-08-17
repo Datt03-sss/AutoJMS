@@ -376,12 +376,15 @@ namespace AutoJMS
             }
 
             if (ch.IsGithubProvider)
-                return await DiagnoseGithubReleaseAsync(ch, ct).ConfigureAwait(false);
+                return await DiagnoseGithubReleaseAsync(ch, _channel, ct).ConfigureAwait(false);
 
             return "NO_UPDATE_REASON_UNKNOWN";
         }
 
-        private static async Task<string> DiagnoseGithubReleaseAsync(VersionChannel ch, CancellationToken ct)
+        private static async Task<string> DiagnoseGithubReleaseAsync(
+            VersionChannel ch,
+            string channel,
+            CancellationToken ct)
         {
             string repo = GetGithubRepoSlug(ch);
             string tag = ch.Tag ?? "";
@@ -408,16 +411,33 @@ namespace AutoJMS
                     return "NO_UPDATE_BECAUSE_GITHUB_RELEASES_EMPTY";
                 }
 
+                // Velopack 1.x reads the release index from an asset named exactly
+                // "releases.{channel}.json" (Velopack.CoreUtil.GetVeloReleaseIndexName).
+                // The legacy plain-text "RELEASES" asset is Squirrel-era and is never
+                // read by this client, so its presence proves nothing — checking for it
+                // used to mask a missing index as NO_UPDATE_REASON_UNKNOWN.
+                string indexName = $"releases.{channel}.json";
+                bool hasIndex = false;
+                bool hasLegacyReleases = false;
+
                 foreach (var asset in assets.EnumerateArray())
                 {
-                    if (asset.TryGetProperty("name", out var nameProp) &&
-                        string.Equals(nameProp.GetString(), "RELEASES", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return "NO_UPDATE_REASON_UNKNOWN";
-                    }
+                    if (!asset.TryGetProperty("name", out var nameProp))
+                        continue;
+
+                    string? assetName = nameProp.GetString();
+                    if (string.Equals(assetName, indexName, StringComparison.OrdinalIgnoreCase))
+                        hasIndex = true;
+                    else if (string.Equals(assetName, "RELEASES", StringComparison.OrdinalIgnoreCase))
+                        hasLegacyReleases = true;
                 }
 
-                return "NO_UPDATE_BECAUSE_RELEASES_FILE_MISSING";
+                if (hasIndex)
+                    return "NO_UPDATE_REASON_UNKNOWN";
+
+                return hasLegacyReleases
+                    ? "NO_UPDATE_BECAUSE_VELOPACK_INDEX_MISSING_ONLY_LEGACY_RELEASES"
+                    : "NO_UPDATE_BECAUSE_VELOPACK_INDEX_MISSING";
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -506,7 +526,9 @@ namespace AutoJMS
             return CompareSemVer(target, current) < 0;
         }
 
-        private static bool TryParseSemVer(string value, out (int Major, int Minor, int Patch, string PreLabel, int PreNumber) version)
+        private static bool TryParseSemVer(
+            string value,
+            out (int Major, int Minor, int Patch, int Revision, string PreLabel, int PreNumber) version)
         {
             version = default;
             string clean = (value ?? "").Trim().TrimStart('v', 'V');
@@ -523,13 +545,21 @@ namespace AutoJMS
             }
 
             var parts = main.Split('.');
-            if (parts.Length != 3 ||
+            if ((parts.Length != 3 && parts.Length != 4) ||
                 !int.TryParse(parts[0], out int major) ||
                 !int.TryParse(parts[1], out int minor) ||
                 !int.TryParse(parts[2], out int patch))
             {
                 return false;
             }
+
+            // 4-part Major.Minor.Build.Revision used to fail the parse outright, which
+            // made ShouldRequestDowngradeConfirmation silently return false and skipped
+            // the downgrade prompt entirely. Keep the revision and rank it like
+            // UpdateChannelDialog does, so the two comparers cannot disagree.
+            int revision = 0;
+            if (parts.Length == 4 && !int.TryParse(parts[3], out revision))
+                return false;
 
             string preLabel = "";
             int preNumber = 0;
@@ -540,13 +570,13 @@ namespace AutoJMS
                 if (preParts.Length > 1) int.TryParse(preParts[1], out preNumber);
             }
 
-            version = (major, minor, patch, preLabel, preNumber);
+            version = (major, minor, patch, revision, preLabel, preNumber);
             return true;
         }
 
         private static int CompareSemVer(
-            (int Major, int Minor, int Patch, string PreLabel, int PreNumber) left,
-            (int Major, int Minor, int Patch, string PreLabel, int PreNumber) right)
+            (int Major, int Minor, int Patch, int Revision, string PreLabel, int PreNumber) left,
+            (int Major, int Minor, int Patch, int Revision, string PreLabel, int PreNumber) right)
         {
             int cmp = left.Major.CompareTo(right.Major);
             if (cmp != 0) return cmp;
@@ -555,15 +585,21 @@ namespace AutoJMS
             cmp = left.Patch.CompareTo(right.Patch);
             if (cmp != 0) return cmp;
 
+            // Prerelease ranks below the matching release, decided before Revision.
             bool leftPre = !string.IsNullOrWhiteSpace(left.PreLabel);
             bool rightPre = !string.IsNullOrWhiteSpace(right.PreLabel);
-            if (!leftPre && !rightPre) return 0;
-            if (!leftPre) return 1;
-            if (!rightPre) return -1;
+            if (!leftPre && rightPre) return 1;
+            if (leftPre && !rightPre) return -1;
 
-            cmp = string.Compare(left.PreLabel, right.PreLabel, StringComparison.OrdinalIgnoreCase);
-            if (cmp != 0) return cmp;
-            return left.PreNumber.CompareTo(right.PreNumber);
+            if (leftPre && rightPre)
+            {
+                cmp = string.Compare(left.PreLabel, right.PreLabel, StringComparison.OrdinalIgnoreCase);
+                if (cmp != 0) return cmp;
+                cmp = left.PreNumber.CompareTo(right.PreNumber);
+                if (cmp != 0) return cmp;
+            }
+
+            return left.Revision.CompareTo(right.Revision);
         }
     }
 }
