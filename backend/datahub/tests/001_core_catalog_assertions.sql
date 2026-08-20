@@ -2,6 +2,7 @@ DO $$
 DECLARE
     required_table text;
     required_tables text[] := ARRAY[
+        'schema_migrations',
         'sites', 'devices', 'site_fetch_leases', 'site_change_counters',
         'waybill_scan_events', 'waybill_projections', 'dashboard_changes',
         'jms_event_policies', 'idempotency_records', 'retention_policies', 'audit_logs'
@@ -36,6 +37,14 @@ BEGIN
        AND i.indisprimary;
     IF pk_columns <> 'site_id,change_seq' THEN
         RAISE EXCEPTION 'dashboard_changes primary key must be site_id,change_seq; got %', pk_columns;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM schema_migrations
+         WHERE version = '001_core'
+    ) THEN
+        RAISE EXCEPTION '001_core migration version marker is missing';
     END IF;
 
     IF EXISTS (

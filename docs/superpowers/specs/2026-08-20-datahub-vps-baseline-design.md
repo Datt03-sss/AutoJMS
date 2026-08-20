@@ -150,6 +150,7 @@ and audit data. Projections are derived read models.
 Required tables:
 
 ```text
+schema_migrations
 sites
 devices
 site_fetch_leases
@@ -404,8 +405,7 @@ CREATE TABLE retention_policies (
     clock_column   text NOT NULL,
     hot_after      interval,
     archive_after  interval,
-    delete_after   interval,
-    UNIQUE (site_id, table_name)
+    delete_after   interval
 );
 
 -- PostgreSQL permits multiple NULLs in a normal UNIQUE constraint. Keep one
@@ -439,6 +439,13 @@ INSERT INTO site_fetch_leases (site_id) VALUES ($site_id);
 INSERT INTO site_change_counters (site_id, change_seq) VALUES ($site_id, 0);
 COMMIT;
 ```
+
+Schema changes are forward-only and tracked in `schema_migrations`. The deployment
+runner applies numbered files in lexical order inside `psql --single-transaction` and
+skips a version already recorded there. Re-running the runner is therefore a no-op, not
+an attempt to execute `001_core.sql` twice. Site provisioning is an explicit operations
+script calling the atomic site helper; enrollment never auto-creates a site from a
+license assertion.
 
 ## Ingest transaction
 

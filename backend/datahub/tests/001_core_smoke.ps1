@@ -11,6 +11,7 @@ $rootPath = if ([string]::IsNullOrWhiteSpace($Root)) {
 }
 $migrationPath = Join-Path $rootPath 'migrations/001_core.sql'
 $catalogAssertionsPath = Join-Path $PSScriptRoot '001_core_catalog_assertions.sql'
+$runnerPath = Join-Path $PSScriptRoot '..\scripts\apply-migrations.ps1'
 
 if (-not (Test-Path $migrationPath -PathType Leaf)) {
     throw "Core migration is missing: $migrationPath"
@@ -35,6 +36,13 @@ foreach ($table in $requiredTables) {
     if ($sql -notmatch "CREATE TABLE IF NOT EXISTS\s+$table\b") {
         throw "Required table declaration is missing: $table"
     }
+}
+
+if ($sql -notmatch "CREATE TABLE IF NOT EXISTS\s+schema_migrations\b") {
+    throw 'schema_migrations is required for forward-only migration tracking.'
+}
+if ($sql -notmatch "INSERT INTO schema_migrations\s*\(version\)\s*VALUES \('001_core'\)") {
+    throw '001_core must record its applied version.'
 }
 
 if ($sql -notmatch 'leader_device_id\s+uuid\s+NULL') {
@@ -75,9 +83,11 @@ if ($sql -notmatch 'CREATE UNIQUE INDEX IF NOT EXISTS\s+ux_retention_policies_si
 $psql = Get-Command psql -ErrorAction SilentlyContinue
 $databaseUrl = $env:DATAHUB_TEST_DATABASE_URL
 if ($null -ne $psql -and -not [string]::IsNullOrWhiteSpace($databaseUrl)) {
-    & $psql.Source $databaseUrl --set ON_ERROR_STOP=1 --file $migrationPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Core migration execution failed with exit code $LASTEXITCODE."
+    for ($run = 1; $run -le 2; $run++) {
+        & $runnerPath -DatabaseUrl $databaseUrl -MigrationDirectory (Join-Path $rootPath 'migrations')
+        if ($LASTEXITCODE -ne 0) {
+            throw "Migration runner failed on pass $run with exit code $LASTEXITCODE."
+        }
     }
 
     & $psql.Source $databaseUrl --set ON_ERROR_STOP=1 --file $catalogAssertionsPath

@@ -18,12 +18,15 @@ Production deployments before changing the AutoJMS desktop integration.
 **Files:**
 - Create: `backend/datahub/migrations/001_core.sql`
 - Create: `backend/datahub/migrations/002_seed_policies.sql`
+- Create: `backend/datahub/scripts/apply-migrations.ps1`
+- Create: `backend/datahub/scripts/provision-site.ps1`
 - Test: `backend/datahub/tests/001_core_smoke.ps1`
 - Test: `backend/datahub/tests/001_core_catalog_assertions.sql`
+- Test: `backend/datahub/tests/002_policy_smoke.ps1`
 
 - [ ] **Step 1: Write the migration smoke assertions**
 
-Assert that the migration creates `sites`, `devices`, `site_fetch_leases`,
+Assert that the migration creates `schema_migrations`, `sites`, `devices`, `site_fetch_leases`,
 `site_change_counters`, `waybill_scan_events`, `waybill_projections`,
 `dashboard_changes`, `jms_event_policies`, `idempotency_records`,
 `retention_policies`, and `audit_logs`. Assert that `leader_device_id` is nullable,
@@ -48,9 +51,11 @@ constraints or scatter them through application code.
 
 - [ ] **Step 4: Apply and verify the migration**
 
-Run the migration twice against a clean PostgreSQL database and assert the second run is
-safe according to the migration runner's forward-only policy. Run the smoke assertions
-and inspect indexes with `\d+`/catalog queries.
+Use `apply-migrations.ps1`, which records versions in `schema_migrations`, applies each
+file with `psql --single-transaction`, and skips an already recorded version. Run it twice
+against a clean PostgreSQL database; the second pass must skip without executing DDL.
+Use `provision-site.ps1` for the explicit site-creation transaction; enrollment must not
+auto-create sites. Run the smoke assertions and inspect indexes with `\d+`/catalog queries.
 
 ### Task 2: Publish the phase-1 OpenAPI contract
 

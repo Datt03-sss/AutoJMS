@@ -1,7 +1,10 @@
-BEGIN;
-
 -- The migration is intentionally self-contained and safe to apply before the API
 -- starts. Environment/channel enforcement belongs to the signed-token boundary.
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS sites (
     id         uuid PRIMARY KEY,
@@ -30,7 +33,7 @@ CREATE TABLE IF NOT EXISTS devices (
 
 CREATE TABLE IF NOT EXISTS site_fetch_leases (
     site_id           uuid PRIMARY KEY REFERENCES sites(id),
-    leader_device_id  uuid NULL REFERENCES devices(id),
+    leader_device_id  uuid NULL REFERENCES devices(id) ON DELETE RESTRICT,
     leader_term       bigint NOT NULL DEFAULT 0,
     lease_expires_at  timestamptz NOT NULL DEFAULT '-infinity'::timestamptz,
     last_seen_at      timestamptz NULL,
@@ -207,4 +210,6 @@ BEGIN
 END;
 $$;
 
-COMMIT;
+INSERT INTO schema_migrations (version)
+VALUES ('001_core')
+ON CONFLICT (version) DO NOTHING;
