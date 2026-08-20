@@ -5,7 +5,7 @@
 **Goal:** Build and verify the new VPS-hosted DataHub backend on isolated Dev/Test and
 Production deployments before changing the AutoJMS desktop integration.
 
-**Architecture:** A .NET 10 ASP.NET Core API owns the PostgreSQL transaction boundary and SignalR hub. A single canonical ingest pipeline serves both bulk leader observations and interactive observations; only bulk requests require lease fencing. PostgreSQL is private to each Compose network, and clients use REST delta/snapshot plus SignalR doorbells. Dev/Test and Production use the same image contract with separate data, domains, credentials, and JWT identity.
+**Architecture:** A .NET 10 ASP.NET Core API owns the PostgreSQL transaction boundary and SignalR hub. A single canonical ingest pipeline serves both bulk leader observations and interactive observations; only bulk requests require lease fencing. PostgreSQL is private to each Compose network, and clients use REST delta/snapshot plus SignalR doorbells. Dev/Test and Production use the same image contract with separate data, domains, credentials, JWT identity, enrollment peppers, and backup buckets.
 
 **Tech Stack:** ASP.NET Core 10, SignalR, Npgsql, explicit SQL, PostgreSQL, Docker Compose, Caddy, OpenAPI 3, xUnit, Testcontainers.PostgreSql (or a local PostgreSQL test instance when container runtime is unavailable).
 
@@ -18,7 +18,8 @@ Production deployments before changing the AutoJMS desktop integration.
 **Files:**
 - Create: `backend/datahub/migrations/001_core.sql`
 - Create: `backend/datahub/migrations/002_seed_policies.sql`
-- Test: `backend/datahub/tests/001_core_smoke.sql`
+- Test: `backend/datahub/tests/001_core_smoke.ps1`
+- Test: `backend/datahub/tests/001_core_catalog_assertions.sql`
 
 - [ ] **Step 1: Write the migration smoke assertions**
 
@@ -28,7 +29,8 @@ Assert that the migration creates `sites`, `devices`, `site_fetch_leases`,
 `retention_policies`, and `audit_logs`. Assert that `leader_device_id` is nullable,
 the change cursor primary key is `(site_id, change_seq)`, no global identity is used as a
 cursor, projection event references have no foreign key, and `uploadTime` has no hot
-column or index.
+column or index. Assert that channel is enforced at the signed-token/API boundary and
+is not accepted from an untrusted body/header or required as a schema column in phase 1.
 
 - [ ] **Step 2: Implement schema and constraints**
 
@@ -57,9 +59,12 @@ and inspect indexes with `\d+`/catalog queries.
 - Create: `backend/datahub/openapi/README.md`
 - Test: `backend/datahub/openapi/openapi-lint.ps1`
 
-- [ ] **Step 1: Define security schemes and common errors**
+- [ ] **Step 1: Define security schemes, channel binding, and common errors**
 
-Define the device bearer token, site claim matching, `409 LEADER_FENCED`,
+Define the signed license assertion used by enrollment and the derived device bearer
+token. Require `channel` and licensed site-code checks; `datahub_url` is a signed,
+HTTPS-only override and is never accepted from operator input. Define site claim matching,
+`403 CHANNEL_MISMATCH`, `403 SITE_NOT_LICENSED`, `409 LEADER_FENCED`,
 `409 LEASE_HELD`, `409 IDEMPOTENCY_KEY_REUSED`, `400 INVALID_SCAN_TIME`, and a common
 request correlation ID. Do not describe a JMS token as an API credential.
 
@@ -112,7 +117,10 @@ require PostgreSQL; `/health/ready` must fail when PostgreSQL cannot be reached.
 Implement a testable device-token validator interface. Every site route compares the
 route site ID with the authenticated device site ID. Keep token issuance/enrollment
 behind an interface so the existing license server can be adapted later without
-putting license changes in this phase.
+putting protected license-engine changes in this phase. The enrollment seam accepts a
+validated signed license assertion, binds its DataHub channel and site scope into the
+device token, and rejects `DATAHUB_CHANNEL`/site mismatches. Do not use the existing
+stable/beta update channel for this check.
 
 - [ ] **Step 4: Add SignalR site grouping**
 
@@ -254,10 +262,12 @@ this task.
 - Modify: `docs/superpowers/specs/2026-08-20-datahub-vps-baseline-design.md` only if a verified implementation discrepancy requires clarification.
 - Create: `backend/datahub/tests/canary-report-template.md`
 
-- [ ] **Step 1: Run one-site canary against two devices**
+- [ ] **Step 1: Run isolated Dev validation, then a real Production canary**
 
-Run the canary against Dev first, using only Dev endpoint/device credentials. Verify bulk
-leader failover, local interactive observations, scanTime parsing, code
+Run a synthetic/test-device canary against Dev first, using only staging endpoint/device
+credentials. After it passes, run the two-device canary for real users on Production;
+never dual-write Dev to Production. Verify bulk leader failover, local interactive
+observations, scanTime parsing, code
 98/110 slot behavior, duplicate bulk/interactive observations, reconnect catch-up,
 snapshot watermark, old-term fencing, and VPS restart.
 

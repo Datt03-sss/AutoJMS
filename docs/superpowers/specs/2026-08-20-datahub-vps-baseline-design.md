@@ -58,30 +58,65 @@ are separate security and data boundaries:
 
 | Environment | Public endpoint | PostgreSQL | Credentials and identity |
 |---|---|---|---|
-| Dev/Test | dedicated dev hostname | dedicated dev volume/database | dev JWT issuer/audience, signing keys, sites, and devices |
-| Production | dedicated production hostname | dedicated production volume/database | production JWT issuer/audience, signing keys, sites, and devices |
+| Dev/Test | dedicated dev hostname | dedicated dev volume/database | dev JWT issuer/audience, signing keys, enroll pepper, sites/devices, and backup bucket |
+| Production | dedicated production hostname | dedicated production volume/database | production JWT issuer/audience, signing keys, enroll pepper, sites/devices, and backup bucket |
 
-There is no network route, shared volume, shared database credential, or shared device
-credential between the environments. Dev fixtures must be synthetic or anonymized; a
-production dump is never restored into dev without an explicit sanitization step.
+There is no network route, shared volume, shared database credential, shared device
+credential, or shared backup bucket between the environments. Dev fixtures must be
+synthetic or anonymized; a production dump is never restored into dev without an explicit
+sanitization step.
 
 Configuration has two distinct targets:
 
 - The API's `ConnectionStrings__DataHub` points to the private Compose service
   `Host=postgres` in that environment. It never points to a public PostgreSQL address.
-- The client and Windows Service use an environment-specific `DataHubApiBaseUrl` for the
-  Caddy endpoint. The value is injected by the install/build profile and is not accepted
-  from an arbitrary remote response. A production device token is never sent to dev.
+- The client and Windows Service resolve an environment-specific DataHub URL from the
+  signed license `datahub_url` override, falling back to the well-known URL for its
+  signed `channel`. A manually entered host or unsigned remote response is rejected.
+  A production device token is never sent to dev.
 - `ASPNETCORE_ENVIRONMENT` is `Staging` on Dev/Test and `Production` on Production.
   JWT issuer/audience, signing keys, and Caddy hostname are supplied by deployment
   secrets/configuration outside git. Missing or mismatched environment identity must
   fail readiness, not silently fall back to another target.
 
 Promotion is image-based: build one immutable image digest, deploy and test it on Dev,
-run the backend and two-device canary, back up Production, apply forward-only migrations,
-then deploy the exact digest to Production. A production replacement VPS reuses the
+run a synthetic two-device canary there, back up Production, apply forward-only
+migrations, then deploy the exact digest to Production and run the real-user canary.
+A production replacement VPS reuses the
 production hostname and secrets after restore; clients do not need a new endpoint. Dev
 may be stopped or downsized when not testing, but it is not an automatic failover target.
+
+### Signed license channel boundary
+
+The license authority adds these signed fields; the client does not invent them:
+
+```text
+channel: production | staging                 required
+datahub_url: https URL override                optional, signed
+site_codes: [licensed site codes]              required for DataHub access
+exp, seats, token_version                       existing license claims
+```
+
+`channel` is a DataHub deployment channel and is distinct from the existing binary
+update channel (`stable`/`beta`). It must not reuse or overload `UpdateChannel`.
+
+The client resolves `datahub_url ?? wellKnown[channel]`. The override is accepted only
+after license signature, expiry, and channel validation, and must be HTTPS. The license
+never contains an IP address, JMS token, PostgreSQL password, DPAPI blob, or device
+secret. DNS replacement therefore does not require reissuing a license.
+
+The API has a deployment setting `DATAHUB_CHANNEL=production|staging`. Enrollment
+validates the signed license assertion, requires `license.channel == DATAHUB_CHANNEL`,
+and requires the requested `site_code` to be in `license.site_codes`. It then issues a
+device token containing the bound channel and site. Lease, ingest, and SignalR requests
+validate that signed/derived claim against `DATAHUB_CHANNEL`; a raw `X-DataHub-Channel`
+header or request body is never authoritative. Mismatch returns `403 CHANNEL_MISMATCH`;
+an unlicensed site returns `403 SITE_NOT_LICENSED`.
+
+Phase 1 does not require a `devices.channel` column. The bound channel is in the device
+token and enrollment audit payload; a future audit migration may add a non-null column.
+The two environments use different JWT signing keys and enrollment peppers, so a device
+enrolled in staging is invalid in production even if configuration files are copied.
 
 The existing .NET 8 desktop remains a client of this API; it does not need to target the
 same framework version.
@@ -484,9 +519,10 @@ PostgreSQL credentials or raw JMS tokens.
 ## Cutover and verification
 
 1. Deploy the same API/PostgreSQL/Caddy Compose stack independently on Dev and Production.
-2. Configure the desktop/Windows Service test profile to use only the Dev endpoint.
+2. Configure test licenses with `channel=staging`; configure the canary and all real users
+   with `channel=production`. Do not dual-write Dev to Production.
 3. Add parser and policy tests using live-format payload fixtures.
-4. Install the Windows Service on one canary site and test Named Pipe/DPAPI.
+4. Install the Windows Service on one real production canary site and test Named Pipe/DPAPI.
 5. Run bulk and interactive observations through the new pipeline while the old read
   path remains active.
 6. Verify duplicate batches, delayed events, unknown codes, concurrent leader election,
@@ -495,5 +531,7 @@ PostgreSQL credentials or raw JMS tokens.
 8. Switch one site's dashboard reads to the Production API, then expand site by site.
 
 The first implementation must not modify protected licensing, update, or WinForms
-designer files. Client integration is an adapter change after the backend contract and
-canary tests pass.
+designer files. Adding these signed license fields to the existing license engine and
+license server is a later, explicitly authorized integration task; it must preserve the
+existing update-channel semantics. Client integration is an adapter change after the
+backend contract and canary tests pass.
