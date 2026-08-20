@@ -9,8 +9,10 @@
 
 Provide a durable, tenant-isolated dashboard backend for multiple AutoJMS clients that
 are not on the same LAN, while keeping the JMS credential local to each Windows machine.
-The first deployment runs on one existing VPS and can be rebuilt from encrypted offsite
-backups plus replayable JMS observations.
+The first production deployment runs on the existing VPS. A second, fully isolated VPS
+is used for development and integration testing. Either deployment can be rebuilt from
+its own encrypted offsite backups plus replayable JMS observations; the development VPS
+is not a production standby.
 
 ## Non-goals for phase 1
 
@@ -48,6 +50,38 @@ Recommended implementation stack:
 - Npgsql with one shared `NpgsqlDataSource`; Dapper or explicit SQL for the ingest path.
 - PostgreSQL 17 or the pinned supported major selected during deployment.
 - Docker Compose, Caddy, and an encrypted object-storage backup target.
+
+## Environment separation and promotion
+
+The two VPS deployments use the same Compose topology and application image, but they
+are separate security and data boundaries:
+
+| Environment | Public endpoint | PostgreSQL | Credentials and identity |
+|---|---|---|---|
+| Dev/Test | dedicated dev hostname | dedicated dev volume/database | dev JWT issuer/audience, signing keys, sites, and devices |
+| Production | dedicated production hostname | dedicated production volume/database | production JWT issuer/audience, signing keys, sites, and devices |
+
+There is no network route, shared volume, shared database credential, or shared device
+credential between the environments. Dev fixtures must be synthetic or anonymized; a
+production dump is never restored into dev without an explicit sanitization step.
+
+Configuration has two distinct targets:
+
+- The API's `ConnectionStrings__DataHub` points to the private Compose service
+  `Host=postgres` in that environment. It never points to a public PostgreSQL address.
+- The client and Windows Service use an environment-specific `DataHubApiBaseUrl` for the
+  Caddy endpoint. The value is injected by the install/build profile and is not accepted
+  from an arbitrary remote response. A production device token is never sent to dev.
+- `ASPNETCORE_ENVIRONMENT` is `Staging` on Dev/Test and `Production` on Production.
+  JWT issuer/audience, signing keys, and Caddy hostname are supplied by deployment
+  secrets/configuration outside git. Missing or mismatched environment identity must
+  fail readiness, not silently fall back to another target.
+
+Promotion is image-based: build one immutable image digest, deploy and test it on Dev,
+run the backend and two-device canary, back up Production, apply forward-only migrations,
+then deploy the exact digest to Production. A production replacement VPS reuses the
+production hostname and secrets after restore; clients do not need a new endpoint. Dev
+may be stopped or downsized when not testing, but it is not an automatic failover target.
 
 The existing .NET 8 desktop remains a client of this API; it does not need to target the
 same framework version.
@@ -449,15 +483,16 @@ PostgreSQL credentials or raw JMS tokens.
 
 ## Cutover and verification
 
-1. Deploy API/PostgreSQL/Caddy in staging.
-2. Add parser and policy tests using live-format payload fixtures.
-3. Install the Windows Service on one canary site and test Named Pipe/DPAPI.
-4. Run bulk and interactive observations through the new pipeline while the old read
-   path remains active.
-5. Verify duplicate batches, delayed events, unknown codes, concurrent leader election,
-   old-term fencing, reconnect/catch-up, snapshot watermark, and VPS restart.
-6. Run the documented drop/restore/replay drill.
-7. Switch one site's dashboard reads to the new API, then expand site by site.
+1. Deploy the same API/PostgreSQL/Caddy Compose stack independently on Dev and Production.
+2. Configure the desktop/Windows Service test profile to use only the Dev endpoint.
+3. Add parser and policy tests using live-format payload fixtures.
+4. Install the Windows Service on one canary site and test Named Pipe/DPAPI.
+5. Run bulk and interactive observations through the new pipeline while the old read
+  path remains active.
+6. Verify duplicate batches, delayed events, unknown codes, concurrent leader election,
+  old-term fencing, reconnect/catch-up, snapshot watermark, and VPS restart.
+7. Run the documented Dev drop/restore/replay drill, then the Production restore drill.
+8. Switch one site's dashboard reads to the Production API, then expand site by site.
 
 The first implementation must not modify protected licensing, update, or WinForms
 designer files. Client integration is an adapter change after the backend contract and

@@ -2,9 +2,10 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build and verify the new VPS-hosted DataHub backend before changing the AutoJMS desktop integration.
+**Goal:** Build and verify the new VPS-hosted DataHub backend on isolated Dev/Test and
+Production deployments before changing the AutoJMS desktop integration.
 
-**Architecture:** A .NET 10 ASP.NET Core API owns the PostgreSQL transaction boundary and SignalR hub. A single canonical ingest pipeline serves both bulk leader observations and interactive observations; only bulk requests require lease fencing. PostgreSQL is private to the Compose network, and clients use REST delta/snapshot plus SignalR doorbells.
+**Architecture:** A .NET 10 ASP.NET Core API owns the PostgreSQL transaction boundary and SignalR hub. A single canonical ingest pipeline serves both bulk leader observations and interactive observations; only bulk requests require lease fencing. PostgreSQL is private to each Compose network, and clients use REST delta/snapshot plus SignalR doorbells. Dev/Test and Production use the same image contract with separate data, domains, credentials, and JWT identity.
 
 **Tech Stack:** ASP.NET Core 10, SignalR, Npgsql, explicit SQL, PostgreSQL, Docker Compose, Caddy, OpenAPI 3, xUnit, Testcontainers.PostgreSql (or a local PostgreSQL test instance when container runtime is unavailable).
 
@@ -208,33 +209,44 @@ the retained range.
 Use allowlisted table/clock policies, bounded delete batches, tombstones for offline
 clients, and no free-form SQL from policy rows. Never delete lease/counter/site rows.
 
-### Task 6: Add Compose, Caddy, backup, and backend verification
+### Task 6: Add Compose, Caddy, environment isolation, backup, and backend verification
 
 **Files:**
 - Create: `backend/datahub/docker-compose.yml`
 - Create: `backend/datahub/Caddyfile`
 - Create: `backend/datahub/.env.example`
 - Create: `backend/datahub/README.md`
+- Create: `backend/datahub/deploy/environment-runbook.md`
 - Create: `backend/datahub/scripts/backup.ps1`
 - Create: `backend/datahub/scripts/restore-drill.ps1`
 - Create: `backend/datahub/tests/cutover-checklist.md`
 
-- [ ] **Step 1: Define private Compose networking**
+- [ ] **Step 1: Define private Compose networking and environment targets**
 
 Publish only Caddy ports 80/443. API connects to `postgres` by Compose DNS. PostgreSQL
-has no host port mapping. Add health checks and bounded memory/log settings.
+has no host port mapping. Add health checks and bounded memory/log settings. Document
+two independent env files: Dev/Test uses a dev hostname, database volume, JWT
+issuer/audience, signing keys, site/device registry, and `DataHubApiBaseUrl`; Production
+uses a separate set. The API must fail readiness on missing/mismatched environment
+identity. Never put either secret set in git.
 
-- [ ] **Step 2: Define encrypted backup and restore scripts**
+- [ ] **Step 2: Define image promotion and encrypted backup/restore**
 
-Back up user/config/audit/device/site data and observations while replay coverage is not
-measured. Keep credentials out of dumps. Restore to a clean staging database, replay a
-fixture, rebuild projections, and compare expected dashboard rows.
+Build one immutable image digest and deploy it to Dev first. Back up user/config/audit/
+device/site data and observations while replay coverage is not measured. Keep credentials
+out of dumps. Restore to a clean Dev database, replay a fixture, rebuild projections, and
+compare expected dashboard rows. Promote the exact tested digest to Production only after
+the Production backup succeeds; a replacement VPS reuses the Production hostname and
+secrets rather than changing client endpoints.
 
-- [ ] **Step 3: Run backend verification**
+- [ ] **Step 3: Run backend verification on Dev, then Production**
 
 Run SQL smoke tests, unit tests, API integration tests, OpenAPI lint, Compose health
 checks, duplicate-batch tests, leader crash/fencing tests, SignalR reconnect tests, and
-the drop/restore/replay drill. Do not modify the desktop integration during this task.
+the drop/restore/replay drill on Dev. Confirm that Dev cannot reach Production's
+PostgreSQL or accept Production device tokens. Repeat the required health, migration,
+backup, and canary checks on Production. Do not modify the desktop integration during
+this task.
 
 ### Task 7: Backend completion gate before desktop integration
 
@@ -244,7 +256,8 @@ the drop/restore/replay drill. Do not modify the desktop integration during this
 
 - [ ] **Step 1: Run one-site canary against two devices**
 
-Verify bulk leader failover, local interactive observations, scanTime parsing, code
+Run the canary against Dev first, using only Dev endpoint/device credentials. Verify bulk
+leader failover, local interactive observations, scanTime parsing, code
 98/110 slot behavior, duplicate bulk/interactive observations, reconnect catch-up,
 snapshot watermark, old-term fencing, and VPS restart.
 
@@ -255,6 +268,7 @@ the backend is production-ready until both are recorded.
 
 - [ ] **Step 3: Gate desktop integration**
 
-Only after Tasks 1-6 and the canary pass should a separate plan replace the existing
+Only after Tasks 1-6 pass on Dev and the Production promotion/canary is recorded should
+a separate plan replace the existing
 Supabase adapter with the new HTTP/SignalR client and wire the WebView2/Named Pipe
 worker lifecycle. Protected licensing, update, and designer files remain untouched.
