@@ -97,6 +97,9 @@ audit_logs
 `user_notes`, `chat_messages`, and other user feature tables are added only when the
 feature is implemented.
 
+Creating a site is one transaction that inserts the `sites` row, its empty
+`site_fetch_leases` row, and its `site_change_counters` row with `change_seq = 0`.
+
 ### Observation
 
 `waybill_scan_events` is append-only except for retention. Its business timestamp is
@@ -130,8 +133,8 @@ index key, fingerprint input, reducer input, or retention clock.
 
 ### Projection
 
-The projection has independent state and activity slots. An unknown JMS code defaults to
-`activity` and cannot overwrite state.
+The projection has three independent slots. An unknown JMS code defaults to `activity`
+and cannot overwrite state or inventory.
 
 ```sql
 CREATE TABLE waybill_projections (
@@ -142,21 +145,32 @@ CREATE TABLE waybill_projections (
     state_event_at             timestamptz,
     state_fingerprint          text,
     state_event_id             bigint,
+    state_kind                 text,
     last_activity_code         integer,
     last_activity_name         text,
     last_activity_kind         text,
     last_activity_at           timestamptz,
     last_activity_fingerprint  text,
     last_activity_event_id     bigint,
+    inventory_code             integer,
+    inventory_name             text,
     inventory_event_at         timestamptz,
     inventory_fingerprint      text,
     inventory_event_id         bigint,
+    payload                    jsonb NOT NULL DEFAULT '{}'::jsonb,
     reducer_version            integer NOT NULL DEFAULT 1,
     version                    bigint NOT NULL DEFAULT 1,
     updated_at                 timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (site_id, waybill_no)
 );
 ```
+
+The projection is self-sufficient for dashboard list/detail rendering. The event ID
+columns are optional hydration references and deliberately have no foreign key to
+`waybill_scan_events`: event retention must not break a non-terminal projection. A
+retention job may set those references to `NULL`, or retain referenced events while the
+projection is non-terminal. The compact `payload` is the apply-safe projection snapshot,
+not a copy of the full JMS envelope.
 
 Each slot uses the deterministic winner key:
 
@@ -166,6 +180,17 @@ Each slot uses the deterministic winner key:
 
 `ingested_at` and `uploadTime` never participate. If JMS later supplies a stable source
 event ID, it is added to the canonical fingerprint in a new fingerprint version.
+
+Slot semantics are fixed:
+
+| Slot | Updated when | Purpose |
+|---|---|---|
+| `current_state_*` | `state_transition` | business state |
+| `latest_activity_*` | every event kind | newest activity, including inventory |
+| `inventory_*` | `inventory` | newest inventory checkpoint |
+
+`communication` updates only `latest_activity_*`. The event policy is data in
+`jms_event_policies`; it is not scattered through reducer code.
 
 ### Policy and change cursor
 
@@ -190,12 +215,15 @@ CREATE TABLE dashboard_changes (
     entity_key   text NOT NULL,
     operation    text NOT NULL CHECK (operation IN ('upsert', 'delete', 'resync')),
     change_at    timestamptz NOT NULL DEFAULT now(),
-    body         jsonb,
+    body         jsonb NOT NULL DEFAULT '{}'::jsonb,
     PRIMARY KEY (site_id, change_seq)
 );
-CREATE INDEX ix_dashboard_changes_site_seq
-    ON dashboard_changes (site_id, change_seq);
 ```
+
+For an `upsert`, `body` contains the complete hot-column snapshot needed to apply the
+projection to SQLite in one pass. It never contains the full JMS JSON. A delete carries
+an applicable tombstone body. The primary key already supplies the `(site_id,
+change_seq)` access path; no duplicate index is created.
 
 Every change is appended through one repository/database function that locks the
 site counter, allocates the next number, inserts the change, and commits in the same
@@ -224,7 +252,7 @@ format deviation is observable and does not silently change the parser contract.
 
 ## Producer and leader contract
 
-There are two producer paths:
+There are two producer paths and one canonical ingest pipeline:
 
 | Path | Caller | Endpoint | Fencing |
 |---|---|---|---|
@@ -232,7 +260,8 @@ There are two producer paths:
 | Interactive operation | Windows Service on operator machine | `/jms/observations` | Not required |
 
 The UI never bulk-polls JMS. Interactive UI commands use a local ACL-protected Named
-Pipe to the Windows Service; the JMS token stays in the service's DPAPI store.
+Pipe to the Windows Service; the JMS token stays in the service's DPAPI store. Both
+endpoints call the same `IngestPipeline`; only the bulk endpoint performs lease fencing.
 
 Lease defaults:
 
@@ -251,9 +280,96 @@ last_seen_at:     NULL
 ```
 
 Acquire, renew, steal, and release are serialized with a row lock. Stealing an expired
-lease increments `leader_term`; renew does not. Bulk ingest requires matching device,
-term, and unexpired lease. A stale request receives `409 LEADER_FENCED`. API/network
-failure pauses bulk ingestion; it never grants a local fail-open lease.
+lease increments `leader_term`; renew does not. Release also increments `leader_term`,
+sets `leader_device_id = NULL`, and sets `lease_expires_at = -infinity`; an in-flight
+request with the old term is fenced. Bulk ingest requires matching device, term, and
+unexpired lease. A stale request receives `409 LEADER_FENCED`. API/network failure
+pauses bulk ingestion; it never grants a local fail-open lease.
+
+The remaining phase-1 tables have these required columns:
+
+```sql
+CREATE TABLE sites (
+    id         uuid PRIMARY KEY,
+    site_code  text NOT NULL UNIQUE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE devices (
+    id              uuid PRIMARY KEY,
+    site_id         uuid NOT NULL REFERENCES sites(id),
+    name            text NOT NULL,
+    credential_hash text NOT NULL,
+    token_version   integer NOT NULL DEFAULT 1,
+    status          text NOT NULL DEFAULT 'active',
+    last_seen_at    timestamptz,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (site_id, name)
+);
+
+CREATE TABLE site_fetch_leases (
+    site_id           uuid PRIMARY KEY REFERENCES sites(id),
+    leader_device_id  uuid NULL REFERENCES devices(id),
+    leader_term       bigint NOT NULL DEFAULT 0,
+    lease_expires_at  timestamptz NOT NULL DEFAULT '-infinity',
+    last_seen_at      timestamptz NULL
+);
+
+CREATE TABLE idempotency_records (
+    site_id      uuid NOT NULL REFERENCES sites(id),
+    key          text NOT NULL,
+    body_sha256  text NOT NULL,
+    response     jsonb NOT NULL,
+    status_code  integer NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at   timestamptz NOT NULL,
+    PRIMARY KEY (site_id, key)
+);
+
+CREATE TABLE retention_policies (
+    id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id        uuid NULL REFERENCES sites(id),
+    table_name     text NOT NULL,
+    clock_column   text NOT NULL,
+    hot_after      interval,
+    archive_after  interval,
+    delete_after   interval,
+    UNIQUE (site_id, table_name)
+);
+
+-- PostgreSQL permits multiple NULLs in a normal UNIQUE constraint. Keep one
+-- global policy per table and one policy per site/table explicitly.
+CREATE UNIQUE INDEX ux_retention_policies_global_table
+    ON retention_policies (table_name)
+    WHERE site_id IS NULL;
+CREATE UNIQUE INDEX ux_retention_policies_site_table
+    ON retention_policies (site_id, table_name)
+    WHERE site_id IS NOT NULL;
+
+CREATE TABLE audit_logs (
+    id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    site_id    uuid NULL REFERENCES sites(id),
+    actor      text NOT NULL,
+    action     text NOT NULL,
+    at         timestamptz NOT NULL DEFAULT now(),
+    payload    jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+```
+
+The global retention row uses `site_id IS NULL`; the partial unique indexes above make
+the global and per-site scopes unambiguous. The SQL migration must create `sites` before
+the tables that reference it, then seed the lease and change-counter rows in the same
+site-creation transaction:
+
+```sql
+BEGIN;
+INSERT INTO sites (id, site_code) VALUES ($site_id, $site_code);
+INSERT INTO site_fetch_leases (site_id) VALUES ($site_id);
+INSERT INTO site_change_counters (site_id, change_seq) VALUES ($site_id, 0);
+COMMIT;
+```
 
 ## Ingest transaction
 
@@ -261,7 +377,7 @@ For every bounded chunk (maximum 1 MB or 200 items):
 
 ```text
 authenticate device and site
-validate bulk fence when kind=bulk
+validate the lease fence only for `/jms/ingest`
 validate idempotency key and request hash
 parse scanTime
 insert each event with ON CONFLICT DO NOTHING
@@ -285,11 +401,11 @@ SignalR payload is only `{siteId, changeSeq, entityType, entityKey}`. On reconne
 missed notification, the client performs delta catch-up. A safety pull runs every
 30-60 seconds.
 
-Snapshot returns a `snapshot_seq` captured with the projection read. The client applies
-the snapshot, sets its cursor to that watermark, and then requests changes after it.
-The implementation must either stream all pages within one repeatable-read transaction
-or issue a server snapshot token with a short TTL; separate unwatermarked page queries
-are not permitted.
+Phase 1 chooses one snapshot strategy: the API streams all snapshot pages in one
+`REPEATABLE READ` transaction and returns one `snapshot_seq` for the entire response.
+The client applies the streamed pages, sets its cursor to that watermark, and then
+requests changes after it. A server snapshot token with a short TTL is a later
+optimization; implementors must not choose a different paging strategy ad hoc.
 
 ## Retention and recovery
 
