@@ -1,4 +1,4 @@
-﻿# Pre-Release Checklist
+# Pre-Release Checklist
 
 Use this checklist before any release.
 

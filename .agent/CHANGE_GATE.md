@@ -18,7 +18,7 @@ Before modifying production code, answer:
 - What tabs/forms are affected?
 - Is WebView2 involved?
 - Is release/update involved?
-- Is Firebase/Supabase/GitHub/Render involved?
+- Is Firebase/DataHub/GitHub/Render involved?
 
 ## Files planned to change
 

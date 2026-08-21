@@ -76,8 +76,8 @@ chuẩn khi nhận. Chi tiết + field-mapping (per-nhóm) + snapshot CAS/ACK + 
 > **Target v2:** `OrderDetailObserved` **bỏ khỏi event**, chuyển sang **snapshot store** (CAS revision +
 > FIFO seq). Emitter sẽ viết lại: tracking→transition event; detail→snapshot writer RPC.
 
-### Remote event store (Supabase)
-`backend/supabase/migrations/202607110002_event_store.sql`:
+### Remote event store (DataHub)
+`backend/datahub/migrations/202607110002_event_store.sql`:
 - Bảng `waybill_events` — `seq bigint identity` (thứ tự server-assigned, chống lệch đồng hồ),
   `unique(site_code, fingerprint)` (dedupe), RLS theo `jwt_site_code()`, realtime publication.
 - RPC `append_waybill_events(site, events)` — append/dedupe, trả số dòng mới.
@@ -85,8 +85,8 @@ chuẩn khi nhận. Chi tiết + field-mapping (per-nhóm) + snapshot CAS/ACK + 
   đồng hồ client).
 
 ### Sync wiring
-`SupabaseDbService.Hybrid.cs`: `AppendWaybillEventsAsync / PullEventsDeltaAsync` + realtime
-`waybill_events`. `FullStackCloudSyncService`: outbox thêm kind `EVENT` (push observation lên
+`DataHubClient.Hybrid.cs`: `AppendWaybillEventsAsync / PullEventsDeltaAsync` + realtime
+`waybill_events`. `DataHubSyncService`: outbox thêm kind `EVENT` (push observation lên
 cloud), `PullEventsAsync` kéo delta theo seq → merge vào `fs_events` local.
 
 > ⚠️ **DEFECT cursor (sửa ở P0-C).** `GetMaxRemoteSeqAsync` lấy `MAX(remote_seq)` từ event đã insert;

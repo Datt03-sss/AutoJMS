@@ -70,7 +70,7 @@ To prevent regressions, the tabs in `Main.cs` and the standalone `FullStackOpera
 
 ## Rules for Shared Services
 
-When modifying shared services (e.g. `AppConfig`, `SettingsManager`, `JmsApiClient`, `SupabaseDbService`):
+When modifying shared services (e.g. `AppConfig`, `SettingsManager`, `JmsApiClient`, `DataHubClient`):
 1. **Backward Compatibility**: Ensure your edits do not break existing JSON serialization schemas or encrypted storage paths.
 2. **Side Effects**: Verify that adding configuration keys or properties does not cause null reference exceptions in other tabs during initialization.
 3. **No Direct UI Coupling**: Shared services must never reference UI control states directly. They should return data objects and let UI event handlers marshal the updates.

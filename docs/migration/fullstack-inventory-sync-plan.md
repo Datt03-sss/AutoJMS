@@ -87,7 +87,7 @@ Nguyên tắc: **không bao giờ DELETE**. Chỉ INSERT mã mới + UPDATE mã 
 
 - **Ghi theo lô**: đẩy cả tập waybill vào 1 lần gọi `merge_waybill_rows_v2(site, jsonb[...])` (chunk 500–1000 dòng), không insert từng dòng.
 - **Scheduler dựa index partial** `idx_waybills_site_due_active (site_code, next_track_at) where is_active`: mỗi vòng tracking chỉ quét đúng tập đơn **còn active + tới hạn**, bỏ qua toàn bộ đơn đã terminal → giảm mạnh khối lượng quét khi DB lớn.
-- **Realtime**: bảng `waybills` đã nằm trong publication `supabase_realtime` → client nhận thay đổi tức thời, không cần poll toàn bảng.
+- **Realtime**: bảng `waybills` đã nằm trong publication `datahub_realtime` → client nhận thay đổi tức thời, không cần poll toàn bảng.
 - **Delta pull** `pull_waybill_delta(site, since, limit)` chỉ trả dòng có `updated_at > since` → đồng bộ xuống client cực nhẹ.
 - **Dừng tracking sớm**: trigger `waybills_stop_on_final` + `finalize_waybills` loại đơn "Ký nhận CPN"/"Kết thúc" khỏi vòng lặp tracking ngay khi đạt trạng thái cuối → không tốn công theo dõi đơn đã xong.
 

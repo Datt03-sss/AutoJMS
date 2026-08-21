@@ -9,7 +9,7 @@ Production deployments before changing the AutoJMS desktop integration.
 
 **Tech Stack:** ASP.NET Core 10, SignalR, Npgsql, explicit SQL, PostgreSQL, Docker Compose, Caddy, OpenAPI 3, xUnit, Testcontainers.PostgreSql (or a local PostgreSQL test instance when container runtime is unavailable).
 
-**Source of truth:** `docs/superpowers/specs/2026-08-20-datahub-vps-baseline-design.md`. Do not use the historical Supabase planning documents to generate this backend.
+**Source of truth:** `docs/superpowers/specs/2026-08-20-datahub-vps-baseline-design.md`. Do not use the historical DataHub planning documents to generate this backend.
 
 ---
 
@@ -110,7 +110,7 @@ from the request body.
 - [ ] **Step 1: Add the server project and test project**
 
 Target `net10.0`. Reference only the packages required for ASP.NET Core, Npgsql,
-SignalR, and test hosting. Do not reference Supabase client packages or the WinForms
+SignalR, and test hosting. Do not reference DataHub client packages or the WinForms
 project.
 
 - [ ] **Step 2: Configure the data source and health checks**
@@ -229,7 +229,7 @@ clients, and no free-form SQL from policy rows. Never delete lease/counter/site 
 **Files:**
 - Create: `backend/datahub/docker-compose.yml`
 - Create: `backend/datahub/Caddyfile`
-- Create: `backend/datahub/.env.example`
+- Create: `backend/datahub/env.template`
 - Create: `backend/datahub/README.md`
 - Create: `backend/datahub/deploy/environment-runbook.md`
 - Create: `backend/datahub/scripts/backup.ps1`
@@ -288,5 +288,5 @@ the backend is production-ready until both are recorded.
 
 Only after Tasks 1-6 pass on Dev and the Production promotion/canary is recorded should
 a separate plan replace the existing
-Supabase adapter with the new HTTP/SignalR client and wire the WebView2/Named Pipe
+DataHub adapter with the new HTTP/SignalR client and wire the WebView2/Named Pipe
 worker lifecycle. Protected licensing, update, and designer files remain untouched.

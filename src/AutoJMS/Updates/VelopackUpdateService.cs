@@ -15,24 +15,20 @@ namespace AutoJMS
     /// Handles in-app updates via Velopack.
     ///
     /// Control plane vs binary hosting:
-    ///   - Supabase Storage hosts the small <c>version-latest.json</c> manifest
+    ///   - VPS config API hosts the small <c>version-latest.json</c> manifest
     ///     (the "control plane"): which version, which channel, which provider.
     ///   - GitHub Releases hosts the large Velopack binaries (RELEASES / .nupkg /
-    ///     Setup.exe) because Supabase free plan rejects files &gt; 50 MB.
+    ///     Setup.exe) because DataHub free plan rejects files &gt; 50 MB.
     ///
     /// When the manifest says <c>provider=github</c>, this service uses Velopack
     /// <see cref="GithubSource"/> to check/download/apply DIRECTLY — it never
-    /// opens the GitHub web page. If the manifest is missing or says supabase,
-    /// it falls back to the legacy <see cref="SimpleWebSource"/> Supabase feed.
+    /// opens the GitHub web page. If the manifest is missing or says datahub,
+    /// it falls back to the legacy <see cref="SimpleWebSource"/> DataHub feed.
     ///
     /// Only works inside a Velopack install layout (UpdateManager.IsInstalled).
     /// </summary>
     public sealed class VelopackUpdateService
     {
-        // Legacy Supabase Storage feed root (used only when provider != github).
-        private const string SupabaseStorageBase =
-            "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules/releases";
-
         private readonly string _channel;
         private readonly Func<CancellationToken, Task>? _prepareForUpdate;
         private readonly Func<string?, string?, string, bool>? _confirmDowngrade;
@@ -55,14 +51,23 @@ namespace AutoJMS
             _confirmDowngrade = confirmDowngrade;
         }
 
-        /// <summary>Legacy Supabase Velopack feed URL for the current channel.</summary>
-        public string FeedUrl => $"{SupabaseStorageBase}/{_channel}";
+        /// <summary>Legacy DataHub Velopack feed URL for the current channel.</summary>
+        public string FeedUrl
+        {
+            get
+            {
+                var root = (Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_RELEASES_BASE_URL")
+                    ?? Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_API_BASE_URL")
+                    ?? string.Empty).TrimEnd('/');
+                return string.IsNullOrWhiteSpace(root) ? string.Empty : $"{root}/{_channel}";
+            }
+        }
 
         /// <summary>
         /// Resolve the Velopack <see cref="IUpdateSource"/> for this channel by
-        /// reading the Supabase <c>version-latest.json</c> control-plane manifest.
+        /// reading the DataHub <c>version-latest.json</c> control-plane manifest.
         /// Returns a <see cref="GithubSource"/> when provider=github, otherwise a
-        /// <see cref="SimpleWebSource"/> against the legacy Supabase feed.
+        /// <see cref="SimpleWebSource"/> against the VPS feed.
         /// </summary>
         private async Task<IUpdateSource> ResolveSourceAsync(CancellationToken ct)
         {
@@ -95,7 +100,7 @@ namespace AutoJMS
             {
                 if (ch == null)
                 {
-                    var manifestSvc = Program.SupabaseManifest;
+                    var manifestSvc = Program.DataHubManifest;
                     if (manifestSvc != null)
                     {
                         var latest = await manifestSvc.FetchVersionLatestAsync(ct).ConfigureAwait(false);
@@ -103,18 +108,18 @@ namespace AutoJMS
                             latest.Channels.TryGetValue(_channel, out var exactChannel))
                         {
                             ch = exactChannel;
-                            _lastManifestUrl = ResolveSupabaseVersionLatestUrl(manifestSvc);
+                            _lastManifestUrl = ResolveDataHubVersionLatestUrl(manifestSvc);
                         }
                         else
                         {
-                            AppLogger.Warning($"VelopackUpdateService: channel '{_channel}' not found in version-latest.json. Falling back to legacy Supabase feed.");
+                            AppLogger.Warning($"VelopackUpdateService: channel '{_channel}' not found in version-latest.json. Falling back to VPS feed.");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                AppLogger.Warning($"VelopackUpdateService: could not read version-latest.json ({ex.Message}). Falling back to Supabase feed.");
+                AppLogger.Warning($"VelopackUpdateService: could not read version-latest.json ({ex.Message}). Falling back to DataHub feed.");
             }
 
             if (ch != null && ch.IsGithubProvider)
@@ -125,7 +130,7 @@ namespace AutoJMS
 
                 if (string.IsNullOrWhiteSpace(repoUrl))
                 {
-                    AppLogger.Warning("VelopackUpdateService: provider=github but no repo URL — falling back to Supabase feed.");
+                    AppLogger.Warning("VelopackUpdateService: provider=github but no repo URL — falling back to DataHub feed.");
                 }
                 else
                 {
@@ -140,13 +145,15 @@ namespace AutoJMS
 
             if (ch != null && !string.IsNullOrWhiteSpace(ch.VelopackFeedUrl))
             {
-                AppLogger.Info($"VelopackUpdateService: provider=supabase/static feed={ch.VelopackFeedUrl}");
+                AppLogger.Info($"VelopackUpdateService: provider=vps/static feed={ch.VelopackFeedUrl}");
                 _lastResolvedChannel = ch;
                 _lastManifestUrl ??= ch.VelopackFeedUrl;
                 return new SimpleWebSource(ch.VelopackFeedUrl);
             }
 
-            AppLogger.Info($"VelopackUpdateService: provider=supabase (legacy), feed={FeedUrl}");
+            if (string.IsNullOrWhiteSpace(FeedUrl))
+                throw new InvalidOperationException("No VPS release feed is configured.");
+            AppLogger.Info($"VelopackUpdateService: provider=vps, feed={FeedUrl}");
             _lastResolvedChannel = ch;
             _lastManifestUrl ??= FeedUrl;
             return new SimpleWebSource(FeedUrl);
@@ -330,7 +337,7 @@ namespace AutoJMS
             string provider = ch == null
                 ? "UNKNOWN"
                 : string.IsNullOrWhiteSpace(ch.Provider)
-                ? (ch?.IsGithubProvider == true ? "github" : "supabase")
+                ? (ch?.IsGithubProvider == true ? "github" : "vps")
                 : ch.Provider;
 
             AppLogger.Info($"[Update] currentVersion={mgr?.CurrentVersion?.ToString() ?? "UNKNOWN"}");
@@ -476,7 +483,7 @@ namespace AutoJMS
                 : trimmed;
         }
 
-        private static string ResolveSupabaseVersionLatestUrl(SupabaseManifestService manifestSvc)
+        private static string ResolveDataHubVersionLatestUrl(VpsManifestService manifestSvc)
         {
             string? path = manifestSvc.Urls?.VersionLatest;
             if (string.IsNullOrWhiteSpace(path)) return "UNKNOWN";

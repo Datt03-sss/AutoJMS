@@ -1,15 +1,15 @@
-﻿# Release Pipeline Fix Prompt
+# Release Pipeline Fix Prompt
 
 Use this prompt when fixing release/build/update pipeline issues.
 
 ## Non-Negotiable Update Rules
 
-- Supabase does not host `.nupkg`.
+- DataHub does not host `.nupkg`.
 - GitHub Releases host:
   - `RELEASES`
   - `.nupkg`
   - `Setup.exe`
-- Supabase hosts:
+- DataHub hosts:
   - `version-latest.json`
   - `hash-manifest.json`
   - `selector-update-manifest.json`
@@ -26,7 +26,7 @@ Use this prompt when fixing release/build/update pipeline issues.
 | .NET Reactor | Protect AutoJMS.dll | src/AutoJMS/AutoJMS.csproj |
 | vpk pack | Create Velopack package | build-release.ps1 |
 | GitHub Release | Host binaries | build-release.ps1 |
-| Supabase Storage | Host manifests | build-release.ps1 |
+| VPS config API | Host manifests | build-release.ps1 |
 | Inno Setup | First install | AutoJMS.iss |
 
 ## Binary Split
@@ -36,9 +36,9 @@ Use this prompt when fixing release/build/update pipeline issues.
 | .nupkg | ~100MB | GitHub Releases |
 | Setup.exe | ~100MB | GitHub Releases |
 | RELEASES | ~1KB | GitHub Releases |
-| version-latest.json | ~1KB | Supabase Storage |
+| version-latest.json | ~1KB | VPS config API |
 
-**Supabase free plan rejects files > 50MB, so .nupkg goes to GitHub.**
+**DataHub free plan rejects files > 50MB, so .nupkg goes to GitHub.**
 
 ## Common Issues
 
@@ -86,16 +86,16 @@ Use this prompt when fixing release/build/update pipeline issues.
 
 **Fix**: Run `gh auth login` if not authenticated
 
-### Issue 5: Supabase Manifest Upload Fails
+### Issue 5: DataHub Manifest Upload Fails
 
 **Symptom**: version-latest.json not updated
 
 **Check**:
-1. SUPABASE_SERVICE_ROLE_KEY set?
+1. DATAHUB_SERVICE_ROLE_KEY set?
 2. Bucket exists: autojms-modules
 3. Manifest file is valid JSON
 
-**Fix**: Set env var or use Supabase CLI
+**Fix**: Set env var or use DataHub CLI
 
 ## Version Format
 
@@ -141,7 +141,7 @@ release/output/stable/
 **Symptom**: App says "no update available"
 
 **Check**:
-1. Is version-latest.json updated in Supabase?
+1. Is version-latest.json updated in DataHub?
 2. Does channel match?
 3. Is provider=github?
 
@@ -200,11 +200,11 @@ Process.Start("https://github.com/...");
 | Provider | Meaning | Source |
 |----------|---------|--------|
 | github | Binaries from GitHub | Velopack GithubSource |
-| supabase | Binaries from Supabase | Velopack SimpleWebSource |
+| datahub | Binaries from DataHub | Velopack SimpleWebSource |
 
 ## DO NOT
 
-1. **DO NOT upload .nupkg to Supabase** - Will fail (size limit)
+1. **DO NOT upload .nupkg to DataHub** - Will fail (size limit)
 2. **DO NOT skip version-latest.json update** - App won't see update
 3. **DO NOT change release tag format** - Velopack expects `v{version}-Release`
 4. **DO NOT hardcode version** - Use parameters

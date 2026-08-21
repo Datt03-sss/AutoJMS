@@ -9,10 +9,10 @@ namespace AutoJMS
 {
     public class IntegrityService
     {
-        private readonly SupabaseManifestService _manifestService;
+        private readonly VpsManifestService _manifestService;
         private bool _skipHashCheck;
 
-        public IntegrityService(SupabaseManifestService manifestService, bool skipHashCheck = false)
+        public IntegrityService(VpsManifestService manifestService, bool skipHashCheck = false)
         {
             _manifestService = manifestService;
             _skipHashCheck = skipHashCheck;

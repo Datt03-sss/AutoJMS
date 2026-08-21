@@ -122,7 +122,7 @@ Stops all services before update:
 2. Stop _autoSyncTimer
 3. Stop ZaloService
 4. Close FullStackOperation
-5. Release Supabase lease
+5. Release DataHub lease
 6. Dispose WebView2
 7. Wait 800ms
 

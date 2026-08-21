@@ -80,7 +80,7 @@ Reset `.agent-lock.md` to `READ_ONLY`. Inform the Owner that the task is ready f
 | Build/upload production release | Release pipeline is owner-only |
 | Edit `Licensing/`, `JmsAuthTokenService.cs` | License/auth/hash-check are security boundaries |
 | Edit Firebase session logic | Session token rotation is owner-controlled |
-| Edit Supabase production config | Production keys must not be overwritten |
+| Edit DataHub production config | Production keys must not be overwritten |
 | Edit `VelopackUpdateService.cs` or `release/build-release.ps1` | Velopack production flow is frozen |
 | Move/rename WinForms Designer files | Designer file paths are hard-coded in `.csproj` |
 | Commit `.env`, service account keys, or `*.pfx` | Secrets must never enter version control |

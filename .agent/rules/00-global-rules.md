@@ -28,7 +28,7 @@
 15. Do not let BASE tier run background inventory/database sync.
 16. Major update is manual via tab About.
 17. GitHub Releases host Velopack binary.
-18. Supabase stores only small manifest/config files.
+18. DataHub stores only small manifest/config files.
 
 ## ABSOLUTE PROHIBITIONS
 

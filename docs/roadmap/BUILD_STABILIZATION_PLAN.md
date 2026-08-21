@@ -1,4 +1,4 @@
-﻿# Build Stabilization Plan
+# Build Stabilization Plan
 
 This plan is for build failures, especially missing root `modules/*.json` content files.
 

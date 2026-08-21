@@ -20,7 +20,7 @@ Use this workflow when adding/removing features to tiers.
    - Any ULTRA dependencies?
 
 2. **Check dependencies**
-   - Does it use Supabase?
+   - Does it use DataHub?
    - Does it use authToken?
    - Any background processing?
 

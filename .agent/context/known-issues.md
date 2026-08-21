@@ -1,4 +1,4 @@
-﻿# Known Issues & Risk Areas
+# Known Issues & Risk Areas
 
 ## Current Verified Baseline
 
@@ -7,10 +7,10 @@ Verified issues from the current checkout:
 1. Resolved build blocker: root `modules\app-manifest.json`, `modules\active_modules.json`, `modules\modules-cache.json`, `modules\selectors.json`, and `modules\config.json` were missing, but `src/AutoJMS/AutoJMS.csproj` now guards those `Content Include` entries with `Exists(...)`. Latest recorded Debug build succeeded with warnings only.
 2. Token logging: full 32-hex JMS auth tokens are logged in `Main.cs` and `JmsAuthTokenService.cs`. Must not ship to production.
 3. Sensitive credential file: `service_account.json` exists in the workspace. Treat as compromised if ever shared.
-4. Supabase anon key is hardcoded in `SupabaseDbService.cs`; this requires strict RLS and server-side controls.
+4. DataHub anon key is hardcoded in `DataHubClient.cs`; this requires strict RLS and server-side controls.
 5. Settings split: `SettingsManager` writes encrypted `AutoJMS.config.enc`, while `UserSettingsService` still reads/writes plain `AutoJMS.json`. Token persistence behavior is `NEED VERIFY`.
 6. Module trust: module download paths are hash-checked, but signature verification is inconsistent/optional and one updater has placeholder key material.
-7. Supabase schema gap: C# calls waybill/inventory RPCs not present in checked-in `supabase-migration.sql`.
+7. DataHub schema gap: C# calls waybill/inventory RPCs not present in checked-in `datahub-migration.sql`.
 8. Package compatibility warning: `PdfiumViewer 2.13.0` restores .NET Framework assets under `net8.0-windows`.
 9. Obsolete credential API warnings: `GoogleCredential.FromJson` and `GoogleCredential.FromStream`.
 10. Unawaited Google Sheet calls around the tracking upload flow in `Main.cs`.
@@ -70,7 +70,7 @@ if (_tierPolicy.EnableBackgroundAutoSync)
 }
 ```
 
-**Risk**: BASE users experiencing unexpected network activity and Supabase writes.
+**Risk**: BASE users experiencing unexpected network activity and DataHub writes.
 
 **Mitigation**: TierRuntimePolicy is well-guarded. Verify on any tier-related change.
 
@@ -98,27 +98,27 @@ if (_tierPolicy.EnableBackgroundAutoSync)
 **Current mitigations**:
 - Double buffering enabled on tabTracking_dataView (line 176-177)
 - Standard grid settings applied
-- Pagination in Supabase queries (1000 rows per page)
+- Pagination in DataHub queries (1000 rows per page)
 
 **Risk**: UI freeze during inventory sync display.
 
-### 6. Supabase API Key Exposure
+### 6. DataHub API Key Exposure
 
-**Location**: `SupabaseDbService.cs` line 17
+**Location**: `DataHubClient.cs` line 17
 
-**Issue**: Supabase anon key is hardcoded in source code.
+**Issue**: DataHub anon key is hardcoded in source code.
 
 ```csharp
-private const string SUPABASE_KEY = "eyJhbGci...";
+private const string DATAHUB_KEY = "eyJhbGci...";
 ```
 
-**Risk**: Anyone can read public Supabase data.
+**Risk**: Anyone can read public DataHub data.
 
 **Mitigation**: This is the anon (public) key. Only read operations are used.
 
 ### 7. Inventory Sync Lock Contention
 
-**Location**: `SupabaseDbService.cs`, `InventorySyncService.cs`
+**Location**: `DataHubClient.cs`, `InventorySyncService.cs`
 
 **Issue**: Multiple ULTRA users could fight for inventory sync lock.
 
@@ -149,7 +149,7 @@ private const string SUPABASE_KEY = "eyJhbGci...";
 
 **Location**: `ModuleSystem/`, `archive/old-module-system/`
 
-**Issue**: Multiple layers of module loading (BuiltIn, SupabaseModuleProvider, ActiveModules).
+**Issue**: Multiple layers of module loading (BuiltIn, VpsModuleProvider, ActiveModules).
 
 **Risk**: Confusing error messages if module loading fails.
 
@@ -173,15 +173,15 @@ private const string SUPABASE_KEY = "eyJhbGci...";
 
 **Risk**: Unprotected DLL deployed if Reactor step fails silently.
 
-### 12. Firebase vs Supabase Confusion
+### 12. Firebase vs DataHub Confusion
 
 **Location**: Multiple files
 
-**Issue**: Two backends (Firebase for license, Supabase for data) can confuse developers.
+**Issue**: Two backends (Firebase for license, DataHub for data) can confuse developers.
 
 **Clarification**:
 - Firebase: License storage, session management
-- Supabase: Waybill database, manifests
+- DataHub: Waybill database, manifests
 
 ### 13. Path Separation (InstallDir vs UserDataDir)
 
@@ -211,7 +211,7 @@ private const string SUPABASE_KEY = "eyJhbGci...";
 
 | Secret | Exposure | Risk |
 |--------|----------|------|
-| Supabase anon key | Source code | Read-only access |
+| DataHub anon key | Source code | Read-only access |
 | JMS AuthToken | Memory, AutoJMS.json | API access |
 | License JWT | Memory only | Valid for 60 min |
 
@@ -233,8 +233,8 @@ If services are extracted:
 
 ### 3. Changing Update Provider
 
-If switching from GitHub to Supabase:
-- Binary size limit (50MB Supabase free)
+If switching from GitHub to DataHub:
+- Binary size limit (50MB DataHub free)
 - Download mechanism change
 - User migration path needed
 

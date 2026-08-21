@@ -71,7 +71,7 @@ Firebase Realtime Database
 var result = await LicenseApiService.VerifyLicenseSecureAsync(key, hwid);
 
 // Server validates against Firebase
-// Returns JWT + Supabase config
+// Returns JWT + DataHub config
 ```
 
 ### Heartbeat
@@ -152,8 +152,8 @@ public class VerifyResult
     public string Message { get; set; }
     public string Token { get; set; }  // JWT
     public string Tier { get; set; }  // BASE or ULTRA
-    public string SupabaseBaseUrl { get; set; }
-    public SupabaseManifestUrls Manifests { get; set; }
+    public string DataHubBaseUrl { get; set; }
+    public DataHubManifestUrls Manifests { get; set; }
     public string UpdateChannel { get; set; }
     // ...
 }

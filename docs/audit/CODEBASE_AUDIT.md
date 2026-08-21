@@ -1,4 +1,4 @@
-﻿# AutoJMS Codebase Audit
+# AutoJMS Codebase Audit
 
 > Status 2026-06-03: the project structure has been migrated after this audit was first created. For current file locations, use docs/migration/PROJECT_STRUCTURE_MIGRATION_REPORT.md and docs/migration/FILE_MOVE_MAP.md.
 
@@ -19,9 +19,9 @@ This addendum supersedes older sections below where there is a conflict.
 - `FullStackOperation` launch is gated by `TierRuntimePolicy.EnableFullStackOperation`; BASE typing `DASH` is expected to be blocked.
 - Firebase is used by `backend/render-license-server/server.js` for license/session/tier data through Firebase Admin SDK.
 - Render server exposes `/api/verify-license`, `/api/heartbeat`, `/api/logout`, and `/health`.
-- Supabase Storage hosts manifests/config/hash/tier/selector-update control files.
-- Supabase PostgreSQL is used by `SupabaseDbService` for waybill and inventory sync data.
-- GitHub Releases host large Velopack binary assets; `.nupkg` must not be uploaded to Supabase.
+- VPS config API hosts manifests/config/hash/tier/selector-update control files.
+- DataHub PostgreSQL is used by `DataHubClient` for waybill and inventory sync data.
+- GitHub Releases host large Velopack binary assets; `.nupkg` must not be uploaded to DataHub.
 - Inno Setup is used for first install/reinstall/uninstall and runtime prerequisites.
 - Velopack is used for in-app updates. Major update flow is user-triggered from the About tab.
 - Small selector/runtime config updates can be auto-applied through `selector-update-manifest`.
@@ -53,13 +53,13 @@ Warnings observed:
 
 - Full JMS auth token logging exists in `Main.cs` and `JmsAuthTokenService.cs`. Production logs must mask tokens.
 - `service_account.json` exists in the workspace and contains sensitive Google service account material. Rotate if exposed.
-- Supabase anon key is hardcoded in `SupabaseDbService.cs`; RLS and RPC permissions must be verified.
+- DataHub device token is hardcoded in `DataHubClient.cs`; RLS and RPC permissions must be verified.
 - Dynamic module update trust is incomplete: hash checks exist, but signature enforcement is inconsistent/optional.
 - `SettingsManager` and `UserSettingsService` split encrypted/plain settings paths; token storage behavior is `NEED VERIFY`.
 
 ### Verified Architecture Gaps
 
-- `supabase-migration.sql` does not define the waybill/inventory RPCs used by `SupabaseDbService`.
+- `datahub-migration.sql` does not define the waybill/inventory RPCs used by `DataHubClient`.
 - `server.js` returns `license.modulePolicy`, while `LicenseApiService` parses root `modulePolicy`; effective module policy parsing is `NEED VERIFY`.
 - Checked-in `hash-manifest.json` shape does not match the `HashManifest` DTO expectation of `versions[version].files["AutoJMS.dll"]`; current integrity manifest compatibility is `NEED VERIFY`.
 
@@ -69,7 +69,7 @@ Warnings observed:
 - Do not open GitHub web pages during update; use Velopack `GithubSource`.
 - Do not access WebView2 outside the UI thread.
 - Do not log full JMS auth token in production.
-- Do not upload `.nupkg` to Supabase.
+- Do not upload `.nupkg` to DataHub.
 
 **Date**: 2026-06-03
 **Auditor**: AI Codebase Auditor
@@ -79,9 +79,9 @@ Warnings observed:
 
 ## Executive Summary
 
-AutoJMS is a **.NET 8 WinForms desktop application** for logistics automation in Vietnam. It uses WebView2 for browser automation, Firebase for license management, Supabase for waybill database, and Velopack/GitHub for updates.
+AutoJMS is a **.NET 8 WinForms desktop application** for logistics automation in Vietnam. It uses WebView2 for browser automation, Firebase for license management, DataHub for waybill database, and Velopack/GitHub for updates.
 
-The codebase has been through multiple refactors (Firebase license, Render server, Supabase manifests, GitHub Releases, Inno Setup, WebView2 automation, BASE/ULTRA tiers, FullStackOperation form). The structure reflects this history with some complexity.
+The codebase has been through multiple refactors (Firebase license, Render server, DataHub manifests, GitHub Releases, Inno Setup, WebView2 automation, BASE/ULTRA tiers, FullStackOperation form). The structure reflects this history with some complexity.
 
 ---
 
@@ -108,7 +108,7 @@ AutoJMS.csproj
 ├── Velopack: 0.0.1297
 ├── SunnyUI: 3.9.6
 ├── WebView2: 1.0.3912.50
-└── supabase-csharp: 0.16.2
+└── DataHub API client: 0.16.2
 ```
 
 ### ModuleProjects
@@ -132,7 +132,7 @@ ModuleSystem/
 ├── ModulesManifest.cs
 ├── ModuleStartup.cs
 ├── ModuleUpdater.cs
-├── SupabaseModuleProvider.cs
+├── VpsModuleProvider.cs
 └── VersionRange.cs
 ```
 
@@ -144,7 +144,7 @@ ServerStructure/
 │   └── config-key.json         ← Sample Firebase config
 ├── Render server/
 │   └── server.js               ← License server (Node.js)
-├── Supabase/
+├── DataHub/
 │   └── autojms-modules/
 │       ├── manifest/
 │       ├── selector-updates/
@@ -198,13 +198,13 @@ docs/                          ← NEW (created during audit)
 │   ├── render-server-api.md
 │   ├── firebase-license-schema.md
 │   ├── jms-api-notes.md
-│   └── supabase-manifest-schema.md
+│   └── datahub-manifest-schema.md
 ├── release/
 │   ├── release-overview.md
 │   ├── inno-first-install.md
 │   ├── velopack-update.md
 │   ├── github-release-flow.md
-│   ├── supabase-manifest-flow.md
+│   ├── datahub-manifest-flow.md
 │   └── versioning-rules.md
 ├── migration/
 │   └── current-to-clean-structure-plan.md
@@ -212,7 +212,7 @@ docs/                          ← NEW (created during audit)
 │   ├── auth-token-401.md
 │   ├── webview2-issues.md
 │   ├── velopack-setup-errors.md
-│   ├── supabase-manifest-errors.md
+│   ├── datahub-manifest-errors.md
 │   └── fullstack-operation-errors.md
 └── audit/
     └── CODEBASE_AUDIT.md      ← This file
@@ -237,7 +237,7 @@ docs/                          ← NEW (created during audit)
    ├── Online: LicenseApiService.VerifyLicenseSecureAsync()
    └── Offline: Use cached key if exists
 6. InitializeServicesFromLicense()
-   ├── SupabaseManifestService
+   ├── VpsManifestService
    ├── RuntimeConfigService
    ├── IntegrityService
    ├── MajorUpdateService
@@ -290,7 +290,7 @@ LicenseApiService.VerifyLicenseSecureAsync(key, hwid)
     ↓
 Validate JWT (RS256 with hardcoded public key)
     ↓
-Parse tier, Supabase URLs, manifests
+Parse tier, DataHub URLs, manifests
     ↓
 InitializeServicesFromLicense()
     ↓
@@ -304,7 +304,7 @@ tabAbout_btnCheckUpdate_Click
     ↓
 VelopackUpdateService.CheckAndUpdateAsync()
     ↓
-SupabaseManifestService.FetchVersionLatestAsync()
+VpsManifestService.FetchVersionLatestAsync()
     ↓
 provider=github → GithubSource
     ↓
@@ -338,9 +338,9 @@ User confirms → Download → PrepareForUpdateAsync → ApplyUpdatesAndRestart
 **Tabs**:
 | Tab | Purpose | Data Source |
 |-----|---------|-------------|
-| tabDash | Dashboard | Supabase waybills |
+| tabDash | Dashboard | DataHub waybills |
 | tabChat | Zalo integration | ZaloChatService |
-| tabThoiHieu | SLA monitoring | Supabase waybills |
+| tabThoiHieu | SLA monitoring | DataHub waybills |
 
 ---
 
@@ -376,7 +376,7 @@ User confirms → Download → PrepareForUpdateAsync → ApplyUpdatesAndRestart
 
 | Service | File | Responsibility |
 |---------|------|----------------|
-| SupabaseDbService | SupabaseDbService.cs | Waybill database |
+| DataHubClient | DataHubClient.cs | Waybill database |
 | GoogleSheetService | GoogleSheetService.cs | Google Sheets integration |
 
 ### UI Services
@@ -492,7 +492,7 @@ modules/                       ← In InstallDir (read-only shipped)
 | .nupkg | ~100MB | GitHub Releases |
 | *Setup.exe | ~100MB | GitHub Releases |
 | RELEASES | ~1KB | GitHub Releases |
-| version-latest.json | ~1KB | Supabase Storage |
+| version-latest.json | ~1KB | VPS config API |
 
 ### Build Flow
 
@@ -501,7 +501,7 @@ modules/                       ← In InstallDir (read-only shipped)
 2. .NET Reactor (optional)
 3. vpk pack --packId AutoJMS
 4. Upload binaries → GitHub Release
-5. Upload manifest → Supabase Storage
+5. Upload manifest → VPS config API
 ```
 
 ### Release Scripts
@@ -563,19 +563,19 @@ AppLogger.Info($"Auth token captured from {source} (len={token.Length}), authTok
 
 **Mitigation**: Error classification (NeedSwitchToDkch1/2Exception).
 
-#### 3. Supabase API Key Exposure
+#### 3. DataHub API Key Exposure
 
-**Location**: SupabaseDbService.cs:17
+**Location**: DataHubClient.cs:17
 
-**Issue**: Supabase anon key hardcoded in source.
+**Issue**: DataHub device token hardcoded in source.
 
 ```csharp
-private const string SUPABASE_KEY = "eyJ...";
+private const string DATAHUB_KEY = "eyJ...";
 ```
 
-**Risk**: Anyone can read public Supabase data.
+**Risk**: Anyone can read public DataHub data.
 
-**Mitigation**: This is the public anon key for read-only access.
+**Mitigation**: This is the public device token for read-only access.
 
 ### Medium Priority
 
@@ -625,13 +625,13 @@ private const string SUPABASE_KEY = "eyJ...";
 
 **Issue**: Reactor integrated as PostBuildEvent. If fails, build continues.
 
-#### 10. Firebase vs Supabase Confusion
+#### 10. Firebase vs DataHub Confusion
 
 **Location**: Multiple files
 
 **Clarification**:
 - Firebase: License storage, session management
-- Supabase: Waybill database, manifests
+- DataHub: Waybill database, manifests
 
 ---
 
@@ -643,7 +643,7 @@ private const string SUPABASE_KEY = "eyJ...";
 |--------|--------|
 | Architecture | Complex but functional |
 | Tier separation | Correctly implemented |
-| Update mechanism | Properly split (GitHub + Supabase) |
+| Update mechanism | Properly split (GitHub + DataHub) |
 | Documentation | NEW - created during audit |
 | Technical debt | Moderate (see risky areas) |
 
@@ -652,14 +652,14 @@ private const string SUPABASE_KEY = "eyJ...";
 1. Clear tier separation with TierRuntimePolicy
 2. Offline-first license verification
 3. Proper 401 retry with token refresh
-4. Binary split (GitHub for large, Supabase for small)
+4. Binary split (GitHub for large, DataHub for small)
 5. Comprehensive documentation created
 
 ### Areas Needing Attention
 
 1. Token masking in logs (TODO)
 2. WebView2 selector resilience
-3. Supabase anon key in source (known acceptable risk)
+3. DataHub device token in source (known acceptable risk)
 4. Module system complexity
 
 ### Recommendations
@@ -690,7 +690,7 @@ private const string SUPABASE_KEY = "eyJ...";
 | JmsAuthTokenService.cs | ~215 | Token orchestration |
 | JmsApiClient.cs | ~200 | JMS HTTP API |
 | InventorySyncService.cs | ~325 | Inventory fetch |
-| SupabaseDbService.cs | ~166 | Database operations |
+| DataHubClient.cs | ~166 | Database operations |
 | VelopackUpdateService.cs | ~226 | In-app updates |
 | SmallUpdateService.cs | ~197 | Selector updates |
 | MajorUpdateService.cs | ~134 | Major updates |

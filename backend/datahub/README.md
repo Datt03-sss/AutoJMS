@@ -7,7 +7,7 @@ or backup bucket.
 
 ## First staging boot
 
-1. Copy `.env.staging.example` to an untracked `.env.staging` on the staging VPS.
+1. Copy `env.staging.template` to an untracked `.env.staging` on the staging VPS.
 2. Create the Docker network/volume and start PostgreSQL:
    `docker compose --env-file .env.staging up -d postgres`.
 3. Apply migrations from an ops shell. Because PostgreSQL has no host port, use

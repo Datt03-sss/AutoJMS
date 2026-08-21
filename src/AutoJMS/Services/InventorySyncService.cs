@@ -57,8 +57,8 @@ namespace AutoJMS
 
             AppLogger.Info("[InventorySync] Kiểm tra Lease Lock...");
 
-            // 1. Thử xin quyền (Lock) từ Supabase Database
-            bool acquired = await SupabaseDbService.TryAcquireInventoryLeaseAsync(LeaseSeconds);
+            // 1. Thử xin quyền (Lock) từ DataHub Database
+            bool acquired = await DataHubClient.TryAcquireInventoryLeaseAsync(LeaseSeconds);
             if (!acquired)
             {
                 AppLogger.Info("[InventorySync] Máy khác đang giữ quyền sync tồn kho.");
@@ -94,9 +94,9 @@ namespace AutoJMS
 
                     // 4. Hợp nhất union vào DB + đánh dấu nguồn (provenance) + reconcile suspected_stray.
                     //    ingest_* tự insert-if-missing nên không cần upsert_new riêng.
-                    int n1 = await SupabaseDbService.IngestBigDataWaybillsAsync(site, bigData);
-                    int n2 = await SupabaseDbService.IngestStockCheckWaybillsAsync(site, stockCheck);
-                    int reconciled = await SupabaseDbService.ReconcileInventorySourcesAsync(site);
+                    int n1 = await DataHubClient.IngestBigDataWaybillsAsync(site, bigData);
+                    int n2 = await DataHubClient.IngestStockCheckWaybillsAsync(site, stockCheck);
+                    int reconciled = await DataHubClient.ReconcileInventorySourcesAsync(site);
 
                     AppLogger.Info($"[InventorySync] Hoàn tất union={union.Count} (bd={bigData.Count}, sc={stockCheck.Count}), ingest bd={n1} sc={n2}, reconcile={reconciled}.");
                 }
@@ -120,11 +120,11 @@ namespace AutoJMS
                 // 6. Trả lại Lock cho hệ thống
                 if (success)
                 {
-                    await SupabaseDbService.CompleteInventorySyncAsync();
+                    await DataHubClient.CompleteInventorySyncAsync();
                 }
                 else
                 {
-                    await SupabaseDbService.ReleaseInventoryLeaseAsync();
+                    await DataHubClient.ReleaseInventoryLeaseAsync();
                 }
             }
         }
@@ -140,7 +140,7 @@ namespace AutoJMS
 
                     if (ct.IsCancellationRequested) break;
 
-                    await SupabaseDbService.RefreshInventoryLeaseAsync(LeaseSeconds);
+                    await DataHubClient.RefreshInventoryLeaseAsync(LeaseSeconds);
                 }
             }
             catch (OperationCanceledException)

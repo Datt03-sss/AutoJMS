@@ -16,11 +16,11 @@ namespace AutoJMS.Diagnostics
             RegexOptions.Compiled);
 
         private static readonly Regex JsonSensitiveValueRegex = new(
-            @"(?i)(""?(authToken|authorization|cookie|set-cookie|yl_token|accessToken|jms_token|token|licenseKey|license_key|sid|password|firebaseToken|supabaseKey|supabaseAnonKey|anonKey|apiKey|apikey|serviceKey|senderPhone|receiverPhone)""?\s*[:=]\s*"")([^""]+)("")",
+            @"(?i)(""?(authToken|authorization|cookie|set-cookie|yl_token|accessToken|jms_token|token|licenseKey|license_key|sid|password|firebaseToken|deviceToken|apiKey|apikey|serviceKey|senderPhone|receiverPhone)""?\s*[:=]\s*"")([^""]+)("")",
             RegexOptions.Compiled);
 
         private static readonly Regex QuerySensitiveValueRegex = new(
-            @"(?i)([?&](authToken|authorization|yl_token|accessToken|jms_token|token|licenseKey|license_key|sid|password|firebaseToken|supabaseKey|supabaseAnonKey|anonKey|apiKey|apikey|serviceKey|senderPhone|receiverPhone)=)([^&\s""]+)",
+            @"(?i)([?&](authToken|authorization|yl_token|accessToken|jms_token|token|licenseKey|license_key|sid|password|firebaseToken|deviceToken|apiKey|apikey|serviceKey|senderPhone|receiverPhone)=)([^&\s""]+)",
             RegexOptions.Compiled);
 
         private static readonly HashSet<string> SensitiveHeaderNames = new(StringComparer.OrdinalIgnoreCase)
@@ -40,10 +40,8 @@ namespace AutoJMS.Diagnostics
             "sid",
             "password",
             "firebase-token",
-            "supabase-key",
-            "supabasekey",
-            "anon-key",
-            "anonkey",
+            "device-token",
+            "devicetoken",
             "apikey",
             "api-key",
             "service-key",

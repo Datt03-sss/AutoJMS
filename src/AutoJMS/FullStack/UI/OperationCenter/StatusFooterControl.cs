@@ -32,7 +32,7 @@ namespace AutoJMS.FullStack.UI.OperationCenter
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = new Font("Segoe UI", 8.5F),
                 ForeColor = Color.FromArgb(209, 213, 219),
-                Text = "SQLite local-first | Supabase giữ manifest/config/update"
+                Text = "SQLite local-first | DataHub giữ manifest/config/update"
             };
 
             _right = new Label

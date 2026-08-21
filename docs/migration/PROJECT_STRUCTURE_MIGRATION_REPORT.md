@@ -69,7 +69,7 @@ src/
 
 ```text
 backend/render-license-server/
-infra/supabase/
+infra/datahub/
 infra/firebase/
 infra/github-release/
 ```

@@ -1,4 +1,4 @@
-﻿# System Overview
+# System Overview
 
 ## Current Verified Baseline
 
@@ -8,7 +8,7 @@ Current system boundaries:
 
 - Desktop client: WinForms UI, WebView2 automation, JMS API client, print/export, config, update, and dynamic module loading.
 - License backend: Render `server.js` with Firebase Realtime Database.
-- Data/control backend: Supabase PostgreSQL for waybill data and Supabase Storage for manifests/configs.
+- Data/control backend: DataHub PostgreSQL for waybill data and VPS config API for manifests/configs.
 - Binary distribution: Inno Setup for first install and Velopack/GitHub Releases for in-app updates.
 
 Tier boundary:
@@ -19,7 +19,7 @@ Tier boundary:
 Current verification gaps:
 
 - Historical build blocker from missing root `modules/*.json` content files was fixed with conditional content includes; latest recorded Debug build succeeded with warnings only.
-- Supabase SQL for current waybill RPCs is not present in checked-in migration.
+- DataHub SQL for current waybill RPCs is not present in checked-in migration.
 - Some older sections may describe intended structure; mark unverified details `NEED VERIFY`.
 
 ## What is AutoJMS?
@@ -43,7 +43,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │  Services Layer                                             │   │
 │  │  LicenseApiService │ JmsApiClient │ VelopackUpdateService   │   │
-│  │  InventorySyncService │ SupabaseDbService │ PrintService    │   │
+│  │  InventorySyncService │ DataHubClient │ PrintService    │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │  Module System (Dynamic Loading)                            │   │
@@ -55,7 +55,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
         │                     │                     │
         ▼                     ▼                     ▼
 ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│  JMS Website │    │  License     │    │  Supabase   │
+│  JMS Website │    │  License     │    │  DataHub   │
 │  (jtexpress)│    │  Server      │    │  (Storage)  │
 │  via WebView2│    │  (Render)    │    │             │
 └───────────────┘    └───────┬───────┘    └───────────────┘
@@ -76,7 +76,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
 | UI Framework | WinForms | Built-in |
 | UI Library | SunnyUI | 3.9.6 |
 | Browser | WebView2 | 1.0.3912.50 |
-| Database | Supabase PostgreSQL | - |
+| Database | DataHub PostgreSQL | - |
 | Auth | Firebase Realtime DB | - |
 | License Server | Node.js/Express | - |
 | Installer | Inno Setup | 6.x |
@@ -107,7 +107,7 @@ Advanced features for power users:
 
 | Update Type | Trigger | Tool | Binary Source |
 |------------|---------|------|---------------|
-| Small Config | Auto | SmallUpdateService | Supabase |
+| Small Config | Auto | SmallUpdateService | DataHub |
 | Major Version | Manual | Velopack | GitHub Releases |
 | First Install | Manual | Inno Setup | Bundled |
 

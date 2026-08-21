@@ -74,7 +74,7 @@ namespace AutoJMS
         private string _phatLaiSourceFingerprintHash = string.Empty;
         private readonly string _syncCacheFilePath = Path.Combine(
             AppPaths.CacheDir,
-            $"sync-cache-{SupabaseDbService.MachineId}.json");
+            $"sync-cache-{DataHubClient.MachineId}.json");
         private readonly System.Windows.Forms.Timer _autoSyncTimer = new();
         private DateTime _lastSyncAttemptAtUtc = DateTime.MinValue;
         private DateTime _lastSuccessfulSyncAtUtc = DateTime.MinValue;
@@ -718,7 +718,7 @@ namespace AutoJMS
         }
 
         // ======================================================================================
-        // HỆ THỐNG ĐỒNG BỘ THỦ CÔNG (SUPABASE CLOUD)
+        // HỆ THỐNG ĐỒNG BỘ THỦ CÔNG (DATAHUB CLOUD)
         // ======================================================================================
 
         /// <summary>
@@ -787,12 +787,12 @@ namespace AutoJMS
 
         private async Task ExecuteSyncWorkflowAsync(CancellationToken ct, bool forceRefreshLease, string sourceHint)
         {
-            await SupabaseDbService.InitializeAsync();
+            await DataHubClient.InitializeAsync();
 
             bool lockAcquired = false;
             try
             {
-                lockAcquired = await SupabaseDbService.TryAcquireInventoryLeaseAsync((int)_leaseDuration.TotalSeconds);
+                lockAcquired = await DataHubClient.TryAcquireInventoryLeaseAsync((int)_leaseDuration.TotalSeconds);
                 if (!lockAcquired)
                 {
                     AppLogger.Info("[Sync] Không lấy được lock, bỏ qua lần update này.");
@@ -813,9 +813,9 @@ namespace AutoJMS
                         var newWaybills = normalizedWaybills.Except(_lastSourceWaybillsSnapshot, StringComparer.OrdinalIgnoreCase).ToList();
                         if (newWaybills.Count > 0)
                         {
-                            await SupabaseDbService.UpsertNewWaybillsOnlyAsync(newWaybills);
+                            await DataHubClient.UpsertNewWaybillsOnlyAsync(newWaybills);
                             await DatabaseTracking.RunBackgroundTrackingAsync(newWaybills, dataSourceOption, ct);
-                            await SupabaseDbService.UpdateInventorySyncHeartbeatAsync(SupabaseDbService.MachineId);
+                            await DataHubClient.UpdateInventorySyncHeartbeatAsync(DataHubClient.MachineId);
                         }
 
                         _lastSourceWaybillsHash = currentSourceHash;
@@ -825,7 +825,7 @@ namespace AutoJMS
 
                 if (ct.IsCancellationRequested) return;
 
-                _cloudData = await SupabaseDbService.GetActiveWaybillsAsync();
+                _cloudData = await DataHubClient.GetActiveWaybillsAsync();
                 _cloudDataHashVersion = string.Empty;
                 _dashGridHashVersion = string.Empty;
                 _chatGridHashVersion = string.Empty;
@@ -838,7 +838,7 @@ namespace AutoJMS
             {
                 if (lockAcquired)
                 {
-                    try { await SupabaseDbService.ReleaseInventoryLeaseAsync(); } catch { }
+                    try { await DataHubClient.ReleaseInventoryLeaseAsync(); } catch { }
                 }
             }
         }
@@ -1010,9 +1010,9 @@ namespace AutoJMS
             {
                 try
                 {
-                    await SupabaseDbService.ReleaseInventoryLeaseAsync();
+                    await DataHubClient.ReleaseInventoryLeaseAsync();
                     // Nếu bạn có dùng khóa tracking thì mở dòng dưới
-                    // await SupabaseDbService.ReleaseLeaseAsync("tracking_worker"); 
+                    // await DataHubClient.ReleaseLeaseAsync("tracking_worker"); 
                 }
                 catch { }
             }).Wait(1000);
@@ -1409,16 +1409,16 @@ namespace AutoJMS
                 AppLogger.Warning($"UpdateChannelDialog: fetch update.xml failed: {ex.Message}");
             }
 
-            if (Program.SupabaseManifest == null)
+            if (Program.DataHubManifest == null)
             {
-                AppLogger.Warning("UpdateChannelDialog: Program.SupabaseManifest is null; showing UNKNOWN channel metadata.");
+                AppLogger.Warning("UpdateChannelDialog: Program.DataHubManifest is null; showing UNKNOWN channel metadata.");
                 return null;
             }
 
             try
             {
-                var latest = await Program.SupabaseManifest.FetchVersionLatestAsync(token);
-                AppLogger.Info($"[Update] manifestUrl={ResolveSupabaseVersionLatestUrl()}");
+                var latest = await Program.DataHubManifest.FetchVersionLatestAsync(token);
+                AppLogger.Info($"[Update] manifestUrl={ResolveDataHubVersionLatestUrl()}");
                 return latest;
             }
             catch (OperationCanceledException)
@@ -1473,9 +1473,9 @@ namespace AutoJMS
                 ?? "UNKNOWN";
         }
 
-        private static string ResolveSupabaseVersionLatestUrl()
+        private static string ResolveDataHubVersionLatestUrl()
         {
-            var manifestSvc = Program.SupabaseManifest;
+            var manifestSvc = Program.DataHubManifest;
             string path = manifestSvc?.Urls?.VersionLatest;
             if (string.IsNullOrWhiteSpace(path)) return "UNKNOWN";
             if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return path;
@@ -1529,8 +1529,8 @@ namespace AutoJMS
 
             try
             {
-                // 5. Release Supabase inventory lease
-                await SupabaseDbService.ReleaseInventoryLeaseAsync();
+                // 5. Release DataHub inventory lease
+                await DataHubClient.ReleaseInventoryLeaseAsync();
             }
             catch (Exception ex) { AppLogger.Warning($"PrepareForUpdate: release lease: {ex.Message}"); }
 

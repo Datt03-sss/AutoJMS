@@ -36,7 +36,7 @@ namespace AutoJMS
         private static readonly CancellationTokenSource AppCts = new CancellationTokenSource();
 
         // NEW: Global service instances (nullable — only set after successful license verify)
-        public static SupabaseManifestService SupabaseManifest { get; private set; } = null!;
+        public static VpsManifestService DataHubManifest { get; private set; } = null!;
         public static RuntimeConfigService RuntimeConfig { get; private set; } = null!;
         public static IntegrityService Integrity { get; private set; } = null!;
         public static MajorUpdateService MajorUpdateServiceInstance { get; private set; } = null!;
@@ -141,9 +141,9 @@ namespace AutoJMS
                 {
                     if (result == null) return;
                     sessionTier = result.Tier ?? "BASE";
-                    AutoJMS.ModuleSystem.SupabaseModuleProvider.AutoUpdateEnabled = result.AutoUpdate;
-                    AutoJMS.ModuleSystem.SupabaseModuleProvider.SilentUpdateEnabled = result.SilentUpdate;
-                    AutoJMS.ModuleSystem.SupabaseModuleProvider.SkipHashCheck = result.SkipHashCheck;
+                    AutoJMS.ModuleSystem.VpsModuleProvider.AutoUpdateEnabled = result.AutoUpdate;
+                    AutoJMS.ModuleSystem.VpsModuleProvider.SilentUpdateEnabled = result.SilentUpdate;
+                    AutoJMS.ModuleSystem.VpsModuleProvider.SkipHashCheck = result.SkipHashCheck;
                 };
 
                 if (!string.IsNullOrEmpty(savedKey))
@@ -293,7 +293,7 @@ namespace AutoJMS
                     AppLogger.Error("Module system init failed, using built-in only", ex);
                 }
 
-                // Background sync (non-blocking) — Supabase + Firebase Storage
+                // Background sync (non-blocking) — DataHub + Firebase Storage
                 _ = Task.Run(async () =>
                 {
                     try
@@ -341,17 +341,18 @@ namespace AutoJMS
                     SiteContextProvider.ApplyLicenseMiddleCode(result.MiddleCode);
                 }
 
-                string supabaseUrl = result.SupabaseBaseUrl;
+                string? datahubUrl = result.DataHubBaseUrl
+                    ?? Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_API_BASE_URL");
                 var manifests = result.Manifests;
                 var releases = result.Releases;
 
-                if (!string.IsNullOrWhiteSpace(supabaseUrl) && manifests != null)
+                if (!string.IsNullOrWhiteSpace(datahubUrl) && manifests != null)
                 {
-                    SupabaseDbService.Configure(result.SupabaseProjectUrl, result.SupabaseAnonKey);
-                    SupabaseManifest = new SupabaseManifestService(supabaseUrl, manifests);
+                    DataHubClient.Configure(datahubUrl, result.DataHubDeviceToken, result.DataHubSiteId);
+                    DataHubManifest = new VpsManifestService(datahubUrl, manifests);
                     RuntimeConfig = new RuntimeConfigService();
                     RuntimeConfig.LoadCachedOrDefault();
-                    RuntimePolicy = new SupabaseRuntimePolicyService(SupabaseManifest)
+                    RuntimePolicy = new VpsRuntimePolicyService(DataHubManifest)
                         .FetchPolicyAsync(result.Tier, GetAppVersion(), AppCts.Token)
                         .GetAwaiter()
                         .GetResult();
@@ -361,13 +362,13 @@ namespace AutoJMS
                     bool skipHashCheck = result.SkipHashCheck;
                     if (RuntimePolicy?.ModulePolicy != null)
                     {
-                        AutoJMS.ModuleSystem.SupabaseModuleProvider.AutoUpdateEnabled = RuntimePolicy.ModulePolicy.AutoUpdate;
-                        AutoJMS.ModuleSystem.SupabaseModuleProvider.SilentUpdateEnabled = RuntimePolicy.ModulePolicy.SilentUpdate;
+                        AutoJMS.ModuleSystem.VpsModuleProvider.AutoUpdateEnabled = RuntimePolicy.ModulePolicy.AutoUpdate;
+                        AutoJMS.ModuleSystem.VpsModuleProvider.SilentUpdateEnabled = RuntimePolicy.ModulePolicy.SilentUpdate;
                     }
 
-                    Integrity = new IntegrityService(SupabaseManifest, skipHashCheck);
-                    MajorUpdateServiceInstance = new MajorUpdateService(SupabaseManifest, releases, result.UpdateChannel ?? "stable");
-                    SmallUpdate = new SmallUpdateService(SupabaseManifest, RuntimeConfig);
+                    Integrity = new IntegrityService(DataHubManifest, skipHashCheck);
+                    MajorUpdateServiceInstance = new MajorUpdateService(DataHubManifest, releases, result.UpdateChannel ?? "stable");
+                    SmallUpdate = new SmallUpdateService(DataHubManifest, RuntimeConfig);
 
                     if (result.SkipHashCheck)
                         SmallUpdate.SetSkipSignatureCheck(true);
@@ -384,11 +385,11 @@ namespace AutoJMS
                         }
                     }, AppCts.Token);
 
-                    AppLogger.Info($"Services initialized: tier={result.Tier}, channel={result.UpdateChannel}, supabase={supabaseUrl.Substring(0, Math.Min(40, supabaseUrl.Length))}...");
+                    AppLogger.Info($"Services initialized: tier={result.Tier}, channel={result.UpdateChannel}, datahub={datahubUrl.Substring(0, Math.Min(40, datahubUrl.Length))}...");
                 }
                 else
                 {
-                    AppLogger.Warning("License response missing Supabase config — services not initialized");
+                    AppLogger.Warning("License response missing DataHub config — services not initialized");
                 }
             }
             catch (Exception ex)

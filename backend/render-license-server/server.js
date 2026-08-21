@@ -33,28 +33,6 @@ const formatKey = (k) => {
     return k.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
 };
 
-const DEFAULT_SUPABASE_PROJECT_REF = "bnsnnrlwfzxemmizknwy";
-const DEFAULT_SUPABASE_BUCKET = "autojms-modules";
-
-const toPublicStorageBase = (value) => {
-    const raw = String(value || "").trim().replace(/\/+$/g, "");
-    if (!raw) {
-        return `https://${DEFAULT_SUPABASE_PROJECT_REF}.supabase.co/storage/v1/object/public/${DEFAULT_SUPABASE_BUCKET}`;
-    }
-
-    const dashboardMatch = raw.match(/supabase\.com\/dashboard\/project\/([^/]+)\/storage\/files\/buckets\/([^/]+)/i);
-    if (dashboardMatch) {
-        return `https://${dashboardMatch[1]}.supabase.co/storage/v1/object/public/${dashboardMatch[2]}`;
-    }
-
-    const projectMatch = raw.match(/^https:\/\/([a-z0-9-]+)\.supabase\.co$/i);
-    if (projectMatch) {
-        return `${raw}/storage/v1/object/public/${DEFAULT_SUPABASE_BUCKET}`;
-    }
-
-    return raw;
-};
-
 const parseJsonEnv = (value, name) => {
     if (!value) return null;
     try {
@@ -91,15 +69,8 @@ const CONFIG = {
     ISSUER: "autojms-license-server",
     AUDIENCE: "autojms-desktop-client",
 
-    SUPABASE_PROJECT_URL:
-        process.env.SUPABASE_PROJECT_URL ||
-        `https://${DEFAULT_SUPABASE_PROJECT_REF}.supabase.co`,
-
-    SUPABASE_BASE_URL:
-        toPublicStorageBase(process.env.SUPABASE_BASE_URL),
-
-    SUPABASE_ANON_KEY:
-        process.env.SUPABASE_ANON_KEY || "",
+    DATAHUB_API_BASE_URL:
+        String(process.env.DATAHUB_API_BASE_URL || "https://datahub.example.com").replace(/\/+$/g, ""),
 
     FIREBASE_DATABASE_URL:
         process.env.FIREBASE_DATABASE_URL ||
@@ -109,45 +80,45 @@ const CONFIG = {
         process.env.DEFAULT_UPDATE_CHANNEL || "stable"
 };
 
-const SUPABASE_MANIFESTS = {
+const DATAHUB_MANIFESTS = {
     appManifest:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/app-manifest.json`,
+        "manifest/app-manifest.json",
 
     versionLatest:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/version-latest.json`,
+        "manifest/version-latest.json",
 
     hashManifest:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/hash-manifest.json`,
+        "manifest/hash-manifest.json",
 
     selectorUpdateManifest:
-        `${CONFIG.SUPABASE_BASE_URL}/selector-updates/selector-update-manifest.json`,
+        "selector-updates/selector-update-manifest.json",
 
     smallUpdateManifest:
-        `${CONFIG.SUPABASE_BASE_URL}/selector-updates/selector-update-manifest.json`,
+        "selector-updates/selector-update-manifest.json",
 
     tierDefinitions:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/tier-definitions.json`,
+        "manifest/tier-definitions.json",
 
     publicConfig:
-        `${CONFIG.SUPABASE_BASE_URL}/configs/public-config.json`,
+        "configs/public-config.json",
 
     runtimePolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/configs/runtime-policy.json`,
+        "configs/runtime-policy.json",
 
     featurePolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/feature-policy.json`,
+        "manifest/feature-policy.json",
 
     googleSheetsPolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/google-sheets-policy.json`,
+        `manifest/google-sheets-policy.json`,
 
     printPolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/print-policy.json`,
+        `manifest/print-policy.json`,
 
     fullStackPolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/fullstack-policy.json`,
+        `manifest/fullstack-policy.json`,
 
     debugCapturePolicy:
-        `${CONFIG.SUPABASE_BASE_URL}/manifest/debug-capture-policy.json`
+        `manifest/debug-capture-policy.json`
 };
 
 // ==========================================
@@ -595,7 +566,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         });
 
         // Backward compatibility only: legacy clients still read modulePolicy
-        // from Render. New clients use Supabase runtime-policy as the feature
+        // from Render. New clients use DataHub runtime-policy as the feature
         // authority after Render authenticates license identity/session.
         console.log(`[verify-license] success elapsedMs=${Date.now() - started} requestId=${requestId}`);
 
@@ -620,11 +591,10 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 updateChannel: data.updateChannel || CONFIG.DEFAULT_CHANNEL
             },
 
-            supabase: {
-                baseUrl: CONFIG.SUPABASE_BASE_URL,
-                projectUrl: CONFIG.SUPABASE_PROJECT_URL,
-                anonKey: CONFIG.SUPABASE_ANON_KEY,
-                manifests: SUPABASE_MANIFESTS
+            datahub: {
+                apiBaseUrl: CONFIG.DATAHUB_API_BASE_URL,
+                siteId: data.siteId || middleCode || "",
+                manifests: DATAHUB_MANIFESTS
             }
         });
     } catch (e) {

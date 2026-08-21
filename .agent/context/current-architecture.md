@@ -1,4 +1,4 @@
-﻿# Current Architecture
+# Current Architecture
 
 ## Current Verified Baseline
 
@@ -19,12 +19,12 @@ flowchart TD
     Tier --> Ultra["ULTRA: FullStackOperation + background sync"]
     Ultra --> FullStack["FullStackOperation.cs standalone form"]
     Ultra --> Sync["InventorySyncService + DatabaseTracking"]
-    Sync --> SupabaseDb["Supabase PostgreSQL / RPC"]
+    Sync --> DataHubDb["DataHub PostgreSQL / RPC"]
     Program --> Updates["SmallUpdateService / VelopackUpdateService"]
-    Updates --> SupabaseStorage["Supabase Storage manifests"]
+    Updates --> DataHubStorage["VPS config API manifests"]
     Updates --> GitHub["GitHub Releases Velopack assets"]
     Program --> Modules["ModuleSystem dynamic loader"]
-    Modules --> SupabaseStorage
+    Modules --> DataHubStorage
 ```
 
 Hard rules from current code:
@@ -38,7 +38,7 @@ Hard rules from current code:
 
 Current verification gaps:
 
-- `supabase-migration.sql` does not define the waybill tables/RPCs used by `SupabaseDbService`; database schema is `NEED VERIFY`.
+- `datahub-migration.sql` does not define the waybill tables/RPCs used by `DataHubClient`; database schema is `NEED VERIFY`.
 - Module signature enforcement is inconsistent; module supply-chain trust is `NEED VERIFY`.
 - Historical clean-checkout build blocker from missing root `modules/*.json` was fixed with conditional content includes in `src/AutoJMS/AutoJMS.csproj`; latest recorded Debug build succeeded with warnings only.
 
@@ -55,22 +55,22 @@ Current verification gaps:
 │  JmsAuthTokenService │  InventorySyncService     │
 │  VelopackUpdateService│  SmallUpdateService       │
 │  MajorUpdateService   │  HashVerifier             │
-│  SupabaseDbService   │  GoogleSheetService       │
+│  DataHubClient   │  GoogleSheetService       │
 │  DkchManager         │  PrintService             │
 │  ZaloChatService     │  WaybillTrackingService  │
 ├─────────────────────────────────────────────────────┤
 │              Module System Layer                    │
-│  ModuleStartup │ ModuleRegistry │ SupabaseModuleProvider│
+│  ModuleStartup │ ModuleRegistry │ VpsModuleProvider│
 ├─────────────────────────────────────────────────────┤
 │              Infrastructure Layer                    │
 │  AppPaths │ AppConfig │ AppLogger │ SecureConfigCrypto│
-│  TierRuntimePolicy │ TierDefinitions │ SupabaseModels│
+│  TierRuntimePolicy │ TierDefinitions │ DataHubModels│
 ├─────────────────────────────────────────────────────┤
 │              External Services                      │
 │  JMS (jms.jtexpress.vn) via WebView2 + HTTP API   │
 │  Render License Server (autojms-api.onrender.com)  │
 │  Firebase Realtime Database (keyauthjms)            │
-│  Supabase PostgreSQL + Storage (valmbajjpkjccqslsuou)│
+│  DataHub PostgreSQL + Storage (valmbajjpkjccqslsuou)│
 │  GitHub Releases (Datt03-sss/AutoJMS-Update)     │
 └─────────────────────────────────────────────────────┘
 ```
@@ -228,11 +228,11 @@ _autoSyncTimer tick (every 30 min, 8AM-11:30PM)
     OR
 RunStartupSyncAsync
     ↓
-SupabaseDbService.TryAcquireInventoryLease (30 min lock)
+DataHubClient.TryAcquireInventoryLease (30 min lock)
     ↓
 InventorySyncService.FetchAllInventoryWaybillsWithRetryAsync
     ↓
-SupabaseDbService.UpsertNewWaybillsOnlyAsync
+DataHubClient.UpsertNewWaybillsOnlyAsync
     ↓
 DatabaseTracking.RunBackgroundTrackingAsync
     ↓
@@ -293,7 +293,7 @@ C:\AutoJMS\                    ← InstallRoot (user-chosen)
 
 | Type | Mechanism | Trigger | Binary Source |
 |------|----------|---------|---------------|
-| Small Update | SmallUpdateService | Auto after license | Supabase Storage |
+| Small Update | SmallUpdateService | Auto after license | VPS config API |
 | Major Update | VelopackUpdateService | Manual (About tab) | GitHub Releases |
 
 ### Major Update Flow
@@ -303,7 +303,7 @@ tabAbout_btnCheckUpdate_Click
     ↓
 VelopackUpdateService.CheckAndUpdateAsync
     ↓
-SupabaseManifestService.FetchVersionLatestAsync
+VpsManifestService.FetchVersionLatestAsync
     ↓
 Read version-latest.json → provider=github
     ↓
@@ -341,7 +341,7 @@ ApplyUpdatesAndRestart (Velopack)
 ```
 VerifyResult → InitializeServicesFromLicense
     ↓
-1. SupabaseManifestService (from supabaseBaseUrl + manifests)
+1. VpsManifestService (from datahubBaseUrl + manifests)
 2. RuntimeConfigService
 3. IntegrityService (hash verification)
 4. MajorUpdateService (from releases)

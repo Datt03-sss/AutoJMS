@@ -54,7 +54,7 @@ private void PreCreateFullStackForm()
 
 ### Issue 1: Background Jobs Running on BASE
 
-**Symptom**: BASE users experiencing network activity, Supabase writes
+**Symptom**: BASE users experiencing network activity, DataHub writes
 
 **Check**:
 ```csharp

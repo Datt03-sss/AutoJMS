@@ -1,4 +1,4 @@
-﻿# Release Structure
+# Release Structure
 
 ## Release Pipeline Overview
 
@@ -10,7 +10,7 @@
                                                           │
                                                           ▼
 ┌──────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Supabase Storage │◀────│  version-latest  │     │  GitHub Release │
+│  VPS config API │◀────│  version-latest  │     │  GitHub Release │
 │  (manifest only) │     │  .json upload    │     │  (binaries)     │
 └──────────────────┘     └─────────────────┘     └─────────────────┘
 ```
@@ -20,10 +20,10 @@
 | Binary Type | Size | Hosting | Reason |
 |-------------|------|---------|--------|
 | RELEASES | ~1KB | GitHub Releases | Velopack index |
-| .nupkg | ~100MB | GitHub Releases | Too large for Supabase free |
-| Setup.exe | ~100MB | GitHub Releases | Too large for Supabase free |
-| version-latest.json | ~1KB | Supabase Storage | Control plane |
-| hash-manifest.json | ~1KB | Supabase Storage | DLL hashes |
+| .nupkg | ~100MB | GitHub Releases | Too large for DataHub free |
+| Setup.exe | ~100MB | GitHub Releases | Too large for DataHub free |
+| version-latest.json | ~1KB | VPS config API | Control plane |
+| hash-manifest.json | ~1KB | VPS config API | DLL hashes |
 
 ## Build Steps (build-release.ps1)
 
@@ -77,15 +77,15 @@ release/output/stable/*Setup.exe
 release/output/stable/RELEASES
 ```
 
-#### Supabase (Small Manifests)
+#### DataHub (Small Manifests)
 
 ```powershell
 # Fetch existing version-latest.json to preserve other channel
-Invoke-RestMethod https://valmbajjpkjccqslsuou.supabase.co/storage/v1/object/public/autojms-modules/manifest/version-latest.json
+Invoke-RestMethod https://datahub.example.com/manifest/version-latest.json
 
 # Upload new version-latest.json
 Invoke-RestMethod -Method Post `
-    -Uri "https://valmbajjpkjccqslsuou.supabase.co/storage/v1/object/autojms-modules/manifest/version-latest.json" `
+    -Uri "https://datahub.example.com/manifest/version-latest.json" `
     -Headers @{ Authorization = "Bearer $SERVICE_ROLE_KEY"; "x-upsert" = "true" } `
     -ContentType "application/json" `
     -InFile version-latest.json
@@ -154,7 +154,7 @@ User chooses Stable or Beta
     ↓
 VelopackUpdateService.CheckAndUpdateAsync with ExplicitChannel
     ↓
-Read version-latest.json from Supabase
+Read version-latest.json from DataHub
     ↓
 If provider=github:
     Use Velopack GithubSource (no browser)
@@ -179,7 +179,7 @@ If provider=github:
 2. Stop _autoSyncTimer
 3. Stop ZaloService auto-reminder
 4. Close FullStackOperation form
-5. Release Supabase inventory lease
+5. Release DataHub inventory lease
 6. Dispose WebView2 instances
 7. Wait 800ms for settling
 
@@ -192,7 +192,7 @@ Program startup
     ↓
 InitializeServicesFromLicense
     ↓
-SupabaseManifestService created
+VpsManifestService created
     ↓
 SmallUpdateService.CheckAndApplyAsync (background)
     ↓
@@ -204,11 +204,11 @@ MajorUpdateService.CheckForUpdateAsync (manual)
 ```
 Developer runs build-release.ps1 -Upload
     ↓
-Fetch existing version-latest.json from Supabase
+Fetch existing version-latest.json from DataHub
     ↓
 Merge new channel data (preserve other channel)
     ↓
-Upload to Supabase Storage
+Upload to VPS config API
     ↓
 Upload binaries to GitHub Release
 ```

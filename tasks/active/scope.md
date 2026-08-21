@@ -12,7 +12,7 @@ Set/unset page size must apply to the current Windows default printer for AutoJM
 ## Forbidden
 - License/Auth/Hash check
 - Firebase session
-- Supabase production config
+- DataHub production config
 - Velopack/update/release
 - Database schema
 - JMS API

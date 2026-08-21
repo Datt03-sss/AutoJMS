@@ -1,4 +1,4 @@
-﻿# AutoJMS Development Roadmap
+# AutoJMS Development Roadmap
 
 Roadmap này định hướng phát triển AutoJMS theo workflow an toàn cho vibe coding. Phase 1.5 chỉ tạo tài liệu, không sửa logic production code.
 
@@ -10,7 +10,7 @@ Status: done/partial.
 - `.agent/` structure đã có context, rules, prompts, skills, workflows, checklists.
 - `docs/` structure đã có architecture, API, release, troubleshooting, manual.
 - Manual operations doc đã có tại `docs/manual/MANUAL_OPERATIONS.md`.
-- Một số nội dung cũ vẫn cần verify khi đụng task cụ thể: Supabase RPC schema, hash manifest shape, module signature enforcement.
+- Một số nội dung cũ vẫn cần verify khi đụng task cụ thể: DataHub RPC schema, hash manifest shape, module signature enforcement.
 
 ## Phase 1 — Stabilize Build
 
@@ -57,7 +57,7 @@ Mục tiêu:
 Mục tiêu:
 
 - GitHub Releases chứa Velopack binary lớn.
-- Supabase chỉ chứa manifest/config nhỏ.
+- DataHub chỉ chứa manifest/config nhỏ.
 - Major update manual qua tab About.
 - Không mở GitHub page.
 - Stable/beta rõ ràng.

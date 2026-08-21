@@ -33,7 +33,7 @@ namespace AutoJMS.FullStack.Services
             if (string.IsNullOrWhiteSpace(waybillNo) || string.IsNullOrWhiteSpace(note)) return;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
-            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
+            string clientId = await DataHubSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
             var createdAt = DateTime.UtcNow;
             string createdByValue = string.IsNullOrWhiteSpace(createdBy) ? "operator" : createdBy.Trim();
 
@@ -70,7 +70,7 @@ SELECT last_insert_rowid();";
                 Events.FullStackEventTypes.ManualNoteAdded, waybillNo,
                 new JObject { ["note"] = note.Trim(), ["created_by"] = createdByValue },
                 $"{clientId}:note:{noteId}", ct).ConfigureAwait(false);
-            FullStackCloudSyncService.NotifyLocalWrite();
+            DataHubSyncService.NotifyLocalWrite();
         }
 
         public async Task CreateTaskAsync(
@@ -85,7 +85,7 @@ SELECT last_insert_rowid();";
             if (string.IsNullOrWhiteSpace(waybillNo)) return;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
-            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
+            string clientId = await DataHubSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
             var now = DateTime.UtcNow;
             string taskTypeValue = string.IsNullOrWhiteSpace(taskType) ? "CHECK_PHYSICAL_STOCK" : taskType;
             string dueAt = now.AddHours(4).ToString("O");
@@ -164,7 +164,7 @@ SELECT last_insert_rowid();";
                 Events.FullStackEventTypes.DispatchTaskUpdated, waybillNo,
                 new JObject { ["task_type"] = taskTypeValue, ["priority"] = priority, ["status"] = "OPEN" },
                 $"{clientId}:task:{taskId}", ct).ConfigureAwait(false);
-            FullStackCloudSyncService.NotifyLocalWrite();
+            DataHubSyncService.NotifyLocalWrite();
         }
 
         public async Task MarkCheckedAsync(string waybillNo, CancellationToken ct = default)
@@ -182,7 +182,7 @@ SELECT last_insert_rowid();";
             var now = DateTime.UtcNow;
 
             await _initializer.InitializeAsync(ct).ConfigureAwait(false);
-            string clientId = await FullStackCloudSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
+            string clientId = await DataHubSyncService.Instance.GetOrCreateClientIdAsync(ct).ConfigureAwait(false);
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
@@ -258,7 +258,7 @@ SELECT last_insert_rowid();";
                 Events.FullStackEventTypes.CheckUpdated, waybillNo,
                 new JObject { ["is_checked"] = true, ["checked_by"] = checkedBy, ["checked_at"] = now.ToString("O") },
                 $"{clientId}:check:{waybillNo}:{now:yyyyMMddHHmmss}", ct).ConfigureAwait(false);
-            FullStackCloudSyncService.NotifyLocalWrite();
+            DataHubSyncService.NotifyLocalWrite();
         }
 
         private static async Task StampNoteClientIdAsync(SqliteConnection connection, SqliteTransaction transaction, long noteId, string clientId, CancellationToken ct)

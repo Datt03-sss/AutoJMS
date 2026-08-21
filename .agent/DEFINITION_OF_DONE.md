@@ -31,8 +31,8 @@ A task is done only when:
 
 - [ ] VelopackVersion is valid SemVer
 - [ ] GitHub Release assets verified
-- [ ] Supabase manifest files verified
-- [ ] No `.nupkg` uploaded to Supabase
+- [ ] DataHub manifest files verified
+- [ ] No `.nupkg` uploaded to DataHub
 - [ ] App does not open GitHub page
 - [ ] Manual update via tab About remains correct
 

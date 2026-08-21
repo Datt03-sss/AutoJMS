@@ -1,4 +1,4 @@
-﻿# Release Overview
+# Release Overview
 
 ## Release Components
 

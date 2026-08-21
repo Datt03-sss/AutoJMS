@@ -52,7 +52,7 @@ main
 ## Scope forbidden
 - License/auth/hash-check
 - Firebase session
-- Supabase production config
+- DataHub production config
 - Velopack release
 - Database schema
 - JMS API logic

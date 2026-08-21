@@ -1,4 +1,4 @@
-﻿# Codebase Index
+# Codebase Index
 
 Index này dựa trên file/folder hiện có trong workspace. Nếu một mục không xác minh được từ file listing hiện tại, ghi `NEED VERIFY`.
 
@@ -31,8 +31,8 @@ Index này dựa trên file/folder hiện có trong workspace. Nếu một mục
 - `PrintService.cs`
 - `RuntimeConfigService.cs`
 - `SmallUpdateService.cs`
-- `SupabaseDbService.cs`
-- `SupabaseManifestService.cs`
+- `DataHubClient.cs`
+- `VpsManifestService.cs`
 - `uiControlService.cs`
 - `UserSettingsService.cs`
 - `VelopackUpdateService.cs`
@@ -47,7 +47,7 @@ Index này dựa trên file/folder hiện có trong workspace. Nếu một mục
 ## Backend references
 
 - `backend/render-license-server/`: Render Node/Express license server source.
-- `infra/supabase/`: Supabase Storage bucket example files.
+- `infra/datahub/`: VPS config API bucket example files.
 - `infra/firebase/`: Firebase schema/config samples. Secret-like files require review before tracking.
 
 ## Release

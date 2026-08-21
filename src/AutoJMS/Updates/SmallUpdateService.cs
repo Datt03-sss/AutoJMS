@@ -8,12 +8,12 @@ namespace AutoJMS
 {
     public class SmallUpdateService
     {
-        private readonly SupabaseManifestService _manifestService;
+        private readonly VpsManifestService _manifestService;
         private readonly RuntimeConfigService _runtimeConfig;
         private string _lastAppliedVersion = "";
         private bool _skipSignatureCheck = false;
 
-        public SmallUpdateService(SupabaseManifestService manifestService, RuntimeConfigService runtimeConfig)
+        public SmallUpdateService(VpsManifestService manifestService, RuntimeConfigService runtimeConfig)
         {
             _manifestService = manifestService;
             _runtimeConfig = runtimeConfig;

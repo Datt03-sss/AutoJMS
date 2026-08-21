@@ -82,7 +82,7 @@ AppLogger.Info($"[FULLSTACK] Realtime started: {_isRealtimeStarted}");
 **Check**:
 1. Is `_autoRefreshTimer` running?
 2. Is `LoadDataAndRefreshViewsAsync()` called?
-3. Is `SupabaseDbService` connected?
+3. Is `DataHubClient` connected?
 
 **Debug**:
 ```csharp
@@ -130,7 +130,7 @@ private async Task LoadDataAndRefreshViewsAsync()
         return;
 
     // Safe to call APIs now
-    var waybills = await SupabaseDbService.GetActiveWaybillsAsync();
+    var waybills = await DataHubClient.GetActiveWaybillsAsync();
     // ... update UI
 }
 ```

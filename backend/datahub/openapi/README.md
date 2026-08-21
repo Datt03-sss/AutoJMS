@@ -1,7 +1,7 @@
 # DataHub API contract
 
 `datahub-v1.yaml` is the phase-1 HTTP and SignalR contract for the new VPS
-DataHub. It is derived from the owner-approved VPS baseline. Historical Supabase
+DataHub. It is derived from the owner-approved VPS baseline. Historical DataHub
 documents are not inputs to this contract.
 
 ## Environments

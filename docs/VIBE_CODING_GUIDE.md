@@ -8,7 +8,7 @@ AutoJMS has:
 - WinForms Designer risk
 - WebView2 automation timing risk
 - JMS authToken risk
-- Firebase/Supabase/GitHub/Render integration
+- Firebase/DataHub/GitHub/Render integration
 - Inno/Velopack release complexity
 - Tier BASE/ULTRA behavior
 - FullStackOperation lifecycle issues

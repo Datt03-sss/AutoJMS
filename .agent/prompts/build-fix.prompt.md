@@ -1,4 +1,4 @@
-﻿# Build Fix Prompt
+# Build Fix Prompt
 
 Use this prompt when the task is specifically to diagnose or fix an AutoJMS build failure.
 

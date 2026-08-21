@@ -12,9 +12,6 @@ namespace AutoJMS;
 
 public static class HashVerifier
 {
-    private static readonly string SupabaseStorageUrl =
-        "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules";
-
     public static string ComputeDllHash()
     {
         try
@@ -39,7 +36,11 @@ public static class HashVerifier
         try
         {
             string currentVersion = AppVersion.Current;
-            string url = $"{SupabaseStorageUrl}/manifest/hash-manifest.json";
+            string baseUrl = (Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_MODULES_BASE_URL")
+                ?? Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_API_BASE_URL")
+                ?? string.Empty).TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(baseUrl)) return null;
+            string url = $"{baseUrl}/manifest/hash-manifest.json";
 
             using var http = new HttpClient(new AppHttpCaptureHandler(new HttpClientHandler(), "HashVerifier")) { Timeout = TimeSpan.FromSeconds(10) };
             string json = await http.GetStringAsync(url, ct);

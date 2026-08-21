@@ -8,7 +8,7 @@ namespace AutoJMS.ModuleSystem
     public static class ModuleStartup
     {
         private static readonly string ModulesDir = Path.Combine(AppPaths.ModulesCacheDir, "modules");
-        private static SupabaseModuleProvider _provider;
+        private static VpsModuleProvider _provider;
         private static ModuleRegistry _registry;
         private static readonly object _initLock = new();
         private static bool _initialized;
@@ -33,12 +33,12 @@ namespace AutoJMS.ModuleSystem
             }
         }
 
-        public static SupabaseModuleProvider Provider
+        public static VpsModuleProvider Provider
         {
             get
             {
                 if (_provider == null)
-                    _provider = new SupabaseModuleProvider();
+                    _provider = new VpsModuleProvider();
                 return _provider;
             }
         }

@@ -1,4 +1,4 @@
-﻿# Project Overview
+# Project Overview
 
 ## Current Verified Baseline
 
@@ -12,7 +12,7 @@ Core modules in the current checkout:
 - `Main.cs`: main WinForms UI with BASE tabs `HOME`, `DKCH`, `TRACKING`, `PRINT`, `ABOUT`.
 - `FullStackOperation.cs`: ULTRA-only standalone form, not a tab. It is pre-created/shown only when `TierRuntimePolicy.EnableFullStackOperation` is true.
 - `JmsApiClient.cs`, `JmsAuthTokenService.cs`, `JmsAuthStateService.cs`: JMS API and 401/token recovery.
-- `SupabaseDbService.cs`, `InventorySyncService.cs`, `DatabaseTracking.cs`: ULTRA inventory/database sync path.
+- `DataHubClient.cs`, `InventorySyncService.cs`, `DatabaseTracking.cs`: ULTRA inventory/database sync path.
 - `VelopackUpdateService.cs`, `SmallUpdateService.cs`, `MajorUpdateService.cs`: update flows.
 - `ModuleSystem/`: dynamic module provider/loader and built-in fallback implementations.
 
@@ -20,9 +20,9 @@ External service roles:
 
 - Firebase Realtime Database: license/session/tier data used by the Render server.
 - Render `server.js`: license verification, heartbeat, logout.
-- Supabase Storage: manifest/config/hash/tier/selector-update files.
-- Supabase PostgreSQL: waybill tracking data and RPCs. SQL definitions for the waybill RPCs are not present in `supabase-migration.sql`; mark database bootstrap as `NEED VERIFY`.
-- GitHub Releases: large Velopack binary hosting. Do not upload `.nupkg` to Supabase.
+- VPS config API: manifest/config/hash/tier/selector-update files.
+- DataHub PostgreSQL: waybill tracking data and RPCs. SQL definitions for the waybill RPCs are not present in `datahub-migration.sql`; mark database bootstrap as `NEED VERIFY`.
+- GitHub Releases: large Velopack binary hosting. Do not upload `.nupkg` to DataHub.
 - Inno Setup: first install/reinstall/uninstall and runtime prerequisites.
 - Velopack: in-app updates, major update from About tab only.
 
@@ -51,7 +51,7 @@ AutoJMS is a **desktop logistics automation application** for Vietnamese logisti
 | UI Framework | WinForms | .NET 8 |
 | UI Library | SunnyUI | 3.9.6 |
 | Browser | WebView2 | 1.0.3912.50 |
-| Database | Supabase (PostgreSQL) | - |
+| Database | DataHub (PostgreSQL) | - |
 | Auth | Firebase Realtime Database | - |
 | License Server | Render (Express/Node.js) | - |
 | Installer | Inno Setup | 6.x |
@@ -66,7 +66,7 @@ AutoJMS is a **desktop logistics automation application** for Vietnamese logisti
 | JMS API Gateway | Backend API calls | jmsgw.jtexpress.vn |
 | License Server | Verify license, heartbeat | autojms-api.onrender.com |
 | Firebase | License/session data | keyauthjms-default-rtdb |
-| Supabase | Waybill DB, manifests, storage | valmbajjpkjccqslsuou.supabase.co |
+| DataHub | Waybill DB, manifests, storage | valmbajjpkjccqslsuou.datahub.co |
 | GitHub Releases | Velopack binary hosting | Datt03-sss/AutoJMS-Update |
 
 ## Current Version
@@ -111,7 +111,7 @@ AutoJMS/ (root = project root)
 ├── backend/render-license-server/  # Render license/heartbeat server
 ├── infra/
 │   ├── firebase/
-│   ├── supabase/
+│   ├── datahub/
 │   └── github-release/
 │
 ├── installer/inno/                      # Inno Setup scripts
@@ -123,7 +123,7 @@ AutoJMS/ (root = project root)
 ├── docs/                          # Project documentation
 ├── .agent/                        # Agent context & rules
 │
-├── SupabaseDbService.cs           # Supabase waybill operations
+├── DataHubClient.cs           # DataHub waybill operations
 ├── InventorySyncService.cs        # JMS inventory fetch
 ├── JmsApiClient.cs               # JMS API HTTP client
 ├── JmsAuthTokenService.cs        # JMS session token management
@@ -148,7 +148,7 @@ AutoJMS/ (root = project root)
 
 ## Critical Paths
 
-1. **License Flow**: frmLogin → LicenseApiService.VerifyLicenseSecureAsync → JWT validation → Supabase config → InitializeServicesFromLicense
+1. **License Flow**: frmLogin → LicenseApiService.VerifyLicenseSecureAsync → JWT validation → DataHub config → InitializeServicesFromLicense
 2. **AuthToken Flow**: WebView2 Navigation → CoreWebView2_WebResourceRequested → JmsAuthStateService → Main.CapturedAuthToken
 3. **Update Flow**: tabAbout_btnCheckUpdate_Click → VelopackUpdateService → GithubSource (provider=github) → ApplyUpdatesAndRestart
 4. **DKCH Flow**: tabDKCH_btnDKCH1_Click → DkchManager → WebViewAutomation → JMS API → tracking update

@@ -147,7 +147,7 @@ session_id text · relay_generation int · last_relayed_at · last_validated_at
 primary key (site_code, worker_id)   -- mỗi Worker/máy giữ token của CHÍNH nó (không dùng chéo máy)
 ```
 ⚠️ **BỎ** `token_ciphertext`/`recipient_key_id`/`context_ciphertext`/multi-key: token **không lên cloud**.
-Supabase chỉ giữ `token_fp` + binding để điều phối leader/failover.
+DataHub chỉ giữ `token_fp` + binding để điều phối leader/failover.
 
 **(3) `jms_token_candidate_state`** — trạng thái xác thực do **Worker sở hữu** (desktop KHÔNG ghi).
 **Danh tính = `candidate_id` BẤT BIẾN** (High#5 — hết mơ hồ token_fp):
@@ -201,7 +201,7 @@ leader_owner text (chẩn đoán) · selected_at
 - **Token:** `WebViewTokenReader` đọc `authToken` từ WebView2 → AutoJMS gửi cho **Worker CÙNG MÁY** qua
   **Named Pipe** (ACL: server = Service SID; client = local user thường của AutoJMS — xem lifecycle §8).
 - ⚠️ **Thứ tự nguyên tử (chống dual-write lệch, KHÔNG thể atomic xuyên local↔cloud → dùng JOURNAL):**
-  Vì không có transaction phủ cả file local lẫn Supabase, dùng **local durable journal/outbox** để đạt
+  Vì không có transaction phủ cả file local lẫn DataHub, dùng **local durable journal/outbox** để đạt
   crash-consistency (High#5):
   1. Worker ghi **journal record** `{candidate_id (mới), token_fp, generation, license, session, state=pending_persist}` (durable, local).
   2. **Persist `tokens.dat` (DPAPI)** → cập nhật journal `state=persisted`.
@@ -332,7 +332,7 @@ Kỷ luật: một active identity duy nhất **gắn với site-leader** (khôn
 - **Mất leader (hết heartbeat) ⇒ DRAIN**: chủ cũ phải **huỷ/kết thúc mọi request JMS đang bay** trước
   khi leader/token mới hoạt động. Fencing chỉ chặn **stale write** vào DB, **không** chặn chủ cũ tiếp
   tục gọi JMS — nên drain là bắt buộc để giữ single-session.
-- **Xử lý network partition (bắt buộc):** chủ cũ có thể **mất Supabase nhưng vẫn gọi được JMS** → không
+- **Xử lý network partition (bắt buộc):** chủ cũ có thể **mất DataHub nhưng vẫn gọi được JMS** → không
   ai ra lệnh drain được. Vì vậy:
   1. **Worker fail-closed**: refresh `fetch_leader` lease thất bại (timeout/lỗi) ⇒ **tự dừng gọi JMS
      ngay**, không chờ lệnh.
@@ -351,7 +351,7 @@ Kỷ luật: một active identity duy nhất **gắn với site-leader** (khôn
 ## 8. Bảo mật (token LOCAL — không ciphertext cloud)
 
 - **Token mã hoá DPAPI (LocalMachine) trong `tokens.dat`** trên máy sở hữu (xem `datahub-worker-lifecycle.md`
-  §3); **KHÔNG** lên Supabase. **BỎ** crypto envelope cloud / `recipient_key_id` / signed worker-key
+  §3); **KHÔNG** lên DataHub. **BỎ** crypto envelope cloud / `recipient_key_id` / signed worker-key
   manifest (không còn quan hệ mã-hoá-cho-Worker-khác).
 - **Registry (metadata) đặt schema `private`**, **REVOKE direct SELECT khỏi TẤT CẢ**; đọc/ghi **chỉ qua
   RPC fenced** (kiểm `fence/leader_term/entitlement`). Lộ DB **không lộ token** (token chỉ ở local).

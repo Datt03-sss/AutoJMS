@@ -17,7 +17,7 @@ AutoJMS/
 │   ├── AutoJMS/         ← Main WinForms app (tabs: HOME, DKCH, TRACKING, PRINT, ABOUT)
 │   └── AutoJMS.Abstractions/
 ├── tests/               ← Test projects (AutoJMS.Tests)
-├── backend/             ← License server (Node/Render) + Supabase migrations
+├── backend/             ← License server (Node/Render) + DataHub migrations
 ├── docs/                ← All documentation → start at docs/START_HERE.md
 │   ├── project/         ← Project charter, status, original request
 │   ├── architecture/    ← System & client architecture
@@ -27,7 +27,7 @@ AutoJMS/
 ├── eng/                 ← Engineering scripts
 │   ├── git/             ← Safe git helpers (checkpoint, sync-main, worktree...)
 │   ├── harness/         ← verify.ps1 build/verify harness
-│   └── hybrid-sync/     ← Supabase hybrid-sync migration scripts
+│   └── hybrid-sync/     ← DataHub hybrid-sync migration scripts
 ├── tasks/               ← Task tracking (active / completed / plans)
 ├── .agent/              ← Agent operating hub: protocols, skills, context, templates
 ├── release/             ← Release build scripts (build-release.ps1)

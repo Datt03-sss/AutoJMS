@@ -1,10 +1,10 @@
-﻿# Update & Release Rules
+# Update & Release Rules
 
 ## Update Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        SUPABASE STORAGE                     │
+│                        VPS CONFIG API                     │
 │  version-latest.json (control plane)                       │
 │  hash-manifest.json (DLL hashes)                           │
 │  selector-update-manifest.json (small updates)              │
@@ -34,7 +34,7 @@
 |--------|--------|
 | Trigger | Auto after license verify |
 | Mechanism | SmallUpdateService |
-| Source | Supabase selector-updates/ |
+| Source | DataHub selector-updates/ |
 | User action | None (auto) |
 | Restart | No |
 | Size | < 1MB |
@@ -71,13 +71,13 @@
 
 ## Velopack Rules
 
-### Never Upload .nupkg to Supabase
+### Never Upload .nupkg to DataHub
 
-Supabase free plan rejects files > 50MB.
+DataHub free plan rejects files > 50MB.
 
 ```powershell
 # WRONG
-supabase storage cp AutoJMS.nupkg ss:///$bucket/releases/
+VPS config API cp AutoJMS.nupkg ss:///$bucket/releases/
 
 # CORRECT
 gh release upload v1.26.6-Release AutoJMS.nupkg
@@ -86,7 +86,7 @@ gh release upload v1.26.6-Release AutoJMS.nupkg
 ### GitHub Source Pattern
 
 ```csharp
-// Read version-latest.json from Supabase
+// Read version-latest.json from DataHub
 var latest = await manifestService.FetchVersionLatestAsync();
 
 // If provider=github, use GithubSource
@@ -228,7 +228,7 @@ Examples:
 ### After Release
 
 - [ ] Upload to GitHub Release
-- [ ] Update version-latest.json in Supabase
+- [ ] Update version-latest.json in DataHub
 - [ ] Update hash-manifest.json if needed
 - [ ] Test update from previous version
 

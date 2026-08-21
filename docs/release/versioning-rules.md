@@ -1,4 +1,4 @@
-﻿# Versioning Rules
+# Versioning Rules
 
 ## Core Rule
 

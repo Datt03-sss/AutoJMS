@@ -1,4 +1,4 @@
-﻿# AutoJMS Manual Operations
+# AutoJMS Manual Operations
 
 Tài liệu vận hành thủ công cho build, release, upload, license, deploy server và rollback AutoJMS.
 
@@ -6,7 +6,7 @@ Tài liệu vận hành thủ công cho build, release, upload, license, deploy 
 
 Tài liệu này dành cho các thao tác nằm ngoài local production code của AutoJMS.
 
-- Dùng trong workflow vibe coding để không quên bước build, upload, release, setup, Supabase, GitHub, Firebase, Render và rollback.
+- Dùng trong workflow vibe coding để không quên bước build, upload, release, setup, DataHub, GitHub, Firebase, Render và rollback.
 - Ghi rõ file nào được tạo ra, file nào upload lên đâu, lúc nào dùng setup và lúc nào dùng update trong app.
 - Không thay thế README kỹ thuật, tài liệu architecture hoặc audit codebase.
 - Nếu một path/biến ENV/route chưa khớp hoàn toàn với code hiện tại, tài liệu ghi `NEED VERIFY`.
@@ -19,7 +19,7 @@ Tài liệu này dành cho các thao tác nằm ngoài local production code c�
 | Inno Setup       | cài lần đầu              | tạo setup cuối            | AutoJMS-win-Setup.exe       |
 | Velopack         | update trong app         | tạo RELEASES/.nupkg/Setup | binary update               |
 | GitHub Releases  | lưu Velopack binary lớn  | có                        | RELEASES, .nupkg, Setup.exe |
-| Supabase Storage | manifest/config nhỏ      | không                     | không upload .nupkg         |
+| VPS config API | manifest/config nhỏ      | không                     | không upload .nupkg         |
 | Firebase         | license key/tier/hwid    | không                     | không chứa update URL       |
 | Render server    | verify-license/heartbeat | không                     | server.js deploy            |
 | User machine     | chạy app                 | không                     | C:\AutoJMS                  |
@@ -59,11 +59,11 @@ AutoJMS/
 | `installer/inno/` | Build bộ cài lần đầu/reinstall/repair bằng Inno Setup. |
 | `installer/inno/redist/` | Chứa runtime prerequisites: .NET 8 Desktop Runtime, WebView2 Evergreen x64, VC++ Redistributable. |
 | `installer/inno/installer-output/` | Output setup cuối cho user mới hoặc reinstall. |
-| `release/` | Build publish, tính hash, đóng gói Velopack, upload GitHub/Supabase. |
+| `release/` | Build publish, tính hash, đóng gói Velopack, upload GitHub/DataHub. |
 | `release/output/stable/` | Output release stable. Trong repo hiện có `AutoJMS-stable-Setup.exe`, `RELEASES-stable`, `assets.stable.json`, `releases.stable.json`. |
 | `release/output/beta/` | Output release beta. Nếu chưa có file thì `NEED VERIFY` sau lần build beta đầu tiên. |
 | `backend/render-license-server/` | Source server license/heartbeat dùng deploy lên Render. |
-| `infra/supabase/` | Cấu trúc mẫu bucket Supabase Storage. |
+| `infra/datahub/` | Cấu trúc mẫu bucket VPS config API. |
 | `docs/` | Tài liệu architecture, release, troubleshooting, manual. |
 | `.agent/` | Agent context, rules, prompts, skills, workflows, checklists. |
 | `src/AutoJMS/AutoJMS.csproj` | Project .NET 8 WinForms chính. Không sửa khi chỉ làm manual operations. |
@@ -168,11 +168,11 @@ build-release.bat
    - upload file lớn lên GitHub Release
    - generate `version-latest.json`
    - generate `hash-manifest.json`
-   - upload manifest nhỏ lên Supabase
+   - upload manifest nhỏ lên DataHub
 
 Ghi chú hiện trạng:
 
-- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, Supabase upload qua `SUPABASE_SERVICE_ROLE_KEY` hoặc Supabase CLI.
+- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, DataHub upload qua `DATAHUB_SERVICE_ROLE_KEY` hoặc DataHub CLI.
 - File setup output hiện thấy trong repo có dạng `AutoJMS-stable-Setup.exe`; tên `AutoJMS-win-Setup.exe` là tên setup chuẩn cần verify theo từng pipeline.
 
 ## 7. File Velopack upload lên GitHub Release
@@ -181,7 +181,7 @@ Ghi chú hiện trạng:
 | ------------------------------------------------------- | -------------------- | -------- | -------------------------------------------------- |
 | `releases.{channel}.json`                               | GitHub Release asset | có       | **index Velopack 1.x thật sự đọc** — thiếu là chết |
 | `RELEASES`                                              | GitHub Release asset | không    | index legacy Squirrel, Velopack 1.x không đọc      |
-| `AutoJMS-x.x.x-full.nupkg`                              | GitHub Release asset | có       | file lớn, không upload Supabase                    |
+| `AutoJMS-x.x.x-full.nupkg`                              | GitHub Release asset | có       | file lớn, không upload DataHub                    |
 | `AutoJMS-win-Setup.exe` hoặc `AutoJMS-stable-Setup.exe` | GitHub Release asset | có       | Velopack setup/update asset                        |
 
 > **Quan trọng — `releases.{channel}.json` là feed thật của Velopack.**
@@ -214,9 +214,9 @@ v1.26.6-beta.1-Release
 
 Beta release phải mark prerelease.
 
-## 8. File manifest upload lên Supabase
+## 8. File manifest upload lên DataHub
 
-| File                            | Upload lên Supabase path                                 | Khi nào upload                    |
+| File                            | Upload lên DataHub path                                 | Khi nào upload                    |
 | ------------------------------- | -------------------------------------------------------- | --------------------------------- |
 | `version-latest.json`           | `autojms-modules/manifest/version-latest.json`           | mỗi lần release                   |
 | `hash-manifest.json`            | `autojms-modules/manifest/hash-manifest.json`            | mỗi lần hash AutoJMS.dll đổi      |
@@ -230,11 +230,11 @@ Beta release phải mark prerelease.
 
 Nhấn mạnh:
 
-- Không upload `.nupkg` lên Supabase.
-- Không upload Setup.exe lớn lên Supabase.
-- Không upload secret lên Supabase public bucket.
+- Không upload `.nupkg` lên DataHub.
+- Không upload Setup.exe lớn lên DataHub.
+- Không upload secret lên DataHub public bucket.
 - Production sensitive config dùng `.sec`, dev có thể có `.json`.
-- Hiện trạng repo có `infra/supabase/autojms-modules/manifest/tier-definitions.json` và `selector-updates/runtime-config.json`; nếu production chuyển sang `.sec`, cần verify client/server đọc đúng path trước khi release.
+- Hiện trạng repo có `infra/datahub/autojms-modules/manifest/tier-definitions.json` và `selector-updates/runtime-config.json`; nếu production chuyển sang `.sec`, cần verify client/server đọc đúng path trước khi release.
 
 ## 9. Nội dung mẫu version-latest.json
 
@@ -398,8 +398,8 @@ ENV cần có:
 | `JWT_PRIVATE_KEY` | Ký license JWT RS256 | Không commit secret. |
 | `JWT_PUBLIC_KEY` | Client/server verify JWT | Không log raw key. |
 | `VALID_EXE_HASHES` | Danh sách hash hợp lệ nếu server còn kiểm tra hash | Có thể bỏ qua cho dev key `skipHashCheck = true`. |
-| `SUPABASE_PUBLIC_BASE_URL` | Base URL public nếu server trả manifest URL | `NEED VERIFY`: code hiện tại đọc `SUPABASE_BASE_URL`. |
-| `SUPABASE_BASE_URL` | Base URL Supabase manifest theo code hiện tại | Đang dùng trong `server.js`. |
+| `DATAHUB_PUBLIC_BASE_URL` | Base URL public nếu server trả manifest URL | `NEED VERIFY`: code hiện tại đọc `DATAHUB_API_BASE_URL`. |
+| `DATAHUB_API_BASE_URL` | Base URL DataHub manifest theo code hiện tại | Đang dùng trong `server.js`. |
 
 Khi sửa `server.js`:
 
@@ -407,7 +407,7 @@ Khi sửa `server.js`:
 2. Kiểm tra health endpoint.
 3. Test `/api/verify-license`.
 4. Test `/api/heartbeat`.
-5. Kiểm tra client parse đúng `tier`, `modulePolicy`, `supabase.baseUrl`, `supabase.manifests`.
+5. Kiểm tra client parse đúng `tier`, `modulePolicy`, `datahub.baseUrl`, `datahub.manifests`.
 6. Không deploy `serviceAccountKey.json` vào repo public; cấu hình secret qua môi trường/deploy secret phù hợp.
 
 ## 14. GitHub Release manual operations
@@ -439,7 +439,7 @@ Quy tắc:
 - Nếu release đã tồn tại, dùng `gh release upload ... --clobber` cho asset hoặc bump version nếu release đã public cho user.
 - Không mở GitHub page trong app update; app phải tải qua Velopack feed.
 
-## 15. Supabase manual operations
+## 15. DataHub manual operations
 
 Upload qua Dashboard:
 
@@ -453,22 +453,22 @@ Storage
 Upload qua CLI nếu đã login/link project:
 
 ```powershell
-supabase storage cp .\version-latest.json ss:///autojms-modules/manifest/version-latest.json --linked --experimental
-supabase storage cp .\hash-manifest.json ss:///autojms-modules/manifest/hash-manifest.json --linked --experimental
+VPS config API cp .\version-latest.json ss:///autojms-modules/manifest/version-latest.json --linked --experimental
+VPS config API cp .\hash-manifest.json ss:///autojms-modules/manifest/hash-manifest.json --linked --experimental
 ```
 
 Hoặc upload qua REST nếu có service role key trong môi trường:
 
 ```powershell
-$env:SUPABASE_SERVICE_ROLE_KEY = "<set outside repo>"
+$env:DATAHUB_SERVICE_ROLE_KEY = "<set outside repo>"
 ```
 
 Nhấn mạnh:
 
-- Supabase free plan không upload file Velopack lớn.
-- Supabase chỉ là control plane: manifest, config, hash, selector-update.
+- DataHub free plan không upload file Velopack lớn.
+- DataHub chỉ là control plane: manifest, config, hash, selector-update.
 - GitHub Release là binary hosting.
-- Không đưa `.nupkg`, `Setup.exe`, private key, service account, token vào Supabase public bucket.
+- Không đưa `.nupkg`, `Setup.exe`, private key, service account, token vào DataHub public bucket.
 
 ## 16. Checklist release stable
 
@@ -484,8 +484,8 @@ Nhấn mạnh:
 [ ] FileName trong releases.{channel}.json khớp tên .nupkg đã upload
 [ ] GitHub Release có .nupkg
 [ ] GitHub Release có Setup.exe
-[ ] Supabase version-latest.json đã cập nhật
-[ ] Supabase hash-manifest.json đã cập nhật
+[ ] DataHub version-latest.json đã cập nhật
+[ ] DataHub hash-manifest.json đã cập nhật
 [ ] Client About → Check Update test OK
 [ ] App restart OK
 [ ] Không mất C:\AutoJMS\AppData
@@ -507,7 +507,7 @@ Nhấn mạnh:
 Nếu release lỗi nhưng user chưa update nhiều:
 
 - Update `version-latest.json` về version cũ.
-- Upload lại Supabase manifest.
+- Upload lại DataHub manifest.
 - Test About → Check Update trên client.
 
 Nếu GitHub release lỗi:
@@ -520,7 +520,7 @@ Nếu hash manifest sai:
 
 - Lấy lại hash `AutoJMS.dll` đúng từ bản publish cuối cùng.
 - Update `hash-manifest.json`.
-- Upload lại Supabase.
+- Upload lại DataHub.
 - Test verify license/update flow.
 
 Nếu `server.js` lỗi:
@@ -538,7 +538,7 @@ Nếu Firebase key sai:
 
 ```txt
 KHÔNG ĐƯỢC:
-- Không upload .nupkg lên Supabase.
+- Không upload .nupkg lên DataHub.
 - Không mở GitHub page trong app update.
 - Không copy file thủ công vào C:\AutoJMS\current.
 - Không xóa C:\AutoJMS\AppData khi update.
@@ -553,7 +553,7 @@ KHÔNG ĐƯỢC:
 
 | Lỗi | Triệu chứng | Nguyên nhân | Cách xử lý |
 | --- | ----------- | ----------- | ---------- |
-| Supabase upload fail vì `>50MB` | Upload `.nupkg` hoặc `Setup.exe` lên Supabase lỗi size limit | Supabase Storage free plan không phù hợp cho binary lớn | Upload binary lên GitHub Release; Supabase chỉ giữ manifest/config/hash nhỏ. |
+| DataHub upload fail vì `>50MB` | Upload `.nupkg` hoặc `Setup.exe` lên DataHub lỗi size limit | VPS config API free plan không phù hợp cho binary lớn | Upload binary lên GitHub Release; DataHub chỉ giữ manifest/config/hash nhỏ. |
 | Velopack SemVer invalid leading zero | `vpk pack` báo version không hợp lệ với `1.26.05` | SemVer không cho leading zero | Dùng `1.26.5` hoặc bump thành `1.26.6`; beta dùng `1.26.6-beta.1`. |
 | Velopack unexpected character after patch | `vpk pack` báo lỗi parse version sau patch | Version có 4 segment như `1.26.6.1` hoặc suffix sai SemVer | Đổi VelopackVersion thành `1.26.6` hoặc `1.26.6-beta.1`; dùng `InternalBuild=1.26.6.1` nếu cần 4 số. |
 | GitHub CLI chưa login | `gh release create/upload` lỗi auth | Chưa chạy `gh auth login` hoặc token hết hạn | Chạy `gh auth login`, chọn đúng account có quyền repo `Datt03-sss/AutoJMS-Update`. |

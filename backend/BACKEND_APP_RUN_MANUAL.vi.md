@@ -8,10 +8,10 @@ Mục tiêu cuối cùng:
 
 - Render license server chạy được `/health`, `/api/verify-license`, `/api/heartbeat`.
 - Firebase có license test để app đăng nhập.
-- Supabase có schema/RPC/storage manifest đúng.
+- DataHub có schema/RPC/storage manifest đúng.
 - AutoJMS build được và đăng nhập bằng license test.
 
-Không ghi secret thật vào repo. Không commit `.env`, Firebase service account, Supabase service-role key, JWT private key, hoặc token production.
+Không ghi secret thật vào repo. Không commit `.env`, Firebase service account, DataHub service-role key, JWT private key, hoặc token production.
 
 ## 1. Kiến Trúc Backend
 
@@ -19,9 +19,9 @@ Không ghi secret thật vào repo. Không commit `.env`, Firebase service accou
 AutoJMS.exe
   -> Render server /api/verify-license
       -> Firebase Realtime Database: Licenses, sessions
-      -> trả về JWT + tier + Supabase config
-  -> Supabase Storage: manifest/config/hash/tier/selector-update JSON
-  -> Supabase PostgreSQL/RPC: waybills, inventory sync lease, tracking rows
+      -> trả về JWT + tier + DataHub config
+  -> VPS config API: manifest/config/hash/tier/selector-update JSON
+  -> DataHub PostgreSQL/RPC: waybills, inventory sync lease, tracking rows
   -> Render server /api/heartbeat
       -> Firebase sessions
 ```
@@ -32,18 +32,18 @@ Vai trò từng dịch vụ:
 |---|---|
 | Firebase | License, HWID, session, tier, middleCode |
 | Render | API verify license, heartbeat, logout, cấp JWT |
-| Supabase Storage | Manifest/config/hash/tier/selector-update JSON |
-| Supabase PostgreSQL | Waybill database và RPC cho ULTRA sync |
-| GitHub Releases | Velopack binaries, không dùng Supabase để chứa `.nupkg` |
+| VPS config API | Manifest/config/hash/tier/selector-update JSON |
+| DataHub PostgreSQL | Waybill database và RPC cho ULTRA sync |
+| GitHub Releases | Velopack binaries, không dùng DataHub để chứa `.nupkg` |
 
 ## 2. Thông Tin Backend Hiện Tại
 
 ```text
-Supabase project ref: bnsnnrlwfzxemmizknwy
-Supabase project URL: https://bnsnnrlwfzxemmizknwy.supabase.co
-Supabase public bucket: autojms-modules
-Supabase storage base:
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
+DataHub project ref: bnsnnrlwfzxemmizknwy
+DataHub project URL: https://datahub.example.com
+DataHub public bucket: autojms-modules
+VPS config API base:
+https://datahub.example.com
 
 Render production URL:
 https://autojms-api.onrender.com
@@ -57,9 +57,9 @@ Source chính:
 ```text
 backend/render-license-server/server.js
 backend/render-license-server/package.json
-backend/render-license-server/.env.example
+backend/render-license-server/env.template
 backend/render.yaml
-backend/supabase/migrations/
+backend/datahub/migrations/
 backend/BACKEND_DEPLOY_STATUS.md
 ```
 
@@ -71,7 +71,7 @@ Kiểm tra trên máy deploy/dev:
 node -v
 npm -v
 dotnet --info
-supabase --version
+datahub --version
 git --version
 ```
 
@@ -82,7 +82,7 @@ Yêu cầu:
 | Node.js >= 20 | Chạy Render license server |
 | npm | Cài dependency backend |
 | .NET SDK 8 hoặc SDK mới có workload Windows | Build AutoJMS |
-| Supabase CLI | Apply/check migration |
+| DataHub CLI | Apply/check migration |
 | Render dashboard hoặc Render API/CLI | Deploy server |
 | Firebase console access | Tạo service account và license test |
 
@@ -95,8 +95,8 @@ Không đặt các giá trị này vào tài liệu hoặc git.
 | `JWT_PRIVATE_KEY` | Tự tạo RSA private key | Render ký license JWT |
 | `JWT_PUBLIC_KEY` | Từ RSA private key | Render verify/chuẩn public key |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console | Render Admin SDK đọc/ghi RTDB |
-| `SUPABASE_ANON_KEY` | Supabase dashboard, Project Settings, API | Render trả về app để dùng RPC theo anon policy |
-| Supabase service-role key | Supabase dashboard | Chỉ dùng thủ công/server-side khi upload/admin, không trả về client |
+| `AUTOJMS_DATAHUB_DEVICE_TOKEN` | DataHub dashboard, Project Settings, API | Render trả về app để dùng RPC theo anon policy |
+| DataHub service-role key | DataHub dashboard | Chỉ dùng thủ công/server-side khi upload/admin, không trả về client |
 
 Nếu cần tạo JWT key pair bằng OpenSSL:
 
@@ -107,20 +107,20 @@ openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
 
 Khi nhập vào Render env, có thể dán nguyên PEM nhiều dòng hoặc dùng dạng escaped `\n`. `server.js` đã normalize `\n`.
 
-## 5. Setup Supabase
+## 5. Setup DataHub
 
 ### 5.1. Login Và Link Project
 
 ```powershell
-cd D:\v1.2605.2(new-test)\backend\supabase
-supabase login
-supabase link --project-ref bnsnnrlwfzxemmizknwy
+cd D:\v1.2605.2(new-test)\backend\datahub
+datahub login
+datahub link --project-ref bnsnnrlwfzxemmizknwy
 ```
 
 Nếu project đã link, kiểm tra:
 
 ```powershell
-supabase migration list --linked
+datahub migration list --linked
 ```
 
 Kết quả đúng phải có local/remote khớp:
@@ -133,15 +133,15 @@ Kết quả đúng phải có local/remote khớp:
 ### 5.2. Apply Migration Nếu Chưa Có
 
 ```powershell
-cd D:\v1.2605.2(new-test)\backend\supabase
-supabase db push
+cd D:\v1.2605.2(new-test)\backend\datahub
+datahub db push
 ```
 
 Migration cần có:
 
 ```text
-backend/supabase/migrations/202606110001_autojms_bootstrap.sql
-backend/supabase/migrations/202606110002_tighten_autojms_privileges.sql
+backend/datahub/migrations/202606110001_autojms_bootstrap.sql
+backend/datahub/migrations/202606110002_tighten_autojms_privileges.sql
 ```
 
 Schema/RPC kỳ vọng:
@@ -186,7 +186,7 @@ selector-updates/selector-update-manifest.json
 Lệnh test:
 
 ```powershell
-$base = "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules"
+$base = "https://datahub.example.com"
 $paths = @(
   "manifest/app-manifest.json",
   "manifest/hash-manifest.json",
@@ -214,15 +214,15 @@ Tất cả phải là:
 
 ### 5.4. Kiểm Tra Anon Key Không Bị Sai
 
-Dùng anon key, không dùng service-role key trong app.
+Dùng device token, không dùng service-role key trong app.
 
 ```powershell
-$anon = "<SUPABASE_ANON_KEY>"
+$anon = "<AUTOJMS_DATAHUB_DEVICE_TOKEN>"
 $headers = @{
   apikey = $anon
   Authorization = "Bearer $anon"
 }
-$base = "https://bnsnnrlwfzxemmizknwy.supabase.co"
+$base = "https://datahub.example.com"
 
 Invoke-WebRequest "$base/rest/v1/waybills?select=waybill_no&limit=1" -Headers $headers
 ```
@@ -237,7 +237,7 @@ Invoke-WebRequest -Method Post "$base/rest/v1/rpc/upsert_new_waybills" `
   -Body $body
 ```
 
-Sau test, xóa row test bằng Supabase SQL editor hoặc CLI admin:
+Sau test, xóa row test bằng DataHub SQL editor hoặc CLI admin:
 
 ```sql
 delete from public.waybills where waybill_no = 'TEST_MANUAL_001';
@@ -355,7 +355,7 @@ npm run check
 
 ```powershell
 cd D:\v1.2605.2(new-test)\backend\render-license-server
-copy .env.example .env
+copy env.template .env
 notepad .env
 ```
 
@@ -372,9 +372,9 @@ FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebaseda
 FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 Firebase Admin service account JSON>
 # or FIREBASE_SERVICE_ACCOUNT_JSON=<Firebase Admin service account JSON>
 
-SUPABASE_PROJECT_URL=https://bnsnnrlwfzxemmizknwy.supabase.co
-SUPABASE_BASE_URL=https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
-SUPABASE_ANON_KEY=<Supabase anon key, never service_role>
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
 
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=
@@ -430,18 +430,18 @@ Env cần set trên Render:
 NODE_ENV=production
 FIREBASE_OPERATION_TIMEOUT_MS=8000
 FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
-SUPABASE_PROJECT_URL=https://bnsnnrlwfzxemmizknwy.supabase.co
-SUPABASE_BASE_URL=https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
 DEFAULT_UPDATE_CHANNEL=stable
 
 JWT_PRIVATE_KEY=<secret>
 JWT_PUBLIC_KEY=<secret>
 FIREBASE_SERVICE_ACCOUNT_BASE64=<secret>
-SUPABASE_ANON_KEY=<secret anon key>
+DATAHUB_API_BASE_URL=https://datahub.example.com
 VALID_EXE_HASHES=<optional>
 ```
 
-Không set `SUPABASE_ANON_KEY` bằng service-role key.
+Không set `AUTOJMS_DATAHUB_DEVICE_TOKEN` bằng service-role key.
 
 Sau deploy:
 
@@ -548,13 +548,13 @@ payload
 sid
 tier
 middleCode
-supabase.baseUrl
-supabase.projectUrl
-supabase.anonKey
-supabase.manifests
+datahub.baseUrl
+datahub.apiBaseUrl
+datahub.device enrollment token
+datahub.manifests
 ```
 
-Không paste response thật có `payload` hoặc `anonKey` vào chat/log public.
+Không paste response thật có `payload` hoặc `device enrollment token` vào chat/log public.
 
 ## 9. Build Và Chạy App
 
@@ -623,26 +623,26 @@ Kỳ vọng:
 - ABOUT vẫn là tab cuối.
 - Gõ `DASH` ở HOME URL bar mở `FullStackOperationForm`.
 - Background sync chỉ chạy nếu `TierRuntimePolicy` cho phép.
-- Supabase RPC hoạt động khi FullStack/ULTRA sync cần dùng.
+- DataHub RPC hoạt động khi FullStack/ULTRA sync cần dùng.
 
 ## 11. Troubleshooting
 
 | Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
 |---|---|---|
 | `/health` OK nhưng `/api/verify-license` timeout | Render không đọc được Firebase hoặc chưa deploy bản timeout mới | Kiểm tra `FIREBASE_SERVICE_ACCOUNT_BASE64`, `FIREBASE_DATABASE_URL`, redeploy |
-| App báo `Supabase anon key is not configured` | Render không trả `supabase.anonKey` | Set `SUPABASE_ANON_KEY` trên Render |
+| App báo `device API token is not configured` | Render không trả `datahub.device enrollment token` | Set `AUTOJMS_DATAHUB_DEVICE_TOKEN` trên Render |
 | App login fail vì JWT invalid | `JWT_PUBLIC_KEY` trong app/server không khớp private key đang ký | Dùng đúng key pair; nếu đổi public key server-side cần đảm bảo client verify tương thích |
 | License bị báo đang dùng máy khác | Firebase `hwid` đã bind máy khác | Reset `Licenses/<key>/hwid` và xóa session liên quan |
 | BASE chạy background sync | Tier policy sai hoặc license/tier manifest sai | Kiểm tra `tier-definitions.json`, `runtime-policy*.json`, log policy |
-| Supabase RPC 401/403 | RLS/grant/anon key sai | Kiểm tra migration `202606110002`, anon key, RPC grants |
-| Manifest 404 | Bucket/path sai | Kiểm tra `SUPABASE_BASE_URL` và public storage files |
+| DataHub RPC 401/403 | RLS/grant/device token sai | Kiểm tra migration `202606110002`, device token, RPC grants |
+| Manifest 404 | Bucket/path sai | Kiểm tra `DATAHUB_API_BASE_URL` và public storage files |
 | Render deploy fail ở `npm ci` | `package-lock.json` thiếu/không khớp | Chạy `npm install` local, commit lockfile |
 
 ## 12. Quy Tắc Không Được Phá
 
-- Không log full JWT, JMS AuthToken, Firebase credential, Supabase key.
-- Không dùng Supabase service-role key trong desktop client.
-- Không upload `.nupkg`, setup exe, private key lên Supabase Storage.
+- Không log full JWT, JMS AuthToken, Firebase credential, DataHub key.
+- Không dùng DataHub service-role key trong desktop client.
+- Không upload `.nupkg`, setup exe, private key lên VPS config API.
 - Không để BASE chạy background inventory/database sync.
 - Không mở GitHub page khi update; Velopack tự xử lý qua GitHub Releases.
 - Không truy cập WebView2 ngoài UI thread.
@@ -655,12 +655,12 @@ Kỳ vọng:
 cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm run check
 
-# Supabase migrations
-cd D:\v1.2605.2(new-test)\backend\supabase
-supabase migration list --linked
+# DataHub migrations
+cd D:\v1.2605.2(new-test)\backend\datahub
+datahub migration list --linked
 
-# Supabase public files
-$base = "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules"
+# DataHub public files
+$base = "https://datahub.example.com"
 $paths = @(
   "manifest/app-manifest.json",
   "manifest/hash-manifest.json",
@@ -688,9 +688,9 @@ dotnet build .\src\AutoJMS\AutoJMS.csproj -c Debug --no-restore /clp:Summary
 
 Manual hoàn tất khi:
 
-- Supabase migration match.
+- DataHub migration match.
 - Tất cả public JSON trả `200`.
 - Render `/health` OK.
 - Fake license trả JSON lỗi nhanh.
-- License test thật trả payload/session/tier/Supabase config.
+- License test thật trả payload/session/tier/DataHub config.
 - AutoJMS build thành công và đăng nhập được bằng license test.

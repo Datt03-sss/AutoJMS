@@ -104,7 +104,7 @@ tự lên → load token store → **probe lại token trước khi dùng**.
 Worker A → License A → JMS Account A → Token A
 Worker B → License B → JMS Account B → Token B
 ```
-Mỗi token **chỉ mã hoá cho Worker trên chính máy đó**. Supabase giữ registry tổng hợp nhưng **KHÔNG**
+Mỗi token **chỉ mã hoá cho Worker trên chính máy đó**. DataHub giữ registry tổng hợp nhưng **KHÔNG**
 chuyển Token A cho Worker B. Site chỉ có **một active binding**:
 ```
 site_code · leader_term · worker_id · license_subject · active_candidate_id · token_fp · selection_epoch
@@ -240,7 +240,7 @@ Worker (LAN, chỉ có WorkerAccessToken)
 5. Toàn bộ token invalid → **0 request JMS, service vẫn chạy**.
 6. Relay token mới → **fetch tự phục hồi không restart**.
 7. License hạ BASE dù JMS token còn valid → **Worker drain + ngừng fetch**.
-8. Mất Supabase/lease → **fail-closed trước request kế**.
+8. Mất DataHub/lease → **fail-closed trước request kế**.
 
 > Các tiêu chí này bổ sung vào **Integration Gate (G4–G7)** và Operations; #7/#8 gắn với entitlement
 > (P0-A) + lease/drain (P0-D).

@@ -33,7 +33,7 @@
 1. Read `docs/manual/MANUAL_OPERATIONS.md`.
 2. Read `docs/manual/QUICK_RELEASE_CHECKLIST.md`.
 3. Confirm stable/beta channel.
-4. Verify GitHub Release assets and Supabase manifests.
+4. Verify GitHub Release assets and DataHub manifests.
 5. Write release report.
 
 ## Task board workflow

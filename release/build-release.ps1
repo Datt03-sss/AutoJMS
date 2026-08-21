@@ -9,7 +9,7 @@
         *.nupkg, Setup.exe). releases.{channel}.json is the index the Velopack
         1.x client actually reads; RELEASES is legacy Squirrel and unused by it.
       • update.xml      → small UI/channel manifest read by About dialog
-      • Supabase        → version-latest.json + hash-manifest.json control manifests
+      • DataHub        → version-latest.json + hash-manifest.json control manifests
 
     The app reads update.xml from:
       https://raw.githubusercontent.com/Datt03-sss/AutoJMS-Update/main/update.xml
@@ -23,7 +23,7 @@
       2. Verify self-contained publish
       3. vpk pack → produces .nupkg + Setup.exe + RELEASES + releases.{channel}.json
       4. Upload: binaries → GitHub Release (gh), update.xml → GitHub repo,
-         Supabase manifests → Storage bucket manifest/
+         DataHub manifests → Storage bucket manifest/
 
     GitHub release tag format:
       stable: v{VelopackVersion}-Release   (prerelease=false)
@@ -50,10 +50,10 @@
     Publish binaries to GitHub Release + update.xml to the GitHub repo.
 .PARAMETER GitHubRepo
     GitHub repo hosting the binaries (default: Datt03-sss/AutoJMS-Update)
-.PARAMETER SupabaseProjectRef
-    Supabase project ref hosting small manifests (default: bnsnnrlwfzxemmizknwy)
-.PARAMETER SupabaseBucket
-    Supabase Storage bucket for AutoJMS manifests (default: autojms-modules)
+.PARAMETER DataHubProjectRef
+    DataHub project ref hosting small manifests (default: bnsnnrlwfzxemmizknwy)
+.PARAMETER DataHubBucket
+    VPS config API bucket for AutoJMS manifests (default: autojms-modules)
 .EXAMPLE
     .\build-release.ps1 -Version "1.26.6" -Channel stable
     .\build-release.ps1 -Version "1.26.6-beta.1" -Channel beta
@@ -86,13 +86,13 @@ param(
 
     [string]$UpdateXmlBranch = "main",
 
-    [string]$SupabaseProjectRef = "bnsnnrlwfzxemmizknwy",
+    [string]$DataHubProjectRef = "bnsnnrlwfzxemmizknwy",
 
-    [string]$SupabaseBucket = "autojms-modules",
+    [string]$DataHubBucket = "autojms-modules",
 
-    [string]$SupabaseWorkdir,
+    [string]$DataHubWorkdir,
 
-    [switch]$SkipSupabaseManifestUpload
+    [switch]$SkipDataHubManifestUpload
 )
 
 $ErrorActionPreference = "Stop"
@@ -102,8 +102,8 @@ $Project = Join-Path $ProjectRoot "src\AutoJMS\AutoJMS.csproj"
 $PublishDir = Join-Path $ProjectRoot "artifacts\publish\win-x64"
 $OutputDir = Join-Path $ScriptDir "output\$Channel"
 $InnoBuilder = Join-Path $ProjectRoot "installer\inno\build-installer.ps1"
-if ([string]::IsNullOrWhiteSpace($SupabaseWorkdir)) {
-    $SupabaseWorkdir = Join-Path $ProjectRoot "backend\supabase"
+if ([string]::IsNullOrWhiteSpace($DataHubWorkdir)) {
+    $DataHubWorkdir = Join-Path $ProjectRoot "backend\datahub"
 }
 
 function Write-Log {
@@ -733,16 +733,20 @@ function Publish-UpdateXml {
     Write-Log "  update.xml published to $Repo/$Path ($Branch)." "Green"
 }
 
-# ─── Supabase manifests (small control-plane files only) ───
+# ─── DataHub manifests (small control-plane files only) ───
 
-function Get-SupabasePublicObjectUrl {
+function Get-DataHubPublicObjectUrl {
     param(
         [string]$ProjectRef,
         [string]$Bucket,
         [string]$ObjectPath
     )
 
-    return "https://$ProjectRef.supabase.co/storage/v1/object/public/$Bucket/$ObjectPath"
+    $base = ($env:DATAHUB_MANIFEST_BASE_URL ?? $env:DATAHUB_API_BASE_URL ?? "").TrimEnd('/')
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        throw "DATAHUB_MANIFEST_BASE_URL or DATAHUB_API_BASE_URL must point to the VPS."
+    }
+    return "$base/$($ObjectPath.TrimStart('/'))"
 }
 
 function Read-PublicJson {
@@ -877,7 +881,7 @@ function New-HashManifestJson {
     return $manifest | ConvertTo-Json -Depth 20
 }
 
-function Publish-SupabaseManifestObject {
+function Publish-DataHubManifestObject {
     param(
         [string]$LocalPath,
         [string]$ObjectPath,
@@ -886,109 +890,16 @@ function Publish-SupabaseManifestObject {
         [string]$Workdir
     )
 
-    if (-not (Test-Path $LocalPath)) {
-        throw "Supabase manifest file not found: $LocalPath"
+    if (-not (Test-Path $LocalPath)) { throw "Manifest file not found: $LocalPath" }
+    $uploadBase = ($env:DATAHUB_MANIFEST_UPLOAD_URL ?? $env:DATAHUB_API_BASE_URL ?? "").TrimEnd('/')
+    $adminToken = $env:DATAHUB_ADMIN_TOKEN
+    if ([string]::IsNullOrWhiteSpace($uploadBase) -or [string]::IsNullOrWhiteSpace($adminToken)) {
+        throw "Set DATAHUB_MANIFEST_UPLOAD_URL (or DATAHUB_API_BASE_URL) and DATAHUB_ADMIN_TOKEN for VPS publishing."
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($env:SUPABASE_SERVICE_ROLE_KEY)) {
-        $url = "https://$ProjectRef.supabase.co/storage/v1/object/$Bucket/$ObjectPath"
-        $headers = @{
-            Authorization = "Bearer $env:SUPABASE_SERVICE_ROLE_KEY"
-            apikey        = $env:SUPABASE_SERVICE_ROLE_KEY
-            "x-upsert"    = "true"
-            "cache-control" = "60"
-        }
-
-        Invoke-WebRequest -Uri $url `
-            -Method Post `
-            -Headers $headers `
-            -ContentType "application/json" `
-            -InFile $LocalPath `
-            -TimeoutSec 60 | Out-Null
-
-        Write-Log "  Supabase uploaded: $ObjectPath (service role)" "Green"
-        return
-    }
-
-    $supabase = Get-Command supabase -ErrorAction SilentlyContinue
-    if (-not $supabase) {
-        throw "SUPABASE_SERVICE_ROLE_KEY is not set and Supabase CLI was not found. Cannot upload $ObjectPath."
-    }
-
-    if (-not (Test-Path $Workdir)) {
-        throw "Supabase workdir not found: $Workdir"
-    }
-
-    Push-Location $Workdir
-    try {
-        $sourceForCli = Resolve-Path -LiteralPath $LocalPath -Relative
-    }
-    finally {
-        Pop-Location
-    }
-    $target = "ss:///$Bucket/$ObjectPath"
-
-    $uploadArgs = @(
-        "--workdir", $Workdir,
-        "--experimental",
-        "--yes",
-        "storage", "cp",
-        "--linked",
-        "--content-type", "application/json",
-        "--cache-control", "60",
-        $sourceForCli,
-        $target
-    )
-
-    $oldErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-        $uploadOutput = & supabase @uploadArgs 2>&1
-        $uploadExitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $oldErrorActionPreference
-    }
-
-    if ($uploadExitCode -ne 0) {
-        $uploadText = ($uploadOutput | Out-String)
-        if ($uploadText -match "Duplicate") {
-            Write-Log "  Supabase object exists; replacing $ObjectPath." "Yellow"
-
-            $oldErrorActionPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            try {
-                $removeOutput = & supabase --workdir $Workdir --experimental --yes storage rm --linked $target 2>&1
-                $removeExitCode = $LASTEXITCODE
-            }
-            finally {
-                $ErrorActionPreference = $oldErrorActionPreference
-            }
-
-            if ($removeExitCode -ne 0) {
-                $removeText = ($removeOutput | Out-String)
-                Write-Log $removeText "Yellow"
-                throw "Supabase CLI remove failed for existing $ObjectPath."
-            }
-
-            $oldErrorActionPreference = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            try {
-                $uploadOutput = & supabase @uploadArgs 2>&1
-                $uploadExitCode = $LASTEXITCODE
-            }
-            finally {
-                $ErrorActionPreference = $oldErrorActionPreference
-            }
-        }
-
-        if ($uploadExitCode -ne 0) {
-            $uploadText = ($uploadOutput | Out-String)
-            throw "Supabase CLI upload failed for $ObjectPath. $uploadText"
-        }
-    }
-
-    Write-Log "  Supabase uploaded: $ObjectPath (linked CLI)" "Green"
+    $url = "$uploadBase/api/v1/admin/manifests/$($ObjectPath.TrimStart('/'))"
+    Invoke-WebRequest -Uri $url -Method Put -Headers @{ Authorization = "Bearer $adminToken" } -ContentType "application/json" -InFile $LocalPath -TimeoutSec 60 | Out-Null
+    Write-Log "  VPS manifest uploaded: $ObjectPath" "Green"
 }
 
 # ─── Main ─────────────────────────────────────────────────
@@ -1127,9 +1038,9 @@ try {
     Write-Log "Release tag:      $releaseTag" "Green"
     Write-Host ""
 
-    Write-Log "Step 3c: Generating Supabase manifests..." "Cyan"
-    $versionManifestUrl = Get-SupabasePublicObjectUrl -ProjectRef $SupabaseProjectRef -Bucket $SupabaseBucket -ObjectPath "manifest/version-latest.json"
-    $hashManifestUrl = Get-SupabasePublicObjectUrl -ProjectRef $SupabaseProjectRef -Bucket $SupabaseBucket -ObjectPath "manifest/hash-manifest.json"
+    Write-Log "Step 3c: Generating DataHub manifests..." "Cyan"
+    $versionManifestUrl = Get-DataHubPublicObjectUrl -ProjectRef $DataHubProjectRef -Bucket $DataHubBucket -ObjectPath "manifest/version-latest.json"
+    $hashManifestUrl = Get-DataHubPublicObjectUrl -ProjectRef $DataHubProjectRef -Bucket $DataHubBucket -ObjectPath "manifest/hash-manifest.json"
     $existingVersionManifest = Read-PublicJson -Url $versionManifestUrl
     $existingHashManifest = Read-PublicJson -Url $hashManifestUrl
 
@@ -1161,7 +1072,7 @@ try {
 
     # Step 4: Upload (optional)
     if ($Upload) {
-        Write-Log "Step 4: Publishing release (GitHub Release assets + update.xml + Supabase manifests)..." "Cyan"
+        Write-Log "Step 4: Publishing release (GitHub Release assets + update.xml + DataHub manifests)..." "Cyan"
 
         Assert-GitHubCli
         Publish-GitHubRelease -Repo $GitHubRepo -Tag $releaseTag -Title $releaseTitle `
@@ -1190,25 +1101,25 @@ try {
             -Branch $UpdateXmlBranch `
             -Message "Update $UpdateXmlPath for $releaseTag"
 
-        if ($SkipSupabaseManifestUpload) {
-            Write-Log "  Supabase manifest upload skipped by -SkipSupabaseManifestUpload." "Yellow"
+        if ($SkipDataHubManifestUpload) {
+            Write-Log "  DataHub manifest upload skipped by -SkipDataHubManifestUpload." "Yellow"
         } else {
-            Publish-SupabaseManifestObject -LocalPath $versionLatestPath `
+            Publish-DataHubManifestObject -LocalPath $versionLatestPath `
                 -ObjectPath "manifest/version-latest.json" `
-                -ProjectRef $SupabaseProjectRef `
-                -Bucket $SupabaseBucket `
-                -Workdir $SupabaseWorkdir
+                -ProjectRef $DataHubProjectRef `
+                -Bucket $DataHubBucket `
+                -Workdir $DataHubWorkdir
 
-            Publish-SupabaseManifestObject -LocalPath $hashManifestPath `
+            Publish-DataHubManifestObject -LocalPath $hashManifestPath `
                 -ObjectPath "manifest/hash-manifest.json" `
-                -ProjectRef $SupabaseProjectRef `
-                -Bucket $SupabaseBucket `
-                -Workdir $SupabaseWorkdir
+                -ProjectRef $DataHubProjectRef `
+                -Bucket $DataHubBucket `
+                -Workdir $DataHubWorkdir
         }
 
-        Write-Log "  Publish complete (assets=GitHub Release, update.xml=GitHub raw, manifests=Supabase)." "Green"
+        Write-Log "  Publish complete (assets=GitHub Release, update.xml=GitHub raw, manifests=DataHub)." "Green"
     } else {
-        Write-Log "Step 4: Skipping upload. Run with -Upload to push GitHub Release assets, update.xml, and Supabase manifests." "Yellow"
+        Write-Log "Step 4: Skipping upload. Run with -Upload to push GitHub Release assets, update.xml, and DataHub manifests." "Yellow"
     }
 
     # Summary
@@ -1224,7 +1135,7 @@ try {
     }
     Write-Host ""
     if (-not $Upload) {
-        Write-Log "Next: publish (GitHub Release assets + update.xml + Supabase manifests) with:" "Yellow"
+        Write-Log "Next: publish (GitHub Release assets + update.xml + DataHub manifests) with:" "Yellow"
         Write-Log "  .\build-release.ps1 -Version `"$VelopackVersion`" -Channel $Channel -Upload -SkipPublish" "White"
     }
     Write-Host ""

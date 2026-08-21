@@ -3,7 +3,7 @@
 ================================================================================
 
 Tài liệu này mô tả từng bước quy trình build setup file (cài lần đầu) và
-build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần sửa code.
+build release update (cập nhật qua Velopack từ DataHub) sau mỗi lần sửa code.
 
 ================================================================================
   CẤU TRÚC FOLDER
@@ -20,10 +20,10 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
   │     │     └── vc_redist.x64.exe
   │     └── installer-output\       ← Output: AutoJMS-win-Setup.exe
   │
-  ├── Release\                      ← Build Velopack update (push lên Supabase)
+  ├── Release\                      ← Build Velopack update (push lên DataHub)
   │     ├── build-release.ps1       ← Script build release
   │     ├── build-release.bat       ← Double-click để build
-  │     ├── upload-only.bat         ← Upload release đã build lên Supabase
+  │     ├── upload-only.bat         ← Upload release đã build lên DataHub
   │     └── output\                 ← Output theo channel
   │           ├── stable\           ← RELEASES-stable, .nupkg, Setup.exe
   │           └── beta\
@@ -104,7 +104,7 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
        b) .NET Reactor protect AutoJMS.dll
        c) vpk pack → tạo .nupkg + RELEASES
        d) Upload binaries lớn lên GitHub Releases (gh CLI)
-       e) Upload manifest nhỏ (version-latest.json) lên Supabase
+       e) Upload manifest nhỏ (version-latest.json) lên DataHub
 
   3. XÁC NHẬN UPLOAD:
      ─────────────────────────────────────────────
@@ -116,15 +116,15 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
           - AutoJMS-*-Setup.exe
         Beta phải được mark prerelease=true.
 
-     b) Supabase (manifest nhỏ):
-        https://supabase.com/dashboard/project/valmbajjpkjccqslsuou/storage/files/buckets/autojms-modules
+     b) DataHub (manifest nhỏ):
+        VPS DataHub API manifest endpoint configured by deployment environment
         Kiểm tra: manifest/version-latest.json  (provider=github, trỏ đúng tag)
-        LƯU Ý: .nupkg/Setup.exe KHÔNG còn upload lên Supabase (giới hạn 50MB).
+        LƯU Ý: .nupkg/Setup.exe KHÔNG còn upload lên DataHub (giới hạn 50MB).
 
   4. USER NHẬN UPDATE:
      ─────────────────────────────────────────────
      User mở AutoJMS → tab About → nhấn "Check Update"
-     → App đọc version-latest.json từ Supabase (provider=github)
+     → App đọc version-latest.json từ DataHub (provider=github)
      → App tải bản mới TRỰC TIẾP từ GitHub Releases qua Velopack GithubSource
      → KHÔNG mở trang GitHub trên trình duyệt
      → Hiện progress bar → tự restart với phiên bản mới
@@ -147,7 +147,7 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
      .\upload-only.bat
 
      → Chọn channel: stable
-     → Script upload toàn bộ file từ Release\output\stable\ lên Supabase
+     → Script upload toàn bộ file từ Release\output\stable\ lên DataHub
 
 
 ================================================================================
@@ -171,10 +171,10 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
   - Velopack yêu cầu version 3 phần: MAJOR.MINOR.PATCH (ví dụ: 1.26.7)
   - Nếu nhập 4 phần (1.26.7.1), script tự convert: 1.26.7.1 → 1.26.7
     (patch = part3 + part4 - 1)
-  - Version MỚI phải LUÔN LỚN HƠN version cũ trên Supabase
+  - Version MỚI phải LUÔN LỚN HƠN version cũ trên DataHub
   - Nếu lỗi "release which is equal or greater":
     → Tăng version lên (ví dụ: 1.26.8)
-    → Hoặc xóa file cũ trên Supabase rồi upload lại
+    → Hoặc xóa file cũ trên DataHub rồi upload lại
 
 
 ================================================================================
@@ -212,8 +212,8 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
   [ ] Version đã tăng so với bản trước
   [ ] .NET Reactor không bị lỗi (hoặc dùng -SkipReactor nếu test)
   [ ] Build release thành công (không error)
-  [ ] Upload lên Supabase thành công
-  [ ] Kiểm tra trên Supabase Dashboard: file .nupkg có đúng size
+  [ ] Upload lên DataHub thành công
+  [ ] Kiểm tra trên DataHub Dashboard: file .nupkg có đúng size
   [ ] Test trên máy khác: mở app → Check Update → nhận bản mới
   [ ] Sau update: app chạy bình thường, data không mất
 
@@ -228,12 +228,12 @@ build release update (cập nhật qua Velopack từ Supabase) sau mỗi lần s
   Lỗi: "Velopack Setup payload missing" khi chạy installer
   → Build release trước (Release\build-release.bat), rồi mới build installer.
 
-  Lỗi: "supabase: command not found"
-  → Cài Supabase CLI: npm install -g supabase
+  Lỗi: "datahub: command not found"
+  → Cài DataHub CLI: npm install -g datahub
   → Hoặc upload thủ công qua Dashboard.
 
   Lỗi: App không nhận update
-  → Kiểm tra file RELEASES-stable trên Supabase có đúng version mới
+  → Kiểm tra file RELEASES-stable trên DataHub có đúng version mới
   → Kiểm tra app đang chạy từ Velopack layout (C:\AutoJMS\current\)
   → Xem log: C:\AutoJMS\AppData\logs\debug.log
 

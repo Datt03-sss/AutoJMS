@@ -42,7 +42,7 @@ Do not bypass the tier gate for BASE.
 
 **Check**:
 1. Is auth token available?
-2. Is Supabase connected?
+2. Is DataHub connected?
 3. Is `_isRealtimeStarted` true?
 
 **Logs to check**:

@@ -26,7 +26,7 @@ AutoJMS is a **.NET 8 WinForms desktop application** built to automate Vietnames
 | **Architecture** | Windows Forms | Built-in |
 | **UI Library** | SunnyUI | 3.9.6 |
 | **Browser Control** | WebView2 | 1.0.3912.50 |
-| **Cloud Database** | Supabase PostgreSQL | — |
+| **Cloud Database** | DataHub PostgreSQL | — |
 | **Licensing DB** | Firebase Realtime DB | — |
 | **License API** | Node.js/Express (Render hosting) | — |
 | **Installer** | Inno Setup | 6.x |
@@ -45,7 +45,7 @@ AutoJMS is a **.NET 8 WinForms desktop application** built to automate Vietnames
 | **JMS Gateway** | `jmsgw.jtexpress.vn` | Direct HTTP API integration. |
 | **License Server** | `autojms-api.onrender.com` | Handshake, heartbeat, and license verify. |
 | **Firebase RTDB** | `keyauthjms-default-rtdb` | Storage of active licenses, keys, and tiers. |
-| **Supabase** | `bnsnnrlwfzxemmizknwy.supabase.co` | Storage of manifests, selectors, integrity hashes, and waybill records. |
+| **DataHub** | `https://datahub.example.com` | API, SignalR, manifests, selectors, integrity hashes, and waybill records. |
 | **GitHub Releases** | `Datt03-sss/AutoJMS-Update` | Hosting binary `.nupkg` releases for Velopack. |
 
 ---

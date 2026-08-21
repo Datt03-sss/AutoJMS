@@ -1,6 +1,6 @@
 # Nghiên cứu: Lấy toàn bộ mã vận đơn tồn kho nhanh nhất & đồng bộ tối ưu
 
-> Nguồn: khảo sát trực tiếp trên `jms.jtexpress.vn` (Chỉ số vận hành → Khâu phát → **Giám sát tồn kho (Big Data)** → tab **Chi tiết** → nút **Tìm kiếm**) + đối chiếu code `InventorySyncService.cs`, `DatabaseTracking.cs`, migration Supabase. Ngày khảo sát: 2026-07-15.
+> Nguồn: khảo sát trực tiếp trên `jms.jtexpress.vn` (Chỉ số vận hành → Khâu phát → **Giám sát tồn kho (Big Data)** → tab **Chi tiết** → nút **Tìm kiếm**) + đối chiếu code `InventorySyncService.cs`, `DatabaseTracking.cs`, migration DataHub. Ngày khảo sát: 2026-07-15.
 
 ## 1. Phát hiện từ request thật
 
@@ -51,7 +51,7 @@ Nhưng site thật gọi bản **không có "2"**. Cần kiểm tra bản nào l
 
 ## 4. Không xóa dữ liệu cũ — chỉ cập nhật (ĐÃ ĐÁP ỨNG)
 
-Các RPC Supabase không bao giờ xóa:
+Các RPC DataHub không bao giờ xóa:
 
 - `merge_waybill_rows_v2`: `on conflict (waybill_no) do update ... where excluded.updated_at >= waybills.updated_at` → **newest-wins**, đơn cũ được giữ, chỉ ghi đè khi dữ liệu mới hơn.
 - `upsert_new_waybills`: `on conflict do nothing` → không đụng đơn đã có.
@@ -91,7 +91,7 @@ private static bool IsTerminalStatus(WaybillDbModel row)
 | 2 | Đổi kéo trang tuần tự → trang 1 rồi song song, bỏ delay 250ms | `InventorySyncService.cs:139–268` |
 | 3 | Test & nâng `PageSize` (500/1000) | `InventorySyncService.cs:19` |
 | 4 | Thêm `IsTerminalStatus` (gồm "Ký nhận CPN" + "Kết thúc") | `DatabaseTracking.cs:106` |
-| 5 | Lọc `is_active = false` khỏi danh sách tracking chu kỳ sau | `DatabaseTracking.cs`, `SupabaseDbService.GetActiveWaybillsAsync` |
+| 5 | Lọc `is_active = false` khỏi danh sách tracking chu kỳ sau | `DatabaseTracking.cs`, `DataHubClient.GetActiveWaybillsAsync` |
 | 6 | Cập nhật cờ `is_in_current_inventory` cho đơn đã rời kho (không delete) | RPC / merge |
 
 Tất cả thay đổi ở mục 6 đều tuân thủ nguyên tắc "chỉ cập nhật, không xóa" và không đụng file protected.

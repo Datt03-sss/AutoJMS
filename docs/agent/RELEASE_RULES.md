@@ -10,7 +10,7 @@ Only the human project owner is authorized to:
 - Tag git commits.
 - Run `build-release.ps1` with the `-Upload` flag.
 - Distribute Inno Setup `.exe` installers.
-- Update release manifests on Supabase Storage.
+- Update release manifests on VPS config API.
 
 ---
 
@@ -45,4 +45,4 @@ AI agents can simulate a release to test compile and publish paths. This must be
 - **Validation**:
   - Confirms compilation in Release mode.
   - Generates binary packages in a local dry-run folder.
-  - Ensures no network calls are made to GitHub Releases or Supabase storage buckets.
+  - Ensures no network calls are made to GitHub Releases or VPS config API buckets.

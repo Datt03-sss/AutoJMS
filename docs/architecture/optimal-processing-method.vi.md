@@ -33,7 +33,7 @@ Tài liệu nghiên cứu, tổng hợp và chốt kiến trúc xử lý tối �
                                                                ▼
                      Order detail: CHỈ khi click/double-click 1 đơn → upsert detail
                                                                ▼
-                     Realtime (Supabase) đẩy thay đổi xuống dashboard
+                     Realtime (DataHub) đẩy thay đổi xuống dashboard
 ```
 
 ## 3. Các cơ chế tối ưu

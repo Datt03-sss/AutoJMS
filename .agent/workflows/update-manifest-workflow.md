@@ -1,6 +1,6 @@
 # Update Manifest Workflow
 
-Use this workflow when updating Supabase manifests.
+Use this workflow when updating DataHub manifests.
 
 ## When to Update
 
@@ -17,7 +17,7 @@ Control plane - which version/channel/provider.
 
 ```powershell
 # Fetch existing
-$existing = Invoke-RestMethod https://valmbajjpkjccqslsuou.supabase.co/storage/v1/object/public/autojms-modules/manifest/version-latest.json
+$existing = Invoke-RestMethod https://datahub.example.com/manifest/version-latest.json
 
 # Update stable channel
 $existing.channels.stable = @{
@@ -52,9 +52,9 @@ $existing.channels.beta = @{
 
 # Upload
 Invoke-RestMethod -Method Post `
-    -Uri "https://valmbajjpkjccqslsuou.supabase.co/storage/v1/object/autojms-modules/manifest/version-latest.json" `
+    -Uri "https://datahub.example.com/manifest/version-latest.json" `
     -Headers @{
-        Authorization = "Bearer $env:SUPABASE_SERVICE_ROLE_KEY"
+        Authorization = "Bearer $env:DATAHUB_SERVICE_ROLE_KEY"
         "x-upsert" = "true"
     } `
     -ContentType "application/json" `
@@ -122,7 +122,7 @@ Invoke-RestMethod -Method Post ... -Body ($current | ConvertTo-Json)
 - [ ] Manifest accessible via URL
 - [ ] JSON valid
 - [ ] Version matches release
-- [ ] Provider correct (github/supabase)
+- [ ] Provider correct (github/datahub)
 - [ ] Other channels preserved
 
 ## Common Issues
@@ -132,4 +132,4 @@ Invoke-RestMethod -Method Post ... -Body ($current | ConvertTo-Json)
 | Other channels lost | Fetch before upload |
 | Invalid JSON | Validate before upload |
 | Wrong version | Double-check version |
-| Provider wrong | Set to github or supabase |
+| Provider wrong | Set to github or datahub |

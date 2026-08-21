@@ -14,12 +14,12 @@ Read these before proposing changes:
 - ULTRA adds `FullStackOperation` as a separate visible form, not a tab.
 - ABOUT tab must remain last.
 - Firebase/Render license server handles license/session/auth/tier.
-- Supabase is used for manifests/config/hash/tier/selector update and legacy waybill database paths.
+- DataHub is used for manifests/config/hash/tier/selector update and legacy waybill database paths.
 - GitHub Releases host Velopack binaries.
 - Inno Setup is first install/reinstall wrapper.
 - Velopack is in-app update.
 - Do not open GitHub pages for update.
-- Do not upload `.nupkg` to Supabase.
+- Do not upload `.nupkg` to DataHub.
 - Do not let BASE start background inventory/database sync.
 - Do not access WebView2 outside UI thread.
 - Do not log production tokens in full.
@@ -58,7 +58,7 @@ Core app:
 - `src/AutoJMS/Forms/Main.cs`: BASE tabs, WebView2, auth token capture, Tracking/Print/About, DASH command for FullStackOperation.
 - `src/AutoJMS/Forms/Main.Designer.cs`: WinForms Designer for Main.
 - `src/AutoJMS/Config/AppPaths.cs`: centralized runtime paths.
-- `src/AutoJMS/Config/AppConfig.cs`: encrypted secure runtime config and JMS/Supabase/update defaults.
+- `src/AutoJMS/Config/AppConfig.cs`: encrypted secure runtime config and JMS/DataHub/update defaults.
 - `src/AutoJMS/Config/SettingsManager.cs`: plain `AutoJMS.json` settings.
 
 License/auth/tier:
@@ -131,7 +131,7 @@ High-level flow in `Program.Main()`:
 Important: `InitializeServicesFromLicense(VerifyResult)` stores:
 
 - `Program.UpdateChannel`
-- Supabase manifest/runtime/update services
+- DataHub manifest/runtime/update services
 - `SiteContextProvider.ApplyLicenseMiddleCode(result.MiddleCode)`
 - `AppConfig.Current.DataSpreadsheetId`
 
@@ -182,7 +182,7 @@ Key files:
 - Google service account path default: `AppData\service_account.json`.
 - data spreadsheet ID.
 - action site code.
-- Supabase config.
+- DataHub config.
 
 ## 6. Token and Auth Model
 
@@ -550,11 +550,11 @@ Potential inconsistency:
 - There is also an old `FullStackPodTrackingApiClient` for GET `podTrackingList`.
 - If solving journey correctness, confirm which service is actually used by `FullStackJourneyService` and remove/ignore old paths carefully.
 
-## 15. Supabase / Database
+## 15. DataHub / Database
 
-`SupabaseDbService` still exists and is used by older sync paths:
+`DataHubClient` still exists and is used by older sync paths:
 
-- Hardcoded Supabase URL and anon key exist in source.
+- Hardcoded DataHub URL and anon key exist in source.
 - RPCs:
   - `try_acquire_inventory_lease`
   - `refresh_inventory_lease`
@@ -562,17 +562,17 @@ Potential inconsistency:
   - `complete_inventory_sync`
   - `upsert_new_waybills`
   - `merge_waybill_tracking_rows`
-- Tables/models through Supabase C# client include `WaybillDbModel`.
+- Tables/models through DataHub C# client include `WaybillDbModel`.
 
 Current product direction from recent work:
 
 - FullStack operational inventory should be local-first SQLite.
-- Supabase should retain manifest/config/update, not be required for operational inventory performance.
+- DataHub should retain manifest/config/update, not be required for operational inventory performance.
 
 Risk:
 
-- Existing `Main` still contains Supabase inventory sync methods, but `TierRuntimePolicy` should prevent BASE background sync.
-- Hardcoded anon key and missing/mismatched Supabase migration coverage are known risks.
+- Existing `Main` still contains DataHub inventory sync methods, but `TierRuntimePolicy` should prevent BASE background sync.
+- Hardcoded anon key and missing/mismatched DataHub migration coverage are known risks.
 
 ## 16. Google Sheets
 
@@ -620,7 +620,7 @@ Fields parsed:
 1. Read `update.xml`.
 2. If channel provider is GitHub/repo URL, use `GithubSource`.
 3. Else fallback to version-latest.json.
-4. Else fallback to legacy Supabase `SimpleWebSource`.
+4. Else fallback to legacy DataHub `SimpleWebSource`.
 5. `CheckAndUpdateAsync()` asks user, downloads, calls `PrepareForUpdateAsync()`, applies update and restarts.
 
 About tab:
@@ -768,8 +768,8 @@ Verify flow:
    - nested `license`
    - `cfg.dataSpreadsheetId`
    - `cfg.updateChannel`
-   - `supabase.baseUrl`
-   - `supabase.manifests`
+   - `datahub.baseUrl`
+   - `datahub.manifests`
 
 Firebase license example shape from recent context:
 
@@ -811,12 +811,12 @@ Security/config:
 
 - JMS authToken may be logged in full via `JmsAuthTokenService.LogToken()`; fix before production logging.
 - Google `service_account.json` is sensitive. Do not share contents externally.
-- Supabase anon key is hardcoded in `SupabaseDbService.cs`; verify RLS/RPC permissions.
+- DataHub anon key is hardcoded in `DataHubClient.cs`; verify RLS/RPC permissions.
 - License server public key/private key rotation model should be reviewed before public distribution.
 
 Architecture:
 
-- Some old Supabase operational sync code remains while FullStack is moving local-first.
+- Some old DataHub operational sync code remains while FullStack is moving local-first.
 - FullStack journey has multiple API/parser paths; risk of inconsistent display or old GET client accidentally being reused.
 - Settings are split between `AutoJMS.json` and secure config; this is workable but should be documented in any future config plan.
 - Offline startup can bypass fresh license config initialization; middleCode depends on local saved settings.
@@ -856,7 +856,7 @@ If Claude Chat is asked for project planning, use this order:
    - GitHub Release asset completeness
 4. Verify FullStack local-first:
    - SQLite schema/migrations
-   - old Supabase dependencies
+   - old DataHub dependencies
    - Journey API/parser consistency
    - BASE/ULTRA gating
 5. Verify backend license contract:
@@ -934,11 +934,11 @@ Ask the owner before large changes:
 
 - Is `MiddleCode` the only production site identifier for print safety, or are there multi-site licenses?
 - Should FullStack journey display preserve raw JMS text 100%, or is translation acceptable in any context?
-- Should Supabase operational data be removed entirely from FullStack path, or only kept as legacy fallback?
+- Should DataHub operational data be removed entirely from FullStack path, or only kept as legacy fallback?
 - Which endpoints are officially stable vs captured from JMS web?
 - Should service account credentials be distributed per install, per license, or managed server-side?
 - Is code signing required for installer/Velopack releases?
-- Are there staging Firebase/Render/Supabase projects for safe testing?
+- Are there staging Firebase/Render/DataHub projects for safe testing?
 
 ## 26. Minimal Context Summary for Claude
 

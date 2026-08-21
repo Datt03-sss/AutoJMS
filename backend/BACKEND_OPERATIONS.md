@@ -5,18 +5,18 @@ Date: 2026-06-11
 This document is the backend runbook for AutoJMS. It covers the three backend services used by the desktop app:
 
 - Firebase Realtime Database: license, session, tier, and office context data.
-- Supabase: public control-plane manifests, runtime policies, hash manifests, selector updates, and legacy waybill/RPC database paths.
-- Render: Node/Express license server that verifies licenses, issues JWTs, maintains heartbeat sessions, and returns Supabase config to the client.
+- DataHub: public control-plane manifests, runtime policies, hash manifests, selector updates, and legacy waybill/RPC database paths.
+- Render: Node/Express license server that verifies licenses, issues JWTs, maintains heartbeat sessions, and returns DataHub config to the client.
 
-Do not commit real private keys, Firebase service account files, Supabase service-role keys, license keys, or production tokens.
+Do not commit real private keys, Firebase service account files, DataHub service-role keys, license keys, or production tokens.
 
 ## Current Service Map
 
 | Service | Current role | Production identifier |
 |---|---|---|
 | Firebase Realtime Database | License/session state read by Render server | `keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app` |
-| Supabase project | Storage + PostgreSQL/RPC backend | `bnsnnrlwfzxemmizknwy` |
-| Supabase Storage bucket | Public JSON control files | `autojms-modules` |
+| DataHub project | Storage + PostgreSQL/RPC backend | `bnsnnrlwfzxemmizknwy` |
+| VPS config API bucket | Public JSON control files | `autojms-modules` |
 | Render service | License API and heartbeat API | `https://autojms-api.onrender.com` |
 
 Backend source locations:
@@ -28,7 +28,7 @@ backend/
     license-key-schema.txt
   render-license-server/
     server.js
-  supabase/
+  datahub/
     config.toml
     seed.sql
     migrations/
@@ -46,10 +46,10 @@ Firebase owns:
 - Data spreadsheet ID.
 - Active session records.
 
-Supabase owns:
+DataHub owns:
 
 - Public manifest/config/hash/tier/selector-update JSON.
-- Legacy waybill table used by `SupabaseDbService`.
+- Legacy waybill table used by `DataHubClient`.
 - Inventory lease table.
 - RPC functions called by the desktop client.
 
@@ -59,13 +59,13 @@ Render owns:
 - Session creation and heartbeat endpoint.
 - JWT signing and JWT refresh.
 - Mapping Firebase license fields into the client response.
-- Returning Supabase project/storage/manifest config to the client.
+- Returning DataHub project/storage/manifest config to the client.
 
 GitHub Releases own:
 
 - Velopack binaries: `RELEASES`, `.nupkg`, setup executables.
 
-Supabase must not host Velopack binaries.
+DataHub must not host Velopack binaries.
 
 ## Firebase
 
@@ -149,32 +149,32 @@ Revoke a license:
 1. Set `Licenses/{licenseKey}/status` to `revoked`.
 2. Optionally delete matching `sessions/*` records.
 
-Do not store update URLs or binary URLs in Firebase. Update control belongs to Supabase manifests and GitHub Releases.
+Do not store update URLs or binary URLs in Firebase. Update control belongs to DataHub manifests and GitHub Releases.
 
-## Supabase
+## DataHub
 
 Current project:
 
 ```text
 Project ref: bnsnnrlwfzxemmizknwy
-Project URL: https://bnsnnrlwfzxemmizknwy.supabase.co
+Project URL: https://datahub.example.com
 Storage bucket: autojms-modules
 Public storage base:
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
+https://datahub.example.com
 ```
 
 ### CLI Setup
 
 ```powershell
-supabase login
-supabase link --project-ref bnsnnrlwfzxemmizknwy
-supabase projects list
+datahub login
+datahub link --project-ref bnsnnrlwfzxemmizknwy
+datahub projects list
 ```
 
-Get anon key:
+Get device token:
 
 ```powershell
-supabase projects api-keys --project-ref bnsnnrlwfzxemmizknwy
+datahub projects api-keys --project-ref bnsnnrlwfzxemmizknwy
 ```
 
 Use the `anon` key for client/runtime configuration. Do not use `service_role` in client code or public JSON.
@@ -203,15 +203,15 @@ autojms-modules/
 Public URL examples:
 
 ```text
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules/manifest/version-latest.json
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules/configs/runtime-policy.json
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules/selector-updates/selector-update-manifest.json
+https://datahub.example.com/manifest/version-latest.json
+https://datahub.example.com/configs/runtime-policy.json
+https://datahub.example.com/selector-updates/selector-update-manifest.json
 ```
 
 Upload a single file:
 
 ```powershell
-supabase storage cp .\infra\supabase\autojms-modules\manifest\version-latest.json `
+VPS config API cp .\infra\datahub\autojms-modules\manifest\version-latest.json `
   ss:///autojms-modules/manifest/version-latest.json `
   --linked --experimental --cache-control "max-age=60" --content-type "application/json"
 ```
@@ -219,14 +219,14 @@ supabase storage cp .\infra\supabase\autojms-modules\manifest\version-latest.jso
 If a file already exists, remove it first:
 
 ```powershell
-supabase --yes storage rm ss:///autojms-modules/manifest/version-latest.json --linked --experimental
+datahub --yes storage rm ss:///autojms-modules/manifest/version-latest.json --linked --experimental
 ```
 
 Verify storage:
 
 ```powershell
-supabase storage ls ss:///autojms-modules/manifest --linked --experimental
-Invoke-RestMethod "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules/manifest/version-latest.json"
+VPS config API ls ss:///autojms-modules/manifest --linked --experimental
+Invoke-RestMethod "https://datahub.example.com/manifest/version-latest.json"
 ```
 
 ### Database Migrations
@@ -242,7 +242,7 @@ Schema created by the bootstrap migration:
 
 | Object | Purpose |
 |---|---|
-| `public.waybills` | Legacy waybill/tracking table used by `SupabaseDbService`. |
+| `public.waybills` | Legacy waybill/tracking table used by `DataHubClient`. |
 | `public.inventory_sync_leases` | Lease state for inventory sync workers. |
 | `public.app_manifest` | Legacy module manifest metadata. |
 | `public.app_modules` | Legacy module registry. |
@@ -270,23 +270,23 @@ Permission model:
 Push migrations:
 
 ```powershell
-supabase db push --linked
+datahub db push --linked
 ```
 
 Verify schema:
 
 ```powershell
-supabase migration list --linked
-supabase db query --linked -o table "select to_regclass('public.waybills') as waybills, to_regclass('public.inventory_sync_leases') as leases;"
-supabase db query --linked -o table "select proname from pg_proc where pronamespace='public'::regnamespace order by proname;"
+datahub migration list --linked
+datahub db query --linked -o table "select to_regclass('public.waybills') as waybills, to_regclass('public.inventory_sync_leases') as leases;"
+datahub db query --linked -o table "select proname from pg_proc where pronamespace='public'::regnamespace order by proname;"
 ```
 
 Verify anon access:
 
 ```powershell
-$anon = "<anon key>"
+$anon = "<device token>"
 $headers = @{ apikey = $anon; Authorization = "Bearer $anon" }
-$base = "https://bnsnnrlwfzxemmizknwy.supabase.co"
+$base = "https://datahub.example.com"
 
 Invoke-WebRequest "$base/rest/v1/waybills?select=waybill_no&limit=1" -Headers $headers
 
@@ -298,7 +298,7 @@ Invoke-WebRequest -Method Post "$base/rest/v1/rpc/upsert_new_waybills" `
 Remove test rows after verification:
 
 ```powershell
-supabase db query --linked "delete from public.waybills where waybill_no='TEST_001';"
+datahub db query --linked "delete from public.waybills where waybill_no='TEST_001';"
 ```
 
 ## Render License Server
@@ -331,9 +331,9 @@ Set these on Render:
 ```text
 JWT_PRIVATE_KEY=<RS256 private key PEM>
 JWT_PUBLIC_KEY=<RS256 public key PEM>
-SUPABASE_PROJECT_URL=https://bnsnnrlwfzxemmizknwy.supabase.co
-SUPABASE_BASE_URL=https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
-SUPABASE_ANON_KEY=<Supabase anon key>
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
+AUTOJMS_DATAHUB_DEVICE_TOKEN=<device API token>
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=<optional comma-separated hashes>
 PORT=<Render sets this automatically>
@@ -342,10 +342,10 @@ PORT=<Render sets this automatically>
 Notes:
 
 - `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` may be stored with escaped `\n`; `server.js` normalizes them.
-- `SUPABASE_BASE_URL` can be omitted if the default project in `server.js` is correct.
-- `SUPABASE_BASE_URL` is normalized if someone accidentally provides a dashboard bucket URL or bare project URL.
-- `SUPABASE_ANON_KEY` is returned to the desktop client so `SupabaseDbService` can connect to PostgreSQL/RPC.
-- Never set `SUPABASE_ANON_KEY` to the service-role key.
+- `DATAHUB_API_BASE_URL` can be omitted if the default project in `server.js` is correct.
+- `DATAHUB_API_BASE_URL` is normalized if someone accidentally provides a dashboard bucket URL or bare project URL.
+- `AUTOJMS_DATAHUB_DEVICE_TOKEN` is returned to the desktop client so `DataHubClient` can connect to PostgreSQL/RPC.
+- Never set `AUTOJMS_DATAHUB_DEVICE_TOKEN` to the service-role key.
 
 ### Firebase Admin Credential
 
@@ -397,10 +397,10 @@ Successful response includes:
     "dataSpreadsheetId": "",
     "updateChannel": "stable"
   },
-  "supabase": {
-    "baseUrl": "https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules",
-    "projectUrl": "https://bnsnnrlwfzxemmizknwy.supabase.co",
-    "anonKey": "<anon key>",
+  "datahub": {
+    "baseUrl": "https://datahub.example.com",
+    "apiBaseUrl": "https://datahub.example.com",
+    "device enrollment token": "<device token>",
     "manifests": {
       "versionLatest": "https://.../manifest/version-latest.json",
       "hashManifest": "https://.../manifest/hash-manifest.json",
@@ -468,7 +468,7 @@ Invoke-RestMethod "https://autojms-api.onrender.com/health/firebase"
 ```
 
 5. Test `/api/verify-license` with a known non-production or controlled license key. A request with a fake but well-formed license key should return `404` JSON with `error: "LICENSE_NOT_FOUND"`, not hang and not return an HTML proxy error.
-6. Confirm response includes `tier`, `middleCode`, `supabase.baseUrl`, `supabase.projectUrl`, `supabase.anonKey`, and manifest URLs.
+6. Confirm response includes `tier`, `middleCode`, `datahub.baseUrl`, `datahub.apiBaseUrl`, `datahub.device enrollment token`, and manifest URLs.
 7. Confirm logs do not print full JWTs, service-role keys, Firebase credentials, or JMS auth tokens.
 
 ## End-To-End Startup Contract
@@ -478,15 +478,15 @@ sequenceDiagram
     participant Client as AutoJMS Client
     participant Render as Render server.js
     participant Firebase as Firebase RTDB
-    participant Supabase as Supabase
+    participant DataHub as DataHub
 
     Client->>Render: POST /api/verify-license
     Render->>Firebase: Read Licenses/{licenseKey}
     Firebase-->>Render: license/tier/hwid/middleCode
     Render->>Firebase: Create sessions/{sid}
-    Render-->>Client: JWT + tier + Supabase config
-    Client->>Supabase: Fetch manifests/config JSON
-    Client->>Supabase: Call RPCs when ULTRA sync runs
+    Render-->>Client: JWT + tier + DataHub config
+    Client->>DataHub: Fetch manifests/config JSON
+    Client->>DataHub: Call RPCs when ULTRA sync runs
     Client->>Render: POST /api/heartbeat with JWT
     Render->>Firebase: Check sessions/{sid}
     Render-->>Client: refreshed JWT or kill action
@@ -495,9 +495,9 @@ sequenceDiagram
 ## Security Rules
 
 - Never commit real Firebase service account credentials.
-- Never commit Supabase service-role keys.
+- Never commit DataHub service-role keys.
 - Never return service-role keys from Render.
-- Never upload `.nupkg`, setup executables, private keys, service account files, or token dumps to Supabase Storage.
+- Never upload `.nupkg`, setup executables, private keys, service account files, or token dumps to VPS config API.
 - Never let BASE-tier behavior depend on ULTRA-only background sync.
 - Never use Firebase for update binaries or update control-plane files.
 - Do not log full production tokens. Mask to a short prefix/suffix.
@@ -506,7 +506,7 @@ sequenceDiagram
 
 Completed verification:
 
-- Supabase project linked: `bnsnnrlwfzxemmizknwy`.
+- DataHub project linked: `bnsnnrlwfzxemmizknwy`.
 - Bucket `autojms-modules` exists and is public.
 - Public manifest/config URLs return HTTP 200.
 - Remote migrations exist:
@@ -532,9 +532,9 @@ Completed verification:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Client cannot fetch manifests | Wrong `SUPABASE_BASE_URL` or missing Storage upload | Verify public URL and upload JSON files. |
-| `Supabase anon key is not configured` | Render did not return `supabase.anonKey` | Set `SUPABASE_ANON_KEY` on Render. |
-| `401 Unauthorized` on REST | Missing/incorrect anon key or direct write blocked | Use anon key for reads/RPC; do not direct insert. |
-| `db push` auth failure | Missing DB password or stale CLI auth | Re-run `supabase login`; set `SUPABASE_DB_PASSWORD` if CLI requests it. |
-| Update downloads from wrong place | `version-latest.json` channel/provider/tag mismatch | Keep `provider=github`; upload only JSON to Supabase. |
+| Client cannot fetch manifests | Wrong `DATAHUB_API_BASE_URL` or missing Storage upload | Verify public URL and upload JSON files. |
+| `device API token is not configured` | Render did not return `datahub.device enrollment token` | Set `AUTOJMS_DATAHUB_DEVICE_TOKEN` on Render. |
+| `401 Unauthorized` on REST | Missing/incorrect device token or direct write blocked | Use device token for reads/RPC; do not direct insert. |
+| `db push` auth failure | Missing DB password or stale CLI auth | Re-run `datahub login`; set `DATAHUB_DB_PASSWORD` if CLI requests it. |
+| Update downloads from wrong place | `version-latest.json` channel/provider/tag mismatch | Keep `provider=github`; upload only JSON to DataHub. |
 | BASE starts background sync | Tier policy regression | Verify `TierRuntimePolicy` and runtime policy JSON. |

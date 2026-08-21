@@ -12,11 +12,11 @@ Date: 2026-06-03
 | `FullStackOperation.*` | `src/AutoJMS/Forms/` | moved |
 | `frmLogin.*` | `src/AutoJMS/Forms/` | moved |
 | `TabManager.cs` | `src/AutoJMS/Forms/TabManager.cs` | moved |
-| `AppConfig.cs`, `RuntimeConfig.cs`, `SupabaseConfig.cs`, `SettingsManager.cs`, `AppPaths.cs`, `AppLogger.cs`, `AppVersion.cs`, `RuntimeConfigService.cs` | `src/AutoJMS/Config/` | moved |
+| `AppConfig.cs`, `RuntimeConfig.cs`, `DataHubConfig.cs`, `SettingsManager.cs`, `AppPaths.cs`, `AppLogger.cs`, `AppVersion.cs`, `RuntimeConfigService.cs` | `src/AutoJMS/Config/` | moved |
 | `LicenseApiService.cs`, `AuthStateService.cs`, `IAuthStateService.cs`, `JmsAuthStateService.cs`, `JmsAuthTokenService.cs`, `IntegrityService.cs`, `HashVerifier.cs`, `HashManifest.cs`, `TierDefinitions.cs`, `TierRuntimePolicy.cs` | `src/AutoJMS/Licensing/` | moved |
-| `SupabaseManifestService.cs`, `SmallUpdateService.cs`, `MajorUpdateService.cs`, `VelopackUpdateService.cs` | `src/AutoJMS/Updates/` | moved |
-| `SupabaseDbService.cs`, `DatabaseTracking.cs` | `src/AutoJMS/Data/` | moved |
-| `SupabaseModels.cs`, `WaybillModels.cs` | `src/AutoJMS/Models/` | moved |
+| `VpsManifestService.cs`, `SmallUpdateService.cs`, `MajorUpdateService.cs`, `VelopackUpdateService.cs` | `src/AutoJMS/Updates/` | moved |
+| `DataHubClient.cs`, `DatabaseTracking.cs` | `src/AutoJMS/Data/` | moved |
+| `DataHubModels.cs`, `WaybillModels.cs` | `src/AutoJMS/Models/` | moved |
 | `WebViewAutomation.cs` | `src/AutoJMS/Automation/` | moved |
 | `WebViewHost.cs`, `UiThread.cs`, `uiControlService.cs` | `src/AutoJMS/UI/` | moved |
 | `PrintService.cs`, `IPrintService.cs` | `src/AutoJMS/Printing/` | moved |
@@ -41,10 +41,10 @@ Date: 2026-06-03
 | From | To | Status |
 | --- | --- | --- |
 | `ServerStructure/Render server/` | `backend/render-license-server/` | moved |
-| `ServerStructure/Supabase/` | `infra/supabase/` | moved |
+| `ServerStructure/DataHub/` | `infra/datahub/` | moved |
 | `ServerStructure/Firebase/` | `infra/firebase/` | moved |
 | `ServerStructure/Github Release/` | `infra/github-release/` | moved |
-| `supabase-migration.sql` | `infra/supabase/migrations/supabase-migration.sql` | moved |
+| `datahub-migration.sql` | `infra/datahub/migrations/datahub-migration.sql` | moved |
 | `LICENSE_DATA_SCHEMA.txt` | `infra/firebase/license-key-schema.txt` | moved |
 
 ## Release And Tools

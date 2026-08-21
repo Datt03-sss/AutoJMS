@@ -1,15 +1,15 @@
-﻿# Backend Structure
+# Backend Structure
 
 ## Current Verified Baseline
 
-Verified from `backend/render-license-server/server.js`, `SupabaseDbService.cs`, `SupabaseManifestService.cs`, and storage manifest examples.
+Verified from `backend/render-license-server/server.js`, `DataHubClient.cs`, `VpsManifestService.cs`, and storage manifest examples.
 
 Backend roles:
 
 - Render server: Node/Express license API.
 - Firebase Realtime Database: license/session storage behind Render server.
-- Supabase PostgreSQL: waybill database accessed by `SupabaseDbService`.
-- Supabase Storage: public control-plane manifests/config/hash/tier/selector-update files.
+- DataHub PostgreSQL: waybill database accessed by `DataHubClient`.
+- VPS config API: public control-plane manifests/config/hash/tier/selector-update files.
 - GitHub Releases: large Velopack binary assets.
 
 Render endpoints in code:
@@ -25,17 +25,17 @@ Current `server.js` response shape:
 - `sid`: session id.
 - `license`: contains status, tier, middleCode, skipHashCheck, modulePolicy.
 - `cfg`: contains dataSpreadsheetId and updateChannel.
-- `supabase`: contains baseUrl and manifest URLs.
+- `datahub`: contains baseUrl and manifest URLs.
 
 Client parsing caveat:
 
 - `LicenseApiService` parses tier from root `tier` or nested `license.tier`.
 - `LicenseApiService` currently looks for `modulePolicy` at root, while `server.js` returns it under `license.modulePolicy`. Treat module update policy parsing as `NEED VERIFY`.
 
-Supabase database caveat:
+DataHub database caveat:
 
-- `SupabaseDbService` calls RPCs: `try_acquire_inventory_lease`, `refresh_inventory_lease`, `release_inventory_lease`, `complete_inventory_sync`, `upsert_new_waybills`, and `merge_waybill_tracking_rows`.
-- The checked-in `supabase-migration.sql` only defines module/config/license tables and does not define these waybill RPCs. Database bootstrap SQL is incomplete or stored elsewhere: `NEED VERIFY`.
+- `DataHubClient` calls RPCs: `try_acquire_inventory_lease`, `refresh_inventory_lease`, `release_inventory_lease`, `complete_inventory_sync`, `upsert_new_waybills`, and `merge_waybill_tracking_rows`.
+- The checked-in `datahub-migration.sql` only defines module/config/license tables and does not define these waybill RPCs. Database bootstrap SQL is incomplete or stored elsewhere: `NEED VERIFY`.
 
 Security caveat:
 
@@ -51,8 +51,8 @@ AutoJMS uses four backend services:
 |---------|-----------|---------|
 | Render License Server | Node.js/Express | License verify, heartbeat |
 | Firebase Realtime DB | Firebase Admin SDK | License data storage |
-| Supabase PostgreSQL | PostgreSQL | Waybill tracking database |
-| Supabase Storage | S3-compatible | Manifest/config file storage |
+| DataHub PostgreSQL | PostgreSQL | Waybill tracking database |
+| VPS config API | S3-compatible | Manifest/config file storage |
 
 ## Render License Server (server.js)
 
@@ -65,7 +65,7 @@ AutoJMS uses four backend services:
 ```bash
 JWT_PRIVATE_KEY       # RS256 private key (PEM)
 JWT_PUBLIC_KEY        # RS256 public key (PEM)
-SUPABASE_BASE_URL     # Supabase project URL
+DATAHUB_API_BASE_URL     # DataHub project URL
 DEFAULT_UPDATE_CHANNEL # "stable" or "beta"
 PORT                  # 3000 (default)
 VALID_EXE_HASHES      # Comma-separated allowed exe hashes
@@ -107,8 +107,8 @@ Verify a license key and issue a JWT session token.
     "dataSpreadsheetId": "",
     "updateChannel": "stable"
   },
-  "supabase": {
-    "baseUrl": "https://valmbajjpkjccqslsuou.supabase.co",
+  "datahub": {
+    "baseUrl": "https://datahub.example.com",
     "manifests": {
       "versionLatest": ".../manifest/version-latest.json",
       "hashManifest": ".../manifest/hash-manifest.json",
@@ -189,14 +189,14 @@ sessions/
     lastPing: <timestamp>
 ```
 
-## Supabase PostgreSQL
+## DataHub PostgreSQL
 
 **Project ID**: valmbajjpkjccqslsuou
-**URL**: https://valmbajjpkjccqslsuou.supabase.co
+**URL**: https://datahub.example.com
 
 ### Tables
 
-#### waybills (Postgrest)
+#### waybills (DataHub API)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -220,10 +220,10 @@ sessions/
 | upsert_new_waybills | Insert new waybills only (ON CONFLICT DO NOTHING) |
 | merge_waybill_tracking_rows | Upsert tracking data |
 
-## Supabase Storage
+## VPS config API
 
 **Bucket**: autojms-modules
-**Public URL pattern**: `https://valmbajjpkjccqslsuou.supabase.co/storage/v1/object/public/autojms-modules/`
+**Public URL pattern**: `https://datahub.example.com/`
 
 ### Bucket Structure
 
@@ -324,9 +324,9 @@ The client validates the license JWT using:
 - Audience: "autojms-desktop-client"
 - Clock skew: 2 minutes
 
-### Supabase API Key
+### DataHub API Key
 
-The Supabase anon key is hardcoded in `SupabaseDbService.cs`:
+The DataHub device token is hardcoded in `DataHubClient.cs`:
 ```
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZhbG1iYWpqcGtqY2Nxc2xzdW91Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MDM5OTMsImV4cCI6MjA5NDE3OTk5M30.dwuPB1nlzNpFdWYR4fuvTOP7w6wB8U4fWE0cW_rOJ-o
 ```

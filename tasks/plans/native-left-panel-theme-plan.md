@@ -37,7 +37,7 @@ The goal is to synchronize the UI components in the native left panel (tabDKCH l
 ## Forbidden files
 - `src/AutoJMS/Licensing/*`
 - `src/AutoJMS/Updates/*`
-- Any file related to WebView automation logic, Firebase, Supabase, Print logic, and Tracking parser.
+- Any file related to WebView automation logic, Firebase, DataHub, Print logic, and Tracking parser.
 
 ## Theme tokens needed
 To avoid hardcoding, the following conceptual tokens should be established or utilized from `AppTheme.ThemeColors`:

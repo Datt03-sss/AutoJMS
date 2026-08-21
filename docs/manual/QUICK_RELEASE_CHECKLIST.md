@@ -1,4 +1,4 @@
-﻿# AutoJMS Quick Release Checklist
+# AutoJMS Quick Release Checklist
 
 Bản ngắn dùng mỗi lần build/release. Nếu có lỗi không rõ nguyên nhân, đọc bản đầy đủ: `docs/manual/MANUAL_OPERATIONS.md`.
 
@@ -29,7 +29,7 @@ Version rule:
 [ ] Version đã bump đúng SemVer, không dùng 4 segment làm VelopackVersion
 [ ] GitHub CLI đã login: gh auth status
 [ ] Có quyền repo: Datt03-sss/AutoJMS-Update
-[ ] Supabase upload sẵn sàng: SUPABASE_SERVICE_ROLE_KEY hoặc Supabase CLI
+[ ] DataHub upload sẵn sàng: DATAHUB_SERVICE_ROLE_KEY hoặc DataHub CLI
 ```
 
 ## 3. Build release bằng Velopack
@@ -108,7 +108,7 @@ Nếu một release đã publish mà thiếu index, không cần build lại —
 .\release\repair-release-index.ps1
 ```
 
-## 5. Supabase manifest phải có
+## 5. DataHub manifest phải có
 
 Bucket/path:
 
@@ -132,9 +132,9 @@ Mỗi release cần kiểm tra:
 [ ] Stable: prerelease = false
 [ ] Beta: prerelease = true
 [ ] manualOnly = true cho major update
-[ ] Không upload .nupkg lên Supabase
-[ ] Không upload Setup.exe lớn lên Supabase
-[ ] Không upload secret lên Supabase public bucket
+[ ] Không upload .nupkg lên DataHub
+[ ] Không upload Setup.exe lớn lên DataHub
+[ ] Không upload secret lên DataHub public bucket
 ```
 
 Ghi chú: repo hiện có một số file dev dạng `.json`; production sensitive config ưu tiên `.sec`. Nếu path `.sec` chưa được client/server đọc, đánh dấu `NEED VERIFY` trước release.
@@ -189,7 +189,7 @@ Nếu release lỗi:
 
 ```txt
 [ ] Đổi version-latest.json về version stable cũ
-[ ] Upload lại Supabase manifest
+[ ] Upload lại DataHub manifest
 [ ] Nếu GitHub release lỗi, unpublish/xóa release lỗi hoặc restore asset đúng
 [ ] Nếu hash sai, lấy hash AutoJMS.dll đúng từ bản publish cuối cùng và upload hash-manifest.json lại
 [ ] Nếu Render server lỗi, rollback deploy trên Render
@@ -201,7 +201,7 @@ Nếu release lỗi:
 
 ```txt
 KHÔNG ĐƯỢC:
-- Không upload .nupkg lên Supabase.
+- Không upload .nupkg lên DataHub.
 - Không mở GitHub page trong app update.
 - Không copy file thủ công vào C:\AutoJMS\current.
 - Không xóa C:\AutoJMS\AppData khi update.
@@ -215,7 +215,7 @@ KHÔNG ĐƯỢC:
 
 | Triệu chứng | Cách xử lý nhanh |
 | ----------- | ---------------- |
-| Supabase upload fail `>50MB` | Đưa `.nupkg`/Setup lên GitHub Release, không đưa lên Supabase. |
+| DataHub upload fail `>50MB` | Đưa `.nupkg`/Setup lên GitHub Release, không đưa lên DataHub. |
 | Velopack báo SemVer invalid | Đổi `1.26.05` thành `1.26.5`; beta dùng `1.26.6-beta.1`; không dùng 4 segment làm VelopackVersion. |
 | Release already exists | Nếu chưa public rộng, upload lại asset `--clobber`; nếu đã public, bump version. |
 | App không thấy update | Kiểm tra `version-latest.json`, GitHub tag, channel, version lớn hơn, asset `RELEASES`. |

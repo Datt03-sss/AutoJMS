@@ -32,7 +32,7 @@ namespace AutoJMS.FullStack.Events
 
         private static string ClientId
         {
-            get { try { return SupabaseDbService.MachineId; } catch { return Environment.MachineName; } }
+            get { try { return DataHubClient.MachineId; } catch { return Environment.MachineName; } }
         }
 
         /// <summary>Emit a bounded set of observations for a freshly-tracked waybill row.</summary>

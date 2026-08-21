@@ -21,8 +21,8 @@ Current architecture decisions and constraints for AutoJMS.
 ## Split binary hosting from control plane
 
 - Status: Active
-- Decision: GitHub Releases host large Velopack binary assets; Supabase hosts small manifests/config/hash files.
-- Reason: Supabase free storage limits make large binary hosting unreliable.
+- Decision: GitHub Releases host large Velopack binary assets; DataHub hosts small manifests/config/hash files.
+- Reason: DataHub free storage limits make large binary hosting unreliable.
 - Risk: Two-system release flow must stay synchronized.
 - Follow-up: Use `docs/manual/MANUAL_OPERATIONS.md` and release report template.
 

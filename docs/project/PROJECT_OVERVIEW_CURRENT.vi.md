@@ -8,7 +8,7 @@ Tài liệu này mô tả trạng thái hiện tại của toàn bộ project `D
 
 AutoJMS là ứng dụng desktop logistics automation cho vận hành J&T/JMS tại Việt Nam.
 
-Ứng dụng chính là .NET 8 WinForms, dùng SunnyUI cho giao diện và WebView2 để thao tác với hệ thống JMS/Zalo. Backend gồm Render license server, Firebase Realtime Database, Supabase Storage/PostgreSQL, GitHub Releases, Inno Setup và Velopack.
+Ứng dụng chính là .NET 8 WinForms, dùng SunnyUI cho giao diện và WebView2 để thao tác với hệ thống JMS/Zalo. Backend gồm Render license server, Firebase Realtime Database, VPS config API/PostgreSQL, GitHub Releases, Inno Setup và Velopack.
 
 Mục tiêu sản phẩm:
 
@@ -34,8 +34,8 @@ Mục tiêu sản phẩm:
 - ABOUT phải là tab cuối.
 - `FullStackOperation` là form riêng, không phải tab.
 - Render server source: `backend/render-license-server/server.js`.
-- Supabase project hiện tại: `bnsnnrlwfzxemmizknwy`.
-- Supabase bucket: `autojms-modules`.
+- DataHub project hiện tại: `bnsnnrlwfzxemmizknwy`.
+- DataHub bucket: `autojms-modules`.
 - Render production URL: `https://autojms-api.onrender.com`.
 - Latest local build verified: `dotnet build .\src\AutoJMS\AutoJMS.csproj -c Debug --no-restore /clp:Summary` thành công, `0 Error(s)`.
 
@@ -50,9 +50,9 @@ Mục tiêu sản phẩm:
 | Installer | Inno Setup | first install/reinstall/uninstall |
 | License API | Node.js/Express trên Render | `backend/render-license-server` |
 | License DB | Firebase Realtime Database | `Licenses`, `sessions` |
-| Control plane | Supabase Storage | manifests/config/hash/tier/selector-update JSON |
-| Operational DB | Supabase PostgreSQL/RPC | waybills, inventory lease, tracking merge |
-| Binary hosting | GitHub Releases | Velopack assets, không upload `.nupkg` lên Supabase |
+| Control plane | VPS config API | manifests/config/hash/tier/selector-update JSON |
+| Operational DB | DataHub PostgreSQL/RPC | waybills, inventory lease, tracking merge |
+| Binary hosting | GitHub Releases | Velopack assets, không upload `.nupkg` lên DataHub |
 | Local FullStack DB | SQLite | `src/AutoJMS/FullStack/LocalDb` |
 | Protection | .NET Reactor | optional Release target via `RunReactor=true` |
 
@@ -90,7 +90,7 @@ D:\v1.2605.2(new-test)
 │   └── AutoJMS.Abstractions/
 ├── backend/
 │   ├── render-license-server/
-│   ├── supabase/
+│   ├── datahub/
 │   ├── firebase/
 │   ├── render.yaml
 │   ├── BACKEND_DEPLOY_STATUS.md
@@ -115,9 +115,9 @@ flowchart TD
     D --> E["frmLogin / license verify"]
     E --> F["Render /api/verify-license"]
     F --> G["Firebase Licenses + sessions"]
-    F --> H["Return JWT + tier + Supabase config"]
+    F --> H["Return JWT + tier + DataHub config"]
     H --> I["InitializeServicesFromLicense"]
-    I --> J["Configure SupabaseDbService"]
+    I --> J["Configure DataHubClient"]
     I --> K["Load runtime/tier/update policies"]
     K --> L["Application.Run(new Main(sessionTier))"]
     L --> M["Main tabs + WebView2 + JMS auth token flow"]
@@ -126,8 +126,8 @@ flowchart TD
 Startup responsibilities:
 
 - `Program.cs`: Velopack init, HWID, license verify, offline fallback, service initialization, module sync, integrity checks, app run.
-- `LicenseApiService.cs`: gọi Render `/api/verify-license`, parse JWT/tier/Supabase config, heartbeat.
-- `SupabaseDbService.cs`: nhận Supabase project URL và anon key từ Render response, khởi tạo Supabase client.
+- `LicenseApiService.cs`: gọi Render `/api/verify-license`, parse JWT/tier/DataHub config, heartbeat.
+- `DataHubClient.cs`: nhận DataHub project URL và device token từ Render response, khởi tạo DataHub client.
 - `Main.cs`: dựng tabs, WebView2, tier policy, DKCH/tracking/print services, auth token capture.
 
 ## 6. UI Và Tier Model
@@ -165,8 +165,8 @@ Tier phải đi qua:
 ```text
 src/AutoJMS/Licensing/TierRuntimePolicy.cs
 src/AutoJMS/tier-definitions.json
-Supabase manifest/tier-definitions.json
-Supabase configs/runtime-policy*.json
+DataHub manifest/tier-definitions.json
+DataHub configs/runtime-policy*.json
 ```
 
 Không hardcode kiểu:
@@ -191,8 +191,8 @@ flowchart LR
     Client["AutoJMS.exe"] --> Render["Render license server"]
     Render --> Firebase["Firebase RTDB"]
     Render --> Client
-    Client --> SupabaseStorage["Supabase Storage manifests"]
-    Client --> SupabaseDb["Supabase PostgreSQL/RPC"]
+    Client --> DataHubStorage["VPS config API manifests"]
+    Client --> DataHubDb["DataHub PostgreSQL/RPC"]
     Client --> JMS["JMS Web/API"]
     Updates["Velopack Update"] --> GitHub["GitHub Releases"]
     Client --> Updates
@@ -221,7 +221,7 @@ Render server hiện hỗ trợ:
 
 - `.env` cho local development.
 - Firebase Admin credential qua JSON env, base64 env, file path, hoặc fallback `serviceAccountKey.json`.
-- Supabase project URL và anon key trong response.
+- DataHub project URL và device token trong response.
 - Timeout Firebase qua `FIREBASE_OPERATION_TIMEOUT_MS`.
 
 ### Firebase
@@ -254,13 +254,13 @@ License object kỳ vọng:
 }
 ```
 
-### Supabase
+### DataHub
 
 Project hiện tại:
 
 ```text
 bnsnnrlwfzxemmizknwy
-https://bnsnnrlwfzxemmizknwy.supabase.co
+https://datahub.example.com
 ```
 
 Bucket:
@@ -272,7 +272,7 @@ autojms-modules
 Public storage base:
 
 ```text
-https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
+https://datahub.example.com
 ```
 
 Remote migration hiện tại:
@@ -298,7 +298,7 @@ Tables/RPC chính:
 | RPC | `upsert_new_waybills` |
 | RPC | `merge_waybill_tracking_rows` |
 
-Supabase Storage chỉ chứa JSON control-plane nhỏ. Không chứa `.nupkg`, setup exe, private key, token dump.
+VPS config API chỉ chứa JSON control-plane nhỏ. Không chứa `.nupkg`, setup exe, private key, token dump.
 
 ## 8. Token Model
 
@@ -352,7 +352,7 @@ Các vùng liên quan:
 ```text
 src/AutoJMS/Tracking/
 src/AutoJMS/Data/DatabaseTracking.cs
-src/AutoJMS/Data/SupabaseDbService.cs
+src/AutoJMS/Data/DataHubClient.cs
 ```
 
 ### PRINT
@@ -403,18 +403,18 @@ Chức năng chính:
 | Data | Nơi lưu | Ghi chú |
 |---|---|---|
 | License/session/tier | Firebase RTDB | server-side only |
-| Runtime/tier/update manifest | Supabase Storage | public JSON |
-| Waybill/inventory sync | Supabase PostgreSQL/RPC | dùng anon key theo RLS/grant |
+| Runtime/tier/update manifest | VPS config API | public JSON |
+| Waybill/inventory sync | DataHub PostgreSQL/RPC | dùng device token theo RLS/grant |
 | FullStack local data | SQLite | `src/AutoJMS/FullStack/LocalDb` |
 | User settings/browser data | AppData/BrowserData | không commit |
-| Velopack binaries | GitHub Releases | không đưa lên Supabase |
+| Velopack binaries | GitHub Releases | không đưa lên DataHub |
 | Installer output | `installer/inno/installer-output` | ignored |
 
 ## 11. Update Và Release
 
 ```mermaid
 flowchart TD
-    Small["Small selector/runtime update"] --> Supabase["Supabase selector-updates/configs"]
+    Small["Small selector/runtime update"] --> DataHub["DataHub selector-updates/configs"]
     Major["Major app update"] --> About["User clicks ABOUT"]
     About --> Velopack["Velopack"]
     Velopack --> GitHub["GitHub Releases"]
@@ -423,11 +423,11 @@ flowchart TD
 
 Update policy:
 
-- Small config/selector update: Supabase, có thể auto.
+- Small config/selector update: DataHub, có thể auto.
 - Major version update: manual, user click About tab, Velopack dùng GitHub Releases.
 - First install/reinstall/uninstall: Inno Setup.
 - Không mở GitHub page trong update flow.
-- Không upload `.nupkg` lên Supabase.
+- Không upload `.nupkg` lên DataHub.
 
 Release scripts:
 
@@ -454,7 +454,7 @@ Mục đích:
 
 - Built-in module fallback.
 - Dynamic module provider/loader.
-- Supabase module manifest/cache.
+- DataHub module manifest/cache.
 - Shared module contracts.
 
 Known risk:
@@ -529,19 +529,19 @@ cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm install
 npm run check
 
-cd D:\v1.2605.2(new-test)\backend\supabase
-supabase migration list --linked
+cd D:\v1.2605.2(new-test)\backend\datahub
+datahub migration list --linked
 
 Invoke-RestMethod "https://autojms-api.onrender.com/health"
 ```
 
 Current backend status:
 
-- Supabase migrations local/remote đã match.
-- Supabase public JSON files đã verified HTTP `200`.
+- DataHub migrations local/remote đã match.
+- DataHub public JSON files đã verified HTTP `200`.
 - Render source đã runnable Node project.
 - Render production `/health` trả `ok: true`.
-- Full Render deploy/verify-license production còn phụ thuộc secret/dashboard: `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, Firebase Admin service account, `SUPABASE_ANON_KEY`, Render deployment.
+- Full Render deploy/verify-license production còn phụ thuộc secret/dashboard: `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, Firebase Admin service account, `DATAHUB_DEVICE_TOKEN`, Render deployment.
 
 ## 16. Tài Liệu Quan Trọng
 
@@ -568,7 +568,7 @@ Các điểm cần giữ trong backlog kỹ thuật:
 - Module supply-chain trust/signature enforcement cần verify/hardening.
 - Cần verify end-to-end `/api/verify-license` production sau khi deploy Render env mới.
 - Cần test BASE tier chắc chắn không chạy background jobs.
-- Cần test ULTRA tier mở `FullStackOperation` và sync Supabase đúng.
+- Cần test ULTRA tier mở `FullStackOperation` và sync DataHub đúng.
 - Cần kiểm tra update flow: major update manual từ ABOUT, không mở GitHub web page.
 - Cần kiểm tra WebView2 access luôn đi qua UI thread trong các path mới.
 
@@ -577,12 +577,12 @@ Các điểm cần giữ trong backlog kỹ thuật:
 - Không sửa logic HOME/DKCH/TRACKING/PRINT/ABOUT nếu không có yêu cầu rõ.
 - Không đổi namespace/class/control name nếu không có lý do.
 - Không xóa/move production code nếu không có migration plan.
-- Không dùng service-role Supabase key trong desktop client.
+- Không dùng service-role DataHub key trong desktop client.
 - Không log full token/key.
 - Không để BASE chạy background inventory/database sync.
 - Không biến `FullStackOperation` thành tab.
 - ABOUT phải nằm cuối.
-- Không upload Velopack `.nupkg` lên Supabase.
+- Không upload Velopack `.nupkg` lên DataHub.
 - Không mở GitHub page cho update.
 - Không truy cập WebView2 ngoài UI thread.
 
@@ -591,12 +591,12 @@ Các điểm cần giữ trong backlog kỹ thuật:
 Nếu sửa app desktop:
 
 1. Đọc `AGENTS.md`, `.agent/context`, `.agent/rules`, audit.
-2. Xác định thay đổi thuộc layer nào: UI, license, JMS auth, Supabase, update, FullStack, installer.
+2. Xác định thay đổi thuộc layer nào: UI, license, JMS auth, DataHub, update, FullStack, installer.
 3. Kiểm tra tier impact: BASE có bị chạy background không.
 4. Kiểm tra token impact: license JWT hay JMS AuthToken.
 5. Build Debug.
-6. Nếu liên quan backend, test Render/Supabase/Firebase theo manual.
-7. Nếu liên quan update, đảm bảo Supabase chỉ chứa JSON và GitHub chứa binaries.
+6. Nếu liên quan backend, test Render/DataHub/Firebase theo manual.
+7. Nếu liên quan update, đảm bảo DataHub chỉ chứa JSON và GitHub chứa binaries.
 
 Nếu sửa backend:
 
@@ -604,6 +604,6 @@ Nếu sửa backend:
 2. Dùng Render env.
 3. Không trả service-role key về client.
 4. Test fake license phải lỗi JSON nhanh.
-5. Test license thật phải trả JWT/session/tier/Supabase config.
+5. Test license thật phải trả JWT/session/tier/DataHub config.
 6. Test app login BASE/ULTRA.
 

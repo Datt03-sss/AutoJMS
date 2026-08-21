@@ -45,7 +45,7 @@ Never start editing on a stale or dirty working tree.
 Before starting work on any task:
 
 1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain and follow it.
-2. For any Supabase work follow `.agents/skills/supabase/SKILL.md`; for Postgres SQL tuning follow `.agents/skills/supabase-postgres-best-practices/SKILL.md`.
+2. For any DataHub/PostgreSQL work follow `.agent/skills/postgres-best-practices/SKILL.md`.
 3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
 3. Skills are helpers — the rules in this file always take precedence over any skill guidance.
 
@@ -122,7 +122,7 @@ Agents **must never** perform these actions under any circumstances:
 - **No release**: Do not build, sign, or upload a production release artifact.
 - **No license/auth/hash-check changes**: Do not touch `Licensing/`, `JmsAuthTokenService.cs`, or any hash-verification paths unless task explicitly requires it.
 - **No Firebase session changes**: Do not alter Firebase initialization, session tokens, or service account references unless task explicitly requires it.
-- **No Supabase production config changes**: Do not alter Supabase connection strings or production keys unless task explicitly requires it.
+- **No DataHub production config changes**: Do not alter DataHub connection strings or production keys unless task explicitly requires it.
 - **No Velopack production changes**: Do not touch `VelopackUpdateService.cs` or `release/build-release.ps1` unless task explicitly requires it.
 - **No database schema changes**: Do not alter DB schema unless task explicitly requires it.
 - **No WinForms Designer moves**: Do not relocate or rename `.Designer.cs` or `.resx` files.

@@ -34,11 +34,11 @@ namespace AutoJMS
         public bool ApplyOnNextStartup { get; set; } = true;
         public bool SkipHashCheck { get; set; } = false;
         public string IntegrityMode { get; set; } = "HASH_ONLY";
-        public string SupabaseBaseUrl { get; set; }
-        public string SupabaseProjectUrl { get; set; }
-        public string SupabaseAnonKey { get; set; }
-        public SupabaseManifestUrls Manifests { get; set; }
-        public SupabaseReleasesConfig Releases { get; set; }
+        public string DataHubBaseUrl { get; set; }
+        public string DataHubDeviceToken { get; set; }
+        public string DataHubSiteId { get; set; }
+        public DataHubManifestUrls Manifests { get; set; }
+        public VpsReleasesConfig Releases { get; set; }
         public string UpdateChannel { get; set; } = "stable";
         public string DataSpreadsheetId { get; set; }
         public string SessionId { get; set; }
@@ -220,11 +220,11 @@ eQIDAQAB
                     // Parse cfg sub-object
                     string dataSpreadsheetId = "";
                     string updateChannel = "stable";
-                    string supabaseBaseUrl = null;
-                    string supabaseProjectUrl = null;
-                    string supabaseAnonKey = null;
-                    SupabaseManifestUrls manifests = null;
-                    SupabaseReleasesConfig releases = null;
+                    string datahubBaseUrl = null;
+                    string datahubSiteId = null;
+                    string datahubDeviceToken = null;
+                    DataHubManifestUrls manifests = null;
+                    VpsReleasesConfig releases = null;
 
                     if (root.TryGetProperty("cfg", out var cfgProp) && cfgProp.ValueKind == JsonValueKind.Object)
                     {
@@ -233,37 +233,37 @@ eQIDAQAB
                         if (cfgProp.TryGetProperty("updateChannel", out var chProp))
                             updateChannel = chProp.GetString() ?? "stable";
 
-                        if (cfgProp.TryGetProperty("supabase", out var supProp) && supProp.ValueKind == JsonValueKind.Object)
+                        if (cfgProp.TryGetProperty("datahub", out var datahubProp) && datahubProp.ValueKind == JsonValueKind.Object)
                         {
-                            if (supProp.TryGetProperty("baseUrl", out var baseProp))
-                                supabaseBaseUrl = baseProp.GetString();
-                            if (supProp.TryGetProperty("projectUrl", out var projectProp))
-                                supabaseProjectUrl = projectProp.GetString();
-                            if (supProp.TryGetProperty("anonKey", out var anonProp))
-                                supabaseAnonKey = anonProp.GetString();
-                            if (supProp.TryGetProperty("manifests", out var manProp) && manProp.ValueKind == JsonValueKind.Object)
-                                manifests = JsonSerializer.Deserialize<SupabaseManifestUrls>(manProp.GetRawText());
-                            if (supProp.TryGetProperty("releases", out var relProp) && relProp.ValueKind == JsonValueKind.Object)
-                                releases = JsonSerializer.Deserialize<SupabaseReleasesConfig>(relProp.GetRawText());
+                            if (datahubProp.TryGetProperty("apiBaseUrl", out var baseProp))
+                                datahubBaseUrl = baseProp.GetString();
+                            if (datahubProp.TryGetProperty("siteId", out var siteProp))
+                                datahubSiteId = siteProp.GetString();
+                            if (datahubProp.TryGetProperty("deviceToken", out var deviceProp))
+                                datahubDeviceToken = deviceProp.GetString();
+                            if (datahubProp.TryGetProperty("manifests", out var manProp) && manProp.ValueKind == JsonValueKind.Object)
+                                manifests = JsonSerializer.Deserialize<DataHubManifestUrls>(manProp.GetRawText());
+                            if (datahubProp.TryGetProperty("releases", out var relProp) && relProp.ValueKind == JsonValueKind.Object)
+                                releases = JsonSerializer.Deserialize<VpsReleasesConfig>(relProp.GetRawText());
                         }
                     }
 
-                    // Fallback: parse supabase from root level (old format compat)
-                    if (supabaseBaseUrl == null && root.TryGetProperty("supabase", out var rootSup) && rootSup.ValueKind == JsonValueKind.Object)
+                    // Fallback: parse datahub from root level (old format compat)
+                    if (datahubBaseUrl == null && root.TryGetProperty("datahub", out var rootDataHub) && rootDataHub.ValueKind == JsonValueKind.Object)
                     {
-                        if (rootSup.TryGetProperty("baseUrl", out var baseProp2))
-                            supabaseBaseUrl = baseProp2.GetString();
-                        if (supabaseProjectUrl == null && rootSup.TryGetProperty("projectUrl", out var projectProp2))
-                            supabaseProjectUrl = projectProp2.GetString();
-                        if (supabaseAnonKey == null && rootSup.TryGetProperty("anonKey", out var anonProp2))
-                            supabaseAnonKey = anonProp2.GetString();
-                        if (manifests == null && rootSup.TryGetProperty("manifests", out var manProp2) && manProp2.ValueKind == JsonValueKind.Object)
-                            manifests = JsonSerializer.Deserialize<SupabaseManifestUrls>(manProp2.GetRawText());
-                        if (releases == null && rootSup.TryGetProperty("releases", out var relProp2) && relProp2.ValueKind == JsonValueKind.Object)
-                            releases = JsonSerializer.Deserialize<SupabaseReleasesConfig>(relProp2.GetRawText());
+                        if (rootDataHub.TryGetProperty("apiBaseUrl", out var baseProp2))
+                            datahubBaseUrl = baseProp2.GetString();
+                        if (datahubSiteId == null && rootDataHub.TryGetProperty("siteId", out var siteProp2))
+                            datahubSiteId = siteProp2.GetString();
+                        if (datahubDeviceToken == null && rootDataHub.TryGetProperty("deviceToken", out var deviceProp2))
+                            datahubDeviceToken = deviceProp2.GetString();
+                        if (manifests == null && rootDataHub.TryGetProperty("manifests", out var manProp2) && manProp2.ValueKind == JsonValueKind.Object)
+                            manifests = JsonSerializer.Deserialize<DataHubManifestUrls>(manProp2.GetRawText());
+                        if (releases == null && rootDataHub.TryGetProperty("releases", out var relProp2) && relProp2.ValueKind == JsonValueKind.Object)
+                            releases = JsonSerializer.Deserialize<VpsReleasesConfig>(relProp2.GetRawText());
                     }
 
-                    AppLogger.Info($"Supabase config: baseUrl={supabaseBaseUrl?.Substring(0, Math.Min(40, supabaseBaseUrl?.Length ?? 0))}, channel={updateChannel}");
+                    AppLogger.Info($"DataHub config: baseUrl={datahubBaseUrl?.Substring(0, Math.Min(40, datahubBaseUrl?.Length ?? 0))}, channel={updateChannel}");
 
                     // Save dataSpreadsheetId to AppConfig
                     if (!string.IsNullOrWhiteSpace(dataSpreadsheetId))
@@ -282,9 +282,9 @@ eQIDAQAB
                         ApplyOnNextStartup = applyOnNextStartup,
                         SkipHashCheck = skipHashCheck,
                         IntegrityMode = integrityMode,
-                        SupabaseBaseUrl = supabaseBaseUrl,
-                        SupabaseProjectUrl = supabaseProjectUrl,
-                        SupabaseAnonKey = supabaseAnonKey,
+                        DataHubBaseUrl = datahubBaseUrl,
+                        DataHubSiteId = datahubSiteId,
+                        DataHubDeviceToken = datahubDeviceToken,
                         Manifests = manifests,
                         Releases = releases,
                         UpdateChannel = updateChannel,
@@ -336,7 +336,7 @@ eQIDAQAB
 
             return TokenRedactor.RedactText(Regex.Replace(
                 body,
-                "(\"(?:payload|accessToken|token|anonKey|apikey|supabaseKey|serviceKey)\"\\s*:\\s*\")([^\"]+)(\")",
+                "(\"(?:payload|accessToken|token|deviceToken|apikey|serviceKey)\"\\s*:\\s*\")([^\"]+)(\")",
                 "$1<redacted>$3",
                 RegexOptions.IgnoreCase));
         }

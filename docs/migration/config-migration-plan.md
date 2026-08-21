@@ -29,7 +29,7 @@ AppConfig.LoadBootstrap()
 License verified
     ↓
 InitializeServicesFromLicense(config)
-    ├─► Set Supabase URLs
+    ├─► Set DataHub URLs
     ├─► Set manifest URLs
     └─► Set tier definitions
 ```

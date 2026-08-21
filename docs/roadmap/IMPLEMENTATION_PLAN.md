@@ -43,7 +43,7 @@ Do:
 ## Step 5 — Release pipeline
 
 Goal:
-- Major update uses GitHub Releases binary + Supabase manifest.
+- Major update uses GitHub Releases binary + DataHub manifest.
 
 Do:
 - Validate manifest.

@@ -201,7 +201,7 @@ namespace AutoJMS
 
             await LoadDataAndRefreshViewsAsync();
 
-            // Hybrid local-first + Supabase sync (docs/hybrid-supabase-sync-plan.md):
+            // Hybrid local-first + DataHub sync (docs/hybrid-datahub-sync-plan.md):
             // background outbox flush + delta-pull + realtime doorbell. No-op when disabled.
             StartCloudSync();
         }
@@ -210,15 +210,15 @@ namespace AutoJMS
         {
             try
             {
-                if (!FullStackCloudSyncService.IsEnabled)
+                if (!DataHubSyncService.IsEnabled)
                 {
                     AppLogger.Info("[HybridSync] cloud sync disabled (flag/site/credentials) — local-only mode");
                     return;
                 }
 
-                FullStackCloudSyncService.Instance.DataMerged += OnCloudDataMerged;
-                FullStackCloudSyncService.Instance.StatusChanged += OnCloudSyncStatus;
-                _ = FullStackCloudSyncService.Instance.StartAsync(_cts.Token);
+                DataHubSyncService.Instance.DataMerged += OnCloudDataMerged;
+                DataHubSyncService.Instance.StatusChanged += OnCloudSyncStatus;
+                _ = DataHubSyncService.Instance.StartAsync(_cts.Token);
             }
             catch (Exception ex)
             {
@@ -263,9 +263,9 @@ namespace AutoJMS
             _cts.Cancel();
             try
             {
-                FullStackCloudSyncService.Instance.DataMerged -= OnCloudDataMerged;
-                FullStackCloudSyncService.Instance.StatusChanged -= OnCloudSyncStatus;
-                _ = FullStackCloudSyncService.Instance.StopAsync();
+                DataHubSyncService.Instance.DataMerged -= OnCloudDataMerged;
+                DataHubSyncService.Instance.StatusChanged -= OnCloudSyncStatus;
+                _ = DataHubSyncService.Instance.StopAsync();
             }
             catch (Exception ex)
             {
@@ -486,12 +486,12 @@ namespace AutoJMS
                 }
 
                 // Hybrid sync: only the lease-holding machine pulls JMS; others delta-pull the
-                // shared canonical data from Supabase (falls back to JMS when cloud is off/down).
-                bool isLeader = await FullStackCloudSyncService.Instance.TryBecomeLeaderAsync(ct);
+                // shared canonical data from DataHub (falls back to JMS when cloud is off/down).
+                bool isLeader = await DataHubSyncService.Instance.TryBecomeLeaderAsync(ct);
                 if (!isLeader)
                 {
                     SetFullStackStatus("Máy khác đang giữ lease — lấy dữ liệu chia sẻ từ cloud...");
-                    int merged = await FullStackCloudSyncService.Instance.PullAllAsync(ct);
+                    int merged = await DataHubSyncService.Instance.PullAllAsync(ct);
                     await LoadDataAndRefreshViewsAsync();
                     SetFullStackStatus($"Đồng bộ từ cloud xong ({merged:N0} thay đổi) — máy giữ lease đang kéo JMS");
                     return;
@@ -506,11 +506,11 @@ namespace AutoJMS
                 await LoadDataAndRefreshViewsAsync();
 
                 // Leader shares the freshly enriched rows with the rest of the site.
-                if (FullStackCloudSyncService.IsEnabled && FullStackCloudSyncService.Instance.HasLease)
+                if (DataHubSyncService.IsEnabled && DataHubSyncService.Instance.HasLease)
                 {
                     try
                     {
-                        await FullStackCloudSyncService.Instance.PushDashboardRowsAsync(ct);
+                        await DataHubSyncService.Instance.PushDashboardRowsAsync(ct);
                         SetFullStackStatus("Đã chia sẻ dữ liệu lên cloud cho các máy khác");
                     }
                     catch (Exception pushEx)
@@ -542,7 +542,7 @@ namespace AutoJMS
         private async Task LeaderTierTickAsync()
         {
             if (_leaderTierBusy || _isSyncRunning) return;
-            if (!FullStackCloudSyncService.Instance.HasLease) return;
+            if (!DataHubSyncService.Instance.HasLease) return;
             if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated) return;
             if (DateTime.UtcNow < _headBackoffUntilUtc) return; // JMS backoff after repeated head failures
 
@@ -584,9 +584,9 @@ namespace AutoJMS
                     int n = await _fullStackDashboardService.SyncHotSetAsync(newCodes, cap: 300, ct).ConfigureAwait(false);
                     if (n > 0)
                     {
-                        if (FullStackCloudSyncService.IsEnabled && FullStackCloudSyncService.Instance.HasLease)
+                        if (DataHubSyncService.IsEnabled && DataHubSyncService.Instance.HasLease)
                         {
-                            try { await FullStackCloudSyncService.Instance.PushDashboardRowsAsync(ct).ConfigureAwait(false); }
+                            try { await DataHubSyncService.Instance.PushDashboardRowsAsync(ct).ConfigureAwait(false); }
                             catch (Exception pushEx) { AppLogger.Warning("[LeaderTier] push failed: " + pushEx.Message); }
                         }
                         await OnSyncBatchPersistedAsync().ConfigureAwait(false);
@@ -2682,7 +2682,7 @@ namespace AutoJMS
             ShowWaybillJourneyWorkspace(waybillNo);
 
             // Opportunistic near-realtime refresh: fetch the latest tracking for THIS waybill in the
-            // background, merge local, and scoped-push to Supabase so other machines see it in seconds.
+            // background, merge local, and scoped-push to DataHub so other machines see it in seconds.
             // UI already shows above; this never blocks the detail view. Applies to leader + follower.
             FireOpportunisticWaybillRefresh(waybillNo);
         }
@@ -2739,7 +2739,7 @@ namespace AutoJMS
                 }
 
                 // scoped push (no-op if cloud disabled; no lease required)
-                await FullStackCloudSyncService.Instance.PushWaybillRowsAsync(new[] { code }, ct).ConfigureAwait(false);
+                await DataHubSyncService.Instance.PushWaybillRowsAsync(new[] { code }, ct).ConfigureAwait(false);
                 AppLogger.Info($"[Opportunistic] enriched pushed waybill={code} events={events}");
 
                 // refresh grid / WebView from the freshly merged local row

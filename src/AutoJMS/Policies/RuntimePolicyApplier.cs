@@ -60,7 +60,7 @@ public static class RuntimePolicyApplier
         if (value.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             return GoogleSheetsAccessMode.Auto;
 
-        // SupabaseTokenBroker is the target architecture name; current client
+        // DataHubTokenBroker is the target architecture name; current client
         // implementation uses the token broker provider class.
         return GoogleSheetsAccessMode.TokenBroker;
     }

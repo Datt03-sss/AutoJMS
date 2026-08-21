@@ -14,7 +14,7 @@
 - [ ] .nupkg
 - [ ] Setup.exe
 
-## Supabase manifest files
+## DataHub manifest files
 
 - [ ] version-latest.json
 - [ ] hash-manifest.json

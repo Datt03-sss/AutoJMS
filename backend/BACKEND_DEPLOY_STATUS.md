@@ -4,12 +4,12 @@ Date: 2026-06-11
 
 ## Completed
 
-- Supabase project linked: `bnsnnrlwfzxemmizknwy`.
-- Supabase bucket ready: `autojms-modules`.
-- Supabase migrations applied and local/remote history match:
+- DataHub project linked: `bnsnnrlwfzxemmizknwy`.
+- DataHub bucket ready: `autojms-modules`.
+- DataHub migrations applied and local/remote history match:
   - `202606110001_autojms_bootstrap.sql`
   - `202606110002_tighten_autojms_privileges.sql`
-- Public Supabase JSON files return HTTP 200:
+- Public DataHub JSON files return HTTP 200:
   - `manifest/app-manifest.json`
   - `manifest/hash-manifest.json`
   - `manifest/tier-definitions.json`
@@ -23,12 +23,12 @@ Date: 2026-06-11
 - Render server source has a runnable Node project:
   - `backend/render-license-server/package.json`
   - `backend/render-license-server/package-lock.json`
-  - `backend/render-license-server/.env.example`
+  - `backend/render-license-server/env.template`
   - `backend/render.yaml`
 - Render server supports:
   - `.env` loading for local development.
   - Firebase Admin credential from JSON env, base64 env, credential path, or local fallback file.
-  - Supabase project URL and anon key returned to the desktop client.
+  - DataHub project URL and device token returned to the desktop client.
 - Firebase operation timeout through `FIREBASE_OPERATION_TIMEOUT_MS`.
 - Firebase health endpoint: `/health/firebase`.
 - Desktop app builds successfully:
@@ -43,8 +43,8 @@ cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm install
 npm run check
 
-cd D:\v1.2605.2(new-test)\backend\supabase
-supabase migration list --linked
+cd D:\v1.2605.2(new-test)\backend\datahub
+datahub migration list --linked
 
 cd D:\v1.2605.2(new-test)
 dotnet build .\src\AutoJMS\AutoJMS.csproj -c Debug --no-restore /clp:Summary
@@ -72,9 +72,9 @@ FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebaseda
 FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 Firebase Admin service account JSON>
 # or FIREBASE_SERVICE_ACCOUNT_JSON=<Firebase Admin service account JSON>
 # or GOOGLE_APPLICATION_CREDENTIALS=<secret file path>
-SUPABASE_PROJECT_URL=https://bnsnnrlwfzxemmizknwy.supabase.co
-SUPABASE_BASE_URL=https://bnsnnrlwfzxemmizknwy.supabase.co/storage/v1/object/public/autojms-modules
-SUPABASE_ANON_KEY=<Supabase anon key, never service_role>
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://datahub.example.com
 FIREBASE_OPERATION_TIMEOUT_MS=8000
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=<optional comma-separated hashes>
@@ -92,11 +92,11 @@ After deploying Render:
    - `sid`
    - `tier`
    - `middleCode`
-   - `supabase.baseUrl`
-   - `supabase.projectUrl`
-   - `supabase.anonKey`
-   - `supabase.manifests`
+   - `datahub.baseUrl`
+   - `datahub.apiBaseUrl`
+   - `datahub.device enrollment token`
+   - `datahub.manifests`
 5. Launch `src/AutoJMS/bin/Debug/net8.0-windows/win-x64/AutoJMS.exe`.
 6. Login with a controlled license.
 7. Confirm BASE has no background inventory/database sync.
-8. Confirm ULTRA can open `FullStackOperationForm` and use Supabase-backed sync paths.
+8. Confirm ULTRA can open `FullStackOperationForm` and use DataHub-backed sync paths.

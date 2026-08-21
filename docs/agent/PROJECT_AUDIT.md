@@ -1,7 +1,7 @@
 # AutoJMS Project Audit
 
 ## Summary
-AutoJMS is a C# WinForms desktop application targeting .NET 8. It leverages SunnyUI for user interface styling, WebView2 for automated web interactions with the JMS portal, Render Node.js server and Firebase RTDB for licensing, and Supabase for cloud configuration and waybill database synchronization. 
+AutoJMS is a C# WinForms desktop application targeting .NET 8. It leverages SunnyUI for user interface styling, WebView2 for automated web interactions with the JMS portal, Render Node.js server and Firebase RTDB for licensing, and DataHub for cloud configuration and waybill database synchronization. 
 
 This audit reviews the repository's current architecture to identify design gaps, naming discrepancies, file organization issues, and safety risks before implementing automated vibe coding.
 
@@ -31,11 +31,11 @@ The codebase consists of:
 | **About** | `Forms/Main.cs`, `Updates/VelopackUpdateService.cs` | Displays app version, triggers update check manually. |
 | **Operation Center** | `Forms/FullStackOperation.cs` (and partials) | स्टैंडअलोन dashboard form displaying waybill, SLA, and Zalo charts (ULTRA tier only). |
 | **Auth/License** | `Licensing/LicenseApiService.cs`, `Licensing/TierRuntimePolicy.cs` | Verify RS256 JWT, heartbeat with Render server, cache license keys locally. |
-| **Supabase Integration** | `Data/SupabaseDbService.cs` | Query and push waybills and sync manifests to Supabase PostgreSQL. |
+| **DataHub Integration** | `Data/DataHubClient.cs` | Query and push waybills and sync manifests to DataHub PostgreSQL. |
 | **Firebase Integration** | `backend/render-license-server/server.js` | Firebase Admin SDK used by the license backend for user tier administration. |
 | **JMS Integration** | `Services/JmsApiClient.cs`, `Licensing/JmsAuthTokenService.cs` | Captures, refreshes, and authenticates requests against the JMS API Gateway. |
 | **Zalo Integration** | `Services/ZaloChatService.cs` | Integrates messages and alerts with the Zalo messaging platform (ULTRA tier only). |
-| **Velopack / Update** | `Updates/VelopackUpdateService.cs`, `Updates/MajorUpdateService.cs` | Fetches `version-latest.json` from Supabase and applies updates from GitHub Releases. |
+| **Velopack / Update** | `Updates/VelopackUpdateService.cs`, `Updates/MajorUpdateService.cs` | Fetches `version-latest.json` from DataHub and applies updates from GitHub Releases. |
 | **Config** | `Config/AppConfig.cs`, `Config/SettingsManager.cs` | Loads secure local settings and boot properties. |
 | **Logging** | `Config/AppLogger.cs` | General text logger (logs into AppData/logs/debug.log). |
 | **Data/Repository** | `FullStack/Repositories/FullStackWaybillRepository.cs` | Isolated DB repository layer for local SQLite storage of waybills. |
@@ -47,7 +47,7 @@ The codebase consists of:
 
 1. **Manifest Parsing Overlap**:
    - `UpdateXmlManifestService` parses an XML manifest for updates.
-   - `SupabaseManifestService` parses JSON manifests on Supabase Storage.
+   - `VpsManifestService` parses JSON manifests on VPS config API.
    - Both are responsible for checking if a new version exists.
 2. **Update Service Orchestration**:
    - `MajorUpdateService` coordinates check/download flows.
@@ -61,11 +61,11 @@ The codebase consists of:
 
 ## Hardcoded Config Risks
 
-1. **Supabase Base URL**:
-   - `https://bnsnnrlwfzxemmizknwy.supabase.co` is hardcoded across 4 separate files:
-     - `Data/SupabaseDbService.cs`
+1. **DataHub Base URL**:
+   - `https://datahub.example.com` is hardcoded across 4 separate files:
+     - `Data/DataHubClient.cs`
      - `Licensing/HashVerifier.cs`
-     - `ModuleSystem/SupabaseModuleProvider.cs`
+     - `ModuleSystem/VpsModuleProvider.cs`
      - `Updates/VelopackUpdateService.cs`
    - *Risk*: Relocating database/modules requires manual edits in multiple compiled files.
 
@@ -73,8 +73,8 @@ The codebase consists of:
 
 ## Secret Risks
 
-1. **Supabase Public Anon Key**:
-   - The public-anon key is hardcoded in `SupabaseDbService.cs`. This key is intended to be public, but it relies heavily on correct PostgreSQL Row Level Security (RLS) to prevent write/delete operations from unauthorized users.
+1. **DataHub Public Anon Key**:
+   - The public-anon key is hardcoded in `DataHubClient.cs`. This key is intended to be public, but it relies heavily on correct PostgreSQL Row Level Security (RLS) to prevent write/delete operations from unauthorized users.
 2. **Firebase service account key**:
    - `service_account.json` exists in the local workspace. It is git-ignored but its presence poses a risk of accidental inclusion in a git add.
 

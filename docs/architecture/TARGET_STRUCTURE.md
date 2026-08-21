@@ -29,7 +29,7 @@ AutoJMS.slnx
 │   │   └── Updates/                    ← Velopack and SmallUpdate services
 │   │
 │   ├── AutoJMS.Data/                   ← Data access implementations
-│   │   ├── Supabase/                   ← PostgreSQL gateway API
+│   │   ├── DataHub/                   ← PostgreSQL gateway API
 │   │   └── LocalSQLite/                ← Fullstack local database & repos
 │   │
 │   └── AutoJMS.Infrastructure/         ← Shared infrastructure

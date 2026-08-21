@@ -1,4 +1,4 @@
-﻿# AutoJMS Backlog
+# AutoJMS Backlog
 
 ## P0 - Must fix before feature development
 
@@ -8,7 +8,7 @@
 - [ ] Ensure WebView2 refresh runs on UI thread
 - [ ] Disable BASE background inventory/database tracking
 - [ ] Stabilize FullStackOperation grid lifecycle
-- [ ] Validate release flow: GitHub binary + Supabase manifest
+- [ ] Validate release flow: GitHub binary + DataHub manifest
 
 ## P1 - Stability
 
@@ -32,7 +32,7 @@
 - [ ] SLA Engine
 - [ ] Risk Engine
 - [ ] Operation Center realtime grid
-- [ ] Supabase realtime cache strategy
+- [ ] DataHub realtime cache strategy
 - [ ] DataGridView 100k rows optimization
 
 

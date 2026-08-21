@@ -29,13 +29,13 @@ docs/
 │   ├── render-server-api.md
 │   ├── firebase-license-schema.md
 │   ├── jms-api-notes.md
-│   └── supabase-manifest-schema.md
+│   └── datahub-manifest-schema.md
 ├── release/                           ← Release documentation
 │   ├── release-overview.md
 │   ├── inno-first-install.md
 │   ├── velopack-update.md
 │   ├── github-release-flow.md
-│   ├── supabase-manifest-flow.md
+│   ├── datahub-manifest-flow.md
 │   └── versioning-rules.md
 ├── manual/                            ← Practical manual operations
 │   ├── MANUAL_OPERATIONS.md
@@ -65,7 +65,7 @@ docs/
 │   ├── auth-token-401.md
 │   ├── webview2-issues.md
 │   ├── velopack-setup-errors.md
-│   ├── supabase-manifest-errors.md
+│   ├── datahub-manifest-errors.md
 │   ├── fullstack-operation-errors.md
 │   └── build-errors.md
 └── audit/                           ← Audit reports

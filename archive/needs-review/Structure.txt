@@ -11,7 +11,7 @@ folders or top-level files change.
 
   AutoJMS\
   ├── Installer\           ← Build the FIRST-INSTALL package (Inno Setup)
-  ├── Release\             ← Build VELOPACK UPDATES (push to Supabase)
+  ├── Release\             ← Build VELOPACK UPDATES (push to DataHub)
   ├── ModuleProjects\      ← Side projects: RetryPolicy, Selectors, Abstractions
   ├── ModuleSystem\        ← In-app plugin loader / module registry
   ├── ServerTemplates\     ← Server-side JSON templates + reference Node script
@@ -29,7 +29,7 @@ folders or top-level files change.
   ├── AutoJMS.slnx         ← Solution
   ├── AutoJMS_Reactor.nrproj ← .NET Reactor obfuscation project
   ├── build-modules.ps1    ← Build module DLLs (RetryPolicy, Selectors)
-  ├── upload-module.ps1    ← Upload built modules to Supabase Storage
+  ├── upload-module.ps1    ← Upload built modules to VPS config API
   ├── service_account.json ← Google service account credential (read-only)
   ├── tier-definitions.json ← Tier → tabs/forms/modules mapping
   ├── AutoJMS.json         ← Default user-settings template (shipped to install dir)
@@ -61,12 +61,12 @@ folders or top-level files change.
 
 
 ================================================================================
-  Release\  —  VELOPACK UPDATE BUILDER (push to Supabase)
+  Release\  —  VELOPACK UPDATE BUILDER (push to DataHub)
 ================================================================================
 
   Purpose:
     Build  Release\output\<channel>\AutoJMS-<channel>-Setup.exe + .nupkg + RELEASES
-    These files go to Supabase Storage. Installed users get them via
+    These files go to VPS config API. Installed users get them via
     in-app "Check Update" (Velopack downloads + applies).
 
   Layout:
@@ -137,7 +137,7 @@ folders or top-level files change.
     UserSettingsService.cs   Plain-text AutoJMS.json fallback
     RuntimeConfig.cs         Runtime config DTO
     RuntimeConfigService.cs  Cache + apply runtime config from server
-    SupabaseConfig.cs        Supabase URL / channel DTOs
+    DataHubConfig.cs        DataHub URL / channel DTOs
 
   License & auth
     AuthStateService.cs / IAuthStateService.cs   App auth state singleton
@@ -148,8 +148,8 @@ folders or top-level files change.
     IntegrityService.cs      Integrity check orchestration
 
   Update services
-    VelopackUpdateService.cs Public Supabase feed → Velopack download/apply
-    MajorUpdateService.cs    Wrapper for major (full app) update via Supabase
+    VelopackUpdateService.cs Public DataHub feed → Velopack download/apply
+    MajorUpdateService.cs    Wrapper for major (full app) update via DataHub
     SmallUpdateService.cs    Apply small encrypted config patches
 
   JMS integration
@@ -160,10 +160,10 @@ folders or top-level files change.
     PrintService.cs / IPrintService.cs   PDF print pipeline
     GoogleSheetService.cs       Google Sheets export
 
-  Supabase services
-    SupabaseDbService.cs        Realtime tracking lease, sync
-    SupabaseManifestService.cs  Fetch manifests from Supabase Storage
-    SupabaseModels.cs           Manifest DTOs
+  DataHub services
+    DataHubClient.cs        Realtime tracking lease, sync
+    VpsManifestService.cs  Fetch manifests from VPS config API
+    DataHubModels.cs           Manifest DTOs
 
   Misc
     WebViewHost.cs              Shared WebView2 host wrapper
@@ -204,7 +204,7 @@ folders or top-level files change.
     ├── BuiltInSelectorProvider.cs Default selectors
     ├── BuiltInWorkflowProvider.cs Default workflow
     ├── BuiltInConfigProvider.cs   Default config
-    └── SupabaseModuleProvider.cs  Pulls module DLLs from Supabase Storage
+    └── VpsModuleProvider.cs  Pulls module DLLs from VPS config API
 
 
 ================================================================================
@@ -280,7 +280,7 @@ folders or top-level files change.
     ├── autojms-architecture.md      ← Subsystem map + lifecycle + invariants
     ├── csharp-winforms-net8.md      ← Bootstrap, async/CTS, FormClosing, mutex
     ├── webview2-automation.md       ← Vue/Element UI driving + API interception
-    ├── velopack-supabase-update.md  ← Two-stage install + update flow
+    ├── velopack-datahub-update.md  ← Two-stage install + update flow
     ├── app-paths-logging.md         ← AppPaths discipline + AppLogger taxonomy
     └── inno-setup-bootstrapper.md   ← dontcopy + ExtractTemporaryFile pattern,
                                         [Dirs] permissions, prereq order

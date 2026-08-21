@@ -1,4 +1,4 @@
-﻿# Tools Workspace
+# Tools Workspace
 
 This folder is for build/release/installer/maintenance scripts.
 

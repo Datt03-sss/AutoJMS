@@ -86,12 +86,12 @@ if ($program -notmatch 'UnmappedMemberHandling\s*=\s*JsonUnmappedMemberHandling\
     throw 'HTTP JSON binding must reject fields outside the OpenAPI request schemas.'
 }
 
-foreach ($envName in @('.env.staging.example', '.env.production.example')) {
+foreach ($envName in @('env.staging.template', 'env.production.template')) {
     $envText = Get-Content -Raw (Join-Path $rootPath $envName)
     if ($envText -notmatch 'REPLACE_WITH_') { throw "$envName must contain placeholders, not committed secrets." }
 }
-$staging = Get-Content -Raw (Join-Path $rootPath '.env.staging.example')
-$production = Get-Content -Raw (Join-Path $rootPath '.env.production.example')
+$staging = Get-Content -Raw (Join-Path $rootPath 'env.staging.template')
+$production = Get-Content -Raw (Join-Path $rootPath 'env.production.template')
 if ($staging -notmatch 'DATAHUB_CHANNEL=staging' -or $production -notmatch 'DATAHUB_CHANNEL=production') { throw 'Staging/production channels are not isolated.' }
 if ($staging -notmatch 'datahub-dev\.example\.com' -or $production -notmatch 'datahub\.example\.com') { throw 'Stable DNS names are missing.' }
 if ($staging -notmatch 'DATAHUB_API_IMAGE=.*@sha256:REPLACE_WITH_64_HEX_IMAGE_DIGEST' `

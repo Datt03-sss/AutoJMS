@@ -1,4 +1,4 @@
-﻿# Current to Clean Structure Plan
+# Current to Clean Structure Plan
 
 ## Current Structure
 

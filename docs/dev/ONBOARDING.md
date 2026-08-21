@@ -1,4 +1,4 @@
-﻿# AutoJMS Onboarding
+# AutoJMS Onboarding
 
 ## What is AutoJMS?
 
@@ -52,7 +52,7 @@ dotnet build src/AutoJMS/AutoJMS.csproj -c Debug
 - BASE must not run background inventory/database sync.
 - JMS authToken and license JWT are different tokens.
 - FullStackOperation lifecycle must handle close/reopen and disposed controls.
-- GitHub Releases host binary; Supabase hosts small manifests/config.
+- GitHub Releases host binary; DataHub hosts small manifests/config.
 - Service account material must not be committed or exposed.
 
 ## Next recommended task

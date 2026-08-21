@@ -22,7 +22,7 @@ These folders are not production WinForms source:
 | `.agent/` | Agent rules, prompts, skills, workflows, checklists |
 | `docs/` | Architecture, audit, release, troubleshooting, migration docs |
 | `backend/` | Render Node/Express license server |
-| `infra/` | Supabase/Firebase/GitHub release reference structure |
+| `infra/` | DataHub/Firebase/GitHub release reference structure |
 | `installer/` | Inno Setup first-install/reinstall tooling |
 | `release/` | Velopack release/update packaging tooling |
 | `tools/` | Maintenance scripts and Reactor project |

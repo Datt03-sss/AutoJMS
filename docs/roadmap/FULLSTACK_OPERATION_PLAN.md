@@ -5,7 +5,7 @@
 - `FullStackOperation` is ULTRA-only.
 - It is a separate visible form, not a tab.
 - It should be launched after `MainForm.Shown`.
-- It should fetch JMS/Supabase data only after authToken is available.
+- It should fetch JMS/DataHub data only after authToken is available.
 
 ## Stabilization Goals
 

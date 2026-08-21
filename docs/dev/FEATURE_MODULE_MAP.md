@@ -8,11 +8,11 @@
 | PRINT | BASE/ULTRA | Main tab | `Main.cs`, `PrintService.cs`, `IPrintService.cs` | No | BASE manual feature allowed. |
 | ABOUT update | BASE/ULTRA | Main tab | `Main.cs`, `VelopackUpdateService.cs`, `MajorUpdateService.cs` | No | Major update manual via About tab. |
 | FullStackOperation | ULTRA | Standalone form | `FullStackOperation.cs`, `Main.cs` | Yes | Not a tab; gated by `TierRuntimePolicy`. |
-| Inventory sync | ULTRA | Background/service | `InventorySyncService.cs`, `Main.cs`, `SupabaseDbService.cs` | Yes | Must not run on BASE. |
-| Database tracking | ULTRA | Background/service | `DatabaseTracking.cs`, `SupabaseDbService.cs`, `Main.cs` | Yes | Must not run on BASE. |
+| Inventory sync | ULTRA | Background/service | `InventorySyncService.cs`, `Main.cs`, `DataHubClient.cs` | Yes | Must not run on BASE. |
+| Database tracking | ULTRA | Background/service | `DatabaseTracking.cs`, `DataHubClient.cs`, `Main.cs` | Yes | Must not run on BASE. |
 | Zalo/SLA dashboard | ULTRA | FullStackOperation | `FullStackOperation.cs`, `ZaloChatService.cs` | Yes | Requires lifecycle cancellation/guarding. |
-| Selector/runtime small update | BASE/ULTRA | Startup/background config | `SmallUpdateService.cs`, `RuntimeConfigService.cs`, `SupabaseManifestService.cs` | Controlled small update | Supabase control-plane files only. |
-| Major update | BASE/ULTRA | ABOUT tab | `VelopackUpdateService.cs`, `MajorUpdateService.cs`, `SupabaseManifestService.cs` | No | GitHub Releases binary, Supabase manifest. |
+| Selector/runtime small update | BASE/ULTRA | Startup/background config | `SmallUpdateService.cs`, `RuntimeConfigService.cs`, `VpsManifestService.cs` | Controlled small update | DataHub control-plane files only. |
+| Major update | BASE/ULTRA | ABOUT tab | `VelopackUpdateService.cs`, `MajorUpdateService.cs`, `VpsManifestService.cs` | No | GitHub Releases binary, DataHub manifest. |
 
 Rules:
 

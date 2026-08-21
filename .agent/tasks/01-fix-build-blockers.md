@@ -1,4 +1,4 @@
-﻿# Fix Build Blockers
+# Fix Build Blockers
 
 ## Required reading
 

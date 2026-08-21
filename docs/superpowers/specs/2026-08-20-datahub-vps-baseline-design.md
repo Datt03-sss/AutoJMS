@@ -2,7 +2,7 @@
 
 > Status: owner-approved architecture baseline, 2026-08-20.
 > This document is the implementation source of truth for the new VPS data path.
-> Older Supabase/DataHub planning documents remain historical and must not be used
+> Older DataHub/DataHub planning documents remain historical and must not be used
 > to generate the phase-1 SQL or API contract.
 
 ## Goal
@@ -18,7 +18,7 @@ is not a production standby.
 
 - No database or schema per site.
 - No direct PostgreSQL connection from desktop clients.
-- No Supabase DataHub dependency.
+- No DataHub DataHub dependency.
 - No Redis, Kafka, PgBouncer, partitioning, Kubernetes, or chat/note tables before those
   features exist.
 - No Strict leader command queue. Interactive JMS calls remain local to the operator's

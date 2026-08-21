@@ -212,7 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_fs_waybills_enriched ON fs_waybills(is_enriched, 
 CREATE INDEX IF NOT EXISTS idx_fs_order_checks_waybill ON fs_order_checks(waybill_no, checked_at);
 ";
 
-        // V2 — Hybrid local-first + Supabase sync (docs/hybrid-supabase-sync-plan.md).
+        // V2 — Hybrid local-first + DataHub sync (docs/hybrid-datahub-sync-plan.md).
         // fs_outbox: local writes queued for cloud push (offline-safe).
         public const string SchemaV2 = @"
 CREATE TABLE IF NOT EXISTS fs_outbox (
@@ -230,7 +230,7 @@ CREATE INDEX IF NOT EXISTS idx_fs_outbox_pending ON fs_outbox(synced_at, id);
 ";
 
         // client_id: idempotency key ""<clientId>:<local id>"" so pushes/pulls never duplicate
-        // rows across machines. origin: 'local' (this machine) or 'cloud' (merged from Supabase).
+        // rows across machines. origin: 'local' (this machine) or 'cloud' (merged from DataHub).
         public static readonly (string TableName, string ColumnName, string Sql)[] SyncColumnGuards =
         {
             ("fs_order_notes", "client_id", "ALTER TABLE fs_order_notes ADD COLUMN client_id TEXT NULL;"),

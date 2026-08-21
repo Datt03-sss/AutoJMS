@@ -3,7 +3,7 @@
 ## Current Target
 
 ```txt
-Supabase = control plane
+DataHub = control plane
 GitHub Releases = binary hosting
 Inno Setup = first install
 Velopack = in-app update
@@ -13,7 +13,7 @@ Velopack = in-app update
 
 - Major update is manual via tab About.
 - Do not open GitHub page during update.
-- Do not upload `.nupkg` to Supabase.
+- Do not upload `.nupkg` to DataHub.
 - Stable and beta must be separate and explicit.
 - Version used by Velopack must be valid SemVer.
 
@@ -35,7 +35,7 @@ Tag format:
 v{VelopackVersion}-Release
 ```
 
-## File nhỏ upload Supabase
+## File nhỏ upload DataHub
 
 - `version-latest.json`
 - `hash-manifest.json`
@@ -57,7 +57,7 @@ v{VelopackVersion}-Release
 
 - Old installed app can discover update from About.
 - Update downloads from GitHub Releases.
-- Supabase only stores manifest/config/hash/control files.
+- DataHub only stores manifest/config/hash/control files.
 - App restarts after update.
 - User data is preserved.
 

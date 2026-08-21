@@ -1,6 +1,6 @@
 # Kế hoạch xây dựng database cho FullStackForm
 
-Thiết kế database (Supabase `autojms_database` = `jrqxnviixmagiriqysov`) phục vụ các tab của
+Thiết kế database (DataHub `autojms_database` = `jrqxnviixmagiriqysov`) phục vụ các tab của
 FullStackOperation: **tabDash**, **tabThoiHieu**, và các tab mở rộng trong tương lai.
 
 Nguyên tắc chung (đã áp dụng): tenancy theo `site_code` + RLS; ghi qua RPC SECURITY DEFINER
@@ -86,7 +86,7 @@ waybill_problems(site_code, waybill_no, reason, first_seen_at, last_seen_at,
 - **Mọi bảng**: có `site_code`, `updated_at`; bật RLS scoped `site_code`; chỉ ghi qua RPC.
 - **Idempotent**: bảng append-only dùng `client_id`/khóa tự nhiên + `on conflict do nothing/update`.
 - **Newest-wins** cho bảng trạng thái (`where excluded.updated_at >= t.updated_at`).
-- **Realtime**: thêm bảng mới vào publication `supabase_realtime`.
+- **Realtime**: thêm bảng mới vào publication `datahub_realtime`.
 - **Retention**: bảng scans/problems theo cùng vòng đời `waybills` — khi đơn bị purge, xóa scans liên quan (thêm FK `on delete cascade` hoặc bước trong `run_retention_cleanup`).
 - **search_path** pin cho mọi function; grant execute chỉ cho RPC site-scoped.
 

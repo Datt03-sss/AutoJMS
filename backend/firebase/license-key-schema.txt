@@ -55,7 +55,7 @@
   root.cfg.dataSpreadsheetId → AppConfig.Current.DataSpreadsheetId
 
 ┌─────────────────────────────────────────────────────────┐
-│ 4. SUPABASE STORAGE (autojms-modules bucket)            │
+│ 4. VPS CONFIG API (autojms-modules bucket)            │
 └─────────────────────────────────────────────────────────┘
 
   configs/tier-definitions.json   -- defines what each tier can DO

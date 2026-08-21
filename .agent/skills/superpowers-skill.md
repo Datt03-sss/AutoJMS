@@ -38,7 +38,7 @@ Red-green-refactor works only where a class has no WinForms/WebView2/JMS depende
 
 - `Forms/Main.Designer.cs` and any WinForms layout/theming
 - WebView2 DOM automation (needs a live JMS session)
-- Velopack update flow, Inno Setup, Firebase/Supabase production paths
+- Velopack update flow, Inno Setup, Firebase/DataHub production paths
 
 For out-of-scope changes the verification artefact is the **Owner Manual Test Checklist** in the final
 report, not a unit test.

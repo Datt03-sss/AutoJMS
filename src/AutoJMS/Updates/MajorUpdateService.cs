@@ -9,10 +9,10 @@ namespace AutoJMS
 {
     public class MajorUpdateService
     {
-        private readonly SupabaseManifestService _manifestService;
+        private readonly VpsManifestService _manifestService;
         private string _channel;
 
-        public MajorUpdateService(SupabaseManifestService manifestService, SupabaseReleasesConfig releases = null, string channel = "stable")
+        public MajorUpdateService(VpsManifestService manifestService, VpsReleasesConfig releases = null, string channel = "stable")
         {
             _manifestService = manifestService;
             _channel = channel ?? "stable";
@@ -23,7 +23,7 @@ namespace AutoJMS
         /// <summary>
         /// Build the Velopack update source for a channel. GitHub Releases when
         /// provider=github (download direct, no browser), else the legacy
-        /// Supabase Storage feed via SimpleWebSource.
+        /// VPS config API feed via SimpleWebSource.
         /// </summary>
         private static IUpdateSource BuildSource(VersionChannel ch)
         {
@@ -38,13 +38,13 @@ namespace AutoJMS
                     AppLogger.Info($"MajorUpdateService: provider=github, repo={repoUrl}, prerelease={ch.Prerelease}, tag={ch.Tag}");
                     return new GithubSource(repoUrl, null, ch.Prerelease, null);
                 }
-                AppLogger.Warning("MajorUpdateService: provider=github but no repo URL — falling back to Supabase feed.");
+                AppLogger.Warning("MajorUpdateService: provider=github but no repo URL — falling back to DataHub feed.");
             }
 
             if (ch == null || string.IsNullOrWhiteSpace(ch.VelopackFeedUrl))
                 throw new InvalidOperationException("Channel has no GithubSource and no Velopack RELEASES feed folder.");
 
-            AppLogger.Info($"MajorUpdateService: provider=supabase (legacy), feed={ch?.VelopackFeedUrl}");
+            AppLogger.Info($"MajorUpdateService: provider=vps (legacy), feed={ch?.VelopackFeedUrl}");
             return new SimpleWebSource(new Uri(ch.VelopackFeedUrl));
         }
 
@@ -81,7 +81,7 @@ namespace AutoJMS
                     var updateInfo = await manager.CheckForUpdatesAsync();
 
                     bool hasUpdate = updateInfo != null;
-                    AppLogger.Info($"MajorUpdateService: channel={_channel}, provider={(ch.IsGithubProvider ? "github" : "supabase")}, hasUpdate={hasUpdate}");
+                    AppLogger.Info($"MajorUpdateService: channel={_channel}, provider={(ch.IsGithubProvider ? "github" : "datahub")}, hasUpdate={hasUpdate}");
                     return (ch, hasUpdate);
                 }
                 catch (Exception ex)

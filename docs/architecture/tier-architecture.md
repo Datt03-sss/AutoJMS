@@ -158,7 +158,7 @@ _autoSyncTimer.Tick += async (s, e) =>
 ```csharp
 // TryAcquireInventoryLease (30-minute lock)
 // Other machines see lock and skip sync
-bool acquired = await SupabaseDbService.TryAcquireInventoryLeaseAsync(LeaseSeconds);
+bool acquired = await DataHubClient.TryAcquireInventoryLeaseAsync(LeaseSeconds);
 if (!acquired)
 {
     AppLogger.Info("[Sync] Máy khác đang giữ quyền sync.");

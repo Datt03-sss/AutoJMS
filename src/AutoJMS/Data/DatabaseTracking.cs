@@ -137,7 +137,7 @@ namespace AutoJMS
 
             if (finalUploadList.Count > 0 && !ct.IsCancellationRequested)
             {
-                await SupabaseDbService.UpsertManyWaybillsAsync(finalUploadList);
+                await DataHubClient.UpsertManyWaybillsAsync(finalUploadList);
                 AppLogger.Info($"[DatabaseTracking] Đã update lên Database {finalUploadList.Count} đơn.");
             }
         }

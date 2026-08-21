@@ -18,7 +18,7 @@ Program.Main()
     │
     ├─► InitializeServicesFromLicense()
     │       │
-    │       ├─► SupabaseManifestService
+    │       ├─► VpsManifestService
     │       ├─► RuntimeConfigService
     │       ├─► IntegrityService
     │       ├─► MajorUpdateService
@@ -97,7 +97,7 @@ Main.Shown
 
 Main closing
     ├─► Stop DkchManager
-    ├─► Release Supabase lease
+    ├─► Release DataHub lease
     └─► Dispose resources
 ```
 
@@ -111,7 +111,7 @@ Main.Shown
 Main closing
     ├─► Stop all timers
     ├─► Close FullStackOperation
-    ├─► Release Supabase lease
+    ├─► Release DataHub lease
     └─► Dispose resources
 ```
 
@@ -174,5 +174,5 @@ C:\AutoJMS\                    ← InstallRoot
 | JmsAuthStateService | JmsAuthStateService.cs | Token state |
 | JmsApiClient | JmsApiClient.cs | JMS API HTTP client |
 | InventorySyncService | InventorySyncService.cs | Inventory fetch |
-| SupabaseDbService | SupabaseDbService.cs | Waybill database |
+| DataHubClient | DataHubClient.cs | Waybill database |
 | VelopackUpdateService | VelopackUpdateService.cs | In-app updates |

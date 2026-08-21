@@ -95,7 +95,7 @@ _tierPolicy.AllowManualPrint              // true
 ## Performance
 
 - [ ] No unexpected network activity
-- [ ] No Supabase connections (on idle)
+- [ ] No DataHub connections (on idle)
 - [ ] No Firebase connections (on idle)
 - [ ] Memory usage stable
 

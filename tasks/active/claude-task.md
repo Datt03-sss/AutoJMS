@@ -27,7 +27,7 @@ Update AutoJMS print page size behavior so set/unset page size applies to the cu
 ## Scope forbidden
 - License/Auth/Hash check
 - Firebase session
-- Supabase production config
+- DataHub production config
 - Velopack/update/release
 - Database schema
 - JMS API

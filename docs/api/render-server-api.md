@@ -1,4 +1,4 @@
-﻿# Render Server API
+# Render Server API
 
 ## Current Verified Baseline
 
@@ -17,7 +17,7 @@ Endpoints:
 - `sid`: session id.
 - `license`: status, tier, middleCode, skipHashCheck, modulePolicy.
 - `cfg`: dataSpreadsheetId, updateChannel.
-- `supabase`: baseUrl, manifests.
+- `datahub`: baseUrl, manifests.
 
 Client compatibility note:
 
@@ -71,8 +71,8 @@ Verify a license key and issue a session JWT.
     "dataSpreadsheetId": "",
     "updateChannel": "stable"
   },
-  "supabase": {
-    "baseUrl": "https://valmbajjpkjccqslsuou.supabase.co",
+  "datahub": {
+    "baseUrl": "https://datahub.example.com",
     "manifests": {
       "versionLatest": "manifest/version-latest.json",
       "hashManifest": "manifest/hash-manifest.json",
@@ -179,7 +179,7 @@ var parameters = new TokenValidationParameters
 |----------|-------------|
 | JWT_PRIVATE_KEY | RS256 private key (PEM) |
 | JWT_PUBLIC_KEY | RS256 public key (PEM) |
-| SUPABASE_BASE_URL | Supabase project URL |
+| DATAHUB_API_BASE_URL | DataHub project URL |
 | DEFAULT_UPDATE_CHANNEL | "stable" or "beta" |
 | VALID_EXE_HASHES | Comma-separated allowed hashes |
 | PORT | Server port (default: 3000) |

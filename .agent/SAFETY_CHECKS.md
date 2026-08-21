@@ -18,7 +18,7 @@
 - [ ] Change release scripts
 - [ ] Change server.js
 - [ ] Change Firebase schema
-- [ ] Change Supabase manifest schema
+- [ ] Change DataHub manifest schema
 - [ ] Log full tokens
 - [ ] Enable BASE background sync
 

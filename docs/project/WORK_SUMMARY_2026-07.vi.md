@@ -12,9 +12,9 @@ làm nền cho các kế hoạch kiểm soát tồn kho và mở rộng database
 
 ### 2. Rule "Skills First"
 - Thêm quy tắc: mỗi task ưu tiên dùng skill trong `.agent/skills/` và `.agents/skills/`, nếu không có thì `find-skills`.
-- Cài `supabase/agent-skills` (2 skill: `supabase`, `supabase-postgres-best-practices`); bắt buộc dùng cho mọi việc Supabase/Postgres.
+- Cài `datahub/agent-skills` (2 skill: `datahub`, `datahub-postgres-best-practices`); bắt buộc dùng cho mọi việc DataHub/Postgres.
 
-### 3. Dựng database Supabase cho FullStackOperation (project `autojms_database` = `jrqxnviixmagiriqysov`)
+### 3. Dựng database DataHub cho FullStackOperation (project `autojms_database` = `jrqxnviixmagiriqysov`)
 - Áp 3 migration nền: bootstrap → tighten_privileges → hybrid_sync.
 - Bảng: `waybills` (tenancy `site_code` + cột dashboard), `order_notes`, `order_checks`, `dispatch_tasks`, `inventory_sync_leases`, `app_manifest/modules/configs`.
 - RPC newest-wins + delta-pull; RLS theo `site_code`; realtime publication; lease chống trùng sync.

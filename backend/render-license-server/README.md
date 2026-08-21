@@ -1,40 +1,33 @@
-# AutoJMS Render License Server
+# AutoJMS License Server
 
-Node/Express service for AutoJMS license verification and heartbeat.
+This service verifies licenses and issues the signed desktop assertion. It does
+not connect to PostgreSQL and it never receives or returns a DataHub device
+token. The desktop enrolls its device with the VPS DataHub API separately.
 
-## Setup
+## Local setup
 
-```powershell
-cd backend/render-license-server
-npm install
-copy .env.example .env
-```
+Run npm ci, copy env.template to .env, then run npm run check and npm start.
 
-Fill `.env` with real JWT keys, Firebase credentials, and the Supabase anon key.
-`FIREBASE_OPERATION_TIMEOUT_MS` defaults to `10000` so license verification fails fast instead of hanging when Firebase is unreachable or misconfigured.
+Required secrets:
 
-## Run
+- JWT_PRIVATE_KEY
+- JWT_PUBLIC_KEY
+- Firebase Admin credentials through one supported source
 
-```powershell
-npm run check
-npm start
-```
+The only DataHub setting is the public API base URL:
 
-Health check:
+DATAHUB_API_BASE_URL=https://datahub.example.com
 
-```powershell
-Invoke-RestMethod http://localhost:3000/health
-```
+The VPS API owns database credentials, device enrollment, leases, ingest and
+SignalR. Do not place PostgreSQL passwords, service keys, or device tokens in
+this service or in a desktop license response.
 
-## Required Secrets
+## Verification
 
-- `JWT_PRIVATE_KEY`
-- `JWT_PUBLIC_KEY`
-- Firebase service account through one of:
-  - `FIREBASE_SERVICE_ACCOUNT_JSON`
-  - `FIREBASE_SERVICE_ACCOUNT_BASE64`
-  - `GOOGLE_APPLICATION_CREDENTIALS`
-  - local fallback `serviceAccountKey.json`
-- `SUPABASE_ANON_KEY`
+GET /health checks that the license service is running. A successful
+POST /api/verify-license response contains the signed license payload and the
+DataHub apiBaseUrl and siteId. The desktop uses apiBaseUrl to reach the VPS,
+then completes device enrollment using the signed assertion.
 
-Never use the Supabase `service_role` key as `SUPABASE_ANON_KEY`.
+Production enrollment must use the asymmetric issuer validator configured by
+the DataHub API.

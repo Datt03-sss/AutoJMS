@@ -2,7 +2,7 @@
 
 ## Overview
 
-GitHub Releases hosts Velopack binaries. Supabase hosts small control-plane manifests.
+GitHub Releases hosts Velopack binaries. DataHub hosts small control-plane manifests.
 
 ## Binary Split
 
@@ -11,9 +11,9 @@ GitHub Releases hosts Velopack binaries. Supabase hosts small control-plane mani
 | .nupkg | ~100MB | GitHub Releases |
 | *Setup.exe | ~100MB | GitHub Releases |
 | RELEASES | ~1KB | GitHub Releases |
-| version-latest.json | ~1KB | Supabase Storage |
+| version-latest.json | ~1KB | VPS config API |
 
-**Supabase free plan rejects files > 50MB.**
+**DataHub free plan rejects files > 50MB.**
 
 ## Velopack Concepts
 
@@ -71,8 +71,8 @@ gh release upload v1.26.6-Release `
     Release/output/stable/*Setup.exe `
     --repo Datt03-sss/AutoJMS-Update
 
-# 4. Update Supabase manifest
-# (upload version-latest.json to Supabase)
+# 4. Update DataHub manifest
+# (upload version-latest.json to DataHub)
 ```
 
 ## Velopack GithubSource
@@ -116,7 +116,7 @@ User clicks "Kiểm tra cập nhật"
 VelopackUpdateService.CheckAndUpdateAsync()
     │
     ▼
-Read version-latest.json from Supabase
+Read version-latest.json from DataHub
     │
     ▼
 provider=github → Use GithubSource
@@ -154,7 +154,7 @@ ApplyUpdatesAndRestart
 
 | Issue | Cause | Solution |
 |-------|--------|----------|
-| No update found | version-latest.json not updated | Upload to Supabase |
+| No update found | version-latest.json not updated | Upload to DataHub |
 | Download fails | Wrong repo/tag | Check tag format |
 | 404 on assets | Assets not uploaded | Check gh upload |
 | Wrong version shown | DisplayVersion does not match VelopackVersion line | Use `1.26.6 beta 1` for `1.26.6-beta.1`; do not hide beta as `1.26.7` |

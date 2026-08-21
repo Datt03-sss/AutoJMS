@@ -1,4 +1,4 @@
-﻿# Source Workspace File Map
+# Source Workspace File Map
 
 This map is plan-only. No file move is approved until the user says `EXECUTE_STRUCTURE_MIGRATION`.
 
@@ -16,7 +16,7 @@ Action values:
 | ----- | -------- | ------- | ------ |
 | A | Production source | Files compiled into AutoJMS app, WinForms resources, runtime content | `src/AutoJMS/` |
 | B | Project phụ / contracts | Referenced or sample module projects/contracts | `src/AutoJMS.Abstractions/` or temporary `archive/old-module-system/` |
-| C | Backend | Render, Supabase, Firebase, GitHub release references | `backend/` |
+| C | Backend | Render, DataHub, Firebase, GitHub release references | `backend/` |
 | D | Tooling | Release, installer, Reactor, maintenance scripts | `tools/` |
 | E | Agent/docs | AI workspace and documentation | `.agent/`, `docs/` |
 | F | Legacy / uncertain | Unknown, local, obsolete, output, or sensitive files requiring verification | `legacy/` or ignored after verify |
@@ -44,7 +44,7 @@ Action values:
 | `frmLogin.resx` | `src/AutoJMS/Forms/frmLogin.resx` | Production resource | yes | high | MOVE_AFTER_CONFIRM |
 | `AppConfig.cs` | `src/AutoJMS/Config/AppConfig.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `RuntimeConfig.cs` | `src/AutoJMS/Config/RuntimeConfig.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
-| `SupabaseConfig.cs` | `src/AutoJMS/Config/SupabaseConfig.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
+| `DataHubConfig.cs` | `src/AutoJMS/Config/DataHubConfig.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `SettingsManager.cs` | `src/AutoJMS/Config/SettingsManager.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `AppPaths.cs` | `src/AutoJMS/Config/AppPaths.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
 | `AppLogger.cs` | `src/AutoJMS/Config/AppLogger.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
@@ -58,8 +58,8 @@ Action values:
 | `JmsResponseClassifier.cs` | `src/AutoJMS/Services/JmsResponseClassifier.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
 | `InventorySyncService.cs` | `src/AutoJMS/Services/InventorySyncService.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
 | `DatabaseTracking.cs` | `src/AutoJMS/Services/DatabaseTracking.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
-| `SupabaseDbService.cs` | `src/AutoJMS/Data/SupabaseDbService.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
-| `SupabaseManifestService.cs` | `src/AutoJMS/Update/SupabaseManifestService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
+| `DataHubClient.cs` | `src/AutoJMS/Data/DataHubClient.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
+| `VpsManifestService.cs` | `src/AutoJMS/Update/VpsManifestService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `SmallUpdateService.cs` | `src/AutoJMS/Update/SmallUpdateService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `MajorUpdateService.cs` | `src/AutoJMS/Update/MajorUpdateService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `VelopackUpdateService.cs` | `src/AutoJMS/Update/VelopackUpdateService.cs` | Production source | yes | high | MOVE_AFTER_CONFIRM |
@@ -80,7 +80,7 @@ Action values:
 | `uiControlService.cs` | `src/AutoJMS/Services/uiControlService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `UserSettingsService.cs` | `src/AutoJMS/Services/UserSettingsService.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
 | `TabManager.cs` | `src/AutoJMS/Forms/TabManager.cs` | Production source | yes | medium | MOVE_AFTER_CONFIRM |
-| `SupabaseModels.cs` | `src/AutoJMS/Models/SupabaseModels.cs` | Production source | yes | low | MOVE_AFTER_CONFIRM |
+| `DataHubModels.cs` | `src/AutoJMS/Models/DataHubModels.cs` | Production source | yes | low | MOVE_AFTER_CONFIRM |
 | `WaybillModels.cs` | `src/AutoJMS/Models/WaybillModels.cs` | Production source | yes | low | MOVE_AFTER_CONFIRM |
 | `ModuleSystem/` | `src/AutoJMS/ModuleSystem/` | Production source | yes | high | MOVE_AFTER_CONFIRM |
 | `Properties/Resources.Designer.cs` | `src/AutoJMS/Properties/Resources.Designer.cs` | Production source / Designer | yes | high | MOVE_AFTER_CONFIRM |
@@ -95,9 +95,9 @@ Action values:
 | `archive/old-module-system/AutoJMS.Selectors/` | `archive/old-module-system/` or `src/AutoJMS.Selectors/` | Project phụ / sample module | not in solution | medium | NEED_VERIFY |
 | `backend/render-license-server/server.js` | `backend/render-license-server/server.js` | Backend | no | medium | COPY_REFERENCE_ONLY |
 | `infra/firebase/config-key.json` | `backend/firebase/examples/config-key.example.json` | Backend/Firebase example | no | high | NEED_VERIFY |
-| `infra/supabase/autojms-modules/` | `backend/supabase/manifests/` | Backend/Supabase examples | no | medium | COPY_REFERENCE_ONLY |
+| `infra/datahub/autojms-modules/` | `backend/datahub/manifests/` | Backend/DataHub examples | no | medium | COPY_REFERENCE_ONLY |
 | `ServerStructure/Github release/` | `backend/github-release/` | Backend/release docs | no | low | COPY_REFERENCE_ONLY |
-| `supabase-migration.sql` | `backend/supabase/migrations/supabase-migration.sql` | Backend/Supabase migration | no | medium | COPY_REFERENCE_ONLY |
+| `datahub-migration.sql` | `backend/datahub/migrations/datahub-migration.sql` | Backend/DataHub migration | no | medium | COPY_REFERENCE_ONLY |
 | `LICENSE_DATA_SCHEMA.txt` | `backend/firebase/license-key-schema.md` | Backend/Firebase schema docs | no | low | COPY_REFERENCE_ONLY |
 | `release/build-release.ps1` | `tools/release/build-release.ps1` | Tooling | no | high | MOVE_AFTER_CONFIRM |
 | `release/build-release.bat` | `tools/release/build-release.bat` | Tooling | no | high | MOVE_AFTER_CONFIRM |

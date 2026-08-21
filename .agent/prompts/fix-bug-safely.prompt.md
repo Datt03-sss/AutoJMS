@@ -157,7 +157,7 @@ var count = data.Count;
 
 ```csharp
 // Bug: Running on BASE tier
-await SupabaseDbService.InitializeAsync();
+await DataHubClient.InitializeAsync();
 await InventorySyncService.RunInventorySyncAsync();
 
 // Fix: Check tier policy

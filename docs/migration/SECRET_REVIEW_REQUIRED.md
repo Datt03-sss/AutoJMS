@@ -1,4 +1,4 @@
-﻿# Secret Review Required
+# Secret Review Required
 
 Migration did not open or move known secret files.
 

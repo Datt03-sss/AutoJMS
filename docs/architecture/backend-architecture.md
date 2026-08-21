@@ -1,4 +1,4 @@
-﻿# Backend Architecture
+# Backend Architecture
 
 ## Current Verified Baseline
 
@@ -6,14 +6,14 @@ Backend responsibilities verified from current files:
 
 - Render server: `backend/render-license-server/server.js`.
 - Firebase: license/session/tier state used by the Render server via Firebase Admin SDK.
-- Supabase Storage: public manifest/config/hash/tier/selector-update files under `infra/supabase/autojms-modules/`.
-- Supabase PostgreSQL: C# client calls waybill tables/RPCs through `SupabaseDbService`.
+- VPS config API: public manifest/config/hash/tier/selector-update files under `infra/datahub/autojms-modules/`.
+- DataHub PostgreSQL: C# client calls waybill tables/RPCs through `DataHubClient`.
 - GitHub Releases: Velopack binary assets.
 
 Important mismatches to preserve in audit:
 
 - `server.js` returns `license.modulePolicy`, but `LicenseApiService` parses root `modulePolicy`. Effective module policy behavior is `NEED VERIFY`.
-- `supabase-migration.sql` does not include current waybill/inventory RPC definitions used by the C# code.
+- `datahub-migration.sql` does not include current waybill/inventory RPC definitions used by the C# code.
 - Checked-in hash manifest sample has a shape mismatch with `HashManifest.cs` expectation.
 
 Use this baseline if older content below conflicts.
@@ -25,7 +25,7 @@ Use this baseline if older content below conflicts.
 │                      AUTOJMS BACKEND                               │
 │                                                                    │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │  JMS Website │    │  License     │    │  Supabase   │      │
+│  │  JMS Website │    │  License     │    │  DataHub   │      │
 │  │  jtexpress.vn │    │  Server      │    │  (Storage)  │      │
 │  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘      │
 │         │                   │                   │                  │
@@ -69,7 +69,7 @@ Client                                      Server
   │  2. Validate status, HWID                 │
   │  3. Create session                       │
   │  4. Sign JWT (RS256, 60min)              │
-  │  5. Return {payload: JWT, supabase: {...}}│
+  │  5. Return {payload: JWT, datahub: {...}}│
   │◀───────────────────────────────────────────│
   │                                            │
   │  Validate JWT locally                      │
@@ -130,9 +130,9 @@ Sessions/
     lastPing: timestamp
 ```
 
-## Supabase (Waybill Data + Storage)
+## DataHub (Waybill Data + Storage)
 
-**URL**: https://valmbajjpkjccqslsuou.supabase.co
+**URL**: https://datahub.example.com
 
 ### PostgreSQL Tables
 
@@ -188,8 +188,8 @@ autojms-modules/
 
 | Content | Host | Reason |
 |---------|------|--------|
-| Large binaries (.nupkg, Setup.exe) | GitHub | >50MB Supabase limit |
-| Small manifests (JSON) | Supabase Storage | <1KB each |
+| Large binaries (.nupkg, Setup.exe) | GitHub | >50MB DataHub limit |
+| Small manifests (JSON) | VPS config API | <1KB each |
 
 ## Security Architecture
 
@@ -211,7 +211,7 @@ License bound to hardware:
 - Physical disk serial
 - Machine GUID
 
-### Supabase Anon Key
+### DataHub Anon Key
 
 Public read-only key only.
 No write access from client.

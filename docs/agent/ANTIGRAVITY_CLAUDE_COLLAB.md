@@ -89,7 +89,7 @@ sequenceDiagram
 - **Never** force push or rewrite history.
 - **Never** build or upload a production release without owner instruction.
 - **Never** modify `Licensing/`, `JmsAuthTokenService.cs` (Firebase session), `VelopackUpdateService.cs` (Velopack prod), `release/build-release.ps1`, or WinForms Designer files unless the task explicitly targets them.
-- **Never** overwrite Supabase production config or Firebase service account keys.
+- **Never** overwrite DataHub production config or Firebase service account keys.
 - **Never** edit files outside the declared `Scope` in `.agent-lock.md`.
 - **Never** push if build fails.
 - **Always** run `verify.ps1` before pushing.

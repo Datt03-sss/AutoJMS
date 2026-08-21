@@ -137,7 +137,7 @@ Advanced operations form with:
 
 ### Dashboard Tab
 
-Realtime waybill list from Supabase with filters.
+Realtime waybill list from DataHub with filters.
 
 ### Thời Hiệu Tab
 

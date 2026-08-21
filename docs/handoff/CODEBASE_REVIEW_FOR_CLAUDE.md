@@ -24,7 +24,7 @@ Purpose: provide enough context for Claude Chat to reason about AutoJMS architec
 - ULTRA adds `FullStackOperation` as a separate form, not a tab.
 - ABOUT must stay last.
 - Firebase/Render license server controls license/session/tier.
-- Supabase is for manifest/config/hash/tier/selector-update and legacy data paths.
+- DataHub is for manifest/config/hash/tier/selector-update and legacy data paths.
 - GitHub Releases host Velopack binary assets.
 - Inno Setup is first install/reinstall wrapper.
 - Velopack is in-app update.
@@ -243,7 +243,7 @@ Safety concern:
 FullStackOperation is separate from BASE tabs. It is code-first UI. Recent direction:
 
 - Local-first SQLite for operational waybill/inventory workflow.
-- Supabase remains for manifest/config/update only.
+- DataHub remains for manifest/config/update only.
 - Inventory grid single-click previews detail.
 - Double-click opens journey workspace.
 - Journey fetch uses tracking API JSON and `details.db`.

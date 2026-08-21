@@ -56,7 +56,7 @@ Move backend/infra references back only if required:
 
 ```text
 backend/render-license-server/ -> ServerStructure/Render server/
-infra/supabase/                -> ServerStructure/Supabase/
+infra/datahub/                -> ServerStructure/DataHub/
 infra/firebase/                -> ServerStructure/Firebase/
 infra/github-release/          -> ServerStructure/Github Release/
 ```

@@ -130,7 +130,7 @@ if (Test-Path $outputRootDir) {
         }
     }
 
-    # Generate hash-manifest.json (for reference / upload to Supabase)
+    # Generate hash-manifest.json (for reference / upload to DataHub)
     $dllPath = Join-Path $outputRootDir "AutoJMS.dll"
     if (Test-Path $dllPath) {
         $hash = (Get-FileHash -LiteralPath $dllPath -Algorithm SHA256).Hash.ToLower()
@@ -142,7 +142,7 @@ if (Test-Path $outputRootDir) {
                 "$version" = @{ sha256 = $hash }
             }
         } | ConvertTo-Json -Depth 5
-        $manifestDir = Join-Path $root "infra\supabase\autojms-modules\manifest"
+        $manifestDir = Join-Path $root "infra\datahub\autojms-modules\manifest"
         if (-not (Test-Path $manifestDir)) { New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null }
         $hashManifest | Set-Content (Join-Path $manifestDir "hash-manifest.json") -Force
         Write-Host "  Generated manifest/hash-manifest.json (v$version)" -ForegroundColor Green

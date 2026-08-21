@@ -1,4 +1,4 @@
-﻿# Release Workflow
+# Release Workflow
 
 Use this workflow when building and releasing AutoJMS.
 
@@ -80,7 +80,7 @@ release/output/stable/
 - [ ] Assets uploaded (.nupkg, Setup.exe, RELEASES)
 - [ ] Pre-release flag correct (beta only)
 
-### Step 3: Update Supabase Manifest
+### Step 3: Update DataHub Manifest
 
 ```powershell
 # build-release.ps1 does this automatically with -Upload
@@ -129,7 +129,7 @@ Beta VelopackVersion:   major.minor.patch-beta.n
 If release has critical issues:
 
 1. Remove GitHub release assets
-2. Delete Supabase manifest entry
+2. Delete DataHub manifest entry
 3. Keep previous release active
 4. Notify users of issue
 5. Push hotfix release

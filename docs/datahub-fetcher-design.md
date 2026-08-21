@@ -24,14 +24,14 @@
 3. **`datahub-token-pool-plan.md` (v2)** — chi tiết token pool 5 bảng, active pointer theo candidate,
    two-strike, single-session gắn leader.
 4. **`event-sourcing-lite.md`** — nền event log + defect đã biết (fingerprint/cursor) + hợp đồng đúng.
-5. **`migration/hybrid-supabase-sync-plan.md`** — tài liệu lịch sử/transition (nền đã triển khai một
+5. **`migration/hybrid-datahub-sync-plan.md`** — tài liệu lịch sử/transition (nền đã triển khai một
    phần, chưa đạt hợp đồng bảo mật/cursor mới).
 
 ## Tóm tắt kiến trúc (1 dòng mỗi ý — chi tiết ở nguồn trên)
 
-- JMS fetch: **.NET Worker (Windows Service) trong LAN bưu cục**; mỗi bưu cục 1 Supabase project.
+- JMS fetch: **.NET Worker (Windows Service) trong LAN bưu cục**; mỗi bưu cục 1 DataHub project.
 - Lịch fetch: **Worker sở hữu** HOT/WARM/COLD; pg_cron chỉ maintenance/stale/health (**không** scheduler).
-- Token: **LOCAL trên máy sở hữu** (DPAPI `tokens.dat`), Supabase chỉ giữ **binding metadata/`token_fp`** (KHÔNG ciphertext); một **active binding** gắn `fetch_leader`.
+- Token: **LOCAL trên máy sở hữu** (DPAPI `tokens.dat`), DataHub chỉ giữ **binding metadata/`token_fp`** (KHÔNG ciphertext); một **active binding** gắn `fetch_leader`.
 - Desktop: **chỉ ĐỌC** (direct keyset SELECT dưới RLS) + **GHI metadata qua Edge** (session/heartbeat/
   contribute). **Token relay qua Named Pipe (LOCAL, cùng máy)** — KHÔNG qua Edge; binding do Worker/gateway publish.
 - Contributor: ngoại lệ bounded (permit site-wide), không qua leader.

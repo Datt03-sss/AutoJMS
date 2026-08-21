@@ -1,4 +1,4 @@
-﻿# Stabilize Release Pipeline
+# Stabilize Release Pipeline
 
 ## Required reading
 
@@ -9,7 +9,7 @@
 
 ## Goal
 
-Make release/update behavior predictable across GitHub Releases, Supabase manifests, Inno Setup and Velopack.
+Make release/update behavior predictable across GitHub Releases, DataHub manifests, Inno Setup and Velopack.
 
 ## Do not modify
 
@@ -29,14 +29,14 @@ Make release/update behavior predictable across GitHub Releases, Supabase manife
 1. Verify build output names and locations.
 2. Verify GitHub release tag format.
 3. Verify GitHub assets include `RELEASES`, `.nupkg`, `Setup.exe`.
-4. Verify Supabase manifests are small control files only.
+4. Verify DataHub manifests are small control files only.
 5. Verify stable/beta behavior.
 6. Verify About tab is manual trigger.
 7. Document rollback process.
 
 ## Acceptance criteria
 
-- No `.nupkg` upload to Supabase.
+- No `.nupkg` upload to DataHub.
 - No GitHub browser opened by app update.
 - Stable/beta manifest entries are clear.
 - Manual release checklist exists and is actionable.

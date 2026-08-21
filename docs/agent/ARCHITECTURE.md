@@ -19,9 +19,9 @@ flowchart TD
     Tier --> Ultra["ULTRA: + FullStackOperation + sync"]
     Ultra --> FullStack["FullStackOperation form"]
     Ultra --> Sync["InventorySyncService + DatabaseTracking"]
-    Sync --> SupabaseDb["Supabase PostgreSQL"]
+    Sync --> DataHubDb["DataHub PostgreSQL"]
     Program --> Updates["SmallUpdate / VelopackUpdate"]
-    Updates --> SupaStorage["Supabase Storage"]
+    Updates --> VpsStorage["VPS config API"]
     Updates --> GitHub["GitHub Releases"]
 ```
 
@@ -37,12 +37,12 @@ flowchart TD
 │  LicenseApiService    │  JmsApiClient              │
 │  JmsAuthTokenService  │  InventorySyncService      │
 │  VelopackUpdateService│  SmallUpdateService        │
-│  SupabaseDbService    │  GoogleSheetService        │
+│  DataHubClient    │  GoogleSheetService        │
 │  DkchManager          │  PrintService              │
 │  ZaloChatService      │  WaybillTrackingService    │
 ├─────────────────────────────────────────────────────┤
 │              Module System                          │
-│  ModuleStartup │ ModuleRegistry │ SupabaseProvider  │
+│  ModuleStartup │ ModuleRegistry │ DataHubProvider  │
 ├─────────────────────────────────────────────────────┤
 │              Infrastructure                         │
 │  AppPaths │ AppConfig │ AppLogger                   │
@@ -50,7 +50,7 @@ flowchart TD
 ├─────────────────────────────────────────────────────┤
 │              External Services                      │
 │  JMS WebView2 + HTTP │ Render License Server        │
-│  Firebase │ Supabase │ GitHub Releases              │
+│  Firebase │ DataHub │ GitHub Releases              │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -61,7 +61,7 @@ flowchart TD
 3. Anti-debugger check (release only)
 4. HWID computation (SMBIOS UUID + disk serial + MachineGuid)
 5. License verification (online-first, offline fallback)
-6. `InitializeServicesFromLicense()` — Supabase manifest, runtime config, integrity, updates
+6. `InitializeServicesFromLicense()` — DataHub manifest, runtime config, integrity, updates
 7. Module system init
 8. `Application.Run(new Main(sessionTier))`
 
@@ -121,7 +121,7 @@ if (CurrentTier == "ULTRA")
 
 | Type | Mechanism | Trigger | Source |
 |------|-----------|---------|--------|
-| Small config | SmallUpdateService | Auto after license | Supabase Storage |
+| Small config | SmallUpdateService | Auto after license | VPS config API |
 | Major version | VelopackUpdateService | Manual (About tab) | GitHub Releases |
 | First install | Inno Setup | Manual | Offline installer |
 

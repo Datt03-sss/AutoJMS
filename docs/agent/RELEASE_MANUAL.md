@@ -8,7 +8,7 @@
 |------|------|-----|------|
 | First install | Inno Setup | Owner | New machine |
 | Major version | Velopack + GitHub Releases | Owner | Version bump |
-| Small config | Supabase selector-update | Owner/Auto | Selector changes |
+| Small config | DataHub selector-update | Owner/Auto | Selector changes |
 
 ## Agent Restrictions
 
@@ -18,8 +18,8 @@
 - Upload `.nupkg` files anywhere
 - Modify `release/build-release.ps1` without request
 - Modify `installer/inno/AutoJMS.iss` without request
-- Push to Supabase Storage production manifests
-- Modify `version-latest.json` on Supabase
+- Push to VPS config API production manifests
+- Modify `version-latest.json` on DataHub
 
 ### ✅ ALLOWED
 - Run `eng/harness/release-dryrun.ps1` for validation
@@ -49,13 +49,13 @@
    .\release\build-release.ps1 -Version "X.Y.Z.0" -Channel stable -Upload
    ```
 6. Verify GitHub Release created
-7. Update `version-latest.json` on Supabase if needed
+7. Update `version-latest.json` on DataHub if needed
 8. Test update from About tab on a test machine
 
 ### Small Config Update
 
 1. Update selector/config files
-2. Upload to Supabase Storage
+2. Upload to VPS config API
 3. App auto-detects on next license check
 
 ### Inno Setup (First Install)
@@ -82,7 +82,7 @@
 ## Velopack Flow
 
 ```
-About Tab → Check Update → Supabase manifest → GitHub Releases API
+About Tab → Check Update → DataHub manifest → GitHub Releases API
 → Download nupkg → Velopack apply → Restart
 ```
 

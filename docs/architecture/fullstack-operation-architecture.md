@@ -4,7 +4,7 @@
 
 FullStackOperation is an **ULTRA-only independent form** (not a tab) that provides advanced operations:
 
-- **Dashboard**: Realtime waybill list from Supabase
+- **Dashboard**: Realtime waybill list from DataHub
 - **Thời Hiệu**: SLA monitoring
 - **Chat**: Zalo integration
 
@@ -76,16 +76,16 @@ User closes form
 
 | Tab | Purpose | Data Source |
 |-----|---------|-------------|
-| tabDash | Dashboard | Supabase waybills |
+| tabDash | Dashboard | DataHub waybills |
 | tabChat | Zalo chat | ZaloChatService |
-| tabThoiHieu | SLA monitoring | Supabase waybills |
+| tabThoiHieu | SLA monitoring | DataHub waybills |
 
 ### Services
 
 | Service | Purpose |
 |---------|---------|
 | ZaloChatService | Zalo message integration |
-| SupabaseDbService | Waybill data |
+| DataHubClient | Waybill data |
 | InventorySyncService | Inventory fetch |
 | AuthStateService | Token state |
 
@@ -106,7 +106,7 @@ AutoRefreshTimer tick
             │
             ├─► Check AuthStateService.IsAuthenticated
             │
-            ├─► SupabaseDbService.GetActiveWaybillsAsync()
+            ├─► DataHubClient.GetActiveWaybillsAsync()
             │       │
             │       └─► Paginated query (1000 rows/page)
             │

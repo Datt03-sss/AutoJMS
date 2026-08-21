@@ -1,4 +1,4 @@
-﻿# Build Errors
+# Build Errors
 
 ## MSB3030 Missing `modules/*.json`
 

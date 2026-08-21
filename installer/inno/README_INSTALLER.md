@@ -1,4 +1,4 @@
-﻿# AutoJMS Installer
+# AutoJMS Installer
 
 ## Overview
 

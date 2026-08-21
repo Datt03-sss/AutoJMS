@@ -1,4 +1,4 @@
-﻿namespace AutoJMS
+namespace AutoJMS
 {
     partial class frmLogin
     {

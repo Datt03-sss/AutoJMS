@@ -14,7 +14,7 @@
   D:\v1.2605.2(new-test)\src\AutoJMS\Forms\FullStackOperation.Dashboard.cs(690,33): error CS1061: 'WaybillDbModel' does not contain a definition for 'ReceiverName'
   D:\v1.2605.2(new-test)\src\AutoJMS\Forms\FullStackOperation.Dashboard.cs(691,29): error CS1061: 'WaybillDbModel' does not contain a definition for 'ReceiverPhoneMasked'
   ```
-- Verified that `WaybillDbModel` in `SupabaseModels.cs` does not contain `ReceiverName` or `ReceiverPhoneMasked`. The repository mapping maps `FullStackWaybill.ReceiverName = dto.NhanVienNhanHang`.
+- Verified that `WaybillDbModel` in `DataHubModels.cs` does not contain `ReceiverName` or `ReceiverPhoneMasked`. The repository mapping maps `FullStackWaybill.ReceiverName = dto.NhanVienNhanHang`.
 - Running the build command `dotnet build .\AutoJMS.slnx -c Release` succeeds after applying the fixes.
 - Running the verification harness script `powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1` returns `OVERALL: ✅ ALL GATES PASSED`.
 

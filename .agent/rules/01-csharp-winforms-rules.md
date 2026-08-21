@@ -80,7 +80,7 @@ public async Task<string> GetTokenFromWebViewAsync()
 // CORRECT: True async background work
 private async Task ExecuteSyncWorkflowAsync(CancellationToken ct, ...)
 {
-    await SupabaseDbService.InitializeAsync();
+    await DataHubClient.InitializeAsync();
     // ... async work
 }
 
@@ -154,7 +154,7 @@ private void UpdateDkchButtonsByState(bool isRunning)
 
 For smaller services, keep in single file with related types:
 - `JmsApiClient.cs` - API client and related models
-- `SupabaseDbService.cs` - Database operations
+- `DataHubClient.cs` - Database operations
 - `InventorySyncService.cs` - Inventory sync logic
 
 ### Designer Files

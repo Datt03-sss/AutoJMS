@@ -121,16 +121,16 @@ Form disposed
 
 | Tab | Purpose | Data Source |
 |-----|---------|-------------|
-| Dashboard (tabDash) | Realtime waybill list | Supabase DB |
+| Dashboard (tabDash) | Realtime waybill list | DataHub DB |
 | Chat (tabChat) | Zalo chat integration | ZaloChatService |
-| Thời hiệu | SLA monitoring | Supabase DB |
+| Thời hiệu | SLA monitoring | DataHub DB |
 
 ### Key Services
 
 | Service | Purpose |
 |---------|---------|
 | ZaloChatService | Zalo message integration |
-| SupabaseDbService | Waybill data |
+| DataHubClient | Waybill data |
 | InventorySyncService | Inventory fetch |
 
 ### Timers
@@ -172,7 +172,7 @@ private async Task LoadDataAndRefreshViewsAsync()
         return;
 
     // Fetch data using JMS authToken
-    var waybills = await SupabaseDbService.GetActiveWaybillsAsync();
+    var waybills = await DataHubClient.GetActiveWaybillsAsync();
     // ... update UI
 }
 ```
@@ -269,7 +269,7 @@ private void SetThoiHieuData(List<ThoiHieuRow> rows)
 ```csharp
 try
 {
-    var data = await SupabaseDbService.GetActiveWaybillsAsync();
+    var data = await DataHubClient.GetActiveWaybillsAsync();
     // Update UI
 }
 catch (Exception ex)
@@ -328,7 +328,7 @@ _autoRefreshTimer.Tick += async (s, ev) =>
 
 **Check:**
 1. Is auth token available?
-2. Is Supabase connected?
+2. Is DataHub connected?
 3. Check `_isRealtimeStarted` flag
 4. Check `AuthStateService.Instance.IsAuthenticated`
 

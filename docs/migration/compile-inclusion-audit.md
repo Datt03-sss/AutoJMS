@@ -1,4 +1,4 @@
-﻿# Compile Inclusion Audit
+# Compile Inclusion Audit
 
 Audit scope: current root `src/AutoJMS/AutoJMS.csproj`, `AutoJMS.slnx`, module project files, project content metadata, resources and output-copy behavior.
 

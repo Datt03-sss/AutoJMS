@@ -225,11 +225,11 @@ _autoSyncTimer.Interval = 1000;  // 1 second
 //   ↓
 // ExecuteSyncWorkflowAsync
 //   ↓
-// SupabaseDbService.TryAcquireInventoryLease
+// DataHubClient.TryAcquireInventoryLease
 //   ↓
 // InventorySyncService.FetchAllInventoryWaybillsWithRetryAsync
 //   ↓
-// SupabaseDbService.UpsertNewWaybillsOnlyAsync
+// DataHubClient.UpsertNewWaybillsOnlyAsync
 //   ↓
 // DatabaseTracking.RunBackgroundTrackingAsync
 ```
@@ -241,7 +241,7 @@ _autoSyncTimer.Interval = 1000;  // 1 second
 
 ### Inventory Sync Lock
 
-- 30-minute lease on Supabase
+- 30-minute lease on DataHub
 - Heartbeat every 5 minutes refreshes lease
 - Other machines see lock and skip sync
 

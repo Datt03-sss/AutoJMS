@@ -9,7 +9,7 @@ A patch is acceptable when:
 - It does not block UI thread.
 - It does not access WebView2 outside UI thread.
 - It does not open GitHub page for update.
-- It does not upload large files to Supabase.
+- It does not upload large files to DataHub.
 - It has clear logs without leaking production tokens.
 - It has acceptance criteria.
 - It has rollback notes.

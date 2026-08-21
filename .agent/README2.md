@@ -2,14 +2,14 @@
 
 This workspace has local agent skills in two places:
 
-- `.agent/skills/` — curated project skills (WinForms, Excel export, Firebase license, Velopack, Inno Setup, SunnyUI grid, Supabase manifest, WebView2...)
+- `.agent/skills/` — curated project skills (WinForms, Excel export, Firebase license, Velopack, Inno Setup, SunnyUI grid, DataHub manifest, WebView2...)
 - `.agents/skills/` — skills installed by the Skills CLI (`npx skills add`); do not edit by hand, managed via `skills-lock.json`
 
 ## Installed Skills (CLI-managed)
 
 - `find-skills` from `vercel-labs/skills`
-- `supabase` from `supabase/agent-skills` — **use for every Supabase task** (MCP usage, migrations, RLS, edge functions)
-- `supabase-postgres-best-practices` from `supabase/agent-skills` — **use when writing/optimizing Postgres SQL** (indexing, connections, JSONB, FTS)
+- `datahub` from `datahub/agent-skills` — **use for every DataHub task** (MCP usage, migrations, RLS, edge functions)
+- `datahub-postgres-best-practices` from `datahub/agent-skills` — **use when writing/optimizing Postgres SQL** (indexing, connections, JSONB, FTS)
 - `design-taste-frontend` from `Leonxlnx/taste-skill`
 
 ## AutoJMS Usage Policy
@@ -24,9 +24,9 @@ Before applying any external skill guidance, keep the project rules authoritativ
 4. Preserve AutoJMS tier separation.
 5. Do not change HOME/DKCH/TRACKING/PRINT/ABOUT logic unless explicitly requested.
 6. Do not log production tokens or secrets.
-7. Keep Velopack/GitHub/Supabase release flow intact:
+7. Keep Velopack/GitHub/DataHub release flow intact:
    - GitHub Releases hosts Velopack binaries.
-   - Supabase hosts manifests/config/hash only.
-   - Do not upload `.nupkg` to Supabase.
+   - DataHub hosts manifests/config/hash only.
+   - Do not upload `.nupkg` to DataHub.
 
 External skills are helpers, not replacements for AutoJMS project rules.

@@ -1,4 +1,4 @@
-﻿# Project Structure
+# Project Structure
 
 > Status 2026-06-03: this older structure note has been superseded by docs/migration/PROJECT_STRUCTURE_MIGRATION_REPORT.md. Prefer that migration report for the current workspace layout after the executed structure move.
 
@@ -16,7 +16,7 @@ AutoJMS/
 ├── backend/
 │   └── render-license-server/
 ├── infra/
-│   ├── supabase/
+│   ├── datahub/
 │   ├── firebase/
 │   └── github-release/
 ├── installer/
@@ -132,7 +132,7 @@ AutoJMS root
 │   └── AutoJMS.Selectors/
 ├── ServerStructure/
 │   ├── Render server/server.js
-│   └── Supabase/autojms-modules/
+│   └── DataHub/autojms-modules/
 ├── installer/inno/
 ├── release/
 ├── Resources/
@@ -170,7 +170,7 @@ AutoJMS/                                    ← Project root
 │   ├── LicenseApiService.cs
 │   ├── JmsApiClient.cs
 │   ├── InventorySyncService.cs
-│   ├── SupabaseDbService.cs
+│   ├── DataHubClient.cs
 │   ├── VelopackUpdateService.cs
 │   └── ... (all services at root level)
 │
@@ -192,7 +192,7 @@ AutoJMS/                                    ← Project root
 ├── ServerStructure/                        ← Backend documentation
 │   ├── Firebase/config-key.json
 │   ├── Render server/server.js
-│   ├── Supabase/autojms-modules/
+│   ├── DataHub/autojms-modules/
 │   └── Github release/
 │
 ├── installer/inno/                             ← Inno Setup
@@ -249,7 +249,7 @@ AutoJMS/
 ├── backend/
 │   └── render-license-server/
 ├── infra/
-│   ├── supabase/
+│   ├── datahub/
 │   ├── firebase/
 │   └── github-release/
 ├── installer/
@@ -331,7 +331,7 @@ AutoJMS/
 │       │   │   ├── SmallUpdateService.cs
 │       │   │   └── MajorUpdateService.cs
 │       │   ├── Data/
-│       │   │   ├── SupabaseDbService.cs
+│       │   │   ├── DataHubClient.cs
 │       │   │   └── GoogleSheetService.cs
 │       │   └── Print/
 │       │       └── PrintService.cs
@@ -351,7 +351,7 @@ AutoJMS/
 │       │
 │       ├── Models/
 │       │   ├── WaybillModels.cs
-│       │   ├── SupabaseModels.cs
+│       │   ├── DataHubModels.cs
 │       │   └── ...
 │       │
 │       └── Resources/

@@ -1,4 +1,4 @@
-﻿# Inno Setup First Install
+# Inno Setup First Install
 
 ## Overview
 

@@ -1,4 +1,4 @@
-﻿# Gitignore Recommendations For Target Workspace
+# Gitignore Recommendations For Target Workspace
 
 Do not apply this blindly. Review against current `.gitignore` before editing.
 

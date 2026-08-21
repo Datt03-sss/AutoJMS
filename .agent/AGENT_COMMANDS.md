@@ -27,7 +27,7 @@
 ## Stabilize release pipeline
 
 ```txt
-Đọc context/rules trước. Làm theo .agent/tasks/04-stabilize-release-pipeline.md. GitHub Releases chứa binary lớn. Supabase chỉ manifest/config. Không mở GitHub page.
+Đọc context/rules trước. Làm theo .agent/tasks/04-stabilize-release-pipeline.md. GitHub Releases chứa binary lớn. DataHub chỉ manifest/config. Không mở GitHub page.
 ```
 
 ## FullStack lifecycle fix

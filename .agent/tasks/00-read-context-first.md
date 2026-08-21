@@ -1,4 +1,4 @@
-﻿# Read Context First
+# Read Context First
 
 ## Required reading
 

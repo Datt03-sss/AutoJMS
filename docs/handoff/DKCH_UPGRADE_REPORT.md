@@ -377,7 +377,7 @@ sẵn từ trước (FullStack, SettingsManager, csproj…) nên **không dùng 
 - Bản đồ mã lỗi → đổi mode DKCH1/DKCH2 (`999006328`, `137043004`, `999006082`, `code` chứa `:`).
 - Mọi selector DOM và endpoint JMS (theo `webview2-devtools-inspector-skill`: không đoán selector).
 - `CheckAndThrowIfError` giữ nguyên cho bước Tìm kiếm; bước Lưu dùng `ClassifySaveFailure` riêng.
-- Luồng TRACKING / PRINT / HOME / ABOUT, `Program.cs`, licensing, Velopack, Supabase: không chạm.
+- Luồng TRACKING / PRINT / HOME / ABOUT, `Program.cs`, licensing, Velopack, DataHub: không chạm.
 - `BuildDkchHistoryText`, `CleanType`, `FormatNowTracking`.
 
 ## 10. Owner Manual Test Checklist

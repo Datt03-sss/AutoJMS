@@ -1,4 +1,4 @@
-﻿# Source Workspace Migration Plan
+# Source Workspace Migration Plan
 
 ## Goal
 

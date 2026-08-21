@@ -28,7 +28,7 @@ BrowserData/
 .env.*
 appsettings.*.json
 
-# Firebase/Supabase keys - NEVER COMMIT
+# Firebase/DataHub keys - NEVER COMMIT
 serviceAccountKey.json
 service_account.json
 serviceAccountKey.*.json
