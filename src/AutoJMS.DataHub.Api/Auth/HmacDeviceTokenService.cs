@@ -41,6 +41,10 @@ public sealed class HmacDeviceTokenService : IDeviceTokenService
     public ValueTask<DeviceTokenValidationResult> ValidateAsync(string token, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_key.Length < 32)
+            return ValueTask.FromResult(DeviceTokenValidationResult.Failure("TOKEN_UNAVAILABLE"));
+        if (string.IsNullOrWhiteSpace(token) || token.Length > 8192)
+            return ValueTask.FromResult(DeviceTokenValidationResult.Failure("TOKEN_MALFORMED"));
         var parts = token.Split('.', StringSplitOptions.None);
         if (parts.Length != 3 || parts[0] != "v1" || !Base64Url.TryDecode(parts[1], out var payloadBytes)
             || !Base64Url.TryDecode(parts[2], out var suppliedSignature))

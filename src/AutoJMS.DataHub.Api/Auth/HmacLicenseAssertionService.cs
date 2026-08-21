@@ -27,13 +27,18 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
             throw new InvalidOperationException("The staging test issuer is disabled outside an explicit Staging opt-in.");
         if (!string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
             throw new InvalidOperationException("The staging test issuer requires DATAHUB_CHANNEL=staging.");
-        if (descriptor.SiteCodes.Count == 0 || descriptor.ExpiresAt <= _clock.GetUtcNow())
+        var siteCodes = descriptor.SiteCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (siteCodes.Length == 0 || descriptor.ExpiresAt <= _clock.GetUtcNow())
             throw new ArgumentException("A staging assertion requires sites and a future expiry.", nameof(descriptor));
 
         var payload = new LicensePayload
         {
             Channel = DataHubRuntimeOptions.AllowedStagingChannel,
-            SiteCodes = descriptor.SiteCodes.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code.Trim()).Distinct(StringComparer.Ordinal).ToArray(),
+            SiteCodes = siteCodes.Select(NormalizeSiteCode).Distinct(StringComparer.Ordinal).ToArray(),
             ExpiresAt = descriptor.ExpiresAt.ToUnixTimeSeconds(),
             DataHubUrl = descriptor.DataHubUrl,
             Seats = descriptor.Seats,
@@ -48,6 +53,11 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
     public ValueTask<LicenseAssertionValidationResult> ValidateAsync(string assertion, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!StagingTestIssuerPolicy.IsEnabled(_options.EnvironmentName, _options.AllowStagingTestIssuer)
+            || !string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_UNAVAILABLE"));
+        if (string.IsNullOrWhiteSpace(assertion) || assertion.Length > 8192)
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
         var parts = assertion.Split('.', StringSplitOptions.None);
         if (parts.Length != 3 || parts[0] != "v1" || !Base64Url.TryDecode(parts[1], out var payloadBytes)
             || !Base64Url.TryDecode(parts[2], out var suppliedSignature))
@@ -76,7 +86,12 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
         if (payload.ExpiresAt <= _clock.GetUtcNow().ToUnixTimeSeconds())
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_EXPIRED"));
-        if (payload.SiteCodes is null || payload.SiteCodes.Length == 0)
+        var normalizedSiteCodes = payload.SiteCodes?
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(NormalizeSiteCode)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray() ?? [];
+        if (normalizedSiteCodes.Length == 0)
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
         if (!string.Equals(payload.Channel, _options.Channel, StringComparison.Ordinal))
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure(ApiProblemCodes.ChannelMismatch));
@@ -86,7 +101,7 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
 
         var identity = new LicenseAssertionIdentity(
             payload.Channel,
-            new HashSet<string>(payload.SiteCodes, StringComparer.Ordinal),
+            new HashSet<string>(normalizedSiteCodes, StringComparer.Ordinal),
             DateTimeOffset.FromUnixTimeSeconds(payload.ExpiresAt),
             payload.DataHubUrl,
             Math.Max(payload.TokenVersion, 1),
@@ -97,8 +112,7 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
     private byte[] SelectValidationKey()
     {
         if (StagingTestIssuerPolicy.IsEnabled(_options.EnvironmentName, _options.AllowStagingTestIssuer)
-            && string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal)
-            && !string.IsNullOrWhiteSpace(_options.StagingTestSigningKey))
+            && string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
             return Encoding.UTF8.GetBytes(_options.StagingTestSigningKey);
         return Encoding.UTF8.GetBytes(_options.LicenseAssertionValidationKey ?? "");
     }
@@ -113,6 +127,8 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
     private static string Sign(string encodedPayload, byte[] key)
         => Base64Url.Encode(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(encodedPayload)));
 
+    private static string NormalizeSiteCode(string value) => value.Trim().ToUpperInvariant();
+
     private sealed class LicensePayload
     {
         public string Channel { get; set; } = "";
@@ -123,5 +139,19 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
         public int TokenVersion { get; set; }
         public string Issuer { get; set; } = "";
         public string Audience { get; set; } = "";
+    }
+}
+
+/// <summary>
+/// Production enrollment remains deliberately closed until the real signed
+/// license issuer (for example the existing RS256/JWKS service) is integrated.
+/// This prevents a staging HMAC test key from becoming a production trust root.
+/// </summary>
+public sealed class UnavailableLicenseAssertionValidator : ILicenseAssertionValidator
+{
+    public ValueTask<LicenseAssertionValidationResult> ValidateAsync(string assertion, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_UNAVAILABLE"));
     }
 }

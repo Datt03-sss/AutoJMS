@@ -1,0 +1,29 @@
+{
+    email {$TLS_CONTACT_EMAIL}
+    admin off
+}
+
+{$DATAHUB_PUBLIC_HOST} {
+    encode zstd gzip
+
+    @health path /health/live /health/ready
+    handle @health {
+        reverse_proxy api:8080
+    }
+
+    # SignalR negotiation and WebSocket upgrades are proxied without buffering.
+    @hub path /hubs/site /hubs/site/*
+    handle @hub {
+        reverse_proxy api:8080 {
+            flush_interval -1
+            transport http {
+                read_timeout 1h
+                write_timeout 1h
+            }
+        }
+    }
+
+    handle {
+        reverse_proxy api:8080
+    }
+}

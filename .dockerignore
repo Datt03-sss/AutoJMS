@@ -1,0 +1,22 @@
+# DataHub compose builds from the repository root so the API project can be copied.
+.git
+.gitignore
+**/bin/
+**/obj/
+_verify/
+docs/layout/
+release/notes/
+tasks/
+*.user
+*.suo
+*.pfx
+*.pem
+*.key
+*.env
+.env
+.env.*
+serviceAccount*.json
+service_account*.json
+firebase-adminsdk*.json
+*.pfx
+*.pem

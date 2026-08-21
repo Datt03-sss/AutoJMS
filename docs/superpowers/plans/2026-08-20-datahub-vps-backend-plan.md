@@ -82,10 +82,11 @@ fencing requirement. Limit ingest requests to 1 MB and 200 items.
 
 - [ ] **Step 3: Define snapshot and realtime messages**
 
-Specify one phase-1 `REPEATABLE READ` snapshot response with `snapshot_seq`, keyset
-pagination inside that transaction, and a SignalR doorbell containing only site,
-sequence, entity type, and entity key. Document delta catch-up and the 30-60 second
-safety pull.
+Specify one phase-1 `REPEATABLE READ` snapshot response with `snapshot_seq`, a
+buffered projection set inside that transaction, and a SignalR doorbell
+containing only site, sequence, entity type, and entity key. Snapshot tokens and
+multi-request paging are deferred until staging measures the actual projection
+size. Document delta catch-up and the 30-60 second safety pull.
 
 - [ ] **Step 4: Lint the contract**
 
@@ -208,8 +209,9 @@ bounded page size. Never require `after + 1`.
 
 - [ ] **Step 3: Implement the phase-1 snapshot**
 
-Stream all pages from one `REPEATABLE READ` transaction and return one `snapshot_seq`.
-Do not introduce snapshot tokens in this phase.
+Read the complete projection set in one `REPEATABLE READ` transaction and return one
+response with one `snapshot_seq`; commit before writing the response. Do not introduce
+snapshot tokens, paging, or streaming in this phase.
 
 - [ ] **Step 4: Implement the doorbell and safety pull contract**
 
@@ -237,7 +239,8 @@ clients, and no free-form SQL from policy rows. Never delete lease/counter/site 
 - [ ] **Step 1: Define private Compose networking and environment targets**
 
 Publish only Caddy ports 80/443. API connects to `postgres` by Compose DNS. PostgreSQL
-has no host port mapping. Add health checks and bounded memory/log settings. Document
+has no host port mapping. Add health checks and bounded memory/log settings. Require
+the API image as an `@sha256` digest and start it with `--no-build`; document
 two independent env files: Dev/Test uses a dev hostname, database volume, JWT
 issuer/audience, signing keys, site/device registry, and `DataHubApiBaseUrl`; Production
 uses a separate set. The API must fail readiness on missing/mismatched environment
@@ -254,7 +257,7 @@ secrets rather than changing client endpoints.
 
 - [ ] **Step 3: Run backend verification on Dev, then Production**
 
-Run SQL smoke tests, unit tests, API integration tests, OpenAPI lint, Compose health
+Run SQL smoke tests, unit tests, API integration tests, OpenAPI static/full lint, Compose health
 checks, duplicate-batch tests, leader crash/fencing tests, SignalR reconnect tests, and
 the drop/restore/replay drill on Dev. Confirm that Dev cannot reach Production's
 PostgreSQL or accept Production device tokens. Repeat the required health, migration,

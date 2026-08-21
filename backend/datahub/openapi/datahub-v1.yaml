@@ -46,9 +46,12 @@ paths:
       summary: Enroll a device from a signed DataHub license assertion
       description: |
         This is the only operation that accepts a signed license assertion. Send it
-        as `Authorization: Bearer <license-jws>`. The API validates the JWS
-        signature, expiry, `channel`, and `site_codes` against its configured
-        `DATAHUB_CHANNEL` and an existing site. Enrollment never creates a site.
+        as `Authorization: Bearer <signed-license-assertion>`. Production assertions
+        are JWS values validated against the configured asymmetric issuer/JWKS.
+        The integration-only staging test issuer uses a private
+        `v1.<base64url-json>.<HMAC>` format and cannot be enabled for production.
+        The API validates signature, expiry, `channel`, and `site_codes` against its
+        configured `DATAHUB_CHANNEL` and an existing site. Enrollment never creates a site.
         The response contains a derived device bearer token; the license assertion
         must not be used for any later operation.
 
@@ -91,7 +94,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Device enrollment conflicts with an existing active device
+          description: Active seat limit reached or device identity conflicts with an existing device
           content:
             application/problem+json:
               schema:
@@ -419,10 +422,10 @@ paths:
       operationId: readProjectionSnapshot
       summary: Read a consistent site projection snapshot
       description: |
-        Phase 1 returns the complete snapshot as one streamed HTTP response. The
-        server opens one PostgreSQL `REPEATABLE READ` transaction, reads one
-        `snapshot_seq` watermark from `site_change_counters`, streams every page by
-        keyset order, and commits only after the response has been produced. All
+        Phase 1 returns the complete snapshot as one HTTP response. The server
+        opens one PostgreSQL `REPEATABLE READ` transaction, reads one
+        `snapshot_seq` watermark from `site_change_counters`, reads all projection
+        rows in that transaction, and commits before writing the response. All
         items in this response therefore share the returned `snapshot_seq`. Snapshot
         tokens and multi-request paging are intentionally deferred to a later phase.
         The client applies the response, sets its cursor to `snapshot_seq`, then calls
@@ -444,8 +447,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '413':
-          $ref: '#/components/responses/PayloadTooLarge'
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -484,7 +485,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
         '503':
-          $ref: '#/components/responses/ServiceUnavailable'
+          description: API is not ready; the body uses the health response shape.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
 
   /hubs/site/negotiate:
     post:
@@ -551,12 +556,15 @@ components:
     LicenseAssertion:
       type: http
       scheme: bearer
-      bearerFormat: signed-license-jws
+      bearerFormat: signed-license-assertion
       description: |
         Signed DataHub license assertion accepted only by `POST /api/v1/devices/enroll`.
         It carries the required `channel` (`staging` or `production`), `site_codes`,
         expiry, and optionally a signed HTTPS `datahub_url`. It never carries JMS
-        tokens, PostgreSQL credentials, DPAPI blobs, or device secrets.
+        tokens, PostgreSQL credentials, DPAPI blobs, or device secrets. Production
+        uses asymmetric JWS verification. The custom HMAC assertion is an explicitly
+        enabled staging integration seam only; production readiness remains unhealthy
+        until the asymmetric verifier is installed.
     DeviceBearer:
       type: http
       scheme: bearer
@@ -631,9 +639,9 @@ components:
           maxLength: 128
         role:
           type: string
-          enum: [operator, supervisor, admin]
+          enum: [operator]
           default: operator
-          description: Requested role subject to server policy; never derived from an untrusted body channel.
+          description: Phase 1 only issues the least-privilege operator role; elevated roles require a later server-side policy.
     EnrollmentResponse:
       type: object
       required: [deviceId, siteId, siteCode, channel, tokenType, deviceToken, tokenVersion, expiresAt]
@@ -732,9 +740,9 @@ components:
           format: int64
           minimum: 0
         leaseExpiresAt:
-          type: string
+          type: [string, 'null']
           format: date-time
-          description: "The -infinity database value is represented by the API as the minimum supported timestamp or null before first acquisition."
+          description: "The -infinity database value is represented by the API as null before first acquisition or after release."
         lastSeenAt:
           type: [string, 'null']
           format: date-time
@@ -849,6 +857,8 @@ components:
           type: [integer, 'null']
         stateName:
           type: [string, 'null']
+        stateStatus:
+          type: [string, 'null']
         stateEventAt:
           type: [string, 'null']
           format: date-time
@@ -862,6 +872,8 @@ components:
         lastActivityCode:
           type: [integer, 'null']
         lastActivityName:
+          type: [string, 'null']
+        lastActivityStatus:
           type: [string, 'null']
         lastActivityKind:
           type: [string, 'null']
@@ -877,6 +889,11 @@ components:
           type: [integer, 'null']
         inventoryName:
           type: [string, 'null']
+        inventoryKind:
+          type: [string, 'null']
+          const: inventory
+        inventoryStatus:
+          type: [string, 'null']
         inventoryEventAt:
           type: [string, 'null']
           format: date-time
@@ -890,6 +907,18 @@ components:
           additionalProperties: true
           default: {}
           description: Compact, apply-safe hot snapshot; not the full JMS envelope.
+        statePayload:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Retained compact payload for the winning state event.
+        activityPayload:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Retained compact payload for the winning activity event.
+        inventoryPayload:
+          type: [object, 'null']
+          additionalProperties: true
+          description: Retained compact payload for the winning inventory event.
         reducerVersion:
           type: integer
           minimum: 1
@@ -1085,7 +1114,10 @@ components:
         - NOT_FOUND
         - LEADER_FENCED
         - LEASE_HELD
+        - SEAT_LIMIT_REACHED
+        - DEVICE_CONFLICT
         - IDEMPOTENCY_KEY_REUSED
+        - IDEMPOTENCY_IN_PROGRESS
         - RESYNC_REQUIRED
         - PAYLOAD_TOO_LARGE
         - VALIDATION_FAILED

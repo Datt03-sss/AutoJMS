@@ -28,6 +28,10 @@ contain an IP address.
    `datahub_url` endpoint override. The API checks the signature and expiry,
    requires the channel to equal its `DATAHUB_CHANNEL`, and requires the requested
    existing `siteCode` to be in `site_codes`.
+   Production assertions are JWS values verified by the asymmetric license
+   authority. The current `v1.<base64url-json>.<HMAC>` issuer is an
+   integration-only staging seam; production readiness stays red until the JWS
+   verifier is installed.
 2. Enrollment returns a derived device bearer token. All later lease, JMS, delta,
    snapshot, and SignalR calls use that token. A license assertion is never an API
    credential after enrollment; a JMS auth token is never an API credential.
@@ -87,12 +91,13 @@ projection snapshot, so a client can apply a delta without fetching each key.
 counter in the same transaction as the projection update. Clients must not require
 `N + 1`; the HTTP response is authoritative.
 
-`GET /api/v1/sites/{siteId}/projections/snapshot` is phase-1 one-response streaming:
+`GET /api/v1/sites/{siteId}/projections/snapshot` is a phase-1 buffered response:
 the API keeps one PostgreSQL `REPEATABLE READ` transaction, captures one
-`snapshot_seq`, reads all pages in keyset order, and returns that watermark with
-the projection rows. After applying the response, the client sets its cursor to
-`snapshot_seq` and reads `/changes?after=snapshot_seq`. Snapshot tokens and
-multi-request snapshots are intentionally deferred.
+`snapshot_seq`, reads the site's ordered projection set, commits, and returns that
+watermark with the projection rows. After applying the response, the client sets
+its cursor to `snapshot_seq` and reads `/changes?after=snapshot_seq`. Snapshot
+tokens, streaming, and multi-request paging are intentionally deferred; staging
+must measure snapshot size and latency before production canary.
 
 The SignalR hub is `/hubs/site` (with the normal `/hubs/site/negotiate` endpoint).
 After commit it sends only this doorbell message:
@@ -125,7 +130,10 @@ contract defines these important outcomes:
 | 404 | `NOT_FOUND` | Site/device/resource does not exist |
 | 409 | `LEADER_FENCED` | Bulk term/device/lease is stale |
 | 409 | `LEASE_HELD` | Another device holds an unexpired lease |
+| 409 | `SEAT_LIMIT_REACHED` | Signed license has no available active device seat |
+| 409 | `DEVICE_CONFLICT` | Device identity conflicts with a non-active record |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | Same key has a different body hash |
+| 409 | `IDEMPOTENCY_IN_PROGRESS` | Same key is currently being processed |
 | 409 | `RESYNC_REQUIRED` | Cursor is older than retained changes |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds 1 MiB or 200 items |
 | 422 | `VALIDATION_FAILED` | Schema or domain validation failed |
@@ -144,8 +152,8 @@ Run the deterministic contract check from the repository root:
 pwsh .\backend\datahub\openapi\openapi-lint.ps1
 ```
 
-The script uses a locally available `redocly` CLI, or `npx --no-install` when the
-Redocly package is already available. It never downloads a package implicitly. If
-no linter is installed, it performs static contract checks for required routes,
-security schemes, headers, limits, errors, cursor/snapshot semantics, and the
-absence of an `uploadTime` hot field. A non-zero exit code blocks the API build.
+The default path always performs deterministic static contract checks for required
+routes, security schemes, headers, limits, errors, cursor/snapshot semantics, and
+the absence of an `uploadTime` hot field. CI can add `-RequireFullLinter` after
+installing a pinned local Redocly CLI (or package for `npx --no-install`). The
+script never downloads packages implicitly; a non-zero exit blocks the API build.

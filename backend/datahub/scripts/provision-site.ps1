@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$DatabaseUrl,
 
     [Parameter(Mandatory = $true)]
@@ -8,20 +7,51 @@ param(
 
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[^\s]+$')]
-    [string]$SiteCode
+    [string]$SiteCode,
+
+    [string]$ComposeFile,
+
+    [string]$ComposeEnvFile,
+
+    [string]$PostgresService = 'postgres'
 )
 
 $ErrorActionPreference = 'Stop'
+$SiteCode = $SiteCode.Trim().ToUpperInvariant()
 $psql = Get-Command psql -ErrorAction SilentlyContinue
-if ($null -eq $psql) {
+$docker = Get-Command docker -ErrorAction SilentlyContinue
+$useCompose = -not [string]::IsNullOrWhiteSpace($ComposeFile)
+if ($useCompose -and $null -eq $docker) {
+    throw 'docker is required when ComposeFile is supplied.'
+}
+if (-not $useCompose -and [string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+    throw 'DatabaseUrl is required when ComposeFile is not supplied.'
+}
+if (-not $useCompose -and $null -eq $psql) {
     throw 'psql is required to provision a DataHub site.'
 }
 
-& $psql.Source $DatabaseUrl `
-    --set ON_ERROR_STOP=1 `
-    --variable "site_id=$SiteId" `
-    --variable "site_code=$SiteCode" `
-    --command "BEGIN; SELECT create_datahub_site(:'site_id'::uuid, :'site_code'); COMMIT;"
+$psqlArguments = @(
+    '--set', 'ON_ERROR_STOP=1',
+    '--variable', "site_id=$SiteId",
+    '--variable', "site_code=$SiteCode",
+    '--command', "BEGIN; SELECT create_datahub_site(:'site_id'::uuid, :'site_code'); COMMIT;"
+)
+if (-not $useCompose) {
+    & $psql.Source $DatabaseUrl @psqlArguments
+} else {
+    $composeArguments = @('compose', '--file', (Resolve-Path -LiteralPath $ComposeFile).Path)
+    if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile)) {
+        $composeArguments += @('--env-file', (Resolve-Path -LiteralPath $ComposeEnvFile).Path)
+    }
+    $composeArguments += @(
+        'exec', '-T', $PostgresService,
+        'sh', '-ec',
+        'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" "$@"',
+        'sh'
+    ) + $psqlArguments
+    & $docker.Source @composeArguments
+}
 if ($LASTEXITCODE -ne 0) {
     throw "Site provisioning failed with exit code $LASTEXITCODE."
 }

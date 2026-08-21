@@ -36,15 +36,42 @@ public sealed class PostgresDataSource : IAsyncDisposable
 
     public bool IsConfigured => _dataSource is not null;
 
+    public ValueTask<NpgsqlConnection> OpenConnectionAsync(CancellationToken cancellationToken)
+    {
+        if (_dataSource is null)
+            throw new InvalidOperationException("The PostgreSQL data source is not configured.");
+        return _dataSource.OpenConnectionAsync(cancellationToken);
+    }
+
     public async Task<bool> CanConnectAsync(CancellationToken cancellationToken)
     {
         if (_dataSource is null) return false;
         try
         {
             await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-            await using var command = new NpgsqlCommand("SELECT 1", connection);
-            await command.ExecuteScalarAsync(cancellationToken);
-            return true;
+            await using var command = new NpgsqlCommand("""
+                SELECT (
+                    (SELECT count(*)
+                       FROM pg_class c
+                       JOIN pg_namespace n ON n.oid = c.relnamespace
+                      WHERE n.nspname = 'public'
+                        AND c.relkind IN ('r', 'p')
+                        AND c.relname IN (
+                            'schema_migrations', 'sites', 'devices', 'site_fetch_leases',
+                            'site_change_counters', 'waybill_scan_events',
+                            'waybill_projections', 'dashboard_changes',
+                            'jms_event_policies', 'idempotency_records',
+                            'retention_policies', 'audit_logs')) >= 12
+                    AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '001_core')
+                    AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '002_seed_policies')
+                    AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '003_seed_retention')
+                    AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '004_projection_slot_payloads')
+                    AND EXISTS (SELECT 1 FROM schema_migrations WHERE version = '005_change_retention_floor')
+                    AND EXISTS (SELECT 1 FROM jms_event_policies)
+                    AND EXISTS (SELECT 1 FROM retention_policies)
+                );
+                """, connection);
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
         catch (NpgsqlException)
         {

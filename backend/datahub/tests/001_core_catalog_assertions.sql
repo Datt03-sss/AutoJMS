@@ -23,7 +23,7 @@ BEGIN
      WHERE table_schema = 'public'
        AND table_name = 'site_fetch_leases'
        AND column_name = 'leader_device_id';
-    IF actual_type <> 'uuid' OR actual_nullable <> 'YES' THEN
+    IF actual_type IS DISTINCT FROM 'uuid' OR actual_nullable IS DISTINCT FROM 'YES' THEN
         RAISE EXCEPTION 'leader_device_id must be nullable uuid (%, %)', actual_type, actual_nullable;
     END IF;
 
@@ -35,7 +35,7 @@ BEGIN
       JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = x.attnum
      WHERE i.indrelid = 'public.dashboard_changes'::regclass
        AND i.indisprimary;
-    IF pk_columns <> 'site_id,change_seq' THEN
+    IF pk_columns IS DISTINCT FROM 'site_id,change_seq' THEN
         RAISE EXCEPTION 'dashboard_changes primary key must be site_id,change_seq; got %', pk_columns;
     END IF;
 
@@ -71,6 +71,36 @@ BEGIN
            AND column_name ILIKE 'uploadtime'
     ) THEN
         RAISE EXCEPTION 'uploadTime must not be a hot column';
+    END IF;
+
+    FOREACH required_table IN ARRAY ARRAY['state_status', 'state_payload', 'last_activity_status', 'last_activity_payload', 'inventory_status', 'inventory_payload'] LOOP
+        IF NOT EXISTS (
+            SELECT 1
+              FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'waybill_projections'
+               AND column_name = required_table
+        ) THEN
+            RAISE EXCEPTION 'projection slot column is missing: %', required_table;
+        END IF;
+    END LOOP;
+
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '004_projection_slot_payloads') THEN
+        RAISE EXCEPTION '004 projection slot migration marker is missing';
+    END IF;
+
+    SELECT data_type, is_nullable
+      INTO actual_type, actual_nullable
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = 'site_change_counters'
+       AND column_name = 'pruned_through_seq';
+    IF actual_type IS DISTINCT FROM 'bigint' OR actual_nullable IS DISTINCT FROM 'NO' THEN
+        RAISE EXCEPTION 'pruned_through_seq must be non-null bigint (%, %)', actual_type, actual_nullable;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '005_change_retention_floor') THEN
+        RAISE EXCEPTION '005 change retention floor migration marker is missing';
     END IF;
 END
 $$;

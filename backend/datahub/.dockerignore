@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.git/
+.codex/
+.agents/
+_verify/
+docs/layout/
+release/notes/
+tasks/
+*.user
+*.suo

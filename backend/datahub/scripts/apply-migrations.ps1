@@ -1,9 +1,14 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
     [string]$DatabaseUrl,
 
-    [string]$MigrationDirectory
+    [string]$MigrationDirectory,
+
+    [string]$ComposeFile,
+
+    [string]$ComposeEnvFile,
+
+    [string]$PostgresService = 'postgres'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,22 +18,78 @@ $migrationRoot = if ([string]::IsNullOrWhiteSpace($MigrationDirectory)) {
     $MigrationDirectory
 }
 $psql = Get-Command psql -ErrorAction SilentlyContinue
-if ($null -eq $psql) {
+$docker = Get-Command docker -ErrorAction SilentlyContinue
+$useCompose = -not [string]::IsNullOrWhiteSpace($ComposeFile)
+if ($useCompose -and $null -eq $docker) {
+    throw 'docker is required when ComposeFile is supplied.'
+}
+if (-not $useCompose -and [string]::IsNullOrWhiteSpace($DatabaseUrl)) {
+    throw 'DatabaseUrl is required when ComposeFile is not supplied.'
+}
+if (-not $useCompose -and $null -eq $psql) {
     throw 'psql is required to apply DataHub migrations.'
 }
 if (-not (Test-Path $migrationRoot -PathType Container)) {
     throw "Migration directory does not exist: $migrationRoot"
 }
 
-& $psql.Source $DatabaseUrl --set ON_ERROR_STOP=1 --command @"
+function Get-ComposeArguments {
+    $arguments = @('compose', '--file', (Resolve-Path -LiteralPath $ComposeFile).Path)
+    if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile)) {
+        $arguments += @('--env-file', (Resolve-Path -LiteralPath $ComposeEnvFile).Path)
+    }
+    return $arguments
+}
+
+function Get-ComposePsqlArguments {
+    param([string[]]$Arguments)
+
+    return @(Get-ComposeArguments) + @(
+        'exec', '-T', $PostgresService,
+        'sh', '-ec',
+        'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" "$@"',
+        'sh'
+    ) + $Arguments
+}
+
+function Invoke-Psql {
+    param(
+        [string[]]$Arguments,
+        [string]$InputFile
+    )
+
+    if (-not $useCompose) {
+        & $psql.Source $DatabaseUrl @Arguments
+    } else {
+        $dockerArguments = Get-ComposePsqlArguments $Arguments
+        if ([string]::IsNullOrWhiteSpace($InputFile)) {
+            & $docker.Source @dockerArguments
+        } else {
+            Get-Content -Raw -LiteralPath $InputFile | & $docker.Source @dockerArguments
+        }
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "psql failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-PsqlQuery {
+    param([string]$Sql)
+
+    if (-not $useCompose) {
+        return (& $psql.Source $DatabaseUrl --tuples-only --no-align --set ON_ERROR_STOP=1 --command $Sql)
+    }
+
+    $dockerArguments = Get-ComposePsqlArguments @('--tuples-only', '--no-align', '--set', 'ON_ERROR_STOP=1', '--command', $Sql)
+    return (& $docker.Source @dockerArguments)
+}
+
+Invoke-Psql @('--set', 'ON_ERROR_STOP=1', '--command', @"
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version text PRIMARY KEY,
     applied_at timestamptz NOT NULL DEFAULT now()
 );
-"@
-if ($LASTEXITCODE -ne 0) {
-    throw "Unable to bootstrap schema_migrations (exit code $LASTEXITCODE)."
-}
+"@)
 
 $migrationFiles = Get-ChildItem -LiteralPath $migrationRoot -Filter '*.sql' -File |
     Where-Object { $_.Name -match '^\d+_[^/\\]+\.sql$' } |
@@ -37,7 +98,7 @@ $migrationFiles = Get-ChildItem -LiteralPath $migrationRoot -Filter '*.sql' -Fil
 foreach ($migration in $migrationFiles) {
     $version = [IO.Path]::GetFileNameWithoutExtension($migration.Name)
     $escapedVersion = $version.Replace("'", "''")
-    $applied = (& $psql.Source $DatabaseUrl --tuples-only --no-align --set ON_ERROR_STOP=1 --command "SELECT 1 FROM schema_migrations WHERE version = '$escapedVersion';").Trim()
+    $applied = (Invoke-PsqlQuery "SELECT 1 FROM schema_migrations WHERE version = '$escapedVersion';" | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "Unable to inspect migration state for $version (exit code $LASTEXITCODE)."
     }
@@ -47,12 +108,9 @@ foreach ($migration in $migrationFiles) {
     }
 
     Write-Host "APPLY $version" -ForegroundColor Cyan
-    & $psql.Source $DatabaseUrl --set ON_ERROR_STOP=1 --single-transaction --file $migration.FullName
-    if ($LASTEXITCODE -ne 0) {
-        throw "Migration $version failed with exit code $LASTEXITCODE."
-    }
+    Invoke-Psql @('--set', 'ON_ERROR_STOP=1', '--single-transaction') $migration.FullName
 
-    $recorded = (& $psql.Source $DatabaseUrl --tuples-only --no-align --set ON_ERROR_STOP=1 --command "SELECT 1 FROM schema_migrations WHERE version = '$escapedVersion';").Trim()
+    $recorded = (Invoke-PsqlQuery "SELECT 1 FROM schema_migrations WHERE version = '$escapedVersion';" | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $recorded -ne '1') {
         throw "Migration $version completed without recording its version marker."
     }

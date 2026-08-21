@@ -43,6 +43,45 @@ public sealed class HmacLicenseAssertionServiceTests
             new StagingLicenseAssertionDescriptor(["272C03"], DateTimeOffset.UtcNow.AddMinutes(5), null, 1, 1)));
     }
 
+    [Fact]
+    public async Task Hmac_validator_is_unavailable_outside_staging_even_with_a_validation_key()
+    {
+        var service = new HmacLicenseAssertionService(new DataHubRuntimeOptions
+        {
+            Channel = "production",
+            EnvironmentName = "Production",
+            LicenseAssertionValidationKey = new string('p', 32)
+        }, TimeProvider.System);
+
+        var result = await service.ValidateAsync("v1.payload.signature", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("LICENSE_ASSERTION_UNAVAILABLE", result.FailureCode);
+    }
+
+    [Fact]
+    public async Task Normalizes_site_codes_and_ignores_blank_values()
+    {
+        var now = new DateTimeOffset(2026, 8, 21, 2, 0, 0, TimeSpan.Zero);
+        var service = new HmacLicenseAssertionService(new DataHubRuntimeOptions
+        {
+            Channel = "staging",
+            EnvironmentName = "Staging",
+            AllowStagingTestIssuer = true,
+            StagingTestSigningKey = new string('s', 32),
+            LicenseAssertionIssuer = "autojms-staging-test",
+            LicenseAssertionAudience = "autojms-datahub-enroll"
+        }, new FixedTimeProvider(now));
+        var assertion = service.Issue(new StagingLicenseAssertionDescriptor(
+            [" 272c03 ", "", "272C03"], now.AddMinutes(5), null, 2, 1));
+
+        var result = await service.ValidateAsync(assertion, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Single(result.Identity!.SiteCodes);
+        Assert.Contains("272C03", result.Identity.SiteCodes);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => value;

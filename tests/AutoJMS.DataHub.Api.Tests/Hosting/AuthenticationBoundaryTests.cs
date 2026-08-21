@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -23,5 +24,10 @@ public sealed class AuthenticationBoundaryTests : IClassFixture<WebApplicationFa
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("Bearer", response.Headers.WwwAuthenticate.Single().Scheme);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.TryGetProperty("traceId", out _));
+        Assert.False(document.RootElement.TryGetProperty("TraceId", out _));
     }
 }

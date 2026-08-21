@@ -38,7 +38,7 @@ public sealed class RuntimeConfigurationHealthCheckTests
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.Contains("DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY", result.Description);
+        Assert.Contains("production license verifier", result.Description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -58,5 +58,48 @@ public sealed class RuntimeConfigurationHealthCheckTests
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Healthy, result.Status);
+    }
+
+    [Fact]
+    public async Task Check_is_unhealthy_when_staging_has_no_available_assertion_validator()
+    {
+        var check = new RuntimeConfigurationHealthCheck(new DataHubRuntimeOptions
+        {
+            Channel = "staging",
+            ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
+            DeviceTokenSigningKey = new string('d', 32),
+            EnrollmentPepper = new string('e', 32),
+            LicenseAssertionValidationKey = new string('l', 32),
+            AllowStagingTestIssuer = false,
+            EnvironmentName = "Staging"
+        });
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Contains("staging license verifier", result.Description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Staging", "production")]
+    [InlineData("Production", "staging")]
+    public async Task Check_is_unhealthy_when_environment_and_channel_are_mismatched(string environmentName, string channel)
+    {
+        var check = new RuntimeConfigurationHealthCheck(new DataHubRuntimeOptions
+        {
+            EnvironmentName = environmentName,
+            Channel = channel,
+            ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
+            DeviceTokenSigningKey = new string('d', 32),
+            EnrollmentPepper = new string('e', 32),
+            LicenseAssertionValidationKey = new string('l', 32),
+            StagingTestSigningKey = new string('s', 32),
+            AllowStagingTestIssuer = true
+        });
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Contains("environment/channel", result.Description, StringComparison.OrdinalIgnoreCase);
     }
 }

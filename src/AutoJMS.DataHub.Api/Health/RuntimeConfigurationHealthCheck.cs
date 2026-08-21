@@ -11,20 +11,27 @@ public sealed class RuntimeConfigurationHealthCheck(DataHubRuntimeOptions option
     {
         var missing = new List<string>();
         if (!options.HasValidChannel) missing.Add("DATAHUB_CHANNEL (staging or production)");
+        if (!HasMatchingEnvironmentAndChannel(options.EnvironmentName, options.Channel))
+            missing.Add("ASPNETCORE_ENVIRONMENT/DATAHUB_CHANNEL environment/channel mismatch");
         if (string.IsNullOrWhiteSpace(options.ConnectionString)) missing.Add("ConnectionStrings__DataHub");
         if (!HasSecret(options.DeviceTokenSigningKey)) missing.Add("DATAHUB_DEVICE_TOKEN_SIGNING_KEY");
         if (!HasSecret(options.EnrollmentPepper)) missing.Add("DATAHUB_ENROLLMENT_PEPPER");
 
-        var stagingIssuerEnabled = StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer);
-        if (string.Equals(options.Channel, DataHubRuntimeOptions.AllowedProductionChannel, StringComparison.Ordinal)
-            || !stagingIssuerEnabled)
+        var isProduction = string.Equals(options.Channel, DataHubRuntimeOptions.AllowedProductionChannel, StringComparison.Ordinal);
+        var stagingIssuerEnabled = StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer)
+            && string.Equals(options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal);
+        if (isProduction)
         {
-            if (!HasSecret(options.LicenseAssertionValidationKey))
-                missing.Add("DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY");
+            missing.Add("production license verifier integration (asymmetric issuer/JWKS)");
         }
-        else if (!HasSecret(options.StagingTestSigningKey))
+        else if (stagingIssuerEnabled)
         {
-            missing.Add("DATAHUB_STAGING_TEST_SIGNING_KEY");
+            if (!HasSecret(options.StagingTestSigningKey))
+                missing.Add("DATAHUB_STAGING_TEST_SIGNING_KEY");
+        }
+        else
+        {
+            missing.Add("staging license verifier (enable the staging test issuer or install the signed-assertion verifier)");
         }
 
         var result = missing.Count == 0
@@ -34,4 +41,10 @@ public sealed class RuntimeConfigurationHealthCheck(DataHubRuntimeOptions option
     }
 
     private static bool HasSecret(string? value) => !string.IsNullOrWhiteSpace(value) && value.Trim().Length >= 32;
+
+    private static bool HasMatchingEnvironmentAndChannel(string? environmentName, string? channel)
+        => string.Equals(environmentName, "Staging", StringComparison.OrdinalIgnoreCase)
+            ? string.Equals(channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal)
+            : string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(channel, DataHubRuntimeOptions.AllowedProductionChannel, StringComparison.Ordinal);
 }

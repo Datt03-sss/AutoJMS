@@ -20,6 +20,9 @@ public sealed class DataHubRuntimeOptions
     public string StagingTestSigningKey { get; set; } = "";
     public bool AllowStagingTestIssuer { get; set; }
     public int MaximumPoolSize { get; set; } = 20;
+    public TimeSpan DeviceTokenLifetime { get; set; } = TimeSpan.FromHours(24);
+    public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(15);
+    public int RetentionBatchSize { get; set; } = 1000;
 
     public bool HasValidChannel => string.Equals(Channel, AllowedStagingChannel, StringComparison.Ordinal)
         || string.Equals(Channel, AllowedProductionChannel, StringComparison.Ordinal);
@@ -40,7 +43,10 @@ public sealed class DataHubRuntimeOptions
             LicenseAssertionValidationKey = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY"]),
             StagingTestSigningKey = FirstNonEmpty(configuration["DATAHUB_STAGING_TEST_SIGNING_KEY"]),
             AllowStagingTestIssuer = ParseBoolean(configuration["DATAHUB_ALLOW_STAGING_TEST_ISSUER"]),
-            MaximumPoolSize = ParsePositiveInt(configuration["DATAHUB_DB_MAX_POOL_SIZE"], 20)
+            MaximumPoolSize = ParseBoundedInt(configuration["DATAHUB_DB_MAX_POOL_SIZE"], 20, 1, 100),
+            DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
+            RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),
+            RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000)
         };
 
         return options;
@@ -52,8 +58,8 @@ public sealed class DataHubRuntimeOptions
     private static bool ParseBoolean(string? value)
         => bool.TryParse(value, out var result) && result;
 
-    private static int ParsePositiveInt(string? value, int fallback)
-        => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) && result > 0
-            ? Math.Min(result, 100)
+    private static int ParseBoundedInt(string? value, int fallback, int minimum, int maximum)
+        => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result)
+            ? Math.Clamp(result, minimum, maximum)
             : fallback;
 }

@@ -38,6 +38,8 @@ firebase-adminsdk*.json
 *-key.json
 *service*.json
 !.env.example
+!.env.staging.example
+!.env.production.example
 *.sec
 
 # Certificates

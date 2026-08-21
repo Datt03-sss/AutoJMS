@@ -41,9 +41,13 @@ CREATE TABLE IF NOT EXISTS site_fetch_leases (
 );
 
 CREATE TABLE IF NOT EXISTS site_change_counters (
-    site_id     uuid PRIMARY KEY REFERENCES sites(id),
-    change_seq  bigint NOT NULL DEFAULT 0,
-    CONSTRAINT ck_site_change_counters_seq_nonnegative CHECK (change_seq >= 0)
+    site_id             uuid PRIMARY KEY REFERENCES sites(id),
+    change_seq          bigint NOT NULL DEFAULT 0,
+    pruned_through_seq  bigint NOT NULL DEFAULT 0,
+    CONSTRAINT ck_site_change_counters_seq_nonnegative CHECK (change_seq >= 0),
+    CONSTRAINT ck_site_change_counters_pruned_range CHECK (
+        pruned_through_seq >= 0 AND pruned_through_seq <= change_seq
+    )
 );
 
 CREATE TABLE IF NOT EXISTS waybill_scan_events (
@@ -81,6 +85,8 @@ CREATE TABLE IF NOT EXISTS waybill_projections (
     state_fingerprint          text,
     state_event_id             bigint,
     state_kind                 text,
+    state_status               text,
+    state_payload              jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     last_activity_code         integer,
     last_activity_name         text,
@@ -88,12 +94,16 @@ CREATE TABLE IF NOT EXISTS waybill_projections (
     last_activity_at           timestamptz,
     last_activity_fingerprint  text,
     last_activity_event_id     bigint,
+    last_activity_status       text,
+    last_activity_payload      jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     inventory_code             integer,
     inventory_name             text,
     inventory_event_at         timestamptz,
     inventory_fingerprint      text,
     inventory_event_id         bigint,
+    inventory_status            text,
+    inventory_payload           jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     payload                    jsonb NOT NULL DEFAULT '{}'::jsonb,
     reducer_version            integer NOT NULL DEFAULT 1,
@@ -199,6 +209,10 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    p_site_code := upper(btrim(p_site_code));
+    IF p_site_code = '' THEN
+        RAISE EXCEPTION 'site code cannot be blank';
+    END IF;
     INSERT INTO sites (id, site_code)
     VALUES (p_site_id, p_site_code);
 

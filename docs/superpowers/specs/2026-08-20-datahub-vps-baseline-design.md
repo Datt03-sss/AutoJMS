@@ -117,6 +117,10 @@ Phase 1 does not require a `devices.channel` column. The bound channel is in the
 token and enrollment audit payload; a future audit migration may add a non-null column.
 The two environments use different JWT signing keys and enrollment peppers, so a device
 enrolled in staging is invalid in production even if configuration files are copied.
+Readiness also requires `ASPNETCORE_ENVIRONMENT=Staging` with
+`DATAHUB_CHANNEL=staging` or `Production` with `DATAHUB_CHANNEL=production`.
+The HMAC assertion helper is a staging-only integration seam; production enrollment
+remains closed until the asymmetric JWS/JWKS verifier is installed.
 
 The existing .NET 8 desktop remains a client of this API; it does not need to target the
 same framework version.
@@ -216,17 +220,23 @@ CREATE TABLE waybill_projections (
     state_fingerprint          text,
     state_event_id             bigint,
     state_kind                 text,
+    state_status               text,
+    state_payload              jsonb NOT NULL DEFAULT '{}'::jsonb,
     last_activity_code         integer,
     last_activity_name         text,
     last_activity_kind         text,
     last_activity_at           timestamptz,
     last_activity_fingerprint  text,
     last_activity_event_id     bigint,
+    last_activity_status       text,
+    last_activity_payload       jsonb NOT NULL DEFAULT '{}'::jsonb,
     inventory_code             integer,
     inventory_name             text,
     inventory_event_at         timestamptz,
     inventory_fingerprint      text,
     inventory_event_id         bigint,
+    inventory_status            text,
+    inventory_payload           jsonb NOT NULL DEFAULT '{}'::jsonb,
     payload                    jsonb NOT NULL DEFAULT '{}'::jsonb,
     reducer_version            integer NOT NULL DEFAULT 1,
     version                    bigint NOT NULL DEFAULT 1,
@@ -235,12 +245,15 @@ CREATE TABLE waybill_projections (
 );
 ```
 
-The projection is self-sufficient for dashboard list/detail rendering. The event ID
-columns are optional hydration references and deliberately have no foreign key to
-`waybill_scan_events`: event retention must not break a non-terminal projection. A
-retention job may set those references to `NULL`, or retain referenced events while the
-projection is non-terminal. The compact `payload` is the apply-safe projection snapshot,
-not a copy of the full JMS envelope.
+The projection is self-sufficient for dashboard list/detail rendering. Each slot keeps
+its hot status and compact payload independently; a newer activity therefore cannot
+erase the reason/status of an older state transition or inventory checkpoint. The event
+ID columns are optional, best-effort hydration references and deliberately have no
+foreign key to `waybill_scan_events`: event retention must not break a non-terminal
+projection. Phase-1 retention leaves these internal references stable rather than
+mutating a projection without a cursor change; clients must rely on the compact hot
+snapshot, not dereference an expired event. The top-level `payload` is a compact
+apply-safe summary, not a copy of the full JMS envelope.
 
 Each slot uses the deterministic winner key:
 
@@ -274,8 +287,9 @@ CREATE TABLE jms_event_policies (
 );
 
 CREATE TABLE site_change_counters (
-    site_id     uuid PRIMARY KEY REFERENCES sites(id),
-    change_seq  bigint NOT NULL DEFAULT 0
+    site_id            uuid PRIMARY KEY REFERENCES sites(id),
+    change_seq         bigint NOT NULL DEFAULT 0,
+    pruned_through_seq bigint NOT NULL DEFAULT 0
 );
 
 CREATE TABLE dashboard_changes (
@@ -299,6 +313,12 @@ Every change is appended through one repository/database function that locks the
 site counter, allocates the next number, inserts the change, and commits in the same
 transaction as the projection update. No other code may insert directly into
 `dashboard_changes`. The cursor is per-site and no API rule assumes numeric contiguity.
+The `pruned_through_seq` watermark records the highest committed sequence deliberately
+removed by retention; a client is resync-required only when its cursor is below that
+floor (or ahead of the current counter), not merely because the retained minimum is
+greater than zero.
+The site counter is locked before reducing observations so concurrent first writes for
+the same waybill cannot both reduce from a missing row and then overwrite each other.
 
 ## Time parsing contract
 
@@ -477,11 +497,12 @@ SignalR payload is only `{siteId, changeSeq, entityType, entityKey}`. On reconne
 missed notification, the client performs delta catch-up. A safety pull runs every
 30-60 seconds.
 
-Phase 1 chooses one snapshot strategy: the API streams all snapshot pages in one
-`REPEATABLE READ` transaction and returns one `snapshot_seq` for the entire response.
-The client applies the streamed pages, sets its cursor to that watermark, and then
-requests changes after it. A server snapshot token with a short TTL is a later
-optimization; implementors must not choose a different paging strategy ad hoc.
+Phase 1 chooses one snapshot strategy: the API reads all projection rows in one
+`REPEATABLE READ` transaction, returns one HTTP response and one `snapshot_seq`, then
+commits before writing the response. The client applies the response, sets its cursor
+to that watermark, and then requests changes after it. Snapshot tokens, paging, and
+streaming are later optimizations; implementors must not choose a different phase-1
+strategy ad hoc.
 
 ## Retention and recovery
 
@@ -497,7 +518,9 @@ sites/devices/config: no automatic deletion
 ```
 
 Deleting a projection or change visible to offline clients requires a tombstone change
-retained for at least the maximum supported offline period.
+retained for at least the maximum supported offline period. The phase-1 change
+retention job advances `pruned_through_seq` transactionally with deletion so stale
+clients receive `RESYNC_REQUIRED` rather than silently skipping a gap.
 
 Backups are encrypted and stored outside the VPS. They must include user/config/audit/
 device/site data. Observation dumps remain mandatory until the JMS replay window has

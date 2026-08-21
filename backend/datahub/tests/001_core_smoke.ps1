@@ -45,6 +45,11 @@ if ($sql -notmatch "INSERT INTO schema_migrations\s*\(version\)\s*VALUES \('001_
     throw '001_core must record its applied version.'
 }
 
+$slotMigrationPath = Join-Path $rootPath 'migrations/004_projection_slot_payloads.sql'
+if (-not (Test-Path $slotMigrationPath -PathType Leaf)) { throw "Projection slot migration is missing: $slotMigrationPath" }
+$retentionFloorMigrationPath = Join-Path $rootPath 'migrations/005_change_retention_floor.sql'
+if (-not (Test-Path $retentionFloorMigrationPath -PathType Leaf)) { throw "Change retention floor migration is missing: $retentionFloorMigrationPath" }
+
 if ($sql -notmatch 'leader_device_id\s+uuid\s+NULL') {
     throw 'site_fetch_leases.leader_device_id must be nullable.'
 }
@@ -56,6 +61,12 @@ if ($sql -match '(?i)uploadtime') {
 if ($sql -match 'ix_dashboard_changes_site_seq') {
     throw 'The duplicate dashboard_changes site/sequence index must not exist.'
 }
+
+foreach ($column in @('state_status', 'state_payload', 'last_activity_status', 'last_activity_payload', 'inventory_status', 'inventory_payload')) {
+    if ($sql -notmatch "\b$column\b") { throw "Projection slot column is missing: $column" }
+}
+
+if ($sql -notmatch '\bpruned_through_seq\b') { throw 'Per-site change retention floor is missing.' }
 
 $dashboardDeclaration = [regex]::Match(
     $sql,

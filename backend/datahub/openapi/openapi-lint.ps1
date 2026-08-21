@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$Path
+    [string]$Path,
+    [switch]$RequireFullLinter
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,29 +56,30 @@ function Assert-PathContains {
     }
 }
 
-# Prefer a locally installed standards linter. --no-install prevents this check
-# from changing the workstation or downloading packages during a build. The
-# DataHub-specific checks below always run as well.
+# Full standards lint is opt-in so the default repository gate remains
+# deterministic on machines where npx/native Node is unstable. --no-install
+# prevents this check from downloading packages during a build.
 $fullLintRan = $false
-$redocly = Get-Command redocly -ErrorAction SilentlyContinue
-if ($null -ne $redocly) {
-    & $redocly.Source lint $specPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Redocly lint failed (exit code $LASTEXITCODE)."
+$redocly = if ($RequireFullLinter) { Get-Command redocly -ErrorAction SilentlyContinue } else { $null }
+if ($RequireFullLinter) {
+    if ($null -ne $redocly) {
+        & $redocly.Source lint $specPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Redocly lint failed (exit code $LASTEXITCODE)."
+        }
+        $fullLintRan = $true
     }
-    $fullLintRan = $true
-}
-
-$npx = Get-Command npx -ErrorAction SilentlyContinue
-if (-not $fullLintRan -and $null -ne $npx) {
-    $npxHasRedocly = $false
-    try {
-        $probe = @(& $npx.Source '--no-install' '@redocly/cli' '--version' 2>$null)
-        $npxHasRedocly = ($LASTEXITCODE -eq 0)
-    } catch {
+    if (-not $fullLintRan) {
+        $npx = Get-Command npx -ErrorAction SilentlyContinue
+        if ($null -eq $npx) { throw 'Full OpenAPI lint requested, but neither redocly nor npx is installed.' }
         $npxHasRedocly = $false
-    }
-    if ($npxHasRedocly) {
+        try {
+            $null = @(& $npx.Source '--no-install' '@redocly/cli' '--version' 2>$null)
+            $npxHasRedocly = ($LASTEXITCODE -eq 0)
+        } catch {
+            $npxHasRedocly = $false
+        }
+        if (-not $npxHasRedocly) { throw 'Full OpenAPI lint requested, but @redocly/cli is not installed locally.' }
         & $npx.Source '--no-install' '@redocly/cli' 'lint' $specPath
         if ($LASTEXITCODE -ne 0) {
             throw "Redocly lint failed (exit code $LASTEXITCODE)."
@@ -155,7 +157,10 @@ foreach ($errorCode in @(
     'SITE_NOT_LICENSED',
     'LEADER_FENCED',
     'LEASE_HELD',
+    'SEAT_LIMIT_REACHED',
+    'DEVICE_CONFLICT',
     'IDEMPOTENCY_KEY_REUSED',
+    'IDEMPOTENCY_IN_PROGRESS',
     'INVALID_SCAN_TIME',
     'UNAUTHORIZED',
     'FORBIDDEN',

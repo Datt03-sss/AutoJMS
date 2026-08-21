@@ -1,28 +1,112 @@
 using AutoJMS.DataHub.Api.Auth;
 using AutoJMS.DataHub.Api.Configuration;
+using AutoJMS.DataHub.Api.Domain;
 using AutoJMS.DataHub.Api.Endpoints;
 using AutoJMS.DataHub.Api.Health;
 using AutoJMS.DataHub.Api.Hubs;
 using AutoJMS.DataHub.Api.Infrastructure;
+using AutoJMS.DataHub.Api.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(serverOptions => serverOptions.Limits.MaxRequestBodySize = 1024 * 1024);
 var runtimeOptions = DataHubRuntimeOptions.FromConfiguration(builder.Configuration, builder.Environment);
 
 builder.Services.AddSingleton(runtimeOptions);
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow);
 builder.Services.AddDataHubIdentity(runtimeOptions);
 builder.Services.AddSingleton<PostgresDataSource>();
 builder.Services.AddSingleton<IDataHubDatabaseProbe, NpgsqlDatabaseProbe>();
+builder.Services.AddSingleton<LeaseRepository>();
+builder.Services.AddSingleton<EnrollmentRepository>();
+builder.Services.AddSingleton<DeviceRepository>();
+builder.Services.AddSingleton<IngressIpRateLimiter>();
+builder.Services.AddSingleton(JmsEventPolicyCatalog.Default);
+builder.Services.AddSingleton<JmsEventPolicyRepository>();
+builder.Services.AddSingleton<ProjectionReducer>();
+builder.Services.AddSingleton<IngestRepository>();
+builder.Services.AddSingleton<IngestPipeline>();
+builder.Services.AddSingleton<IDoorbellPublisher, SignalRDoorbellPublisher>();
+builder.Services.AddSingleton<ChangeRepository>();
+builder.Services.AddSingleton<RetentionRepository>();
+builder.Services.AddHostedService<RetentionHostedService>();
 builder.Services.AddHealthChecks()
     .AddCheck<RuntimeConfigurationHealthCheck>("runtime-configuration", tags: ["ready"])
     .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 builder.Services.AddSignalR(options => options.EnableDetailedErrors = false);
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    // Kestrel is private to the Compose edge network, so Caddy is the only
+    // public ingress and the only trusted forwarded-header hop.
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        await ApiProblemWriter.WriteAsync(
+            context.HttpContext,
+            StatusCodes.Status429TooManyRequests,
+            "RATE_LIMITED",
+            "Too many requests; retry after the indicated delay.");
+    };
+    options.AddPolicy("device", context =>
+    {
+        var identity = context.GetDeviceIdentity();
+        var partition = identity is null
+            ? $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}"
+            : $"device:{identity.DeviceId:D}";
+        return RateLimitPartition.GetFixedWindowLimiter(partition, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 240,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+    options.AddPolicy("enrollment", context => RateLimitPartition.GetFixedWindowLimiter(
+        $"enroll:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+});
 
 var app = builder.Build();
 
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var logger = errorApp.ApplicationServices.GetRequiredService<ILoggerFactory>().CreateLogger("DataHub.Errors");
+    var exception = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+    if (exception is not null)
+        logger.LogError(exception, "Unhandled DataHub request failure for {Path}.", context.Request.Path);
+
+    await ApiProblemWriter.WriteAsync(
+        context,
+        StatusCodes.Status503ServiceUnavailable,
+        ApiProblemCodes.ServiceUnavailable,
+        "The DataHub dependency is temporarily unavailable.");
+}));
+app.UseForwardedHeaders();
+app.UseMiddleware<IngressRateLimitMiddleware>();
 app.UseMiddleware<DeviceAuthenticationMiddleware>();
+app.UseRateLimiter();
+app.UseMiddleware<DeviceStatusMiddleware>();
 
 app.MapGet("/health/live", () => Results.Ok(new
 {
@@ -52,7 +136,10 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.MapEnrollmentEndpoints();
-app.MapHub<SiteHub>("/hubs/site");
+app.MapLeaseEndpoints();
+app.MapIngestEndpoints();
+app.MapSyncEndpoints();
+app.MapHub<SiteHub>("/hubs/site").RequireRateLimiting("device");
 
 app.Run();
 

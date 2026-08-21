@@ -11,10 +11,19 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IDeviceTokenService, HmacDeviceTokenService>();
         services.AddSingleton<HmacLicenseAssertionService>();
-        services.AddSingleton<ILicenseAssertionValidator>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
-
-        if (StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer))
+        if (StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer)
+            && string.Equals(options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
+        {
+            services.AddSingleton<ILicenseAssertionValidator>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
             services.AddSingleton<IStagingTestLicenseAssertionIssuer>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
+        }
+        else
+        {
+            // Do not silently treat the existing desktop token or an arbitrary
+            // production HMAC as a DataHub license. The production verifier is a
+            // separate integration task and must be wired explicitly.
+            services.AddSingleton<ILicenseAssertionValidator, UnavailableLicenseAssertionValidator>();
+        }
 
         return services;
     }

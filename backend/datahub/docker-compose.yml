@@ -1,0 +1,101 @@
+name: autojms-datahub
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DATAHUB_PUBLIC_HOST: ${DATAHUB_PUBLIC_HOST:?set DATAHUB_PUBLIC_HOST}
+      TLS_CONTACT_EMAIL: ${TLS_CONTACT_EMAIL:?set TLS_CONTACT_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  api:
+    image: ${DATAHUB_API_IMAGE:?set DATAHUB_API_IMAGE to an immutable @sha256 image reference}
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:?set ASPNETCORE_ENVIRONMENT}
+      DATAHUB_CHANNEL: ${DATAHUB_CHANNEL:?set DATAHUB_CHANNEL}
+      DATAHUB_DB_MAX_POOL_SIZE: ${DATAHUB_DB_MAX_POOL_SIZE:-20}
+      DATAHUB_RETENTION_INTERVAL_SECONDS: ${DATAHUB_RETENTION_INTERVAL_SECONDS:-900}
+      DATAHUB_RETENTION_BATCH_SIZE: ${DATAHUB_RETENTION_BATCH_SIZE:-1000}
+      DATAHUB_DEVICE_TOKEN_ISSUER: ${DATAHUB_DEVICE_TOKEN_ISSUER:?set DATAHUB_DEVICE_TOKEN_ISSUER}
+      DATAHUB_DEVICE_TOKEN_AUDIENCE: ${DATAHUB_DEVICE_TOKEN_AUDIENCE:?set DATAHUB_DEVICE_TOKEN_AUDIENCE}
+      DATAHUB_DEVICE_TOKEN_SIGNING_KEY: ${DATAHUB_DEVICE_TOKEN_SIGNING_KEY:?set DATAHUB_DEVICE_TOKEN_SIGNING_KEY}
+      DATAHUB_ENROLLMENT_PEPPER: ${DATAHUB_ENROLLMENT_PEPPER:?set DATAHUB_ENROLLMENT_PEPPER}
+      DATAHUB_LICENSE_ASSERTION_ISSUER: ${DATAHUB_LICENSE_ASSERTION_ISSUER:?set DATAHUB_LICENSE_ASSERTION_ISSUER}
+      DATAHUB_LICENSE_ASSERTION_AUDIENCE: ${DATAHUB_LICENSE_ASSERTION_AUDIENCE:?set DATAHUB_LICENSE_ASSERTION_AUDIENCE}
+      DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY: ${DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY:-}
+      DATAHUB_STAGING_TEST_SIGNING_KEY: ${DATAHUB_STAGING_TEST_SIGNING_KEY:-}
+      DATAHUB_ALLOW_STAGING_TEST_ISSUER: ${DATAHUB_ALLOW_STAGING_TEST_ISSUER:-false}
+      ConnectionStrings__DataHub: Host=postgres;Port=5432;Database=${POSTGRES_DB:?set POSTGRES_DB};Username=${POSTGRES_USER:?set POSTGRES_USER};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD};Pooling=true;Maximum Pool Size=${DATAHUB_DB_MAX_POOL_SIZE:-20};Timeout=5;Command Timeout=30
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, data]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 768m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [data]
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 2g
+    cpus: 1.5
+    shm_size: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  data:
+    internal: true

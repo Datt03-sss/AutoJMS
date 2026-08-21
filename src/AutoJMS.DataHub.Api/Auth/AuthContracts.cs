@@ -8,6 +8,8 @@ public static class ApiProblemCodes
     public const string ChannelMismatch = "CHANNEL_MISMATCH";
     public const string SiteNotLicensed = "SITE_NOT_LICENSED";
     public const string NotFound = "NOT_FOUND";
+    public const string LeaderFenced = "LEADER_FENCED";
+    public const string LeaseHeld = "LEASE_HELD";
     public const string ServiceUnavailable = "SERVICE_UNAVAILABLE";
 }
 
