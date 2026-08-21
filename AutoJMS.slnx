@@ -2,5 +2,6 @@
   <Project Path="src/AutoJMS/AutoJMS.csproj" DefaultStartup="true" />
   <Project Path="src/AutoJMS.Abstractions/AutoJMS.Abstractions.csproj" />
   <Project Path="tests/AutoJMS.Tests/AutoJMS.Tests.csproj" />
+  <Project Path="src/AutoJMS.DataHub.Api/AutoJMS.DataHub.Api.csproj" />
+  <Project Path="tests/AutoJMS.DataHub.Api.Tests/AutoJMS.DataHub.Api.Tests.csproj" />
 </Solution>
-
