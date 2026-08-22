@@ -101,6 +101,45 @@ digest, and starts Compose with `--no-build`.
 Only Caddy publishes ports 80/443. PostgreSQL is on the internal Docker network
 and has no host `ports` mapping. Do not expose 5432 to the Internet.
 
+## Troubleshooting: an empty 200, or a TLS handshake that fails
+
+Caddy serves exactly one host — whatever `DATAHUB_PUBLIC_HOST` is set to. This
+produces two symptoms that both look like a broken reverse proxy and are neither:
+
+| Symptom | Cause |
+|---|---|
+| `HTTP/1.1 200 OK`, `Server: Caddy`, `Content-Length: 0` | The request's `Host` matched no site block, so Caddy answered with its own empty default. The request never reached the API. |
+| `308` to `https://…`, then the TLS handshake fails | Same root cause, but auto-HTTPS is on. The unmatched host is redirected to HTTPS, where no certificate exists for it. |
+
+Diagnose by probing the configured host and a deliberately wrong one. `--resolve`
+is what makes this work locally: it pins the hostname to the loopback address
+while still sending the real SNI and `Host`, which a plain `-H "Host: …"` cannot
+do once TLS is involved.
+
+```bash
+HOST=$(grep -m1 '^DATAHUB_PUBLIC_HOST=' "$DATAHUB_ENV_FILE" | sed 's|^[^=]*=||; s|^https\?://||')
+curl -sS -o /dev/null -D - --resolve "$HOST:443:127.0.0.1" "https://$HOST/health/ready"
+```
+
+A matched host answers `HTTP/2 200` with `server: Kestrel` and `via: 1.1 Caddy` —
+those two headers are the proof the request reached the API. An unmatched host on
+an HTTPS site never gets that far: the TLS handshake itself fails, because Caddy
+holds no certificate for a name it was not configured to serve. On an HTTP-only
+site (an explicit `http://` scheme, as a bare IP address requires) the same
+mismatch instead produces the empty `200` described above.
+
+The corollary matters more than the fix: **a health probe sent to a non-matching
+host is worthless in both directions** — it can report failure for a perfectly
+healthy stack, and it can return an empty `200` that a script happily reads as
+success. Always probe the host Caddy is actually configured for, which is what
+`scripts/smoke-test.sh` derives from `DATAHUB_PUBLIC_HOST`.
+
+If no certificate is ever issued, check the ACME contact address before anything
+else: Let's Encrypt DNS-checks it, so a placeholder under a reserved TLD
+(`.invalid`, `.test`, `.example`) fails account registration outright. Caddy
+stores issued certificates in the `caddy_data` named volume, so restarts and
+reboots reuse them instead of re-requesting and burning rate limits.
+
 ## Backup and restore
 
 Run `scripts/backup-postgres.ps1` outside peak JMS ingest hours. It emits a
