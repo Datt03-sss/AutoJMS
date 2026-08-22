@@ -4,6 +4,10 @@
 >
 > **Thiết kế backend:** [docs/architecture/datahub-backend-design.vi.md](../../../docs/architecture/datahub-backend-design.vi.md)
 >
+> **Đang triển khai thật?** Mở [DEPLOY_EXECUTION_CHECKLIST.vi.md](./DEPLOY_EXECUTION_CHECKLIST.vi.md)
+> song song — nó có thứ tự pha, cổng chặn giữa các pha, và sổ ghi digest/commit/siteId.
+>
+
 > **Nguyên tắc xuyên suốt:**
 > 1. **Staging trước, production sau.** Không bao giờ deploy production khi staging chưa chạy trọn bộ smoke test.
 > 2. **Không bao giờ commit secret.** `.env.staging` / `.env.production` chỉ tồn tại trên VPS, chmod `600`.
@@ -23,7 +27,7 @@
 | [2](#bước-2--hardening-hệ-điều-hành) | Hardening hệ điều hành |
 | [3](#bước-3--cài-docker-engine--powershell-7) | Cài Docker Engine + PowerShell 7 |
 | [4](#bước-4--dns-và-tls) | DNS và TLS |
-| [5](#bước-5--build-và-push-api-image-trên-máy-dev) | Build và push API image (trên máy dev) |
+| [5](#bước-5--build-và-push-api-image-trên-máy-dev) | Build và push API image (máy dev, hoặc §5.0 trên VPS) |
 | [6](#bước-6--lấy-code-lên-vps) | Lấy code lên VPS |
 | [7](#bước-7--sinh-secret-và-tạo-file-env) | Sinh secret và tạo file env |
 | [8](#bước-8--khởi-động-stack) | Khởi động stack |
@@ -236,6 +240,30 @@ Caddy admin API đã tắt (`admin off` trong [Caddyfile](../Caddyfile)) — kh�
 
 Compose trên VPS **cố tình không có `build:`** — VPS chỉ tiêu thụ image đã build sẵn. Build ở nơi
 có SDK, rồi pin theo digest.
+
+### 5.0 Nếu máy dev không có Docker — build ngay trên VPS
+
+[start-stack.ps1](../scripts/start-stack.ps1) chỉ nhận digest từ registry (nó `pull` rồi đối chiếu
+`RepoDigests`), nên **bắt buộc phải push lên registry**; nhưng nơi *build* không nhất thiết là máy
+dev. Nếu máy dev không có Docker Engine/Desktop, làm **bước 6 trước** (clone repo lên VPS) rồi
+build tại chỗ:
+
+```bash
+cd ~/AutoJMS && docker build -f backend/datahub/Dockerfile -t ghcr.io/<owner>/autojms-datahub-api:$(date +%Y-%m-%d)-1 .
+```
+
+Sau đó `docker login` / `docker push` / lấy digest y như §5.2–§5.3 — chỉ là chạy trên VPS.
+
+> Build context là gốc repo, nhưng [Dockerfile](../Dockerfile) chỉ `COPY src/AutoJMS.DataHub.Api/`,
+> nên image không chứa code desktop.
+>
+> Đánh đổi: VPS phải tải image `mcr.microsoft.com/dotnet/sdk:10.0` (~1 GB) và giữ build cache.
+> Cấu hình staging ở §1.1 (2 vCPU / 4 GB / 40 GB) đủ chạy; chạy `docker builder prune` sau khi
+> push nếu cần lấy lại disk.
+>
+> **Không** thêm `build:` vào `docker-compose.yml` để "build luôn khi up" —
+> [deployment-static-smoke.ps1](../tests/deployment-static-smoke.ps1) sẽ fail với
+> `The VPS Compose file must consume a prebuilt image, not rebuild source.`
 
 ### 5.1 Build
 
