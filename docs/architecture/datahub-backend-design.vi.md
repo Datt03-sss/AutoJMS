@@ -325,7 +325,9 @@ COMMIT
 Thứ tự **fence trước idempotency** là chủ ý: một leader đã bị fence không được phép "chiếm"
 idempotency key. Kiểm fence lần hai (bước 5) đóng cửa sổ giữa lúc kiểm lần đầu và lúc commit.
 
-Response: `IngestResponse(siteId, accepted, duplicates, changed, replayed, firstSeq, lastSeq)`.
+Response: `IngestResponse(siteId, acceptedItems, duplicateItems, changedProjections, replayed,
+firstChangeSeq, lastChangeSeq)`
+([IngestContracts.cs](../../src/AutoJMS.DataHub.Api/Infrastructure/IngestContracts.cs)).
 
 ### 7.4 Fingerprint và projection
 
@@ -359,13 +361,17 @@ vẫn cập nhật `last_activity_*`, chỉ không làm nhiễu `state_*`/`inven
 
 | Endpoint | Trả về |
 |---|---|
-| `GET /api/v1/sites/{siteId}/projections/snapshot` | toàn bộ projection + **một** `snapshotSeq` |
-| `GET /api/v1/sites/{siteId}/changes?after=&limit=` | `ChangePage(siteId, after, items, hasMore, next)` |
+| `GET /api/v1/sites/{siteId}/projections/snapshot` | `SnapshotResponse(siteId, snapshot_seq, items, itemCount, generatedAt)` |
+| `GET /api/v1/sites/{siteId}/changes?after=&limit=` | `ChangePage(siteId, after, items, hasMore, nextAfter)` |
+
+`snapshot_seq` là field **duy nhất** trên toàn bộ API dùng snake_case — nó có
+`[JsonPropertyName("snapshot_seq")]` tường minh; mọi field khác là camelCase mặc định của
+`JsonSerializerDefaults.Web`.
 
 Chi tiết:
 
 - Cả hai chạy ở isolation **REPEATABLE READ** với `SET LOCAL statement_timeout = '30s'`
-  ⇒ snapshot và `snapshotSeq` luôn nhất quán với nhau.
+  ⇒ snapshot và `snapshot_seq` luôn nhất quán với nhau.
 - `limit` mặc định 500, clamp về `[1, 500]`. Query lấy `limit + 1` hàng để suy ra `hasMore`
   mà không cần `COUNT(*)`.
 - **`409 RESYNC_REQUIRED`** khi con trỏ không còn phục vụ được:
@@ -375,9 +381,9 @@ Chi tiết:
 Vòng đời client đúng:
 
 ```
-snapshot (lấy snapshotSeq)
-   └─► changes?after=snapshotSeq   ◄── lặp lại mỗi lần nhận doorbell
-          ├─ 200 + hasMore=true ⇒ gọi lại ngay với next
+snapshot (lấy snapshot_seq)
+   └─► changes?after=snapshot_seq   ◄── lặp lại mỗi lần nhận doorbell
+          ├─ 200 + hasMore=true ⇒ gọi lại ngay với nextAfter
           └─ 409 RESYNC_REQUIRED ⇒ quay về snapshot
 ```
 
@@ -424,7 +430,7 @@ Caddy proxy `/hubs/site` với `flush_interval -1` (tắt buffering) và `read_t
 | `POST` | `/api/v1/sites/{siteId}/jms/ingest` | device | cần `Idempotency-Key` + `X-Leader-Term` |
 | `POST` | `/api/v1/sites/{siteId}/jms/observations` | device | cần `Idempotency-Key`, không fence |
 | `GET` | `/api/v1/sites/{siteId}/changes` | device | `after`, `limit` |
-| `GET` | `/api/v1/sites/{siteId}/projections/snapshot` | device | `snapshotSeq` |
+| `GET` | `/api/v1/sites/{siteId}/projections/snapshot` | device | trả `snapshot_seq` (snake_case) |
 | `—` | `/hubs/site` (+ `/negotiate`) | device | SignalR |
 
 ### Mã lỗi
@@ -534,6 +540,7 @@ Template: [env.staging.template](../../backend/datahub/env.staging.template),
 
 ## 15. Đọc tiếp
 
+- Sơ đồ (Mermaid, render trên GitHub): [datahub-backend-diagrams.md](./datahub-backend-diagrams.md)
 - Triển khai VPS từng bước: [VPS_DEPLOY_GUIDE.vi.md](../../backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md)
 - Thiết kế nền (lý do lựa chọn): [2026-08-20-datahub-vps-baseline-design.md](../superpowers/specs/2026-08-20-datahub-vps-baseline-design.md)
 - Kế hoạch triển khai: [2026-08-20-datahub-vps-backend-plan.md](../superpowers/plans/2026-08-20-datahub-vps-backend-plan.md)

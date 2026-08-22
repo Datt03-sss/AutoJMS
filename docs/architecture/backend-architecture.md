@@ -6,6 +6,7 @@
 > The **data plane** (waybill ingest, projections, realtime) is a separate VPS deployment
 > and is documented in [datahub-backend-design.vi.md](./datahub-backend-design.vi.md)
 > (REST + SignalR + PostgreSQL + Caddy, as built in `src/AutoJMS.DataHub.Api`).
+> Diagrams: [datahub-backend-diagrams.md](./datahub-backend-diagrams.md).
 > Deployment steps: [backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md](../../backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md).
 >
 > The two planes share exactly one interface: a **signed license assertion** carrying

@@ -571,13 +571,14 @@ Mong đợi `403` (`CHANNEL_MISMATCH`). Nếu ra `200` ⇒ hai môi trường đ
 curl -sS -H "Authorization: Bearer $TOKEN" "$HOST/api/v1/sites/$SITE/projections/snapshot"
 ```
 
-Mong đợi `200`, `count: 0`, có `snapshotSeq`.
+Mong đợi `200`, `itemCount: 0`, `items: []`, có `snapshot_seq` (đúng snake_case — đây là field
+duy nhất trên API không dùng camelCase).
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" "$HOST/api/v1/sites/$SITE/changes?after=0&limit=10"
 ```
 
-Mong đợi `200`, `items: []`, `hasMore: false`.
+Mong đợi `200`, `items: []`, `hasMore: false`, `nextAfter: 0`.
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$HOST/api/v1/sites/$SITE/changes?after=999999"
@@ -616,14 +617,22 @@ KEY="smoke-$(date +%s)-0001"
 ```
 
 ```bash
-BODY='{"items":[{"waybillNo":"SMOKE000000001","scanTime":"2026-08-22 09:15:00","eventCode":"ARRIVAL","operator":"smoke","payload":{"uploadTime":"2026-08-22 09:20:00"}}]}'
+BODY='{"items":[{"waybillNo":"SMOKE000000001","scanTime":"2026-08-22 09:15:00","code":110,"status":"ARRIVED","scanTypeName":"Arrival scan","scanByCode":"smoke","payload":{"uploadTime":"2026-08-22 09:20:00"}}]}'
 ```
 
 ```bash
 curl -sS -X POST "$HOST/api/v1/sites/$SITE/jms/ingest" -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $KEY" -H "X-Leader-Term: $TERM" -H 'Content-Type: application/json' -d "$BODY"
 ```
 
-Mong đợi `200`: `accepted: 1`, `duplicates: 0`, `changed: 1`, `replayed: false`, có `firstSeq`/`lastSeq`.
+Mong đợi `200`: `acceptedItems: 1`, `duplicateItems: 0`, `changedProjections: 1`,
+`replayed: false`, có `firstChangeSeq`/`lastChangeSeq`.
+
+> Chỉ được dùng đúng các field có trong `JmsObservation` (`waybillNo`, `scanTime`, `code`,
+> `status`, `scanTypeName`, `scanNetworkCode`, `scanByCode`, `packageNumber`, `taskCode`,
+> `remark1`…`remark9`, `payload`). API cấu hình `JsonUnmappedMemberHandling.Disallow`, nên bất kỳ
+> field lạ nào — kể cả gõ sai tên — đều bị **`400`** ngay ở tầng model binding, chưa vào nghiệp vụ.
+> `code: 110` là `state_transition` theo seed `002_seed_policies.sql`, `98` là `inventory`, mã
+> không seed mặc định là `activity`.
 
 Gửi **lại y nguyên** (cùng key, cùng body):
 
@@ -717,7 +726,7 @@ Mong đợi `401` (không có token thì hub từ chối).
 | 8 | `changes?after=999999` | `409 RESYNC_REQUIRED` | ☐ |
 | 9 | Lease acquire | `200` + `leaderTerm` | ☐ |
 | 10 | Renew term cũ | `409 LEADER_FENCED` | ☐ |
-| 11 | Ingest có fence | `200`, `changed: 1` | ☐ |
+| 11 | Ingest có fence | `200`, `changedProjections: 1` | ☐ |
 | 12 | Ingest lặp cùng key+body | `replayed: true`, seq không tăng | ☐ |
 | 13 | Cùng key khác body | `409 IDEMPOTENCY_KEY_REUSED` | ☐ |
 | 14 | Bulk thiếu `X-Leader-Term` | `409 LEADER_FENCED` | ☐ |
@@ -1021,7 +1030,7 @@ Con trỏ nằm ngoài cửa sổ khả dụng. Nếu xảy ra thường xuyên:
 
 - Client offline lâu hơn retention của `dashboard_changes` (14 ngày) ⇒ tăng `delete_after`
   cho `dashboard_changes`, hoặc chấp nhận client phải snapshot lại.
-- Client lưu con trỏ sai (ví dụ dùng `snapshotSeq` của lần khác) ⇒ lỗi phía client.
+- Client lưu con trỏ sai (ví dụ dùng `snapshot_seq` của lần khác) ⇒ lỗi phía client.
 
 ### Đầy disk
 
