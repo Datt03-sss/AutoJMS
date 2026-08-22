@@ -90,7 +90,9 @@ datahub::psql_stdin() {
 # SQL read from a file on the host, fed to the container on stdin.
 datahub::psql_file() {
     local file="$1"; shift
-    [ -f "$file" ] || datahub::die "SQL file not found: $file"
+    # -r, not -f: /dev/stdin and process substitution are readable but are not
+    # regular files, and both are legitimate ways to hand over generated SQL.
+    [ -r "$file" ] || datahub::die "SQL file not readable: $file"
     datahub::compose exec -T "$DATAHUB_POSTGRES_SERVICE" \
         sh -ec "$DATAHUB_PSQL_EXEC" sh "$@" < "$file"
 }
