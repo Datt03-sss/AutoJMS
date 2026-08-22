@@ -438,7 +438,7 @@ public sealed class IngestRepository(
                 payload, reducer_version, version, updated_at)
             VALUES (@site_id, @waybill_no,
                     @state_code, @state_name, @state_status, @state_event_at, @state_fingerprint, @state_event_id, @state_kind, @state_payload,
-                    @activity_code, @activity_name, @activity_status, @activity_kind, @activity_at,
+                    @activity_code, @activity_name, @activity_status, @activity_kind, @activity_event_at,
                     @activity_fingerprint, @activity_event_id, @activity_payload,
                     @inventory_code, @inventory_name, @inventory_status, @inventory_event_at, @inventory_fingerprint, @inventory_event_id, @inventory_payload,
                     @payload, @reducer_version, @version, @updated_at)

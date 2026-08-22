@@ -31,14 +31,16 @@ if (-not $useCompose -and $null -eq $psql) {
     throw 'psql is required to provision a DataHub site.'
 }
 
+# psql expands :'var' only for SQL read from stdin or -f; a string passed to
+# --command is forwarded to the server verbatim and fails to parse the colon.
+$provisionSql = "BEGIN; SELECT create_datahub_site(:'site_id'::uuid, :'site_code'); COMMIT;"
 $psqlArguments = @(
     '--set', 'ON_ERROR_STOP=1',
     '--variable', "site_id=$SiteId",
-    '--variable', "site_code=$SiteCode",
-    '--command', "BEGIN; SELECT create_datahub_site(:'site_id'::uuid, :'site_code'); COMMIT;"
+    '--variable', "site_code=$SiteCode"
 )
 if (-not $useCompose) {
-    & $psql.Source $DatabaseUrl @psqlArguments
+    $provisionSql | & $psql.Source $DatabaseUrl @psqlArguments
 } else {
     $composeArguments = @('compose', '--file', (Resolve-Path -LiteralPath $ComposeFile).Path)
     if (-not [string]::IsNullOrWhiteSpace($ComposeEnvFile)) {
@@ -50,7 +52,7 @@ if (-not $useCompose) {
         'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" "$@"',
         'sh'
     ) + $psqlArguments
-    & $docker.Source @composeArguments
+    $provisionSql | & $docker.Source @composeArguments
 }
 if ($LASTEXITCODE -ne 0) {
     throw "Site provisioning failed with exit code $LASTEXITCODE."

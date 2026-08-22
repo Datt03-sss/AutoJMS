@@ -58,6 +58,7 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
                 reader.GetFieldValue<DateTimeOffset>(4),
                 body));
         }
+        await reader.CloseAsync();
 
         var hasMore = items.Count > limit;
         if (hasMore) items.RemoveAt(items.Count - 1);
@@ -98,6 +99,7 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
         var items = new List<ProjectionBody>();
         while (await reader.ReadAsync(cancellationToken))
             items.Add(ReadBody(reader));
+        await reader.CloseAsync();
         await transaction.CommitAsync(cancellationToken);
         return new SnapshotResponse(siteId, snapshotSeq, items, items.Count, DateTimeOffset.UtcNow);
     }

@@ -47,11 +47,14 @@ BEGIN
         RAISE EXCEPTION '001_core migration version marker is missing';
     END IF;
 
+    -- Projections carry *_event_id as plain bigint so retention can prune
+    -- waybill_scan_events without cascading. The site_id parent FK is expected.
     IF EXISTS (
         SELECT 1
           FROM pg_constraint
          WHERE conrelid = 'public.waybill_projections'::regclass
            AND contype = 'f'
+           AND confrelid = 'public.waybill_scan_events'::regclass
     ) THEN
         RAISE EXCEPTION 'waybill_projections must not have event foreign keys';
     END IF;
