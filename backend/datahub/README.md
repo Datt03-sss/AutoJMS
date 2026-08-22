@@ -34,6 +34,38 @@ authority is wired behind `ILicenseAssertionValidator` with asymmetric issuer/
 JWKS validation. The production HMAC-shaped test seam is fail-closed and cannot
 enroll devices; do not bypass this gate by placing a shared key in the env file.
 
+## Bash counterparts (hosts without PowerShell)
+
+A plain Ubuntu VPS running only Docker has neither `pwsh` nor a host `psql`, so
+`scripts/` also carries bash equivalents of the container-mode operations. They
+mirror the `-ComposeFile` behaviour of the `.ps1` scripts (psql always runs
+inside the `postgres` container) and share `scripts/_datahub-common.sh`:
+
+| Script | Replaces | Purpose |
+|---|---|---|
+| `dc.sh` | `docker compose --env-file … --file …` | compose with the env file and compose file already wired |
+| `apply-migrations.sh` | `apply-migrations.ps1 -ComposeFile` | apply pending migrations, verify each version marker |
+| `run-sql.sh` | the `Get-Content \| docker compose exec` pipeline above | run a `.sql` file, passing `--variable` through to psql |
+| `smoke-test.sh` | — | ten-step end-to-end staging smoke (24 checks) |
+
+Every script needs the env file, which lives outside the repo: pass
+`--env-file PATH` or export `DATAHUB_ENV_FILE`. `smoke-test.sh` takes its base
+URL from `--base`, `DATAHUB_SMOKE_BASE`, or `DATAHUB_PUBLIC_HOST` in the env
+file — no address is baked into the repo. Nothing is printed that could leak a
+secret: tokens appear as `first4...last4`.
+
+```bash
+./scripts/apply-migrations.sh --env-file /opt/autojms-datahub/.env.staging
+./scripts/run-sql.sh --env-file /opt/autojms-datahub/.env.staging ./tests/001_core_catalog_assertions.sql
+./scripts/smoke-test.sh --env-file /opt/autojms-datahub/.env.staging
+```
+
+Two psql details are easy to regress, so they are documented at the wrappers in
+`_datahub-common.sh`: psql expands `:'var'` only for SQL read from stdin or
+`-f`, never for a string passed to `--command`; and `docker compose exec -T`
+drains stdin, so an exec call that does not need stdin must be given
+`</dev/null` or it silently swallows the rest of a piped script.
+
 ## Client and Windows Service boundary
 
 The desktop application and its Windows Service never receive PostgreSQL
