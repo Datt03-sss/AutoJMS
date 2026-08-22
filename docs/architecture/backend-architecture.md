@@ -1,5 +1,17 @@
 # Backend Architecture
 
+> **Scope split.** This document covers the **license / update plane** only:
+> Render license server, Firebase license state, VPS config manifests, GitHub Releases.
+>
+> The **data plane** (waybill ingest, projections, realtime) is a separate VPS deployment
+> and is documented in [datahub-backend-design.vi.md](./datahub-backend-design.vi.md)
+> (REST + SignalR + PostgreSQL + Caddy, as built in `src/AutoJMS.DataHub.Api`).
+> Deployment steps: [backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md](../../backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md).
+>
+> The two planes share exactly one interface: a **signed license assertion** carrying
+> `channel`, `site_codes`, `seats`, `token_version`, `exp`, and an optional `datahub_url`.
+> DataHub never reads Firebase and has no notion of tier.
+
 ## Current Verified Baseline
 
 Backend responsibilities verified from current files:
@@ -134,7 +146,18 @@ Sessions/
 
 **URL**: https://datahub.example.com
 
-### PostgreSQL Tables
+> ⚠️ **SUPERSEDED — do not implement against this section.** The tables and RPC functions below
+> describe the pre-VPS DataHub-as-storage era. The current data plane exposes **no RPCs and no
+> direct database access**: clients call REST under `/api/v1/sites/{siteId}/...` plus the SignalR
+> hub `/hubs/site`, and PostgreSQL is private to the API's Docker network.
+>
+> Current schema: [backend/datahub/migrations/001_core.sql](../../backend/datahub/migrations/001_core.sql).
+> Current contract: [backend/datahub/openapi/datahub-v1.yaml](../../backend/datahub/openapi/datahub-v1.yaml).
+> Current design: [datahub-backend-design.vi.md](./datahub-backend-design.vi.md).
+>
+> Kept here only so audits can recognise the old shape in historical code and migrations.
+
+### PostgreSQL Tables (historical)
 
 #### waybills
 
@@ -148,7 +171,7 @@ Sessions/
 | is_active | BOOL | Active tracking flag |
 | last_tracked_at | TIMESTAMP | Last tracking time |
 
-#### RPC Functions
+#### RPC Functions (historical — removed from the current data plane)
 
 | Function | Purpose |
 |---------|---------|
@@ -211,10 +234,11 @@ License bound to hardware:
 - Physical disk serial
 - Machine GUID
 
-### DataHub Anon Key
+### DataHub Device Token
 
-Public read-only key only.
-No write access from client.
+Read via `AUTOJMS_DATAHUB_DEVICE_TOKEN`; never compiled into the binary.
+Sent as `Bearer` to `/api/v1/sites/{siteId}/...`. The VPS API decides what the token may reach —
+the client has no direct database access at all.
 
 ### JMS AuthToken
 
