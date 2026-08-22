@@ -44,7 +44,26 @@ Nếu một giả định sai, sửa ở đây trước khi chạy tiếp — th
 | A2 | Registry là **GHCR** (`ghcr.io/<owner>/autojms-datahub-api`) | Docker Hub / registry riêng cũng được, chỉ đổi tên image ở §5 và §7.2 |
 | A3 | **Build trên VPS** (§5.0), vì máy dev không có Docker | cài Docker Desktop trên máy dev rồi làm §5.1–5.3 như gốc |
 | A4 | Có **một tên miền thật** trỏ được A record về IP VPS | không có miền ⇒ Caddy không xin được cert ACME. Dùng dynamic-DNS có A record, hoặc `tls internal` (chỉ để test nội bộ, client phải tin CA nội bộ) |
-| A5 | OS là **Ubuntu Server 24.04 LTS**, user không phải root tên `datahub` | distro khác thì §2–§3 phải đổi lệnh |
+| A5 | OS là **Ubuntu Server 24.04 LTS**, user không phải root tên `datahub` | distro khác thì §2–§3 phải đổi lệnh. Xem §2b nếu VPS đang là 20.04 |
+
+### 2b. Nếu VPS đang chạy Ubuntu 20.04
+
+20.04 **chạy được** nhưng kém hơn ở ba điểm đo được:
+
+| Hạng mục | Ubuntu 20.04 (focal) | Ubuntu 24.04 (noble) |
+|---|---|---|
+| Hỗ trợ bảo mật OS | hết hỗ trợ tiêu chuẩn 05/2025 — cần Ubuntu Pro/ESM | tới 2029 |
+| Docker CE mới nhất trong repo | **28.1.1** (Docker dừng build cho focal) | **29.7.x** |
+| `libseccomp2` | 2.4.3 ở bản gốc, **2.5.1** qua `focal-updates` | 2.5.5 |
+
+`libseccomp2` là điểm dễ vỡ nhất: glibc ≥ 2.34 (image .NET 10, alpine mới) gọi `clone3`;
+libseccomp < 2.5 trả `EPERM` thay vì `ENOSYS` nên container chết với
+`Operation not permitted`. Bản `focal-updates` đã đủ, nhưng phải `apt upgrade` trước —
+[bootstrap-vps.sh](./bootstrap-vps.sh) kiểm điều này và **dừng** nếu chưa đạt.
+
+**Khuyến nghị:** VPS còn trống thì cài lại bằng **Ubuntu 24.04 LTS** — mất ~10 phút và
+xoá cả ba rủi ro trên. Nếu buộc phải giữ 20.04: bật Ubuntu Pro (miễn phí ≤ 5 máy) để có
+ESM, và chấp nhận Docker Engine đứng ở 28.1.1.
 
 ## 3. Việc chỉ owner làm được
 
@@ -64,10 +83,15 @@ Mỗi pha có **cổng chặn**: không đạt thì dừng, không đi pha sau.
 
 ### Pha 0 — Nền hệ thống
 
+> **Tự động hoá:** [bootstrap-vps.sh](./bootstrap-vps.sh) làm trọn Pha 0 + Pha 1 trong một lệnh
+> (idempotent, chạy lại được). Nó **từ chối** khoá SSH khi user chưa có `authorized_keys`, để
+> không tự đẩy bạn ra khỏi máy. Chạy tay theo §1–§3 vẫn được nếu muốn kiểm từng bước.
+
 - [ ] §1.1 VPS đạt tối thiểu 2 vCPU / 4 GB / 40 GB (staging)
 - [ ] §1.2 user `datahub` có sudo, đã mở **session mới** xác nhận `sudo -v` trước khi rời root
 - [ ] §1.3 timezone `Asia/Ho_Chi_Minh`, `timedatectl` báo `System clock synchronized: yes`
 - [ ] §2.1–2.4 unattended-upgrades, SSH key-only, UFW (chỉ 22/80/443), fail2ban
+- [ ] Đổi mật khẩu root nếu nó từng được gõ/dán ở bất kỳ đâu ngoài password manager
 
 > **Cổng 0:** §2.5 — `ss -tulpn` **không** được thấy `5432` mở ra ngoài; đồng hồ đã sync
 > (lease fencing dùng `clock_timestamp()`, lệch đồng hồ ⇒ fence sai).
@@ -157,9 +181,33 @@ Mỗi pha có **cổng chặn**: không đạt thì dừng, không đi pha sau.
 
 ---
 
-## 5. Chuỗi lệnh ngắn nhất từ Pha 1 → Pha 5
+## 5. Chuỗi lệnh ngắn nhất từ Pha 0 → Pha 5
 
-Chỉ dùng khi Pha 0 đã xong. Thay `<owner>`, `<uuid>` bằng giá trị thật.
+Thay `<owner>`, `<uuid>`, `<ip>` bằng giá trị thật.
+
+**Pha 0 + 1 — chạy bằng root, một lệnh:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Datt03-sss/AutoJMS/main/backend/datahub/deploy/bootstrap-vps.sh -o /tmp/bootstrap-vps.sh && less /tmp/bootstrap-vps.sh
+```
+
+Đọc xong rồi mới chạy — đừng bao giờ `curl | bash` một script chưa đọc:
+
+```bash
+bash /tmp/bootstrap-vps.sh --hostname datahub-staging --user datahub
+```
+
+Cài khoá SSH từ **máy dev**, rồi mới khoá cửa:
+
+```bash
+ssh-copy-id datahub@<ip>
+```
+
+```bash
+bash /tmp/bootstrap-vps.sh --hostname datahub-staging --user datahub --harden-ssh --yes
+```
+
+**Pha 1 tiếp — đăng nhập bằng `datahub` (không phải root) để có group docker:**
 
 ```bash
 cd ~ && git clone https://github.com/Datt03-sss/AutoJMS.git && cd AutoJMS && git switch main && git log --oneline -1
@@ -191,19 +239,21 @@ cd ~/AutoJMS/backend/datahub && pwsh -File scripts/provision-site.ps1 -ComposeFi
 
 ## 6. Sổ ghi triển khai
 
-Điền khi chạy. **Không ghi secret vào đây** (mật khẩu, khoá ký, pepper, deviceToken → password manager).
+> ⚠️ **Repo `Datt03-sss/AutoJMS` là repo PUBLIC.** Không commit IP VPS, hostname, tên user,
+> đường dẫn backup hay bất cứ thứ gì chỉ đường tới hạ tầng. Giữ sổ ghi ở **password manager
+> hoặc ghi chú riêng tư**, không phải trong git. Bảng dưới là *mẫu để copy ra ngoài*, cố ý
+> để trống trong repo.
 
-| Hạng mục | Staging | Production |
-|---|---|---|
-| Ngày triển khai | | |
-| IP VPS | | |
-| Hostname công khai | | |
-| Commit hash đã deploy | | |
-| `DATAHUB_API_IMAGE` (digest) | | |
-| `siteId` (UUID) | | |
-| `siteCode` | | |
-| Ngày diễn tập restore gần nhất | | |
-| Ngày xoay khoá gần nhất | | |
+| Hạng mục | Ghi ở đâu |
+|---|---|
+| Ngày triển khai | ghi chú riêng tư |
+| IP VPS / hostname / user vận hành | ghi chú riêng tư — **không** commit |
+| Commit hash đã deploy | ghi chú riêng tư (tra lại được bằng `git log` trên VPS) |
+| `DATAHUB_API_IMAGE` (digest) | ghi chú riêng tư — cần cho rollback (§13.1) |
+| `siteId` (UUID) / `siteCode` | ghi chú riêng tư |
+| Ngày diễn tập restore gần nhất | ghi chú riêng tư |
+| Ngày xoay khoá gần nhất | ghi chú riêng tư |
+| Mật khẩu, khoá ký, pepper, deviceToken | **chỉ** password manager |
 
 ---
 

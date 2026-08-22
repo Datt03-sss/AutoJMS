@@ -1,0 +1,3 @@
+# Script chạy trên VPS Linux: PHẢI là LF. Máy Windows có core.autocrlf=true sẽ
+# biến chúng thành CRLF và bash trên Ubuntu báo "$'\r': command not found".
+*.sh text eol=lf
