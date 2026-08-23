@@ -24,6 +24,18 @@ public sealed class DkchJourneyAnalyzerTests
         scanByName = "TEST"
     };
 
+    /// <summary>Như <see cref="Ev"/> nhưng đặt được nguyên nhân (remark1) và tên nhân viên.</summary>
+    private static WaybillDetail Ev(string scanTypeName, int hour, string remark1,
+                                    string scanBy = "TEST", string staff = null) => new WaybillDetail
+    {
+        scanTypeName = scanTypeName,
+        uploadTime = $"2026-07-29 {hour:00}:00:00",
+        scanTime = $"2026-07-29 {hour:00}:00:00",
+        scanByName = scanBy,
+        staffName = staff,
+        remark1 = remark1
+    };
+
     // ── Luồng chuẩn: được đăng ký đúng 1 lần ────────────────────────────────────────
 
     [Fact]
@@ -37,10 +49,30 @@ public sealed class DkchJourneyAnalyzerTests
         Assert.True(d.ShouldRegister);
     }
 
+    // Luật này ĐÃ ĐỔI theo yêu cầu của chủ dự án: hàng vừa về kho mà chưa từng "Quét phát
+    // hàng" thì không có gì để hoàn, nên CHẶN thay vì đăng ký bắt buộc 1 lần như trước.
+    // Hai test dưới giữ đúng cả hai nhánh của luật, để lần sau không ai lặng lẽ đổi lại.
+
     [Fact]
-    public void ChiVeKho_ChuaPhatLanNao_VanDangKyBatBuoc1Lan()
+    public void ChiVeKho_ChuaQuetPhatLanNao_ThiCHAN()
     {
         var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail> { Ev("卸车到件", 1) });
+        Assert.Equal(DkchAction.BlockedNewArrival, d.Action);
+        Assert.True(d.IsBlocked);
+        Assert.False(d.ShouldRegister);
+        Assert.Contains("chưa có 'Quét phát hàng'", d.Reason);
+    }
+
+    [Fact]
+    public void VeKhoLanNua_NhungDaTungQuetPhat_ThiKhongChanNhanhNay()
+    {
+        // Đã có "Quét phát hàng" trong hành trình → không rơi vào nhánh "đơn mới tới",
+        // trả về cho logic bình thường quyết định (ở đây: đã kiện vấn đề nên được đăng ký).
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("卸车到件", 1), Ev("出仓扫描", 2), Ev("问题件扫描", 3), Ev("卸车到件", 4)
+        });
+        Assert.NotEqual(DkchAction.BlockedNewArrival, d.Action);
         Assert.Equal(DkchAction.Register, d.Action);
     }
 
@@ -324,6 +356,129 @@ public sealed class DkchJourneyAnalyzerTests
         Assert.Equal(DkchAction.Register, d.Action);
         Assert.Equal(1, d.DeliveryAttemptCount);          // chỉ tính "出仓扫描" ở giờ 6
         Assert.Equal(1, d.RegisterCount);
+    }
+
+    // ── Rule 0: trạng thái đơn khiến ĐKCH không áp dụng ───────────────────────────
+    // Bốn luật này chặn TRƯỚC mọi phép đếm mốc quét. Chúng chưa từng có test nên rất dễ
+    // bị một lượt sửa sau đó vô tình bỏ mất.
+
+    [Fact]
+    public void KyNhanCPN_LaThaoTacCuoi_ThiCHAN_KhongDangKy()
+    {
+        // Hàng đã tới tay khách → việc còn lại là in đơn hoàn 1 phần, không phải ĐKCH.
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("出仓扫描", 1), Ev("问题件扫描", 2), Ev("快件签收", 3)
+        });
+        Assert.Equal(DkchAction.BlockedSignedCpn, d.Action);
+        Assert.True(d.IsBlocked);
+        Assert.False(d.ShouldRegister);
+    }
+
+    [Fact]
+    public void KyNhanChuyenHoan_KhongBiChanNhuKyNhanCPN()
+    {
+        // Chỉ "Ký nhận CPN" mới chặn. "Ký nhận chuyển hoàn" (退件签收) vẫn theo luật cũ —
+        // đây là ranh giới dễ làm sai nhất nếu ai đó gộp hai loại ký nhận lại.
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("出仓扫描", 1), Ev("问题件扫描", 2), Ev("退件签收", 3)
+        });
+        Assert.NotEqual(DkchAction.BlockedSignedCpn, d.Action);
+        Assert.Equal(DkchAction.Register, d.Action);
+    }
+
+    [Fact]
+    public void DangChuyenHoan_LaThaoTacCuoi_ThiCHAN()
+    {
+        // "Đang chuyển hoàn" không phải mốc nghiệp vụ nào (Classify xếp vào Other) nên luật
+        // này so theo TÊN. Chuỗi "Đang" khác "Đăng" nên không đụng "Đăng ký chuyển hoàn".
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("出仓扫描", 1), Ev("问题件扫描", 2), Ev("Đang chuyển hoàn", 3)
+        });
+        Assert.Equal(DkchAction.BlockedReturning, d.Action);
+        Assert.True(d.IsBlocked);
+    }
+
+    [Fact]
+    public void KienVanDeDoiDiaChi_ThiCHAN_DonChuyenTiep()
+    {
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("卸车到件", 1), Ev("出仓扫描", 2), Ev("问题件扫描", 3, "Thay đổi địa chỉ giao hàng")
+        });
+        Assert.Equal(DkchAction.BlockedForward, d.Action);
+        Assert.False(d.ShouldRegister);
+        Assert.Contains("Thay đổi địa chỉ giao hàng", d.Reason);
+    }
+
+    [Fact]
+    public void KienVanDeLyDoKhac_ThiKhongChanNhanhChuyenTiep()
+    {
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("卸车到件", 1), Ev("出仓扫描", 2), Ev("问题件扫描", 3, "Khách từ chối nhận hàng")
+        });
+        Assert.Equal(DkchAction.Register, d.Action);
+    }
+
+    // ── Nhận diện mốc & dữ liệu hiển thị ─────────────────────────────────────────
+
+    [Fact]
+    public void DangKyCHLan2_PhaiDuocTinhLaMotLanDangKy()
+    {
+        // Tên này trước đây rơi vào Kind.Other nên chip ĐKCH đếm thiếu và lastRegister trỏ sai.
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("出仓扫描", 1), Ev("问题件扫描", 2), Ev("Đăng ký CH lần 2", 3)
+        });
+        Assert.Equal(DkchAction.SkipAlreadyRegistered, d.Action);
+        Assert.Equal(1, d.RegisterCount);
+        Assert.True(d.AlreadyRegisteredThisCycle);
+    }
+
+    [Fact]
+    public void QuetPhatHang_LayTenTuStaffName_KhongLayScanByName()
+    {
+        // Ở "Quét phát hàng", scanByName là người đứng máy quét trong kho; người đi phát
+        // nằm ở staffName. Các thao tác khác vẫn ưu tiên scanByName.
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("出仓扫描", 1, null, scanBy: "MAY_KHO", staff: "BUU_TA")
+        });
+        Assert.Equal("BUU_TA", d.LastEventOperator);
+
+        var k = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("问题件扫描", 1, null, scanBy: "NGUOI_KIEN", staff: "KHO")
+        });
+        Assert.Equal("NGUOI_KIEN", k.LastEventOperator);
+    }
+
+    [Fact]
+    public void DongNguyenNhan_ChiHienVoiKienVanDeVaGiaoLaiHang()
+    {
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail>
+        {
+            Ev("问题件扫描", 1, "Khách từ chối"), Ev("重派", 2, "Hẹn lại"),
+            Ev("退件登记", 3, "Trả về địa chỉ người gửi")
+        });
+
+        var byType = new Dictionary<string, string>();
+        foreach (var e in d.Entries) byType[e.Type] = e.Note;
+
+        Assert.Equal("Khách từ chối", byType["问题件扫描"]);
+        Assert.Equal("Hẹn lại", byType["重派"]);
+        Assert.Equal("", byType["退件登记"]);   // ghi chú hệ thống → không hiện
+    }
+
+    [Fact]
+    public void NgayTon_DemCaNgayKienDenVaCaHomNay()
+    {
+        var d = DkchJourneyAnalyzer.Analyze(new List<WaybillDetail> { Ev("卸车到件", 1) });
+        int mong = (DateTime.Now.Date - new DateTime(2026, 7, 29)).Days + 1;
+        Assert.Equal(mong, d.DaysInStock.GetValueOrDefault());
     }
 
     // ── Không đủ dữ liệu thì không được đăng ký mù ─────────────────────────────────

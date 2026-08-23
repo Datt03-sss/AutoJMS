@@ -107,7 +107,7 @@ Never edit these without explicit owner request for that specific task:
 - `src/AutoJMS/Licensing/LicenseApiService.cs`
 - `src/AutoJMS/Licensing/JmsAuthTokenService.cs` (Firebase session logic)
 - `src/AutoJMS/Updates/VelopackUpdateService.cs` (Velopack production flow)
-- DataHub production config (connection strings, anon keys)
+- DataHub production config (VPS connection strings, device/admin token)
 - Database schema migrations
 - `release/build-release.ps1` / `installer/inno/AutoJMS.iss`
 

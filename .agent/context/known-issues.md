@@ -7,7 +7,7 @@ Verified issues from the current checkout:
 1. Resolved build blocker: root `modules\app-manifest.json`, `modules\active_modules.json`, `modules\modules-cache.json`, `modules\selectors.json`, and `modules\config.json` were missing, but `src/AutoJMS/AutoJMS.csproj` now guards those `Content Include` entries with `Exists(...)`. Latest recorded Debug build succeeded with warnings only.
 2. Token logging: full 32-hex JMS auth tokens are logged in `Main.cs` and `JmsAuthTokenService.cs`. Must not ship to production.
 3. Sensitive credential file: `service_account.json` exists in the workspace. Treat as compromised if ever shared.
-4. DataHub anon key is hardcoded in `DataHubClient.cs`; this requires strict RLS and server-side controls.
+4. DataHub access is API-only: `DataHubClient.cs` reads base URL and device token from environment (`AUTOJMS_DATAHUB_API_BASE_URL`, `AUTOJMS_DATAHUB_DEVICE_TOKEN`). No key is compiled into the binary; authorisation is enforced by the VPS API.
 5. Settings split: `SettingsManager` writes encrypted `AutoJMS.config.enc`, while `UserSettingsService` still reads/writes plain `AutoJMS.json`. Token persistence behavior is `NEED VERIFY`.
 6. Module trust: module download paths are hash-checked, but signature verification is inconsistent/optional and one updater has placeholder key material.
 7. DataHub schema gap: C# calls waybill/inventory RPCs not present in checked-in `datahub-migration.sql`.
@@ -102,19 +102,20 @@ if (_tierPolicy.EnableBackgroundAutoSync)
 
 **Risk**: UI freeze during inventory sync display.
 
-### 6. DataHub API Key Exposure
+### 6. DataHub device token distribution — RESOLVED
 
-**Location**: `DataHubClient.cs` line 17
+**Location**: `src/AutoJMS/Data/DataHubClient.cs`
 
-**Issue**: DataHub anon key is hardcoded in source code.
+**Was**: a public key compiled into the binary, so every copy of the app shipped the same
+credential and revoking it meant shipping a new build.
 
-```csharp
-private const string DATAHUB_KEY = "eyJhbGci...";
-```
+**Now**: `DataHubClient.Configure` takes the base URL and device token at runtime, falling back
+to `AUTOJMS_DATAHUB_API_BASE_URL` / `AUTOJMS_DATAHUB_DEVICE_TOKEN` / `AUTOJMS_DATAHUB_SITE_ID`.
+Nothing is compiled in — `grep -rn "eyJ" src --include=*.cs` returns nothing. The token is sent as
+a plain `Bearer` header to `/api/v1/sites/{siteId}/...` and the VPS decides what it may reach.
 
-**Risk**: Anyone can read public DataHub data.
-
-**Mitigation**: This is the anon (public) key. Only read operations are used.
+**Remaining risk**: a device token still lives on the operator's machine. Rotate server-side; do
+not put it in the repo or in any public JSON.
 
 ### 7. Inventory Sync Lock Contention
 
@@ -211,7 +212,7 @@ private const string DATAHUB_KEY = "eyJhbGci...";
 
 | Secret | Exposure | Risk |
 |--------|----------|------|
-| DataHub anon key | Source code | Read-only access |
+| DataHub device token | Environment / machine config | Scoped by VPS API |
 | JMS AuthToken | Memory, AutoJMS.json | API access |
 | License JWT | Memory only | Valid for 60 min |
 

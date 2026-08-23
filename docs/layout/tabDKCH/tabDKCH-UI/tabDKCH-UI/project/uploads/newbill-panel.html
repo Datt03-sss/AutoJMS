@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEWBILL · Panel xử lý vận đơn</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --brand:#D6242B;
+  --brand-dark:#A8161C;
+
+  --stub-1:#171C26;
+  --stub-2:#212A38;
+  --stub-ink:#E9EEF6;
+  --stub-dim:#8C99AC;
+
+  --ink:#1B2027;
+  --muted:#697382;
+  --line:#DDE2EA;
+  --card:#FFFFFF;
+  --bg:#EEF1F5;
+
+  --danger:#C81E25;
+  --danger-soft:#FDECEC;
+  --warn:#B26B00;
+  --warn-line:#F0C36A;
+  --warn-soft:#FFF6E3;
+  --ok:#15803D;
+  --ok-soft:#E7F6EC;
+  --info:#2B5FD9;
+  --info-soft:#E9EFFD;
+
+  --r:8px;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:
+    radial-gradient(900px 500px at 50% -10%, #F7F8FA 0%, #DFE3E9 55%, #CBD2DB 100%);
+  min-height:100vh;
+  display:flex; justify-content:center; align-items:flex-start;
+  padding:28px 16px 60px;
+  font-family:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ─── khung panel ─── */
+.panel{
+  width:308px; max-width:100%;
+  background:var(--bg);
+  border:1px solid #C3CAD4;
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow:0 18px 46px -18px rgba(20,28,40,.45);
+}
+
+/* ═══════════════ PHẦN GIỮ NGUYÊN (DATA + CONTROL) ═══════════════ */
+.legacy{background:var(--brand); padding-bottom:1px}
+.legacy .bar{
+  font-size:10px; font-weight:800; letter-spacing:.09em;
+  color:#fff; padding:3px 8px; text-transform:uppercase;
+}
+.legacy .body{background:#fff; padding:8px; display:grid; gap:7px}
+.lrow{display:flex; align-items:center; gap:8px; font-size:12px}
+.lrow label{width:52px; color:#333; font-weight:500}
+.lrow select,.lrow .stepper{
+  border:1px solid #A9B1BC; border-radius:4px; height:26px;
+  font:inherit; font-size:12px; padding:0 6px; background:#fff;
+}
+.lrow select{flex:1}
+.toggle{
+  width:36px; height:19px; border-radius:20px; background:#C6CCD5;
+  position:relative; flex:none;
+}
+.toggle::after{content:"";position:absolute;width:15px;height:15px;border-radius:50%;background:#fff;top:2px;left:2px}
+.stepper{display:flex; align-items:center; gap:8px; font-variant-numeric:tabular-nums}
+.counts{display:flex; justify-content:space-between; font-size:12px; font-weight:600; color:#3A3F47; padding:2px}
+.legacy .btn{
+  width:100%; border:0; border-radius:4px; color:#fff; font:inherit; font-weight:600;
+  background:var(--brand-dark); padding:9px; font-size:13px; cursor:not-allowed;
+}
+.legacy .btn.stop{height:70px; font-size:14px; background:#C11D24}
+.ghost-note{
+  font-size:9.5px; color:#fff; opacity:.85; text-align:center; padding:2px 0 4px;
+  letter-spacing:.04em;
+}
+
+/* ═══════════════ PHẦN THIẾT KẾ LẠI ═══════════════ */
+.newbill{padding:0 0 10px}
+
+.sec-bar{
+  display:flex; align-items:center; gap:6px;
+  background:var(--brand); color:#fff;
+  padding:5px 8px;
+}
+.sec-bar h2{
+  margin:0; font-size:10.5px; font-weight:800; letter-spacing:.11em; text-transform:uppercase;
+}
+.sec-bar .mode-pill{
+  margin-left:auto; font-size:9.5px; font-weight:700; letter-spacing:.06em;
+  background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.35);
+  padding:2px 7px; border-radius:20px; text-transform:uppercase;
+}
+.sec-bar .mode-pill.newbie{background:#FFD166; border-color:#FFD166; color:#5A3A00}
+
+/* ── 1. CUỐNG VẬN ĐƠN (ô dưới đưa lên trên, phóng to) ── */
+.stub{
+  margin:8px 8px 0;
+  border-radius:var(--r);
+  background:linear-gradient(158deg,var(--stub-1),var(--stub-2));
+  color:var(--stub-ink);
+  box-shadow:0 6px 18px -10px rgba(10,15,25,.8);
+  overflow:hidden;
+}
+.stub-top{padding:9px 10px 10px}
+.code-row{display:flex; align-items:center; gap:6px}
+.code-row .eyebrow{
+  font-size:8.5px; letter-spacing:.14em; color:var(--stub-dim); font-weight:700;
+  text-transform:uppercase;
+}
+.code{
+  font-family:var(--mono); font-size:15px; font-weight:700; letter-spacing:.02em;
+  display:block; margin-top:1px;
+}
+.copy{
+  margin-left:auto; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16);
+  color:var(--stub-ink); border-radius:6px; width:26px; height:26px; cursor:pointer;
+  font-size:12px; display:grid; place-items:center; flex:none; transition:.15s;
+}
+.copy:hover{background:rgba(255,255,255,.18)}
+.copy.done{background:#15803D; border-color:#15803D}
+
+.state-row{display:flex; align-items:center; gap:6px; margin-top:9px; flex-wrap:wrap}
+.state{
+  font-size:11.5px; font-weight:700; padding:3px 8px; border-radius:5px;
+  background:var(--ok-soft); color:#0B5B2B; display:inline-flex; align-items:center; gap:5px;
+}
+.state::before{content:"";width:6px;height:6px;border-radius:50%;background:#16A34A}
+.time{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--stub-dim)}
+
+.people{
+  margin-top:8px; display:flex; align-items:center; gap:6px;
+  font-size:11px; color:#C3CDDC;
+}
+.people b{color:#fff; font-weight:600}
+.dot-sep{opacity:.4}
+
+/* mép răng cưa */
+.perf{
+  height:11px; position:relative;
+  background:
+    radial-gradient(circle at 5px 6px, transparent 4px, transparent 4px);
+  border-top:1px dashed rgba(255,255,255,.22);
+}
+.perf::before,.perf::after{
+  content:""; position:absolute; top:-6px; width:11px; height:11px; border-radius:50%;
+  background:var(--bg);
+}
+.perf::before{left:-6px}
+.perf::after{right:-6px}
+
+/* khối vi phạm — hiển thị đủ, không cắt chữ */
+.violation{
+  background:#2A1417; border-top:0; padding:9px 10px 10px;
+  border-left:3px solid #FF5A5F;
+}
+.violation .tag{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+  color:#FFB4B7;
+}
+.violation p{
+  margin:5px 0 0; font-size:12px; line-height:1.45; color:#FFE3E4; font-weight:500;
+}
+.chips{display:flex; gap:5px; flex-wrap:wrap; margin-top:9px}
+.chip{
+  font-size:10px; font-weight:600; padding:3px 7px; border-radius:20px;
+  background:rgba(255,255,255,.08); color:#D7DEE9; border:1px solid rgba(255,255,255,.12);
+  display:inline-flex; align-items:center; gap:4px;
+}
+.chip b{font-family:var(--mono); color:#fff}
+.chip.hot{background:rgba(255,90,95,.16); border-color:rgba(255,90,95,.4); color:#FFC9CB}
+
+/* ── 2. DÒNG ĐỀ XUẤT (chỉ chế độ Newbie) ── */
+.suggest{
+  margin:8px; border:1px solid var(--warn-line); background:var(--warn-soft);
+  border-radius:var(--r); padding:8px 9px 9px; position:relative; overflow:hidden;
+}
+.suggest::before{
+  content:""; position:absolute; inset:0 auto 0 0; width:3px; background:#F2A007;
+}
+.suggest .head{
+  display:flex; align-items:center; gap:6px;
+  font-size:9.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--warn);
+}
+.pulse{width:7px;height:7px;border-radius:50%;background:#F2A007; animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(242,160,7,.55)}50%{box-shadow:0 0 0 6px rgba(242,160,7,0)}}
+.steps{margin:7px 0 0; padding:0; list-style:none; display:grid; gap:5px}
+.steps li{
+  display:flex; gap:7px; font-size:11.5px; line-height:1.4; color:#4A3410; font-weight:500;
+}
+.steps .n{
+  flex:none; width:16px; height:16px; border-radius:5px; background:#F2A007; color:#fff;
+  font-family:var(--mono); font-size:9.5px; font-weight:700; display:grid; place-items:center; margin-top:1px;
+}
+.suggest .acts{display:flex; gap:6px; margin-top:9px}
+.act{
+  flex:1; border:0; border-radius:6px; font:inherit; font-size:11.5px; font-weight:700;
+  padding:7px; cursor:pointer; transition:.15s;
+}
+.act.primary{background:#1B2027; color:#fff}
+.act.primary:hover{background:#000}
+.act.ghost{background:transparent; border:1px solid var(--warn-line); color:var(--warn); flex:0 0 78px}
+.act.ghost:hover{background:#FDEECB}
+.kbd{
+  font-family:var(--mono); font-size:9px; background:rgba(0,0,0,.12); border-radius:3px;
+  padding:1px 4px; margin-left:4px;
+}
+
+/* ── 3. THANH VÒNG ĐỜI ĐƠN ── */
+.rail{
+  margin:8px; background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+  padding:9px 9px 7px;
+}
+.rail .cap{
+  font-size:9px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); font-weight:700;
+  margin-bottom:8px; display:flex; align-items:center;
+}
+.rail .cap span{margin-left:auto; color:var(--danger); font-weight:700; letter-spacing:0; text-transform:none; font-size:10px}
+.track{display:flex; align-items:flex-start}
+.node{flex:1; text-align:center; position:relative}
+.node::before{
+  content:""; position:absolute; top:6px; left:-50%; width:100%; height:2px; background:var(--line);
+}
+.node:first-child::before{display:none}
+.node.done::before{background:#16A34A}
+.node .bead{
+  width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid var(--line);
+  margin:0 auto; position:relative; z-index:1;
+}
+.node.done .bead{background:#16A34A;border-color:#16A34A}
+.node.block .bead{background:var(--danger);border-color:var(--danger)}
+.node.block::before{background:repeating-linear-gradient(90deg,var(--danger) 0 3px,transparent 3px 6px)}
+.node small{
+  display:block; margin-top:5px; font-size:8.5px; line-height:1.25; color:var(--muted); font-weight:600;
+}
+.node.done small{color:#3F4855}
+.node.block small{color:var(--danger); font-weight:700}
+
+/* ── 4. HAI Ô QUÉT (thu gọn) ── */
+.scan{margin:8px; display:grid; grid-template-columns:1fr 1fr; gap:7px}
+.pane{
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden;
+  display:flex; flex-direction:column; min-height:104px;
+}
+.pane header{
+  display:flex; align-items:center; gap:5px; padding:5px 7px;
+  border-bottom:1px solid var(--line); background:#F7F9FB;
+}
+.pane header b{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#48525F}
+.badge{
+  margin-left:auto; font-family:var(--mono); font-size:9.5px; font-weight:700;
+  background:var(--info-soft); color:var(--info); border-radius:20px; padding:1px 6px;
+}
+.badge.err{background:var(--danger-soft); color:var(--danger)}
+.pane .list{
+  flex:1; padding:6px 7px; font-family:var(--mono); font-size:10.5px; line-height:1.7;
+  color:#414B58; overflow:auto;
+}
+.pane .list div{display:flex; gap:5px}
+.pane .list i{font-style:normal; color:#9AA4B2}
+.empty{
+  flex:1; display:grid; place-content:center; gap:4px; text-align:center; padding:8px;
+  color:#9AA4B2;
+}
+.empty strong{font-size:11px; color:#6B7480; font-weight:600}
+.empty span{font-size:9.5px; line-height:1.35}
+
+/* ── 5. NHẬT KÝ THAO TÁC ── */
+.logs{margin:8px; background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+.logs header{display:flex; align-items:center; gap:6px; padding:7px 8px; border-bottom:1px solid var(--line)}
+.logs header b{font-size:9.5px; letter-spacing:.11em; text-transform:uppercase; color:#48525F}
+.tabs{margin-left:auto; display:flex; background:#EDF0F4; border-radius:6px; padding:2px}
+.tab{
+  border:0; background:transparent; font:inherit; font-size:10px; font-weight:600; color:#6B7480;
+  padding:3px 8px; border-radius:4px; cursor:pointer;
+}
+.tab[aria-selected="true"]{background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.feed{padding:2px 8px 8px; max-height:260px; overflow:auto}
+.item{display:flex; gap:8px; padding:9px 0 8px; border-bottom:1px dashed var(--line)}
+.item:last-child{border-bottom:0}
+.item.hide{display:none}
+.avatar{
+  flex:none; width:24px; height:24px; border-radius:7px; display:grid; place-items:center;
+  font-size:9.5px; font-weight:700; color:#fff; background:#8B95A5; margin-top:1px;
+}
+.item .meta{min-width:0; flex:1}
+.act-name{font-size:11.5px; font-weight:700; display:flex; align-items:center; gap:5px}
+.act-name .mk{width:6px;height:6px;border-radius:2px;flex:none}
+.t-ok .act-name{color:var(--ok)}      .t-ok .mk{background:var(--ok)}      .t-ok .avatar{background:#2F9E5E}
+.t-err .act-name{color:var(--danger)} .t-err .mk{background:var(--danger)} .t-err .avatar{background:#C81E25}
+.t-info .act-name{color:var(--info)}  .t-info .mk{background:var(--info)}  .t-info .avatar{background:#4A73DE}
+.who{font-size:10.5px; color:var(--muted); margin-top:2px}
+.note{
+  margin-top:5px; font-size:10.5px; line-height:1.4; color:#3F4855;
+  background:#F4F6F9; border-radius:6px; padding:5px 7px; border-left:2px solid #C9D1DC;
+}
+.t-err .note{background:var(--danger-soft); border-left-color:#E8888C; color:#7E1418}
+.stamp{font-family:var(--mono); font-size:9.5px; color:#9AA4B2; flex:none; margin-top:2px}
+
+.hint{
+  margin:0 8px; font-size:9.5px; color:#8A94A2; text-align:center; line-height:1.4;
+}
+
+/* nhãn ghi chú cho bản demo */
+.annot{
+  width:308px; max-width:100%; margin:0 auto 10px; font-size:11px; color:#54607040;
+}
+.demo-note{
+  width:308px; max-width:100%; margin:14px auto 0; font-size:10.5px; color:#5A6572;
+  background:#fff; border:1px solid #D3DAE3; border-radius:8px; padding:9px 11px; line-height:1.5;
+}
+.demo-note b{color:#1B2027}
+.wrap{display:flex; flex-direction:column; align-items:center}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="panel">
+
+  <!-- ══ GIỮ NGUYÊN: DATA ══ -->
+  <div class="legacy">
+    <div class="bar">Data</div>
+    <div class="body">
+      <div class="lrow">
+        <label>Chế độ</label>
+        <select id="mode">
+          <option value="normal">Normal</option>
+          <option value="newbie">Newbie</option>
+        </select>
+        <span style="font-size:11px">U_Sheet</span>
+        <span class="toggle"></span>
+      </div>
+      <div class="lrow">
+        <label>Sheet</label>
+        <select><option>DKCH</option></select>
+        <span style="font-size:11px">Cột</span>
+        <span class="stepper">− 1 +</span>
+      </div>
+      <div class="counts"><span>Tổng: 0</span><span>OK: 0</span></div>
+    </div>
+
+    <!-- ══ GIỮ NGUYÊN: CONTROL ══ -->
+    <div class="bar">Control</div>
+    <div class="body">
+      <button class="btn">⌂ Home</button>
+      <button class="btn stop">Dừng</button>
+    </div>
+    <div class="ghost-note">▲ phần trên giữ nguyên ▲</div>
+  </div>
+
+  <!-- ══════════ THIẾT KẾ LẠI TỪ ĐÂY ══════════ -->
+  <section class="newbill">
+
+    <div class="sec-bar">
+      <h2>Newbill</h2>
+      <span class="mode-pill" id="modePill">Normal</span>
+    </div>
+
+    <!-- 1 · CUỐNG VẬN ĐƠN -->
+    <article class="stub">
+      <div class="stub-top">
+        <div class="code-row">
+          <div>
+            <span class="eyebrow">Mã vận đơn</span>
+            <span class="code" id="code">802792754316</span>
+          </div>
+          <button class="copy" id="copyBtn" title="Chép mã">⧉</button>
+        </div>
+
+        <div class="state-row">
+          <span class="state">Ký nhận CPN</span>
+          <span class="time">06/08 · 16:55:28</span>
+        </div>
+
+        <div class="people">
+          <span>Ký nhận <b>Thanh Trà</b></span>
+          <span class="dot-sep">·</span>
+          <span>Bưu tá <b>Trần Thị Phương Anh</b></span>
+        </div>
+      </div>
+
+      <div class="perf"></div>
+
+      <div class="violation">
+        <span class="tag">⛔ Vi phạm quy trình</span>
+        <p>Chưa quét kiện vấn đề, vi phạm tự ý chuyển hoàn đơn khi chưa có xác nhận của khách hàng.</p>
+        <div class="chips">
+          <span class="chip hot">ĐKCH <b>×1</b></span>
+          <span class="chip hot">Phát lại <b>×1</b></span>
+          <span class="chip">Tồn <b>2 ngày</b></span>
+        </div>
+      </div>
+    </article>
+
+    <!-- 2 · ĐỀ XUẤT (Newbie) -->
+    <div class="suggest" id="suggest" hidden>
+      <div class="head"><span class="pulse"></span> Nên làm tiếp</div>
+      <ol class="steps">
+        <li><span class="n">1</span><span>Quét <b>kiện vấn đề</b> với lý do “Không liên lạc được KH”.</span></li>
+        <li><span class="n">2</span><span>Chờ tổng đài xác nhận rồi mới bấm <b>ĐKCH</b>.</span></li>
+      </ol>
+      <div class="acts">
+        <button class="act primary">Mở quét kiện vấn đề <span class="kbd">F2</span></button>
+        <button class="act ghost">Bỏ qua</button>
+      </div>
+    </div>
+
+    <!-- 3 · VÒNG ĐỜI ĐƠN -->
+    <div class="rail">
+      <div class="cap">Tiến trình đơn <span>Kẹt ở bước 4</span></div>
+      <div class="track">
+        <div class="node done"><span class="bead"></span><small>Nhận kho</small></div>
+        <div class="node done"><span class="bead"></span><small>Phát hàng</small></div>
+        <div class="node done"><span class="bead"></span><small>Kiện vấn đề</small></div>
+        <div class="node block"><span class="bead"></span><small>ĐKCH</small></div>
+        <div class="node"><span class="bead"></span><small>Ký nhận</small></div>
+      </div>
+    </div>
+
+    <!-- 4 · HAI Ô QUÉT -->
+    <div class="scan">
+      <div class="pane">
+        <header><b>Đã quét</b><span class="badge">3</span></header>
+        <div class="list">
+          <div><i>1</i>…754316</div>
+          <div><i>2</i>…661209</div>
+          <div><i>3</i>…903471</div>
+        </div>
+      </div>
+      <div class="pane">
+        <header><b>Lỗi</b><span class="badge err">0</span></header>
+        <div class="empty">
+          <strong>Chưa có lỗi</strong>
+          <span>Mã quét hỏng sẽ rơi vào đây</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5 · NHẬT KÝ -->
+    <div class="logs">
+      <header>
+        <b>Nhật ký thao tác</b>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true" data-f="all">Tất cả</button>
+          <button class="tab" role="tab" aria-selected="false" data-f="err">Vấn đề</button>
+        </div>
+      </header>
+      <div class="feed" id="feed">
+
+        <div class="item t-ok" data-type="ok">
+          <span class="avatar">PA</span>
+          <div class="meta">
+            <div class="act-name"><span class="mk"></span>Ký nhận CPN</div>
+            <div class="who">Trần Thị Phương Anh</div>
+            <div class="note">Người nhận: Thanh Trà</div>
+          </div>
+          <span class="stamp">16:55</span>
+        </div>
+
+        <div class="item t-info" data-type="info">
+          <span class="avatar">PA</span>
+          <div class="meta">
+            <div class="act-name"><span class="mk"></span>Quét phát hàng</div>
+            <div class="who">Trần Thị Phương Anh</div>
+          </div>
+          <span class="stamp">14:02</span>
+        </div>
+
+        <div class="item t-err" data-type="err">
+          <span class="avatar">TH</span>
+          <div class="meta">
+            <div class="act-name"><span class="mk"></span>Quét kiện vấn đề</div>
+            <div class="who">Vũ Thị Thu Hoài</div>
+            <div class="note">Không liên lạc được khách hàng / khoá máy</div>
+          </div>
+          <span class="stamp">09:18</span>
+        </div>
+
+      </div>
+    </div>
+
+    <p class="hint">Cuộn để xem thêm · <b>F2</b> quét kiện vấn đề · <b>F4</b> ĐKCH</p>
+  </section>
+</div>
+
+<div class="demo-note">
+  <b>Cách xem thử:</b> đổi ô <b>Chế độ</b> ở khối DATA sang <b>Newbie</b> để hiện dòng đề xuất màu vàng.
+  Toàn bộ khối DATA + CONTROL phía trên giữ nguyên như bản gốc.
+</div>
+</div>
+
+<script>
+const mode = document.getElementById('mode');
+const suggest = document.getElementById('suggest');
+const pill = document.getElementById('modePill');
+
+function render(){
+  const nb = mode.value === 'newbie';
+  suggest.hidden = !nb;
+  pill.textContent = nb ? 'Newbie' : 'Normal';
+  pill.classList.toggle('newbie', nb);
+}
+mode.addEventListener('change', render);
+render();
+
+const copyBtn = document.getElementById('copyBtn');
+copyBtn.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(document.getElementById('code').textContent.trim()); }
+  catch(e){ /* clipboard bị chặn thì bỏ qua */ }
+  copyBtn.textContent = '✓'; copyBtn.classList.add('done');
+  setTimeout(()=>{ copyBtn.textContent='⧉'; copyBtn.classList.remove('done'); }, 1200);
+});
+
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected','false'));
+    t.setAttribute('aria-selected','true');
+    const f = t.dataset.f;
+    document.querySelectorAll('#feed .item').forEach(it => {
+      it.classList.toggle('hide', f === 'err' && it.dataset.type !== 'err');
+    });
+  });
+});
+</script>
+</body>
+</html>

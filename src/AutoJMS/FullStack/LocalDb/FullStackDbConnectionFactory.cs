@@ -18,9 +18,12 @@ namespace AutoJMS.FullStack.LocalDb
         public async Task<SqliteConnection> OpenAsync(CancellationToken ct = default)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+            LocalDbEncryption.PrepareDatabase(DatabasePath);
 
             var connection = new SqliteConnection($"Data Source={DatabasePath};Cache=Shared");
             await connection.OpenAsync(ct).ConfigureAwait(false);
+            // The cipher key has to precede every other statement on the connection.
+            await LocalDbEncryption.ApplyKeyAsync(connection, ct).ConfigureAwait(false);
             await ApplyPragmasAsync(connection, ct).ConfigureAwait(false);
             return connection;
         }

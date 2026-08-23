@@ -91,7 +91,7 @@ Use this prompt when fixing release/build/update pipeline issues.
 **Symptom**: version-latest.json not updated
 
 **Check**:
-1. DATAHUB_SERVICE_ROLE_KEY set?
+1. DATAHUB_ADMIN_TOKEN set?
 2. Bucket exists: autojms-modules
 3. Manifest file is valid JSON
 

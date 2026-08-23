@@ -29,7 +29,7 @@ Version rule:
 [ ] Version đã bump đúng SemVer, không dùng 4 segment làm VelopackVersion
 [ ] GitHub CLI đã login: gh auth status
 [ ] Có quyền repo: Datt03-sss/AutoJMS-Update
-[ ] DataHub upload sẵn sàng: DATAHUB_SERVICE_ROLE_KEY hoặc DataHub CLI
+[ ] DataHub upload sẵn sàng: DATAHUB_ADMIN_TOKEN hoặc DataHub CLI
 ```
 
 ## 3. Build release bằng Velopack

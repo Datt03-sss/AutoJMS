@@ -86,7 +86,7 @@ Invoke-RestMethod https://datahub.example.com/manifest/version-latest.json
 # Upload new version-latest.json
 Invoke-RestMethod -Method Post `
     -Uri "https://datahub.example.com/manifest/version-latest.json" `
-    -Headers @{ Authorization = "Bearer $SERVICE_ROLE_KEY"; "x-upsert" = "true" } `
+    -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN"; "x-upsert" = "true" } `
     -ContentType "application/json" `
     -InFile version-latest.json
 ```

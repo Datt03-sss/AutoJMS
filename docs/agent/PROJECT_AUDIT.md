@@ -73,8 +73,8 @@ The codebase consists of:
 
 ## Secret Risks
 
-1. **DataHub Public Anon Key**:
-   - The public-anon key is hardcoded in `DataHubClient.cs`. This key is intended to be public, but it relies heavily on correct PostgreSQL Row Level Security (RLS) to prevent write/delete operations from unauthorized users.
+1. **DataHub device token**:
+   - Nothing is hardcoded any more: `DataHubClient.cs` reads `AUTOJMS_DATAHUB_API_BASE_URL`, `AUTOJMS_DATAHUB_DEVICE_TOKEN` and `AUTOJMS_DATAHUB_SITE_ID` at runtime and sends the token as a `Bearer` header. The desktop never opens a PostgreSQL connection, so write protection is the VPS API's job, not the client's.
 2. **Firebase service account key**:
    - `service_account.json` exists in the local workspace. It is git-ignored but its presence poses a risk of accidental inclusion in a git add.
 

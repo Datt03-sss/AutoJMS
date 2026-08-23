@@ -122,6 +122,99 @@ const DATAHUB_MANIFESTS = {
 };
 
 // ==========================================
+// DATAHUB LICENSE ASSERTION (RS256)
+// ==========================================
+// The DataHub API refuses to enroll a device without a signed license assertion. Render is the
+// only component that knows whether a license is real, so it is the issuer; the DataHub host
+// only ever holds the matching PUBLIC key (it rejects a private one on purpose).
+//
+// Wire format expected by RsaLicenseAssertionValidator:
+//   v1rs256.<base64url(payload JSON)>.<base64url(RSASSA-PKCS1-v1_5 SHA-256 over the encoded payload)>
+//
+// Generate the key pair (never commit either half):
+//   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out datahub-license.key
+//   openssl rsa -in datahub-license.key -pubout -out datahub-license.pub
+// Render env → DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY (this server)
+// DataHub env → DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY  (the VPS)
+const boundedNumber = (value, fallback, min, max) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(Math.max(Math.trunc(parsed), min), max);
+};
+
+const DATAHUB_ASSERTION = {
+    PRIVATE_KEY: formatKey(process.env.DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY),
+    ISSUER: process.env.DATAHUB_LICENSE_ASSERTION_ISSUER || "autojms-license",
+    AUDIENCE: process.env.DATAHUB_LICENSE_ASSERTION_AUDIENCE || "autojms-datahub-enroll",
+    CHANNEL: process.env.DATAHUB_CHANNEL || "production",
+    TTL_SECONDS: boundedNumber(process.env.DATAHUB_LICENSE_ASSERTION_TTL_SECONDS, 300, 60, 3600),
+    DEFAULT_SEATS: boundedNumber(process.env.DATAHUB_DEFAULT_SEATS, 3, 1, 500)
+};
+
+if (!DATAHUB_ASSERTION.PRIVATE_KEY) {
+    console.warn("[datahub] DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY is not set — device enrollment stays closed.");
+}
+
+/**
+ * Site codes a license may enroll against, uppercased the same way the DataHub validator
+ * normalizes them. Falls back to middleCode so existing single-site licenses keep working
+ * without a Firebase migration.
+ */
+function resolveLicenseSiteCodes(data, middleCode) {
+    const raw = Array.isArray(data?.siteCodes)
+        ? data.siteCodes
+        : [data?.siteCode, data?.siteId, middleCode];
+
+    return [...new Set(
+        raw
+            .map(code => String(code || "").trim().toUpperCase())
+            .filter(Boolean)
+    )];
+}
+
+/**
+ * Mints a short-lived assertion. Returns null when the deployment has no signing key or the
+ * license carries no site — both mean "cannot enroll", never "enroll unrestricted".
+ */
+function issueDataHubAssertion(data, middleCode) {
+    if (!DATAHUB_ASSERTION.PRIVATE_KEY) return null;
+
+    const siteCodes = resolveLicenseSiteCodes(data, middleCode);
+    if (siteCodes.length === 0) return null;
+
+    const expiresAt = Math.floor(Date.now() / 1000) + DATAHUB_ASSERTION.TTL_SECONDS;
+
+    // PascalCase keys are required: the validator deserializes into LicenseAssertionPayload
+    // with System.Text.Json defaults, which are case-sensitive. camelCase silently produces an
+    // empty payload and a 401.
+    const payload = {
+        Channel: DATAHUB_ASSERTION.CHANNEL,
+        SiteCodes: siteCodes,
+        ExpiresAt: expiresAt,
+        // The claim must be https or absent — the validator rejects any other scheme.
+        DataHubUrl: CONFIG.DATAHUB_API_BASE_URL.startsWith("https://") ? CONFIG.DATAHUB_API_BASE_URL : null,
+        Seats: boundedNumber(data?.seats, DATAHUB_ASSERTION.DEFAULT_SEATS, 1, 500),
+        TokenVersion: boundedNumber(data?.tokenVersion, 1, 1, 1_000_000),
+        Issuer: DATAHUB_ASSERTION.ISSUER,
+        Audience: DATAHUB_ASSERTION.AUDIENCE
+    };
+
+    const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+    const signature = crypto
+        .sign("sha256", Buffer.from(encodedPayload, "utf8"), {
+            key: DATAHUB_ASSERTION.PRIVATE_KEY,
+            padding: crypto.constants.RSA_PKCS1_PADDING
+        })
+        .toString("base64url");
+
+    return {
+        assertion: `v1rs256.${encodedPayload}.${signature}`,
+        expiresAt,
+        siteCodes
+    };
+}
+
+// ==========================================
 // FIREBASE INIT
 // ==========================================
 const serviceAccount = loadFirebaseServiceAccount();
@@ -152,6 +245,13 @@ const heartbeatLimiter = rateLimit({
 });
 
 const googleSheetsGrantLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 60
+});
+
+// Assertions are short-lived, so a station re-enrolls a handful of times a day. The cap is
+// generous enough for a NAT'd office sharing one egress IP, tight enough to stop a signing loop.
+const datahubAssertionLimiter = rateLimit({
     windowMs: 60_000,
     max: 60
 });
@@ -565,6 +665,13 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             tier
         });
 
+        // Enrollment credential for the DataHub API. Minted here because Render is the only
+        // component that has just proven the license is active and bound to this machine.
+        const datahubAssertion = issueDataHubAssertion(data, middleCode);
+        if (!datahubAssertion) {
+            console.warn(`[verify-license] no DataHub assertion issued requestId=${requestId} license=${maskedLicenseKey}`);
+        }
+
         // Backward compatibility only: legacy clients still read modulePolicy
         // from Render. New clients use DataHub runtime-policy as the feature
         // authority after Render authenticates license identity/session.
@@ -594,6 +701,11 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             datahub: {
                 apiBaseUrl: CONFIG.DATAHUB_API_BASE_URL,
                 siteId: data.siteId || middleCode || "",
+                // siteCode is what /api/v1/devices/enroll matches on; siteId above is kept for
+                // older clients and is replaced by the GUID the enrollment response returns.
+                siteCode: (datahubAssertion?.siteCodes?.[0]) || String(middleCode || "").toUpperCase(),
+                licenseAssertion: datahubAssertion?.assertion || "",
+                assertionExpiresAt: datahubAssertion?.expiresAt || 0,
                 manifests: DATAHUB_MANIFESTS
             }
         });
@@ -811,7 +923,113 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
 });
 
 // ==========================================
-// API 4: LOGOUT SESSION
+// API 4: DATAHUB LICENSE ASSERTION (RE-ENROLL)
+// ==========================================
+// A device token issued by DataHub expires (24h by default) while the app may stay open for
+// days. Rather than force a full re-activation, the client asks for a fresh assertion with the
+// access token it already refreshes on every heartbeat, then re-enrolls.
+app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, res) => {
+    const requestId = crypto.randomUUID();
+    const started = Date.now();
+
+    try {
+        const auth = req.headers.authorization;
+
+        if (!auth || !auth.startsWith("Bearer ")) {
+            return res.status(401).json({
+                success: false,
+                error: "UNAUTHORIZED",
+                message: "Access token is required."
+            });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(auth.slice("Bearer ".length).trim(), CONFIG.PUBLIC, {
+                algorithms: ["RS256"],
+                issuer: CONFIG.ISSUER,
+                audience: CONFIG.AUDIENCE
+            });
+        } catch {
+            return res.status(401).json({
+                success: false,
+                error: "TOKEN_INVALID",
+                message: "Access token expired or invalid."
+            });
+        }
+
+        // Deliberately not consuming decoded.jti here: the heartbeat owns replay detection, and
+        // burning the jti would kill the very session that is asking to stay connected.
+        const sessionSnap = await withTimeout(
+            admin.database().ref(`sessions/${decoded.sid}`).once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_SESSION_READ"
+        );
+        if (!sessionSnap.exists() || sessionSnap.val()?.status !== "active") {
+            return res.status(401).json({
+                success: false,
+                error: "SESSION_REVOKED",
+                message: "Session is no longer active."
+            });
+        }
+
+        const licenseSnap = await withTimeout(
+            admin.database().ref(`Licenses/${decoded.key}`).once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_LICENSE_READ"
+        );
+        const data = licenseSnap.val();
+        if (!data || data.status !== "active") {
+            return res.status(401).json({
+                success: false,
+                error: "LICENSE_INACTIVE",
+                message: "License key is inactive or locked."
+            });
+        }
+        // A license re-bound to another machine must not keep minting for this one.
+        if (data.hwid && decoded.hwid && data.hwid !== decoded.hwid) {
+            return res.status(401).json({
+                success: false,
+                error: "HWID_MISMATCH",
+                message: "License key is bound to another machine."
+            });
+        }
+
+        const issued = issueDataHubAssertion(data, data.middleCode || "");
+        if (!issued) {
+            return res.status(503).json({
+                success: false,
+                error: "ASSERTION_UNAVAILABLE",
+                message: "DataHub enrollment is not configured on this license server."
+            });
+        }
+
+        console.log(`[datahub-assertion] issued requestId=${requestId} license=${maskLicenseKey(decoded.key)} elapsedMs=${Date.now() - started}`);
+        return res.json({
+            apiBaseUrl: CONFIG.DATAHUB_API_BASE_URL,
+            siteCode: issued.siteCodes[0],
+            licenseAssertion: issued.assertion,
+            assertionExpiresAt: issued.expiresAt
+        });
+    } catch (e) {
+        console.error(`[datahub-assertion] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
+            error: e.message
+        });
+
+        if (isTimeoutError(e)) {
+            return sendTimeoutResponse(res);
+        }
+
+        return res.status(500).json({
+            success: false,
+            error: "INTERNAL_ERROR",
+            message: "License server internal error."
+        });
+    }
+});
+
+// ==========================================
+// API 5: LOGOUT SESSION
 // ==========================================
 app.post("/api/logout", async (req, res) => {
     const requestId = crypto.randomUUID();

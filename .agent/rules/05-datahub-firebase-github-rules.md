@@ -1,0 +1,1 @@
+Firebase and GitHub backend rules.

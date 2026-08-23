@@ -177,7 +177,7 @@ Get device token:
 datahub projects api-keys --project-ref bnsnnrlwfzxemmizknwy
 ```
 
-Use the `anon` key for client/runtime configuration. Do not use `service_role` in client code or public JSON.
+Give the app a scoped DEVICE TOKEN for client/runtime configuration. The admin token (`DATAHUB_ADMIN_TOKEN`) is server-side only — never in client code or public JSON.
 
 ### Storage Layout
 
@@ -264,8 +264,8 @@ Permission model:
 
 - `anon` and `authenticated` have direct `SELECT` only on public app tables required by client reads.
 - Writes go through `SECURITY DEFINER` RPCs.
-- Direct anon insert/update/delete to `waybills` should fail.
-- `service_role` is for backend/admin use only.
+- A device token must not be able to insert/update/delete `waybills` directly.
+- `DATAHUB_ADMIN_TOKEN` is for backend/admin use only.
 
 Push migrations:
 

@@ -45,6 +45,13 @@ namespace AutoJMS.FullStack.Services
         private const int MaxConsecutiveFailures = 5;
 
         /// <summary>
+        /// fs_sync_state key for the waybill pull cursor. Deliberately a different key from the
+        /// old "cloud_pull_waybills_at": the value is now the server's change_seq, so an install
+        /// upgraded in place restarts from 0 instead of parsing an ISO timestamp as a number.
+        /// </summary>
+        private const string WaybillCursorKey = "cloud_pull_waybills_seq";
+
+        /// <summary>
         /// Outbox kinds the DataHub API has no endpoint for yet. The server only accepts
         /// JmsObservation, so these rows must stay queued locally rather than be marked
         /// synced after a push that never happened.
@@ -120,14 +127,7 @@ namespace AutoJMS.FullStack.Services
                 await DataHubClient.InitializeAsync().ConfigureAwait(false);
 
                 // Realtime doorbell — failure is non-fatal, the periodic pull still runs.
-                try
-                {
-                    await DataHubClient.SubscribeSiteChangesAsync(site, RequestCycleSoon).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warning("[HybridSync] realtime unavailable, falling back to polling: " + ex.Message);
-                }
+                await EnsureRealtimeAsync(site).ConfigureAwait(false);
 
                 _lifetimeCts = new CancellationTokenSource();
 
@@ -210,6 +210,23 @@ namespace AutoJMS.FullStack.Services
             catch (ObjectDisposedException) { /* raced with StopAsync */ }
         }
 
+        /// <summary>
+        /// Subscribes (or re-subscribes) to the site doorbell. Realtime is an accelerator, never a
+        /// requirement: every failure mode here degrades to the periodic pull, so it must not be
+        /// able to fail a cycle.
+        /// </summary>
+        private async Task EnsureRealtimeAsync(string site)
+        {
+            try
+            {
+                await DataHubClient.SubscribeSiteChangesAsync(site, RequestCycleSoon).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[HybridSync] realtime unavailable, falling back to polling: " + ex.Message);
+            }
+        }
+
         // ------------------------------------------------------------------
         // Lease (who pulls from JMS)
         // ------------------------------------------------------------------
@@ -277,6 +294,12 @@ namespace AutoJMS.FullStack.Services
                 // instead of running on detached after the form closed.
                 var ct = _lifetimeCts?.Token ?? CancellationToken.None;
                 if (ct.IsCancellationRequested) return;
+
+                // Self-heal the doorbell each cycle: a hub connection that gave up reconnecting,
+                // or a re-enroll that replaced the device token, would otherwise leave this
+                // machine on the slow timer for the rest of the session. It is a no-op while the
+                // connection is live.
+                await EnsureRealtimeAsync(site).ConfigureAwait(false);
 
                 if (_hasLease)
                 {
@@ -565,13 +588,24 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
         private async Task<int> PullWaybillsAsync(CancellationToken ct)
         {
             var site = ResolveSiteCode();
-            var since = await GetCursorAsync("cloud_pull_waybills_at", ct).ConfigureAwait(false);
-            var rows = await DataHubClient.PullWaybillDeltaAsync(site, since).ConfigureAwait(false);
-            if (rows.Count == 0) return 0;
+            // The cursor is the server's change_seq, not a timestamp: /changes is ordered by an
+            // append-only sequence, and a clock cursor skips rows committed out of order. The key
+            // is new (…_seq, not …_at) so an upgraded install starts from 0 instead of trying to
+            // read an ISO timestamp as a number.
+            long afterSeq = await GetSeqCursorAsync(WaybillCursorKey, ct).ConfigureAwait(false);
+            var page = await DataHubClient.PullWaybillChangesAsync(site, afterSeq).ConfigureAwait(false);
+            var rows = page.Rows;
+            if (page.Resynced)
+                AppLogger.Warning($"[HybridSync] waybill cursor fell out of the retained range — resynced from snapshot rows={rows.Count}");
+
+            if (rows.Count == 0)
+            {
+                await AdvanceWaybillCursorAsync(afterSeq, page, ct).ConfigureAwait(false);
+                return 0;
+            }
 
             // Leader pushed these rows itself — skip merging our own echo when we hold the lease.
             int applied = 0;
-            DateTime maxUpdated = since;
 
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
@@ -579,9 +613,8 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
             foreach (var row in rows)
             {
                 ct.ThrowIfCancellationRequested();
-                var updatedAt = row.Value<DateTime?>("updated_at")?.ToUniversalTime() ?? DateTime.UtcNow;
-                if (updatedAt > maxUpdated) maxUpdated = updatedAt;
                 if (_hasLease) continue;
+                var updatedAt = row.Value<DateTime?>("updated_at")?.ToUniversalTime() ?? DateTime.UtcNow;
 
                 await using var command = connection.CreateCommand();
                 command.Transaction = transaction;
@@ -724,9 +757,24 @@ WHERE excluded.updated_at > fs_waybills.updated_at
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
-            await SetSyncStateAsync("cloud_pull_waybills_at", maxUpdated.ToString("O"), ct).ConfigureAwait(false);
+            await AdvanceWaybillCursorAsync(afterSeq, page, ct).ConfigureAwait(false);
             if (applied > 0) AppLogger.Info($"[HybridSync] pulled waybills rows={rows.Count} applied={applied}");
             return applied;
+        }
+
+        /// <summary>
+        /// Persists the change_seq the server handed back and asks for another cycle while the
+        /// feed still has a backlog. The cursor is only ever moved forward, so a stale or
+        /// missing nextAfter cannot make this device re-read history in a loop.
+        /// </summary>
+        private async Task AdvanceWaybillCursorAsync(long afterSeq, DataHubChangePage page, CancellationToken ct)
+        {
+            if (page.NextAfter > afterSeq)
+                await SetSyncStateAsync(WaybillCursorKey, page.NextAfter.ToString(CultureInfo.InvariantCulture), ct).ConfigureAwait(false);
+
+            // The server caps a page at `limit`; draining the rest on the slow timer would leave
+            // the grid minutes behind after a bulk push.
+            if (page.HasMore) RequestCycleSoon();
         }
 
         private async Task<int> PullNotesAsync(CancellationToken ct)
@@ -1075,6 +1123,19 @@ ON CONFLICT(key) DO NOTHING;";
             return DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt)
                 ? dt.ToUniversalTime()
                 : DateTime.UnixEpoch;
+        }
+
+        /// <summary>
+        /// Reads a monotonic change_seq cursor. Anything unparseable (absent key, or the old ISO
+        /// timestamp left behind by a previous build) reads as 0, which the server treats as
+        /// "send me everything you still retain" — safe, because the merge is idempotent.
+        /// </summary>
+        private async Task<long> GetSeqCursorAsync(string key, CancellationToken ct)
+        {
+            var value = await GetSyncStateAsync(key, ct).ConfigureAwait(false);
+            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seq) && seq > 0
+                ? seq
+                : 0;
         }
 
         private async Task<string> GetSyncStateAsync(string key, CancellationToken ct)

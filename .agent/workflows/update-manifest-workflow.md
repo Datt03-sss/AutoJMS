@@ -54,7 +54,7 @@ $existing.channels.beta = @{
 Invoke-RestMethod -Method Post `
     -Uri "https://datahub.example.com/manifest/version-latest.json" `
     -Headers @{
-        Authorization = "Bearer $env:DATAHUB_SERVICE_ROLE_KEY"
+        Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN"
         "x-upsert" = "true"
     } `
     -ContentType "application/json" `

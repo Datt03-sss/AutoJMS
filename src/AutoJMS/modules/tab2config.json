@@ -125,6 +125,16 @@
     "Ký nhận chuyển hoàn": "Đơn đã ký nhận chuyển hoàn."
   },
 
+  "actionRecommends": {
+    "_note": "Lớp ĐÈ dòng GỢI Ý theo tên thao tác cuối. Khác actionMessages (lớp nền cho dòng KẾT QUẢ): ở đây case nào khớp thì dòng kết quả vẫn của case đó, chỉ dòng gợi ý bị thay. Dùng cho thao tác mà gợi ý luôn cố định bất kể đơn đi nhánh nghiệp vụ nào. Khoá là một mẩu tên thao tác; khoá dài khớp trước.",
+    "Xuống hàng kiện đến": "Kiểm tra lại hành trình",
+    "卸车到件": "Kiểm tra lại hành trình",
+    "Gỡ bao": "Kiểm tra lại hành trình",
+    "拆包": "Kiểm tra lại hành trình",
+    "Đăng ký CH lần 2": "Kiểm tra trạng thái duyệt hoàn",
+    "再次登记": "Kiểm tra trạng thái duyệt hoàn"
+  },
+
   "cases": [
     {
       "id": "signed-cpn",
@@ -136,23 +146,13 @@
       "actRecommend": "Thực hiện in đơn hoàn 1 phần (-001)."
     },
     {
-      "id": "new-coming",
-      "enabled": true,
-      "group": "2. Chặn theo hành trình",
-      "note": "Thao tác cuối là 'Xuống hàng kiện đến' → đơn mới chưa Quét phát hàng, app Chặn không bấm lưu (DkchAction.BlockeeNewComing, Rule 0c).",
-      "match": { "phase": "beforeSave", "outcomes": ["blockedNewComing"]},
-      "result": "Đơn mới tới chưa quét phát hàng. Kiểm tra lại hành trình",
-      "actRecommend": "Kiểm tra lại hành trình."
-
-    },
-    {
       "id": "success-dkch2",
       "enabled": true,
       "group": "3. Thao tác thành công",
       "note": "Đăng ký chuyển hoàn LẦN 2 thành công.",
       "match": { "phase": "afterSave", "outcomes": ["success"], "modes": ["DKCH2"] },
       "result": "Đã đăng ký chuyển hoàn lần 2.",
-      "actRecommend": "Kiểm tra trạng thái duyệt chuyển hoàn."
+      "actRecommend": "Kiểm tra trạng thái duyệt hoàn"
     },
     {
       "id": "success-dkch1",
@@ -171,6 +171,15 @@
       "match": { "phase": "beforeSave", "outcomes": ["blockedForward"] },
       "result": "Đơn chuyển tiếp.",
       "actRecommend": "Thực hiện quy trình chuyển tiếp"
+    },
+    {
+      "id": "blocked-new-arrival",
+      "enabled": true,
+      "group": "2. Chặn theo hành trình",
+      "note": "Thao tác cuối là 'Xuống hàng kiện đến'/'Gỡ bao' mà hành trình CHƯA có 'Quét phát hàng' lần nào → hàng vừa về kho, chưa từng đem đi phát nên không có gì để hoàn. App chặn, không bấm Lưu (DkchAction.BlockedNewArrival, Rule 0c). ĐÃ có Quét phát thì KHÔNG chặn — logic bình thường quyết định, chỉ dòng gợi ý bị đè qua bảng actionRecommends.",
+      "match": { "phase": "beforeSave", "outcomes": ["blockedNewArrival"] },
+      "result": "Đơn mới tới chưa Quét phát",
+      "actRecommend": "Kiểm tra lại hành trình"
     },
     {
       "id": "returning-in-transit",
@@ -251,7 +260,7 @@
       "id": "already-registered",
       "enabled": false,
       "group": "2. Đã ghi nhận đăng ký chuyển hoàn",
-      "note": "TẮT: app KHÔNG còn bỏ qua đơn đã đăng ký — vẫn thử Lưu 1 lần, JMS tự từ chối rồi app đổi sang 'Chuyển hoàn lần 2'. Vì vậy outcome 'skipped' không bao giờ được publish nữa. Giữ lại để tham chiếu.",
+      "note": "TẮT: app KHÔNG còn bỏ qua đơn đã đăng ký — vẫn thử Lưu 1 lần, JMS tự từ chối rồi app đổi sang 'Chuyển hoàn lần 2'. Lưu ý outcome 'skipped' VẪN được publish ở phase beforeSave (DkchAction.SkipAlreadyRegistered), nhưng case này tắt nên dòng đó để trống rồi bị kết quả Lưu ghi đè ngay — đúng ý. Bật lại nếu muốn thấy trạng thái trước lúc Lưu.",
       "match": { "phase": "beforeSave", "outcomes": ["skipped"] },
       "result": "Đã ghi nhận đăng ký chuyển hoàn ( {registerCount} lần ).",
       "actRecommend": ""

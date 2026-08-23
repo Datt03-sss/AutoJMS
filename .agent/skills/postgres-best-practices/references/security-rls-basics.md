@@ -38,13 +38,13 @@ set app.current_user_id = '123';
 select * from orders;  -- Only returns orders for user 123
 ```
 
-Policy for authenticated role:
+Policy for the application role:
 
 ```sql
 create policy orders_user_policy on orders
   for all
-  to authenticated
-  using (user_id = auth.uid());
+  to app_user
+  using (user_id = current_setting('app.user_id', true)::uuid);
 ```
 
 Reference: [Row Level Security](https://datahub.com/docs/guides/database/postgres/row-level-security)

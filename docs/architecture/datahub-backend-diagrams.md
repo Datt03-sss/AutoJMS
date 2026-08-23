@@ -352,6 +352,7 @@ flowchart TD
 | Chủ đề | File |
 |---|---|
 | Thiết kế đầy đủ, có lý do | [datahub-backend-design.vi.md](./datahub-backend-design.vi.md) |
+| Sơ đồ + bảng endpoint (request/response/mã lỗi) | [datahub-api-endpoints.vi.md](../api/datahub-api-endpoints.vi.md) |
 | Hợp đồng API | [openapi/datahub-v1.yaml](../../backend/datahub/openapi/datahub-v1.yaml) |
 | Triển khai VPS từng bước | [VPS_DEPLOY_GUIDE.vi.md](../../backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md) |
 | Schema thật | [migrations/001_core.sql](../../backend/datahub/migrations/001_core.sql) |

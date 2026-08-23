@@ -172,7 +172,7 @@ build-release.bat
 
 Ghi chú hiện trạng:
 
-- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, DataHub upload qua `DATAHUB_SERVICE_ROLE_KEY` hoặc DataHub CLI.
+- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, DataHub upload qua `DATAHUB_ADMIN_TOKEN` hoặc DataHub CLI.
 - File setup output hiện thấy trong repo có dạng `AutoJMS-stable-Setup.exe`; tên `AutoJMS-win-Setup.exe` là tên setup chuẩn cần verify theo từng pipeline.
 
 ## 7. File Velopack upload lên GitHub Release
@@ -460,7 +460,7 @@ VPS config API cp .\hash-manifest.json ss:///autojms-modules/manifest/hash-manif
 Hoặc upload qua REST nếu có service role key trong môi trường:
 
 ```powershell
-$env:DATAHUB_SERVICE_ROLE_KEY = "<set outside repo>"
+$env:DATAHUB_ADMIN_TOKEN = "<set outside repo>"
 ```
 
 Nhấn mạnh:

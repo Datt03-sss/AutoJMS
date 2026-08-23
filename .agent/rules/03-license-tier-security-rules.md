@@ -236,7 +236,7 @@ license.dat
 1. [ ] Token masking implemented (TODO in code)
 2. [ ] No secrets in source code
 3. [ ] .gitignore excludes sensitive files
-4. [ ] DataHub anon key is truly public-only
+4. [ ] DataHub device token comes from environment, never compiled into the binary
 5. [ ] Firebase rules allow read-only for anon
 
 ### Before Any Code Change

@@ -95,8 +95,8 @@ Không đặt các giá trị này vào tài liệu hoặc git.
 | `JWT_PRIVATE_KEY` | Tự tạo RSA private key | Render ký license JWT |
 | `JWT_PUBLIC_KEY` | Từ RSA private key | Render verify/chuẩn public key |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console | Render Admin SDK đọc/ghi RTDB |
-| `AUTOJMS_DATAHUB_DEVICE_TOKEN` | DataHub dashboard, Project Settings, API | Render trả về app để dùng RPC theo anon policy |
-| DataHub service-role key | DataHub dashboard | Chỉ dùng thủ công/server-side khi upload/admin, không trả về client |
+| `AUTOJMS_DATAHUB_DEVICE_TOKEN` | DataHub dashboard, Project Settings, API | Render trả về app; quyền hạn do VPS API quyết định theo device token |
+| `DATAHUB_ADMIN_TOKEN` | Cấu hình trên VPS | Chỉ dùng thủ công/server-side khi upload/admin, không trả về client |
 
 Nếu cần tạo JWT key pair bằng OpenSSL:
 
@@ -212,15 +212,14 @@ Tất cả phải là:
 200 <path>
 ```
 
-### 5.4. Kiểm Tra Anon Key Không Bị Sai
+### 5.4. Kiểm Tra Device Token Không Bị Sai
 
-Dùng device token, không dùng service-role key trong app.
+App chỉ được dùng device token; admin token không bao giờ nằm trong app.
 
 ```powershell
-$anon = "<AUTOJMS_DATAHUB_DEVICE_TOKEN>"
+$deviceToken = "<AUTOJMS_DATAHUB_DEVICE_TOKEN>"
 $headers = @{
-  apikey = $anon
-  Authorization = "Bearer $anon"
+  Authorization = "Bearer $deviceToken"
 }
 $base = "https://datahub.example.com"
 

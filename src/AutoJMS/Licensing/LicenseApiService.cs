@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -37,6 +38,20 @@ namespace AutoJMS
         public string DataHubBaseUrl { get; set; }
         public string DataHubDeviceToken { get; set; }
         public string DataHubSiteId { get; set; }
+        /// <summary>
+        /// Site code the license is scoped to, uppercased. This is what /api/v1/devices/enroll
+        /// matches on — <see cref="DataHubSiteId"/> is the GUID the enrollment hands back.
+        /// </summary>
+        public string DataHubSiteCode { get; set; }
+        /// <summary>
+        /// Short-lived signed assertion (v1rs256.…) that buys exactly one device token. It is a
+        /// credential: never log it, never persist it.
+        /// </summary>
+        public string DataHubLicenseAssertion { get; set; }
+        /// <summary>Unix seconds; 0 when the license server issued no assertion.</summary>
+        public long DataHubAssertionExpiresAt { get; set; }
+        /// <summary>When the device token stops working. Null when enrollment did not happen.</summary>
+        public DateTimeOffset? DataHubDeviceTokenExpiresAt { get; set; }
         public DataHubManifestUrls Manifests { get; set; }
         public VpsReleasesConfig Releases { get; set; }
         public string UpdateChannel { get; set; } = "stable";
@@ -82,6 +97,7 @@ eQIDAQAB
 
         private static string ApiVerify => ApiBase + "/api/verify-license";
         private static string ApiHeartbeat => ApiBase + "/api/heartbeat";
+        private static string ApiDataHubAssertion => ApiBase + "/api/datahub/license-assertion";
 
         public static string ApiBaseUrl => ApiBase;
 
@@ -222,7 +238,10 @@ eQIDAQAB
                     string updateChannel = "stable";
                     string datahubBaseUrl = null;
                     string datahubSiteId = null;
+                    string datahubSiteCode = null;
                     string datahubDeviceToken = null;
+                    string datahubAssertion = null;
+                    long datahubAssertionExpiresAt = 0;
                     DataHubManifestUrls manifests = null;
                     VpsReleasesConfig releases = null;
 
@@ -241,6 +260,13 @@ eQIDAQAB
                                 datahubSiteId = siteProp.GetString();
                             if (datahubProp.TryGetProperty("deviceToken", out var deviceProp))
                                 datahubDeviceToken = deviceProp.GetString();
+                            if (datahubProp.TryGetProperty("siteCode", out var siteCodeProp))
+                                datahubSiteCode = siteCodeProp.GetString();
+                            if (datahubProp.TryGetProperty("licenseAssertion", out var assertProp))
+                                datahubAssertion = assertProp.GetString();
+                            if (datahubProp.TryGetProperty("assertionExpiresAt", out var assertExpProp) &&
+                                assertExpProp.ValueKind == JsonValueKind.Number)
+                                datahubAssertionExpiresAt = assertExpProp.GetInt64();
                             if (datahubProp.TryGetProperty("manifests", out var manProp) && manProp.ValueKind == JsonValueKind.Object)
                                 manifests = JsonSerializer.Deserialize<DataHubManifestUrls>(manProp.GetRawText());
                             if (datahubProp.TryGetProperty("releases", out var relProp) && relProp.ValueKind == JsonValueKind.Object)
@@ -257,6 +283,13 @@ eQIDAQAB
                             datahubSiteId = siteProp2.GetString();
                         if (datahubDeviceToken == null && rootDataHub.TryGetProperty("deviceToken", out var deviceProp2))
                             datahubDeviceToken = deviceProp2.GetString();
+                        if (datahubSiteCode == null && rootDataHub.TryGetProperty("siteCode", out var siteCodeProp2))
+                            datahubSiteCode = siteCodeProp2.GetString();
+                        if (datahubAssertion == null && rootDataHub.TryGetProperty("licenseAssertion", out var assertProp2))
+                            datahubAssertion = assertProp2.GetString();
+                        if (datahubAssertionExpiresAt == 0 && rootDataHub.TryGetProperty("assertionExpiresAt", out var assertExpProp2) &&
+                            assertExpProp2.ValueKind == JsonValueKind.Number)
+                            datahubAssertionExpiresAt = assertExpProp2.GetInt64();
                         if (manifests == null && rootDataHub.TryGetProperty("manifests", out var manProp2) && manProp2.ValueKind == JsonValueKind.Object)
                             manifests = JsonSerializer.Deserialize<DataHubManifestUrls>(manProp2.GetRawText());
                         if (releases == null && rootDataHub.TryGetProperty("releases", out var relProp2) && relProp2.ValueKind == JsonValueKind.Object)
@@ -264,6 +297,33 @@ eQIDAQAB
                     }
 
                     AppLogger.Info($"DataHub config: baseUrl={datahubBaseUrl?.Substring(0, Math.Min(40, datahubBaseUrl?.Length ?? 0))}, channel={updateChannel}");
+
+                    // The license server never hands out a device token — it only proves the
+                    // license is real. Trade the assertion for a token here so Program.cs keeps
+                    // calling DataHubClient.Configure with exactly the same three arguments.
+                    if (string.IsNullOrWhiteSpace(datahubSiteCode))
+                        datahubSiteCode = (middleCode ?? "").Trim().ToUpperInvariant();
+
+                    DateTimeOffset? deviceTokenExpiresAt = null;
+                    if (string.IsNullOrWhiteSpace(datahubDeviceToken) &&
+                        !string.IsNullOrWhiteSpace(datahubBaseUrl) &&
+                        !string.IsNullOrWhiteSpace(datahubAssertion) &&
+                        !string.IsNullOrWhiteSpace(datahubSiteCode))
+                    {
+                        var enrollment = await EnrollDataHubDeviceAsync(
+                            datahubBaseUrl, datahubAssertion, datahubSiteCode, BuildDeviceName(hwid), ct);
+
+                        if (enrollment != null)
+                        {
+                            datahubDeviceToken = enrollment.DeviceToken;
+                            // The enroll response is authoritative for the site GUID: the license
+                            // record's siteId is often just the middle code, which Guid.TryParse
+                            // rejects, leaving every DataHub call unauthenticated.
+                            datahubSiteId = enrollment.SiteId;
+                            datahubSiteCode = enrollment.SiteCode;
+                            deviceTokenExpiresAt = enrollment.ExpiresAt;
+                        }
+                    }
 
                     // Save dataSpreadsheetId to AppConfig
                     if (!string.IsNullOrWhiteSpace(dataSpreadsheetId))
@@ -285,6 +345,10 @@ eQIDAQAB
                         DataHubBaseUrl = datahubBaseUrl,
                         DataHubSiteId = datahubSiteId,
                         DataHubDeviceToken = datahubDeviceToken,
+                        DataHubSiteCode = datahubSiteCode,
+                        DataHubLicenseAssertion = datahubAssertion,
+                        DataHubAssertionExpiresAt = datahubAssertionExpiresAt,
+                        DataHubDeviceTokenExpiresAt = deviceTokenExpiresAt,
                         Manifests = manifests,
                         Releases = releases,
                         UpdateChannel = updateChannel,
@@ -336,9 +400,219 @@ eQIDAQAB
 
             return TokenRedactor.RedactText(Regex.Replace(
                 body,
-                "(\"(?:payload|accessToken|token|deviceToken|apikey|serviceKey)\"\\s*:\\s*\")([^\"]+)(\")",
+                "(\"(?:payload|accessToken|token|deviceToken|licenseAssertion|apikey|serviceKey)\"\\s*:\\s*\")([^\"]+)(\")",
                 "$1<redacted>$3",
                 RegexOptions.IgnoreCase));
+        }
+
+        // ─── DataHub device enrollment ────────────────────────────────────────
+        //
+        // Split of responsibilities: Render proves the license and signs a short-lived
+        // assertion; the DataHub API trades that assertion for a device token. The desktop app
+        // is the only place the two meet, so the exchange lives here rather than in
+        // DataHubClient (which must stay usable with a token from an env var alone).
+
+        private sealed class DataHubEnrollment
+        {
+            public string DeviceToken { get; set; }
+            public string SiteId { get; set; }
+            public string SiteCode { get; set; }
+            public DateTimeOffset ExpiresAt { get; set; }
+        }
+
+        private static readonly object DataHubEnrollLock = new object();
+        private static string _datahubBaseUrl = string.Empty;
+        private static string _datahubSiteCode = string.Empty;
+        private static DateTimeOffset _datahubTokenExpiresAt = DateTimeOffset.MinValue;
+
+        /// <summary>Re-enroll this long before the device token actually dies.</summary>
+        private static readonly TimeSpan DeviceTokenRenewLead = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        /// A stable per-machine name. Enrollment is keyed on (site_id, name): a stable name
+        /// rotates the existing device row and costs no seat, while a name that changes on every
+        /// run burns one seat per launch until the site hits SEAT_LIMIT_REACHED.
+        /// </summary>
+        private static string BuildDeviceName(string hwid)
+        {
+            string machine = (Environment.MachineName ?? "PC").Trim();
+            if (machine.Length == 0) machine = "PC";
+
+            string suffix = new string((hwid ?? "")
+                .Where(char.IsLetterOrDigit)
+                .Take(8)
+                .ToArray())
+                .ToUpperInvariant();
+
+            string name = suffix.Length > 0 ? machine + "-" + suffix : machine;
+            return name.Length > 128 ? name.Substring(0, 128) : name;
+        }
+
+        /// <summary>
+        /// Trades a signed license assertion for a DataHub device token. Returns null on any
+        /// failure: enrollment must never turn a valid license into a failed activation — the
+        /// app simply stays local-only until the next attempt.
+        /// </summary>
+        private static async Task<DataHubEnrollment> EnrollDataHubDeviceAsync(
+            string baseUrl, string assertion, string siteCode, string deviceName, CancellationToken ct)
+        {
+            string endpoint = baseUrl.TrimEnd('/') + "/api/v1/devices/enroll";
+            try
+            {
+                var payload = new { siteCode = siteCode, deviceName = deviceName, role = "operator" };
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", assertion);
+                req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                using var res = await Http.SendAsync(req, ct);
+                string body = await res.Content.ReadAsStringAsync(ct);
+
+                if (!res.IsSuccessStatusCode)
+                {
+                    // The API answers with problem+json carrying a machine-readable `code`;
+                    // surfacing it is the difference between "seat limit" and "wrong channel".
+                    string code = "UNKNOWN";
+                    try
+                    {
+                        using var problem = JsonDocument.Parse(body);
+                        if (problem.RootElement.TryGetProperty("code", out var codeProp))
+                            code = codeProp.GetString() ?? "UNKNOWN";
+                    }
+                    catch { /* not problem+json */ }
+
+                    AppLogger.Warning($"DataHub enroll failed status={(int)res.StatusCode} code={code} site={siteCode}");
+                    return null;
+                }
+
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+
+                string deviceToken = root.TryGetProperty("deviceToken", out var tokenProp) ? tokenProp.GetString() : null;
+                if (string.IsNullOrWhiteSpace(deviceToken))
+                {
+                    AppLogger.Warning("DataHub enroll returned no device token.");
+                    return null;
+                }
+
+                var enrollment = new DataHubEnrollment
+                {
+                    DeviceToken = deviceToken,
+                    SiteId = root.TryGetProperty("siteId", out var siteIdProp) ? siteIdProp.GetString() : null,
+                    SiteCode = root.TryGetProperty("siteCode", out var siteCodeProp) ? siteCodeProp.GetString() : siteCode,
+                    ExpiresAt = root.TryGetProperty("expiresAt", out var expProp) && expProp.TryGetDateTimeOffset(out var exp)
+                        ? exp
+                        : DateTimeOffset.UtcNow.AddHours(24)
+                };
+
+                RememberDataHubEnrollment(baseUrl, enrollment.SiteCode, enrollment.ExpiresAt);
+                AppLogger.Info($"DataHub enrolled device={deviceName} site={enrollment.SiteCode} " +
+                               $"token={TokenRedactor.MaskToken(deviceToken)} expiresAt={enrollment.ExpiresAt:u}");
+                return enrollment;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("DataHub enroll error: " + ex.Message);
+                return null;
+            }
+        }
+
+        private static void RememberDataHubEnrollment(string baseUrl, string siteCode, DateTimeOffset expiresAt)
+        {
+            lock (DataHubEnrollLock)
+            {
+                _datahubBaseUrl = baseUrl ?? string.Empty;
+                _datahubSiteCode = siteCode ?? string.Empty;
+                _datahubTokenExpiresAt = expiresAt;
+            }
+        }
+
+        /// <summary>
+        /// Asks Render for a fresh assertion using the access token the heartbeat keeps alive.
+        /// Returns null when the deployment has no signing key (503) or the session is gone.
+        /// </summary>
+        private static async Task<string> FetchDataHubAssertionAsync(CancellationToken ct)
+        {
+            string accessToken = CurrentAccessToken;
+            if (string.IsNullOrWhiteSpace(accessToken)) return null;
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, ApiDataHubAssertion);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+                using var res = await Http.SendAsync(req, ct);
+                string body = await res.Content.ReadAsStringAsync(ct);
+
+                if (!res.IsSuccessStatusCode)
+                {
+                    AppLogger.Warning($"DataHub assertion refresh failed status={(int)res.StatusCode}");
+                    return null;
+                }
+
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+
+                // apiBaseUrl / siteCode may have moved since activation (a site migrated to a new
+                // VPS); trust the fresh answer over the remembered one.
+                string baseUrl = root.TryGetProperty("apiBaseUrl", out var urlProp) ? urlProp.GetString() : null;
+                string siteCode = root.TryGetProperty("siteCode", out var siteProp) ? siteProp.GetString() : null;
+                lock (DataHubEnrollLock)
+                {
+                    if (!string.IsNullOrWhiteSpace(baseUrl)) _datahubBaseUrl = baseUrl;
+                    if (!string.IsNullOrWhiteSpace(siteCode)) _datahubSiteCode = siteCode;
+                }
+
+                return root.TryGetProperty("licenseAssertion", out var assertProp) ? assertProp.GetString() : null;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("DataHub assertion refresh error: " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Renews the DataHub device token before it expires. Safe to call on every heartbeat:
+        /// it returns immediately unless the token is inside the renew window. Called from the
+        /// heartbeat loop because a station can stay open for days on a 24h device token, and a
+        /// silently expired token turns every sync into a 401 with no visible symptom.
+        /// </summary>
+        public static async Task<bool> RenewDataHubDeviceTokenIfNeededAsync(string hwid, CancellationToken ct)
+        {
+            string baseUrl, siteCode;
+            DateTimeOffset expiresAt;
+            lock (DataHubEnrollLock)
+            {
+                baseUrl = _datahubBaseUrl;
+                siteCode = _datahubSiteCode;
+                expiresAt = _datahubTokenExpiresAt;
+            }
+
+            if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(siteCode)) return false;
+            if (expiresAt == DateTimeOffset.MinValue) return false;
+            if (DateTimeOffset.UtcNow < expiresAt - DeviceTokenRenewLead) return false;
+
+            string assertion = await FetchDataHubAssertionAsync(ct);
+            if (string.IsNullOrWhiteSpace(assertion)) return false;
+
+            lock (DataHubEnrollLock)
+            {
+                baseUrl = _datahubBaseUrl;
+                siteCode = _datahubSiteCode;
+            }
+
+            var enrollment = await EnrollDataHubDeviceAsync(baseUrl, assertion, siteCode, BuildDeviceName(hwid), ct);
+            if (enrollment == null) return false;
+
+            // Configure tears down the realtime subscription, so the next sync cycle reconnects
+            // the hub with the new token instead of retrying forever on a dead one.
+            DataHubClient.Configure(baseUrl, enrollment.DeviceToken, enrollment.SiteId);
+            AppLogger.Info("DataHub device token renewed.");
+            return true;
         }
 
         public static async Task<HeartbeatResult> SendHeartbeatOnceAsync(
@@ -489,6 +763,18 @@ eQIDAQAB
                             {
                                 _currentToken = result.NewToken;
                                 _onTokenUpdate(result.NewToken);
+                            }
+                            // Piggyback on the heartbeat: this is the only loop guaranteed to be
+                            // running while the app is open, and it already holds a fresh access
+                            // token — exactly what the assertion endpoint asks for.
+                            try
+                            {
+                                await LicenseApiService.RenewDataHubDeviceTokenIfNeededAsync(_deviceId, ct);
+                            }
+                            catch (OperationCanceledException) { throw; }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Warning("DataHub token renewal skipped: " + ex.Message);
                             }
                             break;
 

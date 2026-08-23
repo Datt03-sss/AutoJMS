@@ -93,9 +93,9 @@ This document details the architectural modules, their respective folders, prima
 1. **WebView2 Multithread Safety**:
    - WebView2 requires all calls to run strictly on the WinForms UI thread.
    - *Risk*: Spawning background task threads that invoke WebView2 controls directly will crash the app.
-2. **DataHub Anon Key Abuse**:
-   - The public DataHub key is hardcoded.
-   - *Risk*: Relies entirely on DataHub Row Level Security (RLS) policies. If RLS is misconfigured, unauthorized clients could manipulate the global waybill tables.
+2. **DataHub device token leak**:
+   - `DataHubClient` is API-only: base URL and device token come from the environment, nothing is compiled in.
+   - *Risk*: a leaked device token lets someone call the VPS API as that site. Authorisation lives in the API, not in the client, so the fix is to rotate the token server-side.
 3. **Obfuscation Conflict**:
    - Post-build obfuscation is done by .NET Reactor.
    - *Risk*: Refactoring/renaming classes or using Reflection might cause startup failures after Reactor obfuscation is applied.

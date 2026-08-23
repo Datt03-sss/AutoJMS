@@ -554,7 +554,7 @@ Potential inconsistency:
 
 `DataHubClient` still exists and is used by older sync paths:
 
-- Hardcoded DataHub URL and anon key exist in source.
+- ~~Hardcoded DataHub URL and anon key exist in source.~~ ĐÃ XỬ LÝ: URL và device token nay đọc từ biến môi trường, không còn trong source.
 - RPCs:
   - `try_acquire_inventory_lease`
   - `refresh_inventory_lease`
@@ -572,7 +572,7 @@ Current product direction from recent work:
 Risk:
 
 - Existing `Main` still contains DataHub inventory sync methods, but `TierRuntimePolicy` should prevent BASE background sync.
-- Hardcoded anon key and missing/mismatched DataHub migration coverage are known risks.
+- ~~Hardcoded anon key~~ đã xử lý (đọc từ biến môi trường); riêng độ phủ migration DataHub vẫn là rủi ro cần rà.
 
 ## 16. Google Sheets
 
@@ -811,7 +811,7 @@ Security/config:
 
 - JMS authToken may be logged in full via `JmsAuthTokenService.LogToken()`; fix before production logging.
 - Google `service_account.json` is sensitive. Do not share contents externally.
-- DataHub anon key is hardcoded in `DataHubClient.cs`; verify RLS/RPC permissions.
+- ~~DataHub anon key is hardcoded in `DataHubClient.cs`~~ ĐÃ XỬ LÝ: API-only, token lấy từ biến môi trường; phân quyền do VPS API chịu.
 - License server public key/private key rotation model should be reviewed before public distribution.
 
 Architecture:

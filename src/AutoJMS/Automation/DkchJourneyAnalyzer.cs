@@ -41,7 +41,14 @@ namespace AutoJMS
         /// Thao tác cuối là "Đang chuyển hoàn" — đơn đã trên đường hoàn. Không đăng ký lại;
         /// việc còn lại là in bill chuyển hoàn.
         /// </summary>
-        BlockedReturning = 6
+        BlockedReturning = 6,
+
+        /// <summary>
+        /// Thao tác cuối là "Xuống hàng kiện đến"/"Gỡ bao" mà hành trình CHƯA có
+        /// "Quét phát hàng" lần nào — hàng vừa về kho, chưa từng đem đi phát nên không có
+        /// gì để hoàn. Cấm đăng ký, không bấm Lưu.
+        /// </summary>
+        BlockedNewArrival = 7
     }
 
     /// <summary>
@@ -172,13 +179,14 @@ namespace AutoJMS
         public int StepsDone => Steps.Count(s => s.State == DkchStepState.Done);
 
         /// <summary>
-        /// CHỈ năm trạng thái này mới không được bấm Lưu. Mọi trạng thái khác đều phải thử đăng ký.
+        /// CHỈ sáu trạng thái này mới không được bấm Lưu. Mọi trạng thái khác đều phải thử đăng ký.
         /// </summary>
         public bool IsBlocked => Action == DkchAction.BlockedPendingProblemScan
                               || Action == DkchAction.BlockedNoData
                               || Action == DkchAction.BlockedForward
                               || Action == DkchAction.BlockedSignedCpn
-                              || Action == DkchAction.BlockedReturning;
+                              || Action == DkchAction.BlockedReturning
+                              || Action == DkchAction.BlockedNewArrival;
 
         /// <summary>
         /// Được phép bấm Lưu.
@@ -200,6 +208,7 @@ namespace AutoJMS
             DkchAction.BlockedForward => "⛔ CHẶN — " + Reason,
             DkchAction.BlockedSignedCpn => "⛔ CHẶN — " + Reason,
             DkchAction.BlockedReturning => "⛔ CHẶN — " + Reason,
+            DkchAction.BlockedNewArrival => "⛔ CHẶN — " + Reason,
             _ => "⚠ KHÔNG XÁC ĐỊNH — " + Reason
         };
 
@@ -216,6 +225,7 @@ namespace AutoJMS
             DkchAction.BlockedForward => "⛔ Đơn chuyển tiếp — không đăng ký chuyển hoàn",
             DkchAction.BlockedSignedCpn => "⛔ Đơn đã ký nhận — không đăng ký chuyển hoàn",
             DkchAction.BlockedReturning => "⛔ Đơn đang chuyển hoàn — không đăng ký lại",
+            DkchAction.BlockedNewArrival => "⛔ Đơn mới tới chưa Quét phát — không đăng ký chuyển hoàn",
             _ => "⚠ Không đủ dữ liệu hành trình"
         };
 
@@ -463,7 +473,21 @@ namespace AutoJMS
                 return decision;
             }
 
-            // (c) Kiện vấn đề vì ĐỔI ĐỊA CHỈ → đơn chuyển tiếp.
+            // (c) Hàng vừa về kho mà CHƯA TỪNG "Quét phát hàng" → chưa có gì để hoàn.
+            //     Chỉ chặn ở nhánh này. Nếu đã từng quét phát thì để logic bình thường
+            //     quyết định (Rule 1/2) — chủ dự án chốt vậy; riêng dòng gợi ý được đè
+            //     thành "Kiểm tra lại hành trình" qua bảng actionRecommends trong config,
+            //     nên không phải nhân bản câu đó vào từng case.
+            if (last.EventKind == Kind.Arrival && lastDispatch < 0)
+            {
+                decision.Action = DkchAction.BlockedNewArrival;
+                decision.Reason =
+                    $"Đơn mới tới ({FormatTime(last.Detail)}) và chưa có 'Quét phát hàng' " +
+                    "lần nào — chưa đăng ký chuyển hoàn được.";
+                return decision;
+            }
+
+            // (d) Kiện vấn đề vì ĐỔI ĐỊA CHỈ → đơn chuyển tiếp.
             if (lastProblem >= 0 && IsForwardReason(decision.ProblemScanReason))
             {
                 decision.Action = DkchAction.BlockedForward;
@@ -725,7 +749,10 @@ namespace AutoJMS
                 return Kind.Noise;
 
             // Đăng ký chuyển hoàn (kể cả lần 2) — kiểm tra TRƯỚC các nhãn "chuyển hoàn" khác.
-            if (Has(t, "退件登记", "再次登记", "Đăng ký chuyển hoàn"))
+            // "Đăng ký CH lần 2" trước đây rơi xuống Kind.Other vì không chứa cụm
+            // "Đăng ký chuyển hoàn" — hệ quả là chip ĐKCH đếm thiếu và lastRegister trỏ
+            // sai mốc. Nó đúng là một lần đăng ký nên phải nhận diện ở đây.
+            if (Has(t, "退件登记", "再次登记", "Đăng ký chuyển hoàn", "Đăng ký CH lần 2", "Đăng ký CH lần"))
                 return Kind.ReturnRegister;
 
             if (Has(t, "退件签收", "Ký nhận chuyển hoàn")) return Kind.SignedReturn;

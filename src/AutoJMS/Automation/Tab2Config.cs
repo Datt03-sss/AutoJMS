@@ -33,8 +33,21 @@ namespace AutoJMS
         public string Phase { get; set; } = "beforeSave";
 
         /// <summary>
-        /// pending | blocked | skipped | skippedInSession | success | failed | unverified |
-        /// noData | modeSwitch | modeSwitchFailed | error
+        /// Danh sách ĐÚNG theo những gì DkchManager thực sự phát ra — sửa ở đây mỗi khi
+        /// thêm nhánh trong PublishDecision, vì cấu hình khớp theo đúng các chuỗi này và
+        /// gõ sai một ký tự là case im lặng không bao giờ chạy.
+        /// <para>
+        /// Trước khi Lưu: readyToRegister | skipped | blocked | blockedViolation |
+        /// blockedNoProblemScan | blockedForward | blockedSignedCpn | blockedReturning |
+        /// blockedNewArrival | noData
+        /// </para>
+        /// <para>
+        /// Sau khi Lưu: success | failed | unverified | noData | modeSwitchFailed | error
+        /// </para>
+        /// <para>
+        /// KHÔNG còn phát: skippedInSession (app không bỏ qua mã đã lưu trong phiên nữa),
+        /// pending, modeSwitch.
+        /// </para>
         /// </summary>
         public string Outcome { get; set; } = "";
 
@@ -182,6 +195,19 @@ namespace AutoJMS
         /// </summary>
         [JsonPropertyName("actionMessages")]
         public Dictionary<string, string> ActionMessages { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Bảng GỢI Ý theo tên thao tác cuối. Khác <see cref="ActionMessages"/> ở chỗ đây là
+        /// lớp ĐÈ, không phải lớp nền: case nào khớp thì dòng kết quả vẫn của case đó, nhưng
+        /// dòng gợi ý bị thay bằng câu ở đây.
+        /// <para>
+        /// Cần vậy vì có thao tác mà gợi ý luôn cố định bất kể đơn đi nhánh nghiệp vụ nào —
+        /// ví dụ hàng vừa về kho thì gợi ý luôn là "Kiểm tra lại hành trình", dù logic bình
+        /// thường có chặn hay không. Không có lớp này thì phải nhân bản câu đó vào từng case.
+        /// </para>
+        /// </summary>
+        [JsonPropertyName("actionRecommends")]
+        public Dictionary<string, string> ActionRecommends { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
         [JsonPropertyName("cases")] public List<Tab2Case> Cases { get; set; } = new();
         [JsonPropertyName("fallback")] public Tab2Fallback Fallback { get; set; } = new();
@@ -361,6 +387,14 @@ namespace AutoJMS
 
                     cfg.Cases ??= new List<Tab2Case>();
                     cfg.Fallback ??= new Tab2Fallback();
+
+                    // Một phần tử null trong mảng "cases" (hay gặp khi sửa tay JSON) từng làm
+                    // dòng dưới ném NullReferenceException. Khối catch bắt được rồi rơi xuống
+                    // Default() — tức là MẤT SẠCH mọi case chỉ vì một chỗ sai cú pháp, mà log
+                    // chỉ ghi warning. Nay loại null ra và nói rõ trong log.
+                    int nulls = cfg.Cases.RemoveAll(c => c == null);
+                    if (nulls > 0)
+                        AppLogger.Warning($"Tab2Config: bỏ qua {nulls} case rỗng trong {path}.");
                     foreach (var c in cfg.Cases) c.Match ??= new Tab2Match();
 
                     // System.Text.Json THAY THẾ instance Dictionary nên comparer OrdinalIgnoreCase
@@ -370,6 +404,8 @@ namespace AutoJMS
                     cfg.JmsMessages = Normalize(cfg.JmsMessages);
                     if (cfg.ActionMessages != null)
                         cfg.ActionMessages = new Dictionary<string, string>(cfg.ActionMessages, StringComparer.OrdinalIgnoreCase);
+                    if (cfg.ActionRecommends != null)
+                        cfg.ActionRecommends = new Dictionary<string, string>(cfg.ActionRecommends, StringComparer.OrdinalIgnoreCase);
                     cfg.SaveButtonTitles ??= new List<string>();
                     cfg.CollapseHeaders ??= new List<string>();
 
@@ -392,6 +428,10 @@ namespace AutoJMS
         /// </summary>
         public static Tab2Config Default() => new Tab2Config
         {
+            // PHẢI có một dòng cho MỌI outcome chặn. Fallback là "{message}", mà lúc chặn thì
+            // chưa bấm Lưu nên chưa có message nào của JMS — thiếu case là dòng kết quả TRỐNG
+            // và người dùng không biết vì sao app không đăng ký. Danh sách này phải khớp với
+            // các nhánh trong DkchManager.PublishDecision.
             Cases = new List<Tab2Case>
             {
                 new Tab2Case { Id = "success", Result = "Đã đăng ký chuyển hoàn.",
@@ -400,8 +440,27 @@ namespace AutoJMS
                 new Tab2Case { Id = "blocked-violation",
                     Result = "Chưa quét kiện vấn đề, vi phạm tự ý chuyển hoàn, chặn đăng ký chuyển hoàn.",
                     Match = new Tab2Match { Outcomes = { "blockedViolation" } } },
+                new Tab2Case { Id = "blocked-no-problem-scan",
+                    Result = "Chưa kiện vấn đề không thể đăng ký chuyển hoàn.",
+                    ActRecommend = "Quét kiện vấn đề trước, rồi mới đăng ký chuyển hoàn.",
+                    Match = new Tab2Match { Outcomes = { "blockedNoProblemScan" } } },
                 new Tab2Case { Id = "blocked", Result = "Chưa quét kiện vấn đề, chặn đăng ký chuyển hoàn.",
                     Match = new Tab2Match { Outcomes = { "blocked" } } },
+                new Tab2Case { Id = "blocked-forward", Result = "Đơn chuyển tiếp.",
+                    ActRecommend = "Thực hiện quy trình chuyển tiếp",
+                    Match = new Tab2Match { Outcomes = { "blockedForward" } } },
+                new Tab2Case { Id = "signed-cpn", Result = "Đơn đã ký nhận",
+                    ActRecommend = "Thực hiện in đơn hoàn 1 phần (-001).",
+                    Match = new Tab2Match { Outcomes = { "blockedSignedCpn" } } },
+                new Tab2Case { Id = "returning-in-transit", Result = "Đơn đang chuyển hoàn.",
+                    ActRecommend = "Tiến hành in bill chuyển hoàn.",
+                    Match = new Tab2Match { Outcomes = { "blockedReturning" } } },
+                new Tab2Case { Id = "blocked-new-arrival", Result = "Đơn mới tới chưa Quét phát",
+                    ActRecommend = "Kiểm tra lại hành trình",
+                    Match = new Tab2Match { Outcomes = { "blockedNewArrival" } } },
+                new Tab2Case { Id = "no-data", Result = "Không đọc được hành trình — không đăng ký mù.",
+                    ActRecommend = "Kiểm tra lại hành trình",
+                    Match = new Tab2Match { Outcomes = { "noData" } } },
                 new Tab2Case { Id = "failed", Result = "{message}",
                     Match = new Tab2Match { Outcomes = { "failed" } } }
             }
@@ -414,51 +473,88 @@ namespace AutoJMS
 
             string stats = ctx.HasJourney ? Format(StatsLine, ctx) : "";
 
+            DkchResultText? text = null;
+
             foreach (var c in Cases)
             {
                 if (c == null || !c.Enabled) continue;
                 if (!Matches(c.Match, ctx)) continue;
 
-                return new DkchResultText
+                text = new DkchResultText
                 {
                     CaseId = c.Id ?? "",
                     Result = Format(c.Result, ctx),
                     ActRecommend = Format(c.ActRecommend, ctx),
                     Stats = stats
                 };
+                break;
             }
 
-            // Lớp nền theo tên thao tác — chỉ dùng khi không case nào khớp.
-            string byAction = ActionMessageFor(ctx.LastActionType);
-            if (!string.IsNullOrWhiteSpace(byAction))
+            if (text == null)
             {
-                return new DkchResultText
-                {
-                    CaseId = "actionMessage",
-                    Result = Format(byAction, ctx),
-                    ActRecommend = "",
-                    Stats = stats
-                };
+                // Lớp nền theo tên thao tác — chỉ dùng khi không case nào khớp.
+                string byAction = ActionMessageFor(ctx.LastActionType);
+                text = !string.IsNullOrWhiteSpace(byAction)
+                    ? new DkchResultText
+                    {
+                        CaseId = "actionMessage",
+                        Result = Format(byAction, ctx),
+                        ActRecommend = "",
+                        Stats = stats
+                    }
+                    : new DkchResultText
+                    {
+                        CaseId = "fallback",
+                        Result = Format(Fallback.Result, ctx),
+                        ActRecommend = Format(Fallback.ActRecommend, ctx),
+                        Stats = stats
+                    };
             }
 
-            return new DkchResultText
+            // Lớp ĐÈ gợi ý theo tên thao tác — áp SAU cùng, cho cả ba đường ở trên.
+            // Trước đây ba nhánh đều return ngay nên thêm lớp này phải sửa ba chỗ; gom về
+            // một biến rồi đè một lần thì không có nhánh nào bị bỏ sót.
+            //
+            // NHƯNG không đè khi đơn BỊ CHẶN: gợi ý của case chặn là việc bắt buộc phải làm
+            // ("Thực hiện quy trình chuyển tiếp"), còn lớp đè chỉ là câu chung theo thao tác
+            // cuối. Đơn chuyển tiếp mà thao tác cuối là kiện đến từng bị mất chỉ dẫn thật,
+            // thay bằng "Kiểm tra lại hành trình" — chặn thì để case nói.
+            // Các case chặn đều đã tự mang gợi ý riêng nên không mất gì.
+            if (!IsBlockedOutcome(ctx.Outcome))
             {
-                CaseId = "fallback",
-                Result = Format(Fallback.Result, ctx),
-                ActRecommend = Format(Fallback.ActRecommend, ctx),
-                Stats = stats
-            };
+                string overrideTip = LookupByAction(ActionRecommends, ctx.LastActionType);
+                if (!string.IsNullOrWhiteSpace(overrideTip))
+                    text.ActRecommend = Format(overrideTip, ctx);
+            }
+
+            return text;
         }
 
+        /// <summary>
+        /// Đơn có bị chặn không, suy ra TỪ TÊN OUTCOME. Mọi nhánh chặn trong
+        /// DkchManager.PublishDecision đều đặt tên bắt đầu bằng "blocked" (blocked,
+        /// blockedViolation, blockedNoProblemScan, blockedForward, blockedSignedCpn,
+        /// blockedReturning, blockedNewArrival) — giữ đúng quy ước đó khi thêm nhánh mới.
+        /// </summary>
+        private static bool IsBlockedOutcome(string? outcome)
+            => !string.IsNullOrWhiteSpace(outcome)
+               && outcome.Trim().StartsWith("blocked", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>Tra thông điệp theo tên thao tác; khoá dài khớp trước để không tô nhầm.</summary>
-        internal string ActionMessageFor(string action)
+        internal string ActionMessageFor(string action) => LookupByAction(ActionMessages, action);
+
+        /// <summary>
+        /// Tra một bảng khoá-là-mẩu-tên-thao-tác. Khoá DÀI khớp trước: "Ký nhận chuyển hoàn"
+        /// phải thắng "Ký nhận" chứ không phụ thuộc thứ tự khai báo trong file.
+        /// Dùng chung cho actionMessages và actionRecommends để hai bảng không lệch luật tra.
+        /// </summary>
+        private static string LookupByAction(Dictionary<string, string> table, string action)
         {
-            if (string.IsNullOrWhiteSpace(action) || ActionMessages == null || ActionMessages.Count == 0)
-                return "";
+            if (string.IsNullOrWhiteSpace(action) || table == null || table.Count == 0) return "";
             string t = action.Trim();
             string best = "";
             int bestLen = -1;
-            foreach (var kv in ActionMessages)
+            foreach (var kv in table)
             {
                 if (string.IsNullOrWhiteSpace(kv.Key)) continue;
                 if (t.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) < 0) continue;

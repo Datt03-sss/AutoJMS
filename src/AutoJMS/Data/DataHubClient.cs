@@ -1,5 +1,6 @@
 using AutoJMS.Diagnostics;
 using AutoJMS.Data;
+using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -30,6 +31,31 @@ public enum DataHubLeaseOutcome
 }
 
 /// <summary>
+/// One page of the site change feed, already projected onto local row shape.
+/// </summary>
+public sealed class DataHubChangePage
+{
+    public DataHubChangePage(List<JObject> rows, long nextAfter, bool hasMore, bool resynced)
+    {
+        Rows = rows ?? new List<JObject>();
+        NextAfter = nextAfter;
+        HasMore = hasMore;
+        Resynced = resynced;
+    }
+
+    public List<JObject> Rows { get; }
+
+    /// <summary>Cursor to persist; the next read starts strictly after it.</summary>
+    public long NextAfter { get; }
+
+    /// <summary>More rows wait past <see cref="NextAfter"/> — pull again without waiting a full interval.</summary>
+    public bool HasMore { get; }
+
+    /// <summary>The cursor was older than the retained range, so <see cref="Rows"/> is a full snapshot.</summary>
+    public bool Resynced { get; }
+}
+
+/// <summary>
 /// API-only data adapter. The desktop never connects to PostgreSQL directly;
 /// all shared state is sent to the DataHub API hosted on the VPS.
 ///
@@ -39,6 +65,9 @@ public enum DataHubLeaseOutcome
 ///   * POST /lease/release  — body { leaderTerm }; the server then bumps the term.
 ///   * POST /jms/ingest     — bulk; requires the X-Leader-Term header (409 without it).
 ///   * POST /jms/observations — interactive; unfenced.
+///   * GET  /changes?after=&lt;change_seq&gt; — delta feed; 409 RESYNC_REQUIRED when the cursor
+///                            is older than the retained range, then /projections/snapshot.
+///   * WS   /hubs/site      — doorbell; the server invokes the client method "change".
 /// Both ingest paths accept exactly the JmsObservation shape and the API runs with
 /// JsonUnmappedMemberHandling.Disallow, so an extra JSON member is a hard 400. Every
 /// outgoing row is therefore normalized in <see cref="ToIngestItem"/> and its original
@@ -58,7 +87,21 @@ public static class DataHubClient
     private static readonly object MachineIdLock = new();
     private static string _machineId;
 
+    private static readonly System.Threading.SemaphoreSlim RealtimeGate = new(1, 1);
+    private static HubConnection _hubConnection;
+    private static string _hubEndpoint;
+    private static volatile Action _realtimeCallback;
+
     private static int _auxiliaryWarningLogged;
+
+    /// <summary>The only entity type the change feed publishes today.</summary>
+    private const string WaybillProjectionEntity = "waybill_projection";
+
+    /// <summary>
+    /// JMS writes naive local time and the local tables store it that way. Vietnam has no DST,
+    /// so a fixed offset is exact and keeps this off the Windows time-zone database.
+    /// </summary>
+    private static readonly TimeSpan JmsUtcOffset = TimeSpan.FromHours(7);
 
     /// <summary>
     /// Stable per-installation identity. It used to embed a fresh Guid per process, which
@@ -116,6 +159,9 @@ public static class DataHubClient
             _siteId = FirstNonEmpty(siteId, Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_SITE_ID")) ?? string.Empty;
         }
         lock (LeaseLock) _leaderTerm = 0;
+        // Any live hub connection was authorized with the previous token and site, so it is
+        // dropped here; the next sync cycle re-subscribes with what we were just given.
+        UnsubscribeSiteChanges();
         AppLogger.Info("DataHub API configured baseUrl=" + _baseUrl + ", token=" + (string.IsNullOrWhiteSpace(_deviceToken) ? "<missing>" : TokenRedactor.MaskToken(_deviceToken)));
     }
 
@@ -200,9 +246,6 @@ public static class DataHubClient
     public static Task<int> AppendWaybillEventsAsync(string siteCode, IReadOnlyList<object> events) =>
         AuxiliaryEntityNotSupported("events", events);
 
-    public static Task<List<JObject>> PullWaybillDeltaAsync(string siteCode, DateTime sinceUtc, int limit = 1000) =>
-        Task.FromResult(new List<JObject>());
-
     public static Task<List<JObject>> PullOrderNotesAsync(string siteCode, DateTime sinceUtc, int limit = 1000) =>
         Task.FromResult(new List<JObject>());
 
@@ -212,12 +255,183 @@ public static class DataHubClient
     public static Task<List<JObject>> PullDispatchTasksAsync(string siteCode, DateTime sinceUtc, int limit = 1000) =>
         Task.FromResult(new List<JObject>());
 
-    public static Task<List<JObject>> PullEventsDeltaAsync(string siteCode, long sinceSeq, int limit = 2000) =>
-        ReadChangesAsync(siteCode, sinceSeq, limit);
+    /// <summary>
+    /// Reads the change feed as local event-log rows. The feed carries projection changes rather
+    /// than domain events, so every change becomes exactly one "waybill_projection" record whose
+    /// id and fingerprint are derived from its change_seq: re-reading a page must not append a
+    /// second copy locally, and the seq must survive so the cursor can advance.
+    /// </summary>
+    public static async Task<List<JObject>> PullEventsDeltaAsync(string siteCode, long sinceSeq, int limit = 2000)
+    {
+        var page = await ReadChangePageAsync(siteCode, sinceSeq, limit).ConfigureAwait(false);
+        var rows = new List<JObject>(page.Items.Count);
+        foreach (var item in page.Items)
+        {
+            long seq = item.Value<long?>("changeSeq") ?? 0;
+            if (seq <= 0) continue;
 
-    public static Task<bool> SubscribeSiteChangesAsync(string siteCode, Action onAnyChange) => Task.FromResult(false);
+            var body = item["body"] as JObject;
+            var waybillNo = FirstString(item, "entityKey") ?? (body == null ? null : FirstString(body, "waybillNo"));
+            if (string.IsNullOrWhiteSpace(waybillNo)) continue;   // the event log rejects these anyway
 
-    public static void UnsubscribeSiteChanges() { }
+            var changeAt = FirstString(item, "changeAt");
+            var key = "datahub:" + seq.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new JObject
+            {
+                ["seq"] = seq,
+                ["event_id"] = key,
+                ["fingerprint"] = key,
+                ["waybill_no"] = waybillNo.Trim().ToUpperInvariant(),
+                ["event_type"] = FirstString(item, "entityType") ?? WaybillProjectionEntity,
+                ["event_time"] = ToIsoUtc(body == null ? changeAt : FirstString(body, "updatedAt") ?? changeAt),
+                ["observed_at"] = ToIsoUtc(changeAt),
+                ["source"] = "datahub",
+                ["source_client"] = string.Empty,
+                ["schema_version"] = body?.Value<int?>("reducerVersion") ?? 1,
+                ["payload"] = body ?? new JObject()
+            });
+        }
+        return rows;
+    }
+
+    // ── Realtime doorbell (/hubs/site) ────────────────────────────────────
+
+    /// <summary>
+    /// Opens (or reuses) the SignalR connection that tells us a change landed. The doorbell only
+    /// says "something changed" — the delta itself is still read over /changes — so a missed or
+    /// duplicated ring costs at most one extra pull. Returns false when realtime is unavailable;
+    /// the caller must keep its periodic pull as the floor.
+    /// </summary>
+    public static async Task<bool> SubscribeSiteChangesAsync(string siteCode, Action onAnyChange)
+    {
+        if (onAnyChange == null) return false;
+        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out _)) return false;
+
+        _realtimeCallback = onAnyChange;
+        var endpoint = baseUrl + "/hubs/site";
+
+        await RealtimeGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var existing = _hubConnection;
+            if (existing != null
+                && string.Equals(_hubEndpoint, endpoint, StringComparison.OrdinalIgnoreCase)
+                && existing.State != HubConnectionState.Disconnected)
+            {
+                return true;   // already connected, or reconnecting on its own
+            }
+
+            if (existing != null)
+            {
+                _hubConnection = null;
+                _hubEndpoint = null;
+                await SafeDisposeHubAsync(existing).ConfigureAwait(false);
+            }
+
+            HubConnection connection = null;
+            try
+            {
+                connection = BuildHubConnection(endpoint);
+                await connection.StartAsync().ConfigureAwait(false);
+                _hubConnection = connection;
+                _hubEndpoint = endpoint;
+                AppLogger.Info("DataHub realtime connected site=" + siteId.ToString("D"));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // Not fatal — the periodic pull still sees every change, just later. What would
+                // be a bug is leaving a half-built connection behind to retry in the background.
+                AppLogger.Warning("DataHub realtime unavailable (" + ex.Message + "); polling only.");
+                if (connection != null) await SafeDisposeHubAsync(connection).ConfigureAwait(false);
+                return false;
+            }
+        }
+        finally
+        {
+            RealtimeGate.Release();
+        }
+    }
+
+    public static void UnsubscribeSiteChanges()
+    {
+        _realtimeCallback = null;
+        var connection = System.Threading.Interlocked.Exchange(ref _hubConnection, null);
+        _hubEndpoint = null;
+        if (connection == null) return;
+        // Fire-and-forget: the caller is usually the UI thread closing the window, and
+        // DisposeAsync waits for the server round-trip before it returns.
+        _ = Task.Run(() => SafeDisposeHubAsync(connection));
+    }
+
+    private static HubConnection BuildHubConnection(string endpoint)
+    {
+        var connection = new HubConnectionBuilder()
+            .WithUrl(endpoint, options =>
+            {
+                // SiteHub aborts any connection without a device identity. The Bearer header
+                // covers negotiate; the WebSocket transport cannot send headers, so the client
+                // appends ?access_token= — the one query-string token the server's
+                // DeviceAuthenticationMiddleware accepts, and only on /hubs/site. Reading the
+                // token per negotiate (not once) means a re-enroll is picked up on reconnect.
+                options.AccessTokenProvider = () => Task.FromResult(CurrentDeviceToken);
+            })
+            .WithAutomaticReconnect(new[]
+            {
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(30)
+            })
+            .Build();
+
+        connection.On<SiteChangeDoorbell>("change", doorbell =>
+        {
+            AppLogger.Debug("DataHub doorbell seq=" + (doorbell?.ChangeSeq ?? 0) + " key=" + (doorbell?.EntityKey ?? ""));
+            RingRealtimeCallback();
+        });
+
+        // Doorbells rang while we were away, so a reconnect is itself a reason to pull.
+        connection.Reconnected += _ =>
+        {
+            AppLogger.Info("DataHub realtime reconnected — requesting a catch-up pull.");
+            RingRealtimeCallback();
+            return Task.CompletedTask;
+        };
+
+        connection.Closed += error =>
+        {
+            AppLogger.Warning("DataHub realtime closed: " + (error?.Message ?? "no error"));
+            return Task.CompletedTask;
+        };
+
+        return connection;
+    }
+
+    private static void RingRealtimeCallback()
+    {
+        var callback = _realtimeCallback;
+        if (callback == null) return;
+        // The hub dispatcher owns this thread: an exception escaping here tears the connection
+        // down, so a broken subscriber must only cost its own notification.
+        try { callback(); }
+        catch (Exception ex) { AppLogger.Warning("DataHub doorbell handler failed: " + ex.Message); }
+    }
+
+    private static async Task SafeDisposeHubAsync(HubConnection connection)
+    {
+        try { await connection.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex) { AppLogger.Debug("DataHub realtime dispose: " + ex.Message); }
+    }
+
+    /// <summary>Mirror of the server's ChangeDoorbell; only the seq and key are used, for logging.</summary>
+    private sealed class SiteChangeDoorbell
+    {
+        public Guid SiteId { get; set; }
+        public long ChangeSeq { get; set; }
+        public string EntityType { get; set; }
+        public string EntityKey { get; set; }
+    }
 
     // ── Lease state machine ───────────────────────────────────────────────
 
@@ -503,27 +717,149 @@ public static class DataHubClient
         }
     }
 
-    private static async Task<List<JObject>> ReadChangesAsync(string siteCode, long after, int limit)
+    /// <summary>
+    /// Reads the change feed and projects it onto the local waybill row shape. The cursor is the
+    /// server's change_seq, never a clock: /changes is ordered by an append-only sequence, and a
+    /// timestamp cursor silently skips rows committed out of order.
+    /// </summary>
+    public static async Task<DataHubChangePage> PullWaybillChangesAsync(string siteCode, long afterSeq, int limit = 500)
     {
-        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token))
-            return new List<JObject>();
+        var page = await ReadChangePageAsync(siteCode, afterSeq, limit).ConfigureAwait(false);
+        if (page.ResyncRequired)
+        {
+            // The cursor is older than the retained change range, so the delta no longer exists.
+            // A snapshot is the only way back to a consistent view.
+            var (rows, snapshotSeq) = await ReadSnapshotRowsAsync(siteCode).ConfigureAwait(false);
+            return new DataHubChangePage(rows, snapshotSeq > 0 ? snapshotSeq : afterSeq, false, true);
+        }
+
+        var mapped = new List<JObject>(page.Items.Count);
+        foreach (var item in page.Items)
+        {
+            // Only waybill projections belong in fs_waybills; anything else the server starts
+            // publishing here must be ignored rather than merged blindly.
+            if (!string.Equals(item.Value<string>("entityType"), WaybillProjectionEntity, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var row = ToWaybillRow(item["body"] as JObject);
+            if (row != null) mapped.Add(row);
+        }
+        return new DataHubChangePage(mapped, page.NextAfter, page.HasMore, false);
+    }
+
+    private static async Task<(List<JObject> Items, long NextAfter, bool HasMore, bool ResyncRequired)> ReadChangePageAsync(
+        string siteCode, long after, int limit)
+    {
+        long cursor = Math.Max(0, after);
+        (List<JObject>, long, bool, bool) Nothing() => (new List<JObject>(), cursor, false, false);
+
+        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token)) return Nothing();
 
         using var request = CreateAuthorizedRequest(HttpMethod.Get,
-            $"{baseUrl}/api/v1/sites/{siteId:D}/changes?after={Math.Max(0, after)}&limit={Math.Clamp(limit, 1, 5000)}", token);
+            $"{baseUrl}/api/v1/sites/{siteId:D}/changes?after={cursor}&limit={Math.Clamp(limit, 1, 5000)}", token);
         try
         {
             using var response = await Http.SendAsync(request).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return new List<JObject>();
-            var json = JObject.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
-            return json["items"] is JArray items
-                ? items.OfType<JObject>().Select(item => item["body"] as JObject ?? item).ToList()
-                : new List<JObject>();
+            var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                AppLogger.Warning("DataHub change feed wants a resync: " + Truncate(body, 200));
+                return (new List<JObject>(), cursor, false, true);
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                AppLogger.Warning("DataHub change read -> " + (int)response.StatusCode + " " + Truncate(body, 200));
+                return Nothing();
+            }
+
+            var json = JObject.Parse(body);
+            var items = json["items"] is JArray array ? array.OfType<JObject>().ToList() : new List<JObject>();
+            // Never move the cursor backwards: a malformed nextAfter would otherwise replay the
+            // whole retained range on every cycle.
+            long nextAfter = Math.Max(json.Value<long?>("nextAfter") ?? cursor, cursor);
+            return (items, nextAfter, json.Value<bool?>("hasMore") ?? false, false);
         }
         catch (Exception ex)
         {
             AppLogger.Warning("DataHub change read failed: " + ex.Message);
-            return new List<JObject>();
+            return Nothing();
         }
+    }
+
+    private static async Task<(List<JObject> Rows, long SnapshotSeq)> ReadSnapshotRowsAsync(string siteCode)
+    {
+        var rows = new List<JObject>();
+        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token)) return (rows, 0);
+
+        using var request = CreateAuthorizedRequest(HttpMethod.Get,
+            $"{baseUrl}/api/v1/sites/{siteId:D}/projections/snapshot", token);
+        try
+        {
+            using var response = await Http.SendAsync(request).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                AppLogger.Warning("DataHub snapshot read -> " + (int)response.StatusCode);
+                return (rows, 0);
+            }
+
+            var json = JObject.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+            if (json["items"] is JArray items)
+            {
+                foreach (var item in items.OfType<JObject>())
+                {
+                    var row = ToWaybillRow(item);
+                    if (row != null) rows.Add(row);
+                }
+            }
+            // snapshot_seq is the change_seq the snapshot was taken at, so resuming the delta
+            // from it neither replays nor skips.
+            return (rows, json.Value<long?>("snapshot_seq") ?? 0);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warning("DataHub snapshot read failed: " + ex.Message);
+            return (rows, 0);
+        }
+    }
+
+    /// <summary>
+    /// Projects a server ProjectionBody onto the snake_case row shape the local fs_waybills merge
+    /// expects. The ingest payload is the desktop's own row, so it is the base; the reducer's
+    /// typed fields then win over whatever that payload happened to carry.
+    /// </summary>
+    internal static JObject ToWaybillRow(JObject body)
+    {
+        if (body == null) return null;
+        var waybillNo = FirstString(body, "waybillNo", "waybill_no");
+        if (string.IsNullOrWhiteSpace(waybillNo)) return null;
+
+        var basePayload = body["payload"] as JObject
+            ?? body["activityPayload"] as JObject
+            ?? body["statePayload"] as JObject
+            ?? body["inventoryPayload"] as JObject;
+        var row = basePayload?.DeepClone() as JObject ?? new JObject();
+
+        row["waybill_no"] = waybillNo.Trim().ToUpperInvariant();
+
+        var status = FirstString(body, "stateStatus", "lastActivityStatus");
+        var action = FirstString(body, "lastActivityName", "stateName");
+        // The local columns hold JMS-local naive time and the merge compares them with SQLite's
+        // datetime(); storing the server's offset form here would shift every comparison by 7h.
+        var actionTime = ToJmsLocalTimestamp(FirstString(body, "lastActivityAt", "stateEventAt"));
+
+        Overwrite(row, "current_state", FirstString(body, "stateName"));
+        Overwrite(row, "current_status", status);
+        Overwrite(row, "last_action", action);
+        Overwrite(row, "last_action_time", actionTime);
+        Overwrite(row, "trang_thai_hien_tai", status);
+        Overwrite(row, "thao_tac_cuoi", action);
+        Overwrite(row, "thoi_gian_thao_tac", actionTime);
+        // updated_at drives the newest-wins half of the merge, so it must carry the server's
+        // projection timestamp rather than "now" on this machine.
+        Overwrite(row, "updated_at", ToIsoUtc(FirstString(body, "updatedAt")));
+
+        // Inventory membership is deliberately not re-derived from the reducer's inventory
+        // triplet — it has its own vocabulary — so it keeps whatever the pushing leader sent.
+        return row;
     }
 
     private static HttpRequestMessage CreateAuthorizedRequest(HttpMethod method, string url, string token)
@@ -577,6 +913,28 @@ public static class DataHubClient
     private static void AddIfPresent(JObject item, string name, string value)
     {
         if (!string.IsNullOrWhiteSpace(value)) item[name] = value.Trim();
+    }
+
+    /// <summary>Writes a value only when we actually have one; a blank must not erase the payload's.</summary>
+    private static void Overwrite(JObject row, string name, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) row[name] = value.Trim();
+    }
+
+    private static string ToIsoUtc(string raw) =>
+        DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var value)
+            ? value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)
+            : null;
+
+    /// <summary>Renders an instant the way JMS wrote it: naive local time in Asia/Ho_Chi_Minh.</summary>
+    private static string ToJmsLocalTimestamp(string raw) =>
+        DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var value)
+            ? value.ToOffset(JmsUtcOffset).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : null;
+
+    private static string CurrentDeviceToken
+    {
+        get { lock (ConfigLock) return _deviceToken; }
     }
 
     private static string Truncate(string value, int max) =>

@@ -1490,6 +1490,7 @@ namespace AutoJMS
             DkchAction.BlockedForward => DkchResultLevel.Error,
             DkchAction.BlockedSignedCpn => DkchResultLevel.Error,
             DkchAction.BlockedReturning => DkchResultLevel.Error,
+            DkchAction.BlockedNewArrival => DkchResultLevel.Error,
             _ => DkchResultLevel.Warning
         };
 
@@ -1521,6 +1522,8 @@ namespace AutoJMS
                 // Thao tác cuối đã kết thúc luồng chuyển hoàn → không đăng ký, chỉ báo việc còn lại.
                 DkchAction.BlockedSignedCpn => "blockedSignedCpn",
                 DkchAction.BlockedReturning => "blockedReturning",
+                // Hàng vừa về kho, chưa từng quét phát → chưa có gì để hoàn.
+                DkchAction.BlockedNewArrival => "blockedNewArrival",
                 _ => "noData"
             };
 

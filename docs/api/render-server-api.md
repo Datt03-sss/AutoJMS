@@ -121,6 +121,33 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
+### POST /api/datahub/license-assertion
+
+Re-issue a short-lived DataHub enrollment assertion so a long-running station can rotate its
+device token without a full re-activation. The device token issued by DataHub lives 24h by
+default; the app may stay open for days.
+
+**Request:** empty JSON body, `Authorization: Bearer <access token>`.
+
+**Response (200 OK):**
+```json
+{
+  "apiBaseUrl": "https://dev.jmsauto.online",
+  "siteCode": "HN01",
+  "licenseAssertion": "v1rs256.<base64url payload>.<base64url signature>",
+  "assertionExpiresAt": 1756000000
+}
+```
+
+**Errors:** `401 UNAUTHORIZED` / `TOKEN_INVALID` / `SESSION_REVOKED` / `LICENSE_INACTIVE` /
+`HWID_MISMATCH`; `503 ASSERTION_UNAVAILABLE` when the deployment has no signing key.
+
+The endpoint deliberately does **not** consume the token's `jti` — `/api/heartbeat` owns replay
+detection, and burning the `jti` here would kill the session asking to stay connected.
+
+Full flow and the DataHub side of the exchange:
+[datahub-api-endpoints.vi.md](./datahub-api-endpoints.vi.md).
+
 ### POST /api/logout
 
 Invalidate a session.
@@ -180,6 +207,12 @@ var parameters = new TokenValidationParameters
 | JWT_PRIVATE_KEY | RS256 private key (PEM) |
 | JWT_PUBLIC_KEY | RS256 public key (PEM) |
 | DATAHUB_API_BASE_URL | DataHub project URL |
+| DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY | RS256 private key that signs enrollment assertions. Unset ⇒ no assertion is issued and DataHub enrollment stays closed. |
+| DATAHUB_LICENSE_ASSERTION_ISSUER | Default `autojms-license`; must match the VPS |
+| DATAHUB_LICENSE_ASSERTION_AUDIENCE | Default `autojms-datahub-enroll`; must match the VPS |
+| DATAHUB_LICENSE_ASSERTION_TTL_SECONDS | Assertion lifetime, clamped to 60..3600 (default 300) |
+| DATAHUB_CHANNEL | `staging` or `production`; must match `DataHub__Channel` on the VPS |
+| DATAHUB_DEFAULT_SEATS | Seat cap for licenses with no `seats` field, clamped to 1..500 (default 3) |
 | DEFAULT_UPDATE_CHANNEL | "stable" or "beta" |
 | VALID_EXE_HASHES | Comma-separated allowed hashes |
 | PORT | Server port (default: 3000) |
@@ -190,6 +223,7 @@ var parameters = new TokenValidationParameters
 |----------|-------|
 | /api/verify-license | 20 requests/minute |
 | /api/heartbeat | 120 requests/minute |
+| /api/datahub/license-assertion | 60 requests/minute |
 
 ## Error Handling
 
