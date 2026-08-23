@@ -10,7 +10,7 @@ Status: done/partial.
 - `.agent/` structure đã có context, rules, prompts, skills, workflows, checklists.
 - `docs/` structure đã có architecture, API, release, troubleshooting, manual.
 - Manual operations doc đã có tại `docs/manual/MANUAL_OPERATIONS.md`.
-- Một số nội dung cũ vẫn cần verify khi đụng task cụ thể: DataHub RPC schema, hash manifest shape, module signature enforcement.
+- Một số nội dung cũ vẫn cần verify khi đụng task cụ thể: hash manifest shape, module signature enforcement. (Phần "DataHub RPC schema" đã hết hiệu lực — DataHub không có RPC, chỉ có endpoint REST + 12 bảng, xem `docs/architecture/datahub-backend-design.vi.md`.)
 
 ## Phase 1 — Stabilize Build
 

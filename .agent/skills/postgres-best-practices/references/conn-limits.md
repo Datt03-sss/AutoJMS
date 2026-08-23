@@ -41,4 +41,4 @@ Monitor connection usage:
 select count(*), state from pg_stat_activity group by state;
 ```
 
-Reference: [Database Connections](https://datahub.com/docs/guides/platform/performance#connection-management)
+Reference: [Connection Settings](https://www.postgresql.org/docs/current/runtime-config-connection.html)

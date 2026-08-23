@@ -1,44 +1,48 @@
-# AutoJMS DataHub — Thiết kế Fetcher (INDEX — nội dung cũ đã gỡ)
+# AutoJMS DataHub — Thiết kế Fetcher (INDEX)
 
-> **Trạng thái: v3 — thân hợp đồng cũ (v2) ĐÃ GỠ để tránh triển khai nhầm.** Bản v2 trước đây chứa
-> các mô hình **đã bị thay thế** (pg_cron `next_run_at` làm scheduler, desktop gọi JMS trực tiếp,
-> fallback per-scope lease, token "vault đơn", "reducer sẵn sàng cutover"). Toàn bộ đã bị loại khỏi
-> tài liệu này.
+Cập nhật 2026-08-23.
+
+> **Lịch sử.** Bản v2 của tài liệu này chứa một hợp đồng đã bị thay thế (pg_cron `next_run_at` làm
+> scheduler, desktop gọi JMS trực tiếp, fallback per-scope lease, token "vault đơn"). Bản v3 gỡ phần
+> thân và biến file thành INDEX, nhưng lại trỏ sang **ba tài liệu không tồn tại**
+> (`datahub-master-plan.md`, `datahub-p0-contract.md`, `migration/hybrid-datahub-sync-plan.md`) và mô tả
+> một kiến trúc **chưa từng được dựng**: Worker Windows Service, Edge boundary, private RPC, RLS theo
+> `site_code`, DB role `worker_gateway`/`datahub_edge`, một DataHub project cho mỗi bưu cục.
 >
-> **Đây chỉ còn là INDEX.** Hợp đồng kiến trúc hiện hành nằm ở các tài liệu nguồn sự thật dưới đây —
-> đọc và triển khai theo chúng, KHÔNG theo trí nhớ về bản v2.
+> Cái đã dựng thật là **một API ASP.NET Core trên VPS** với PostgreSQL riêng trong mạng nội bộ. Không có
+> Worker service, không có Edge function, không có RPC client gọi được, không có RLS. Dưới đây là index
+> trỏ sang các tài liệu **có thật**.
 
 ## Nguồn sự thật (đọc theo thứ tự)
 
-1. **`datahub-master-plan.md` (Draft v3 — BLOCKED BY P0)** — mục tiêu, 18 quyết định đã chốt, lộ trình
-   P0→P5, blast radius, điểm cần owner duyệt.
-2. **`datahub-p0-contract.md` (P0-A..P0-E)** — hợp đồng + threat model phải đóng trước P1/P2:
-   - **P0-A**: identity (1 claim `site_code` top-level), RLS hardening (revoke `PUBLIC`+anon), phân
-     tầng ghi (Edge boundary + private RPC), đường đọc desktop.
-   - **P0-B**: event schema v2, fingerprint theo event-type, snapshot vs transition, projection owner,
-     per-event ACK.
-   - **P0-C**: cursor keyset + lưu độc lập + test pagination.
-   - **P0-D**: site `fetch_leader` + 5 bảng token + `leader_fencing_token`/CAS + drain partition-safe.
-   - **P0-E**: spike token-binding, site-wide rate limit, provisioning (Management API), key rotation,
-     Windows Service lifecycle.
-3. **`datahub-token-pool-plan.md` (v2)** — chi tiết token pool 5 bảng, active pointer theo candidate,
-   two-strike, single-session gắn leader.
-4. **`event-sourcing-lite.md`** — nền event log + defect đã biết (fingerprint/cursor) + hợp đồng đúng.
-5. **`migration/hybrid-datahub-sync-plan.md`** — tài liệu lịch sử/transition (nền đã triển khai một
-   phần, chưa đạt hợp đồng bảo mật/cursor mới).
+1. **[`architecture/datahub-backend-design.vi.md`](./architecture/datahub-backend-design.vi.md)** —
+   hợp đồng as-built: endpoint, xác thực, hạ tầng, biến môi trường.
+2. **[`architecture/datahub-backend-diagrams.md`](./architecture/datahub-backend-diagrams.md)** — sơ đồ.
+3. **[`api/datahub-api-endpoints.vi.md`](./api/datahub-api-endpoints.vi.md)** — chi tiết từng endpoint.
+4. **[`architecture/fullstack-database-plan.vi.md`](./architecture/fullstack-database-plan.vi.md)** —
+   12 bảng, ánh xạ theo tab, quy ước migration.
+5. **[`event-sourcing-lite.md`](./event-sourcing-lite.md)** — event log local + hợp đồng fingerprint.
+6. **[`datahub-deployment-options.md`](./datahub-deployment-options.md)** — vì sao chọn VPS hub (số liệu
+   đo từ code vẫn đúng).
+7. **[`../backend/datahub/openapi/datahub-v1.yaml`](../backend/datahub/openapi/datahub-v1.yaml)** —
+   hợp đồng máy đọc được.
 
-## Tóm tắt kiến trúc (1 dòng mỗi ý — chi tiết ở nguồn trên)
+## Tóm tắt kiến trúc as-built (1 dòng mỗi ý)
 
-- JMS fetch: **.NET Worker (Windows Service) trong LAN bưu cục**; mỗi bưu cục 1 DataHub project.
-- Lịch fetch: **Worker sở hữu** HOT/WARM/COLD; pg_cron chỉ maintenance/stale/health (**không** scheduler).
-- Token: **LOCAL trên máy sở hữu** (DPAPI `tokens.dat`), DataHub chỉ giữ **binding metadata/`token_fp`** (KHÔNG ciphertext); một **active binding** gắn `fetch_leader`.
-- Desktop: **chỉ ĐỌC** (direct keyset SELECT dưới RLS) + **GHI metadata qua Edge** (session/heartbeat/
-  contribute). **Token relay qua Named Pipe (LOCAL, cùng máy)** — KHÔNG qua Edge; binding do Worker/gateway publish.
-- Contributor: ngoại lệ bounded (permit site-wide), không qua leader.
-- Đồng bộ: transition = event append-only; **projection order `source_event_at → received_at → seq`**
-  (KHÔNG `event_time` v1); snapshot detail = snapshot store CAS revision **hoặc** single-writer + FIFO
-  `(leader_term, snapshot_seq)` (KHÔNG "upsert last-write");
-  projection = **một writer duy nhất** (append+project cùng RPC/transaction).
-- Bảo mật: RLS theo `site_code` + **entitlement mirror**, revoke EXECUTE khỏi PUBLIC; private RPC gọi
-  qua **`worker_gateway`/`datahub_edge`** (DB role trong gateway/Edge, **KHÔNG** phát DB password cho máy);
-  Worker LAN chỉ có `WorkerAccessToken`. Token JMS **LOCAL** (DPAPI), không lên cloud.
+- **Ai fetch JMS:** chính process UI của AutoJMS (ULTRA), không có Windows Service riêng. Vì thế token
+  JMS không rời máy mà cũng không cần Named Pipe.
+- **Chống trùng:** một leader mỗi site qua bảng `site_fetch_leases` +
+  `POST /api/v1/sites/{siteId}/lease/{acquire,renew,release}`. Máy tắt ⇒ lease hết hạn ⇒ máy khác đoạt.
+- **Lịch fetch:** timer phía client (30 phút, 8h–23h30). Không có scheduler trong database — job nền duy
+  nhất trong API là retention (`BackgroundService` đọc `retention_policies`).
+- **Đường ghi:** `POST /jms/ingest` (theo lô, có `Idempotency-Key`) và `POST /jms/observations` (lẻ, khi
+  user mở đơn). Handler ingest là **writer duy nhất**: append event + cập nhật projection + ghi
+  `dashboard_changes` trong một transaction.
+- **Đường đọc:** `GET /projections/snapshot` lần đầu, rồi `GET /changes?after={change_seq}`. Doorbell
+  SignalR `/hubs/site` chỉ đánh thức client sớm hơn; mất hub thì thoái hoá về polling.
+- **Fingerprint:** API tính lại khi nhận, dedupe bằng `UNIQUE (site_id, event_fingerprint)`. Client
+  không được tin cậy để đặt fingerprint.
+- **Bảo mật:** ba credential không thay thế nhau — access token (Render, 60 phút), license assertion
+  (Render, 300 giây, chỉ dùng cho `/api/v1/devices/enroll`), device token (DataHub, 24 giờ, dùng cho mọi
+  `/api/v1/sites/...` và hub). Phạm vi site lấy từ device token, client không tự khai. PostgreSQL không
+  publish port ra host. Token JMS chỉ ở local.

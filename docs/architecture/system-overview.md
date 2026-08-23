@@ -8,7 +8,7 @@ Current system boundaries:
 
 - Desktop client: WinForms UI, WebView2 automation, JMS API client, print/export, config, update, and dynamic module loading.
 - License backend: Render `server.js` with Firebase Realtime Database.
-- Data/control backend: DataHub PostgreSQL for waybill data and VPS config API for manifests/configs.
+- Data/control backend: the DataHub API on the VPS (`dev.jmsauto.online`) — ASP.NET Core behind Caddy — owning device enrollment, JMS ingest, the change feed, the fetch lease, the SignalR hub, and the manifest/config JSON. PostgreSQL sits behind it on a private Docker network with no client access.
 - Binary distribution: Inno Setup for first install and Velopack/GitHub Releases for in-app updates.
 
 Tier boundary:
@@ -19,7 +19,7 @@ Tier boundary:
 Current verification gaps:
 
 - Historical build blocker from missing root `modules/*.json` content files was fixed with conditional content includes; latest recorded Debug build succeeded with warnings only.
-- DataHub SQL for current waybill RPCs is not present in checked-in migration.
+- Resolved 2026-08-23: there are no waybill RPCs. `DataHubClient` calls REST endpoints only, and the schema lives in `backend/datahub/migrations/` (twelve tables, five forward-only files).
 - Some older sections may describe intended structure; mark unverified details `NEED VERIFY`.
 
 ## What is AutoJMS?
@@ -56,7 +56,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
         ▼                     ▼                     ▼
 ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
 │  JMS Website │    │  License     │    │  DataHub   │
-│  (jtexpress)│    │  Server      │    │  (Storage)  │
+│  (jtexpress)│    │  Server      │    │  API (VPS)  │
 │  via WebView2│    │  (Render)    │    │             │
 └───────────────┘    └───────┬───────┘    └───────────────┘
                               │
@@ -76,7 +76,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
 | UI Framework | WinForms | Built-in |
 | UI Library | SunnyUI | 3.9.6 |
 | Browser | WebView2 | 1.0.3912.50 |
-| Database | DataHub PostgreSQL | - |
+| Database | PostgreSQL 16 in Docker (private) | - |
 | Auth | Firebase Realtime DB | - |
 | License Server | Node.js/Express | - |
 | Installer | Inno Setup | 6.x |

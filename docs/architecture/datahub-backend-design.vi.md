@@ -518,8 +518,9 @@ Template: [env.staging.template](../../backend/datahub/env.staging.template),
 | # | Lỗ hổng | Ảnh hưởng | Ghi chú |
 |---|---|---|---|
 | 1 | Chưa có adapter xác minh assertion bất đối xứng (JWS/JWKS) | **Production chưa enroll được thiết bị** (`503`) | Fail-closed là đúng; cần làm trước khi go-live production |
-| 2 | Không có client SignalR trong `src/AutoJMS` (không có `HubConnection`) | Desktop chưa nhận doorbell ⇒ độ trễ = chu kỳ poll | Không ảnh hưởng tính đúng (§9) |
-| 3 | `docs/architecture/backend-architecture.md` mô tả mặt phẳng dữ liệu theo kiến trúc cũ (RPC kiểu Supabase) | Dễ gây hiểu sai | Đã thêm con trỏ sang tài liệu này |
+| 2 | ~~Không có client SignalR trong `src/AutoJMS`~~ — **ĐÃ ĐÓNG** | — | `DataHubClient` có `HubConnection` (`BuildHubConnection`, `SubscribeSiteChangesAsync`, `UnsubscribeSiteChanges`); mất hub thì thoái hoá về polling |
+| 3 | ~~`backend-architecture.md` mô tả mặt phẳng dữ liệu theo kiến trúc cũ~~ — **ĐÃ ĐÓNG 2026-08-23** | — | Mục DataHub trong tài liệu đó đã viết lại theo endpoint + 12 bảng thật |
+| 3b | Nhiều phương thức `DataHubClient` giữ tên RPC cũ nhưng là **stub trả 0**: `IngestBigDataWaybillsAsync`, `IngestStockCheckWaybillsAsync`, `ReconcileInventorySourcesAsync`, `UpsertNewWaybillsOnlyAsync`; và `PushOrderNotesAsync` / `MergeOrderChecksAsync` / `MergeDispatchTasksAsync` / `AppendWaybillEventsAsync` trả `AuxiliaryEntityNotSupported` | Union 2 nguồn và notes/checks/tasks **không hoạt động** | `SupportsAuxiliaryEntitySync = false` nên outbox giữ lại thay vì báo đã gửi. Cần endpoint + migration mới — xem `inventory-source-comparison.vi.md` §5b |
 | 4 | `backend/BACKEND_DEPLOY_STATUS.md` lặp `DATAHUB_API_BASE_URL` 3 lần (dòng 75–77) | Nhiễu tài liệu | Sửa nhỏ, ngoài phạm vi lần này |
 | 5 | Chưa kiểm chứng API multi-instance | Không scale-out ngang được | Mọi bất biến dựa trên transaction, nhưng chưa test |
 

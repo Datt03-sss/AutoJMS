@@ -34,8 +34,8 @@ Mục tiêu sản phẩm:
 - ABOUT phải là tab cuối.
 - `FullStackOperation` là form riêng, không phải tab.
 - Render server source: `backend/render-license-server/server.js`.
-- DataHub project hiện tại: `bnsnnrlwfzxemmizknwy`.
-- DataHub bucket: `autojms-modules`.
+- DataHub API: `https://dev.jmsauto.online` (source `src/AutoJMS.DataHub.Api`, VPS `/opt/autojms-datahub`).
+- DataHub không có object store: manifest JSON là file tĩnh trên VPS, binary nằm ở GitHub Releases.
 - Render production URL: `https://autojms-api.onrender.com`.
 - Latest local build verified: `dotnet build .\src\AutoJMS\AutoJMS.csproj -c Debug --no-restore /clp:Summary` thành công, `0 Error(s)`.
 
@@ -256,18 +256,14 @@ License object kỳ vọng:
 
 ### DataHub
 
-Project hiện tại:
+API hiện tại:
 
 ```text
-bnsnnrlwfzxemmizknwy
-https://datahub.example.com
+https://dev.jmsauto.online
 ```
 
-Bucket:
-
-```text
-autojms-modules
-```
+Không có bucket / object store. Manifest JSON được serve tĩnh từ cùng host
+(`DATAHUB_MANIFEST_BASE_URL`, mặc định bằng `DATAHUB_API_BASE_URL`); binary Velopack ở GitHub Releases.
 
 Public storage base:
 
@@ -529,8 +525,7 @@ cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm install
 npm run check
 
-cd D:\v1.2605.2(new-test)\backend\datahub
-datahub migration list --linked
+ssh datahub-root "cd /opt/autojms-datahub && ./bin/smoke-test.sh --env-file .env.production"
 
 Invoke-RestMethod "https://autojms-api.onrender.com/health"
 ```
@@ -577,7 +572,7 @@ Các điểm cần giữ trong backlog kỹ thuật:
 - Không sửa logic HOME/DKCH/TRACKING/PRINT/ABOUT nếu không có yêu cầu rõ.
 - Không đổi namespace/class/control name nếu không có lý do.
 - Không xóa/move production code nếu không có migration plan.
-- Không dùng service-role DataHub key trong desktop client.
+- Không dùng `DATAHUB_ADMIN_TOKEN` (token quyền admin) trong desktop client — client chỉ được có device token.
 - Không log full token/key.
 - Không để BASE chạy background inventory/database sync.
 - Không biến `FullStackOperation` thành tab.
@@ -602,7 +597,7 @@ Nếu sửa backend:
 
 1. Không hardcode secret.
 2. Dùng Render env.
-3. Không trả service-role key về client.
+3. Không trả token quyền admin (`DATAHUB_ADMIN_TOKEN`) hay khoá ký về client.
 4. Test fake license phải lỗi JSON nhanh.
 5. Test license thật phải trả JWT/session/tier/DataHub config.
 6. Test app login BASE/ULTRA.

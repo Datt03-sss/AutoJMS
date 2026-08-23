@@ -50,16 +50,16 @@ $existing.channels.beta = @{
     releaseNotes = "Beta test release."
 }
 
-# Upload
-Invoke-RestMethod -Method Post `
-    -Uri "https://datahub.example.com/manifest/version-latest.json" `
-    -Headers @{
-        Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN"
-        "x-upsert" = "true"
-    } `
+# Publish — PUT is a full replace, so the fetch above is not optional
+Invoke-WebRequest -Method Put `
+    -Uri "https://dev.jmsauto.online/api/v1/admin/manifests/manifest/version-latest.json" `
+    -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN" } `
     -ContentType "application/json" `
     -Body ($existing | ConvertTo-Json -Depth 10)
 ```
+
+> The admin route is not implemented yet, so this returns 404. Place the JSON on the VPS by
+> hand until it lands — see [.agent/skills/datahub-manifest-skill.md](../skills/datahub-manifest-skill.md).
 
 ### hash-manifest.json
 

@@ -1,23 +1,27 @@
 # AutoJMS Backend Operations
 
-Date: 2026-06-11
+Date: 2026-08-23
 
 This document is the backend runbook for AutoJMS. It covers the three backend services used by the desktop app:
 
 - Firebase Realtime Database: license, session, tier, and office context data.
-- DataHub: public control-plane manifests, runtime policies, hash manifests, selector updates, and legacy waybill/RPC database paths.
+- DataHub: self-hosted ASP.NET Core API on a VPS (`AutoJMS.DataHub.Api`) fronted by Caddy, backed by PostgreSQL in Docker. Owns the waybill projection, the change feed, the site fetch lease, and device enrollment.
 - Render: Node/Express license server that verifies licenses, issues JWTs, maintains heartbeat sessions, and returns DataHub config to the client.
 
-Do not commit real private keys, Firebase service account files, DataHub service-role keys, license keys, or production tokens.
+Do not commit real private keys, Firebase service account files, the DataHub admin token, license keys, or production tokens.
 
 ## Current Service Map
 
 | Service | Current role | Production identifier |
 |---|---|---|
 | Firebase Realtime Database | License/session state read by Render server | `keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app` |
-| DataHub project | Storage + PostgreSQL/RPC backend | `bnsnnrlwfzxemmizknwy` |
-| VPS config API bucket | Public JSON control files | `autojms-modules` |
+| DataHub API (VPS) | Device enrollment, JMS ingest, change feed, lease, SignalR hub | `https://dev.jmsauto.online` |
+| DataHub PostgreSQL | Waybill projection + operational tables, Docker on the same VPS | container `postgres`, private network only |
 | Render service | License API and heartbeat API | `https://autojms-api.onrender.com` |
+
+There is no managed BaaS behind DataHub: no hosted project ref, no storage bucket, no
+PostgREST, no database-level RPC surface, and no row-level security. Every client call goes
+through an explicit endpoint in `src/AutoJMS.DataHub.Api`, authenticated by a device token.
 
 Backend source locations:
 
@@ -29,9 +33,16 @@ backend/
   render-license-server/
     server.js
   datahub/
-    config.toml
-    seed.sql
-    migrations/
+    Caddyfile
+    Dockerfile
+    docker-compose.yml
+    env.production.template
+    env.staging.template
+    migrations/          001_core.sql .. 005_change_retention_floor.sql
+    scripts/             apply-migrations, backup/restore, smoke-test, run-sql
+    deploy/              VPS_DEPLOY_GUIDE.vi.md, bootstrap-vps.sh
+    openapi/             datahub-v1.yaml
+src/AutoJMS.DataHub.Api/  the API itself (net10.0)
 ```
 
 ## Data Ownership
@@ -48,10 +59,13 @@ Firebase owns:
 
 DataHub owns:
 
-- Public manifest/config/hash/tier/selector-update JSON.
-- Legacy waybill table used by `DataHubClient`.
-- Inventory lease table.
-- RPC functions called by the desktop client.
+- Public manifest/config/hash/tier/selector-update JSON, served as static files by Caddy.
+- `waybill_projections` — the current-state row per waybill, read by `DataHubClient`.
+- `waybill_scan_events` — the append-only ingest log the projection is folded from.
+- `dashboard_changes` + `site_change_counters` — the change feed and its `change_seq` cursor.
+- `site_fetch_leases` — which station is the fetch leader for a site.
+- `devices` / `sites` — enrollment records, seat accounting, and device token versions.
+- `idempotency_records`, `audit_logs`, `jms_event_policies`, `retention_policies`.
 
 Render owns:
 
@@ -59,7 +73,7 @@ Render owns:
 - Session creation and heartbeat endpoint.
 - JWT signing and JWT refresh.
 - Mapping Firebase license fields into the client response.
-- Returning DataHub project/storage/manifest config to the client.
+- Returning the DataHub API base URL, manifest config, and the signed enrollment assertion to the client.
 
 GitHub Releases own:
 
@@ -153,153 +167,167 @@ Do not store update URLs or binary URLs in Firebase. Update control belongs to D
 
 ## DataHub
 
-Current project:
+Current deployment:
 
 ```text
-Project ref: bnsnnrlwfzxemmizknwy
-Project URL: https://datahub.example.com
-Storage bucket: autojms-modules
-Public storage base:
-https://datahub.example.com
+Public host:  https://dev.jmsauto.online   (DATAHUB_PUBLIC_HOST)
+Reverse proxy: Caddy, automatic HTTPS via Let's Encrypt
+API:          AutoJMS.DataHub.Api, container `api`, listening on the private Docker network
+Database:     PostgreSQL, container `postgres`, never published to the host
+Compose file: backend/datahub/docker-compose.yml
 ```
 
-### CLI Setup
+### Stack Control
 
-```powershell
-datahub login
-datahub link --project-ref bnsnnrlwfzxemmizknwy
-datahub projects list
+There is no vendor CLI. Everything is `docker compose` against the VPS, wrapped by the scripts
+in `backend/datahub/scripts/` (deployed to `/opt/autojms-datahub/bin/`). `--env-file` is not
+optional: `docker-compose.yml` has no `env_file:` key, so without it every `${VAR:?}` fails.
+
+```bash
+cd /opt/autojms-datahub
+./bin/dc.sh --env-file .env.production ps
+./bin/dc.sh --env-file .env.production logs --tail 50 api
+./bin/apply-migrations.sh --env-file .env.production
 ```
 
-Get device token:
+The PowerShell counterparts (`apply-migrations.ps1`, `backup-postgres.ps1`,
+`restore-postgres.ps1`, `provision-site.ps1`, `start-stack.ps1`) exist for hosts that have
+PowerShell; the `.sh` scripts exist because the VPS does not.
 
-```powershell
-datahub projects api-keys --project-ref bnsnnrlwfzxemmizknwy
-```
+Device tokens are never handed out by an operator. A station calls
+`POST /api/v1/devices/enroll` with a short-lived RS256 license assertion minted by the Render
+server, and the API returns a device token scoped to one site. The admin token
+(`DATAHUB_ADMIN_TOKEN`) is server-side only — never in client code or public JSON.
 
-Give the app a scoped DEVICE TOKEN for client/runtime configuration. The admin token (`DATAHUB_ADMIN_TOKEN`) is server-side only — never in client code or public JSON.
+### HTTP Surface
 
-### Storage Layout
+Every route is served by the API behind Caddy. There is no REST-over-table layer and no
+generated client — see `backend/datahub/openapi/datahub-v1.yaml` for the contract.
 
-Uploaded public JSON files:
+| Route | Method | Auth | Purpose |
+|---|---|---|---|
+| `/health/live` | GET | none | Liveness, used by Caddy and the smoke test. |
+| `/health/ready` | GET | none | Readiness, includes the database probe. |
+| `/api/v1/devices/enroll` | POST | license assertion | Exchange an RS256 assertion for a device token. |
+| `/api/v1/sites/{siteId}/jms/ingest` | POST | device token | Append `waybill_scan_events`, fold the projection. |
+| `/api/v1/sites/{siteId}/jms/observations` | POST | device token | Report JMS observations. |
+| `/api/v1/sites/{siteId}/lease/acquire` | POST | device token | Become the fetch leader for the site. |
+| `/api/v1/sites/{siteId}/lease/renew` | POST | device token | Extend the held lease. |
+| `/api/v1/sites/{siteId}/lease/release` | POST | device token | Release the lease. |
+| `/api/v1/sites/{siteId}/changes` | GET | device token | Change feed from a `change_seq` cursor. |
+| `/api/v1/sites/{siteId}/projections/snapshot` | GET | device token | Full projection snapshot for a cold start. |
+| `/hubs/site` | WS | device token | SignalR hub, group `site:{siteId}`, client method `change`. |
+
+Ingest is idempotent through `idempotency_records`: replaying the same
+`Idempotency-Key` returns the stored response instead of double-appending.
+
+### Manifest Control Plane
+
+The client reads the public JSON control files from `DATAHUB_MANIFEST_BASE_URL`, falling back
+to `DATAHUB_API_BASE_URL`. Object paths, unchanged from before the migration:
 
 ```text
-autojms-modules/
-  manifest/
-    app-manifest.json
-    hash-manifest.json
-    tier-definitions.json
-    version-latest.json
-  configs/
-    public-config.json
-    runtime-policy.json
-    runtime-policy.base.json
-    runtime-policy.ultra.json
-  selector-updates/
-    runtime-config.json
-    selector-update-manifest.json
+manifest/app-manifest.json
+manifest/hash-manifest.json
+manifest/tier-definitions.json
+manifest/version-latest.json
+configs/public-config.json
+configs/runtime-policy.json
+configs/runtime-policy.base.json
+configs/runtime-policy.ultra.json
+selector-updates/runtime-config.json
+selector-updates/selector-update-manifest.json
 ```
 
-Public URL examples:
+`release/build-release.ps1 -Upload` publishes them with
+`PUT {base}/api/v1/admin/manifests/{objectPath}` and `Authorization: Bearer $DATAHUB_ADMIN_TOKEN`.
 
-```text
-https://datahub.example.com/manifest/version-latest.json
-https://datahub.example.com/configs/runtime-policy.json
-https://datahub.example.com/selector-updates/selector-update-manifest.json
-```
+> **Open gap.** That admin route does not exist yet: it is absent from
+> `src/AutoJMS.DataHub.Api`, absent from `openapi/datahub-v1.yaml`, and the `Caddyfile` has no
+> static-file handler, so `-Upload` currently returns 404. Until the endpoint lands, publish the
+> manifest files by hand on the VPS (or keep serving them from the previous host) and treat
+> `-Upload` as unusable. Do not "fix" this by pointing the client at a third-party bucket.
 
-Upload a single file:
+Verify what the client will actually read:
 
 ```powershell
-VPS config API cp .\infra\datahub\autojms-modules\manifest\version-latest.json `
-  ss:///autojms-modules/manifest/version-latest.json `
-  --linked --experimental --cache-control "max-age=60" --content-type "application/json"
-```
-
-If a file already exists, remove it first:
-
-```powershell
-datahub --yes storage rm ss:///autojms-modules/manifest/version-latest.json --linked --experimental
-```
-
-Verify storage:
-
-```powershell
-VPS config API ls ss:///autojms-modules/manifest --linked --experimental
-Invoke-RestMethod "https://datahub.example.com/manifest/version-latest.json"
+Invoke-RestMethod "https://dev.jmsauto.online/manifest/version-latest.json"
+Invoke-RestMethod "https://dev.jmsauto.online/configs/runtime-policy.json"
 ```
 
 ### Database Migrations
 
-Remote migrations currently applied:
+Forward-only SQL files in `backend/datahub/migrations/`, applied in filename order:
 
 ```text
-202606110001_autojms_bootstrap.sql
-202606110002_tighten_autojms_privileges.sql
+001_core.sql
+002_seed_policies.sql
+003_seed_retention.sql
+004_projection_slot_payloads.sql
+005_change_retention_floor.sql
 ```
 
-Schema created by the bootstrap migration:
+Each file records its own row in `schema_migrations` inside its own transaction, so a partially
+applied run cannot claim to be complete. There is no rollback path — a mistake is corrected by
+a new numbered file, never by editing an applied one.
 
-| Object | Purpose |
+Tables created:
+
+| Table | Purpose |
 |---|---|
-| `public.waybills` | Legacy waybill/tracking table used by `DataHubClient`. |
-| `public.inventory_sync_leases` | Lease state for inventory sync workers. |
-| `public.app_manifest` | Legacy module manifest metadata. |
-| `public.app_modules` | Legacy module registry. |
-| `public.app_configs` | Legacy remote config rows. |
-| `storage.buckets/autojms-modules` | Public storage bucket for JSON control files. |
+| `sites` | One row per post office; owns the seat cap. |
+| `devices` | Enrolled stations, device token version, last seen. |
+| `waybill_scan_events` | Append-only ingest log. |
+| `waybill_projections` | Current state per waybill, folded from the event log. |
+| `dashboard_changes` | Change feed rows read by `/changes`. |
+| `site_change_counters` | Monotonic `change_seq` allocator per site. |
+| `site_fetch_leases` | Which device is the fetch leader for a site. |
+| `idempotency_records` | Stored responses keyed by `Idempotency-Key`. |
+| `audit_logs` | Enrollment/lease/admin audit trail. |
+| `jms_event_policies` | Per-site JMS event handling policy. |
+| `retention_policies` | Retention windows for the event log and change feed. |
+| `schema_migrations` | Applied migration markers. |
 
-RPC functions:
+`001_core.sql` also creates `create_datahub_site(...)`. It is a provisioning helper called by
+`scripts/provision-site.ps1` — not a client-callable procedure. It is the only SQL function in
+the schema; there is no row-level security, no `GRANT` to public roles, and no application role
+other than the API's own connection user.
 
-| RPC | Purpose |
-|---|---|
-| `try_acquire_inventory_lease(p_owner_id, p_lease_seconds)` | Acquire the inventory sync lease. |
-| `refresh_inventory_lease(p_owner_id, p_lease_seconds)` | Extend a held lease. |
-| `release_inventory_lease(p_owner_id)` | Release a held lease. |
-| `complete_inventory_sync(p_owner_id)` | Mark inventory sync complete. |
-| `upsert_new_waybills(p_waybills)` | Insert new waybills, conflict-safe. |
-| `merge_waybill_tracking_rows(p_rows)` | Upsert tracking result rows. |
+Apply migrations on the VPS:
 
-Permission model:
-
-- `anon` and `authenticated` have direct `SELECT` only on public app tables required by client reads.
-- Writes go through `SECURITY DEFINER` RPCs.
-- A device token must not be able to insert/update/delete `waybills` directly.
-- `DATAHUB_ADMIN_TOKEN` is for backend/admin use only.
-
-Push migrations:
-
-```powershell
-datahub db push --linked
+```bash
+cd /opt/autojms-datahub
+./bin/apply-migrations.sh --env-file .env.production
 ```
 
-Verify schema:
+Or from Windows against a known connection string:
 
 ```powershell
-datahub migration list --linked
-datahub db query --linked -o table "select to_regclass('public.waybills') as waybills, to_regclass('public.inventory_sync_leases') as leases;"
-datahub db query --linked -o table "select proname from pg_proc where pronamespace='public'::regnamespace order by proname;"
+.\backend\datahub\scripts\apply-migrations.ps1 -DatabaseUrl "postgres://..."
 ```
 
-Verify anon access:
+Both run each file with `ON_ERROR_STOP=1` inside `--single-transaction`.
 
-```powershell
-$anon = "<device token>"
-$headers = @{ apikey = $anon; Authorization = "Bearer $anon" }
-$base = "https://datahub.example.com"
+Verify schema. `run-sql.sh` takes a **file**, not an inline string; it accepts `/dev/stdin`, so
+a heredoc works without creating a temp file:
 
-Invoke-WebRequest "$base/rest/v1/waybills?select=waybill_no&limit=1" -Headers $headers
-
-$body = @{ p_waybills = @("TEST_001") } | ConvertTo-Json
-Invoke-WebRequest -Method Post "$base/rest/v1/rpc/upsert_new_waybills" `
-  -Headers $headers -ContentType "application/json" -Body $body
+```bash
+./bin/run-sql.sh --env-file .env.production /dev/stdin <<'SQL'
+select version from schema_migrations order by version;
+select tablename from pg_tables where schemaname = 'public' order by tablename;
+SQL
 ```
 
-Remove test rows after verification:
+Verify the HTTP surface end to end — staging only:
 
-```powershell
-datahub db query --linked "delete from public.waybills where waybill_no='TEST_001';"
+```bash
+./bin/smoke-test.sh --env-file .env.staging --base https://dev.jmsauto.online
 ```
+
+Ten steps: provision a site, mint a staging assertion, enroll a device, take the lease, ingest,
+replay the same `Idempotency-Key`, read `/changes`, read the snapshot, five negative cases,
+release the lease. It writes real rows and requires `DATAHUB_ALLOW_STAGING_TEST_ISSUER=true`,
+which production must never have enabled — so never point it at production.
 
 ## Render License Server
 
@@ -322,6 +350,7 @@ Endpoints:
 | `/health` | GET | Health check. |
 | `/api/verify-license` | POST | Verify license, bind HWID if needed, create session, return JWT/config. |
 | `/api/heartbeat` | POST | Validate JWT/session, update heartbeat, return refreshed JWT. |
+| `/api/datahub/license-assertion` | POST | Re-issue a short-lived enrollment assertion for a long-running station. |
 | `/api/logout` | POST | Remove session. |
 
 ### Required Environment Variables
@@ -331,9 +360,14 @@ Set these on Render:
 ```text
 JWT_PRIVATE_KEY=<RS256 private key PEM>
 JWT_PUBLIC_KEY=<RS256 public key PEM>
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
-AUTOJMS_DATAHUB_DEVICE_TOKEN=<device API token>
+DATAHUB_API_BASE_URL=https://dev.jmsauto.online
+DATAHUB_MANIFEST_BASE_URL=<optional; defaults to DATAHUB_API_BASE_URL>
+DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY=<RS256 private key PEM, signs enrollment assertions>
+DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license
+DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll
+DATAHUB_LICENSE_ASSERTION_TTL_SECONDS=300
+DATAHUB_CHANNEL=production
+DATAHUB_DEFAULT_SEATS=3
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=<optional comma-separated hashes>
 PORT=<Render sets this automatically>
@@ -342,10 +376,15 @@ PORT=<Render sets this automatically>
 Notes:
 
 - `JWT_PRIVATE_KEY` and `JWT_PUBLIC_KEY` may be stored with escaped `\n`; `server.js` normalizes them.
-- `DATAHUB_API_BASE_URL` can be omitted if the default project in `server.js` is correct.
-- `DATAHUB_API_BASE_URL` is normalized if someone accidentally provides a dashboard bucket URL or bare project URL.
-- `AUTOJMS_DATAHUB_DEVICE_TOKEN` is returned to the desktop client so `DataHubClient` can connect to PostgreSQL/RPC.
-- Never set `AUTOJMS_DATAHUB_DEVICE_TOKEN` to the service-role key.
+- Render never holds a DataHub device token. It holds the assertion **signing** key and mints a
+  short-lived assertion per activation; the station exchanges that for its own device token.
+- `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` unset ⇒ no assertion is issued ⇒ enrollment stays
+  closed and stations run offline-only. That is the safe default, not a silent failure.
+- `DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` / `DATAHUB_CHANNEL` must match
+  `DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` / `DataHub__Channel` on the VPS, or enrollment
+  returns 401 with no useful message.
+- `DATAHUB_ADMIN_TOKEN` belongs on the VPS only. It must never reach Render, the client, or any
+  public JSON.
 
 ### Firebase Admin Credential
 
@@ -398,9 +437,11 @@ Successful response includes:
     "updateChannel": "stable"
   },
   "datahub": {
-    "baseUrl": "https://datahub.example.com",
-    "apiBaseUrl": "https://datahub.example.com",
-    "device enrollment token": "<device token>",
+    "baseUrl": "https://dev.jmsauto.online",
+    "apiBaseUrl": "https://dev.jmsauto.online",
+    "siteCode": "214A02",
+    "licenseAssertion": "v1rs256.<base64url payload>.<base64url signature>",
+    "assertionExpiresAt": 1756000000,
     "manifests": {
       "versionLatest": "https://.../manifest/version-latest.json",
       "hashManifest": "https://.../manifest/hash-manifest.json",
@@ -410,6 +451,10 @@ Successful response includes:
   }
 }
 ```
+
+`licenseAssertion` is not a device token and is not usable against `/api/v1/sites/...`. It is
+single-purpose input to `POST /api/v1/devices/enroll`, which is what returns the device token.
+Full flow: [docs/api/datahub-api-endpoints.vi.md](../docs/api/datahub-api-endpoints.vi.md).
 
 ### Heartbeat Request
 
@@ -468,8 +513,8 @@ Invoke-RestMethod "https://autojms-api.onrender.com/health/firebase"
 ```
 
 5. Test `/api/verify-license` with a known non-production or controlled license key. A request with a fake but well-formed license key should return `404` JSON with `error: "LICENSE_NOT_FOUND"`, not hang and not return an HTML proxy error.
-6. Confirm response includes `tier`, `middleCode`, `datahub.baseUrl`, `datahub.apiBaseUrl`, `datahub.device enrollment token`, and manifest URLs.
-7. Confirm logs do not print full JWTs, service-role keys, Firebase credentials, or JMS auth tokens.
+6. Confirm response includes `tier`, `middleCode`, `datahub.baseUrl`, `datahub.apiBaseUrl`, `datahub.licenseAssertion`, and manifest URLs.
+7. Confirm logs do not print full JWTs, the assertion signing key, Firebase credentials, license assertions, or JMS auth tokens.
 
 ## End-To-End Startup Contract
 
@@ -484,57 +529,66 @@ sequenceDiagram
     Render->>Firebase: Read Licenses/{licenseKey}
     Firebase-->>Render: license/tier/hwid/middleCode
     Render->>Firebase: Create sessions/{sid}
-    Render-->>Client: JWT + tier + DataHub config
+    Render-->>Client: JWT + tier + apiBaseUrl + licenseAssertion
+    Client->>DataHub: POST /api/v1/devices/enroll (assertion)
+    DataHub-->>Client: device token + siteId
     Client->>DataHub: Fetch manifests/config JSON
-    Client->>DataHub: Call RPCs when ULTRA sync runs
+    Client->>DataHub: GET /api/v1/sites/{siteId}/changes (ULTRA only)
+    Client->>DataHub: WS /hubs/site — doorbell on new changes
     Client->>Render: POST /api/heartbeat with JWT
     Render->>Firebase: Check sessions/{sid}
     Render-->>Client: refreshed JWT or kill action
 ```
 
+The doorbell only says "something changed". The sync loop still pulls `/changes` by
+`change_seq`, so losing the hub degrades to polling instead of losing data.
+
 ## Security Rules
 
 - Never commit real Firebase service account credentials.
-- Never commit DataHub service-role keys.
-- Never return service-role keys from Render.
-- Never upload `.nupkg`, setup executables, private keys, service account files, or token dumps to VPS config API.
+- Never commit `DATAHUB_ADMIN_TOKEN`, `DATAHUB_DEVICE_TOKEN_SIGNING_KEY`,
+  `DATAHUB_ENROLLMENT_PEPPER`, or the assertion signing key. `.env.production` lives on the VPS
+  only; the repo carries `env.production.template` with placeholders.
+- Never return `DATAHUB_ADMIN_TOKEN` from Render, and never put it in client code or public JSON.
+- Never publish `.nupkg`, setup executables, private keys, service account files, or token dumps
+  through the manifest control plane. Binaries belong in GitHub Releases.
+- Never enable `DATAHUB_ALLOW_STAGING_TEST_ISSUER` on production — it lets anyone mint their own
+  enrollment assertion.
+- Never expose the PostgreSQL port on the host. The database is reachable only over the private
+  Docker network.
 - Never let BASE-tier behavior depend on ULTRA-only background sync.
 - Never use Firebase for update binaries or update control-plane files.
-- Do not log full production tokens. Mask to a short prefix/suffix.
+- Do not log full production tokens. Mask to `first4...last4`.
 
-## Verification Summary From 2026-06-11
+## Verification State
 
-Completed verification:
+Verified on the VPS:
 
-- DataHub project linked: `bnsnnrlwfzxemmizknwy`.
-- Bucket `autojms-modules` exists and is public.
-- Public manifest/config URLs return HTTP 200.
-- Remote migrations exist:
-  - `202606110001`
-  - `202606110002`
-- Tables verified:
-  - `public.waybills`
-  - `public.inventory_sync_leases`
-  - `public.app_modules`
-- RPCs verified:
-  - `try_acquire_inventory_lease`
-  - `refresh_inventory_lease`
-  - `release_inventory_lease`
-  - `complete_inventory_sync`
-  - `upsert_new_waybills`
-  - `merge_waybill_tracking_rows`
-- Anon REST `SELECT waybills` works.
-- Anon RPC `upsert_new_waybills` works.
-- Direct anon insert to `waybills` is blocked.
-- Test row `TEST_AUTOMATION_001` was removed.
+- Caddy terminates TLS for `dev.jmsauto.online` and reverse-proxies everything to `api:8080`.
+- `GET /health/live` and `GET /health/ready` return 200.
+- All five migrations are recorded in `schema_migrations`; the 12 tables above exist.
+- `create_datahub_site(...)` is the only function in the `public` schema.
+- PostgreSQL is not published to the host; only 22/80/443 are open.
+- `smoke-test.sh` passes against staging, including the five negative cases.
+
+Known gaps, still open:
+
+- `PUT /api/v1/admin/manifests/{objectPath}` does not exist, so `build-release.ps1 -Upload`
+  returns 404. The manifest control plane has no server-side write path yet.
+- No `notes` / `checks` / `tasks` endpoints, so those FullStackForm panels stay local-only.
+- `DeviceIdentity.Role` is carried through enrollment but never enforced anywhere.
+- VPS hardening (fail2ban, unattended-upgrades, SSH password-auth off) is documented in
+  `backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md` but not yet applied.
 
 ## Common Failures
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Client cannot fetch manifests | Wrong `DATAHUB_API_BASE_URL` or missing Storage upload | Verify public URL and upload JSON files. |
-| `device API token is not configured` | Render did not return `datahub.device enrollment token` | Set `AUTOJMS_DATAHUB_DEVICE_TOKEN` on Render. |
-| `401 Unauthorized` on REST | Missing/incorrect device token or direct write blocked | Use device token for reads/RPC; do not direct insert. |
-| `db push` auth failure | Missing DB password or stale CLI auth | Re-run `datahub login`; set `DATAHUB_DB_PASSWORD` if CLI requests it. |
-| Update downloads from wrong place | `version-latest.json` channel/provider/tag mismatch | Keep `provider=github`; upload only JSON to DataHub. |
+| Client cannot fetch manifests | Wrong `DATAHUB_API_BASE_URL`/`DATAHUB_MANIFEST_BASE_URL`, or the files were never published | Fetch the public URL by hand; remember `-Upload` is currently broken. |
+| `401 ASSERTION_INVALID` on enroll | Issuer/audience/channel mismatch between Render and the VPS, or a clock skew over the assertion TTL | Compare `DATAHUB_LICENSE_ASSERTION_*` and `DATAHUB_CHANNEL` on both sides. |
+| Enrollment returns `409 SEAT_LIMIT_REACHED` | `deviceName` is not stable across runs, so every launch burns a seat | Keep the name derived from `MachineName` + hwid prefix; raise `seats` only deliberately. |
+| `401` on `/api/v1/sites/...` | Device token expired, or the site's token version was bumped | Let `HeartbeatSupervisor` rotate it; re-enroll if the device row was revoked. |
+| Every `${VAR:?}` fails on `docker compose` | `--env-file` omitted | Use `./bin/dc.sh`, which always passes it. |
+| Migration "succeeded" but re-runs next deploy | The file did not record its own marker | Fix the file to insert into `schema_migrations` inside its transaction. |
+| Update downloads from wrong place | `version-latest.json` channel/provider/tag mismatch | Keep `provider=github`; the DataHub side serves only JSON. |
 | BASE starts background sync | Tier policy regression | Verify `TierRuntimePolicy` and runtime policy JSON. |

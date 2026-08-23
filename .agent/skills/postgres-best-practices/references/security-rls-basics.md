@@ -7,6 +7,12 @@ tags: rls, row-level-security, multi-tenant, security
 
 ## Enable Row Level Security for Multi-Tenant Data
 
+> **Not the AutoJMS model.** This chapter assumes clients talk to Postgres directly, so the
+> database is the only place left to enforce tenancy. AutoJMS clients never reach Postgres — they
+> go through the DataHub API, which scopes every query by `siteId` from the device token. There is
+> no RLS, no `CREATE POLICY`, and no `anon`/`authenticated` role in `backend/datahub/migrations/`.
+> Read this for the SQL mechanics; do not add policies to the schema.
+
 Row Level Security (RLS) enforces data access at the database level, ensuring users only see their own data.
 
 **Incorrect (application-level filtering only):**
@@ -47,4 +53,4 @@ create policy orders_user_policy on orders
   using (user_id = current_setting('app.user_id', true)::uuid);
 ```
 
-Reference: [Row Level Security](https://datahub.com/docs/guides/database/postgres/row-level-security)
+Reference: [Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)

@@ -44,19 +44,34 @@ Nhưng site thật gọi bản **không có "2"**. Cần kiểm tra bản nào l
 
 ## 3. Tăng tốc đồng bộ lên Database
 
-- Đẩy mã mới bằng **một** RPC bulk `upsert_new_waybills(text[])` thay vì từng dòng (đã có sẵn).
-- `merge_waybill_rows_v2` gộp theo lô `jsonb` — giữ nguyên lô lớn, tránh nhiều lời gọi nhỏ.
+- Đẩy theo lô bằng **một** request `POST /api/v1/sites/{siteId}/jms/observations`. Hai phương thức
+  `DataHubClient.UpsertManyWaybillsAsync` / `MergeWaybillRowsV2Async` còn giữ tên từ thời RPC, nhưng cả
+  hai đều gọi `SendObservationBatchAsync` → endpoint này. Giữ lô lớn, tránh nhiều lời gọi nhỏ.
+- Đường đẩy cả chu kỳ fetch là `POST /jms/ingest` + header `Idempotency-Key` (bảng
+  `idempotency_records` đỡ phía server), nên retry một lô là an toàn.
+- ⚠️ `UpsertNewWaybillsOnlyAsync` (tên cũ `upsert_new_waybills`) **hiện chỉ đếm mã rồi trả về, không gửi
+  gì**. Muốn đẩy "chỉ mã mới" thì phải gọi một trong hai đường trên.
 - Tracking (`DatabaseTracking.cs`) đã chạy song song (`BatchSize = 40`, `MaxDegreeOfParallelism = 3`). Có thể nâng nhẹ batch lên 50 và theo dõi tỷ lệ 401/429 trước khi tăng luồng.
 - **Fingerprint cache** (`_cloudRowFingerprintCache`) đã bỏ qua đơn không đổi → chỉ upload đơn thay đổi. Giữ nguyên, đây chính là cơ chế "chỉ cập nhật dữ liệu mới".
 
 ## 4. Không xóa dữ liệu cũ — chỉ cập nhật (ĐÃ ĐÁP ỨNG)
 
-Các RPC DataHub không bao giờ xóa:
+Đường ghi của DataHub không xoá:
 
-- `merge_waybill_rows_v2`: `on conflict (waybill_no) do update ... where excluded.updated_at >= waybills.updated_at` → **newest-wins**, đơn cũ được giữ, chỉ ghi đè khi dữ liệu mới hơn.
-- `upsert_new_waybills`: `on conflict do nothing` → không đụng đơn đã có.
+- `waybill_scan_events` là **append-only**, chống trùng bằng `UNIQUE (site_id, event_fingerprint)` — event
+  trùng bị bỏ qua, event cũ không bao giờ bị ghi đè.
+- `waybill_projections` là **newest-wins theo slot**: reducer trong API chỉ ghi khi event mới hơn cái slot
+  đang giữ. Dòng của đơn cũ vẫn còn nguyên.
+- Xoá chỉ do retention (`retention_policies` + `BackgroundService` trong API) theo cửa sổ thời gian, và
+  `005_change_retention_floor.sql` đặt sàn để không xoá mất cursor client đang dùng.
 
-**Lưu ý:** khi một đơn rời kho, đừng xóa — chỉ nên cập nhật cờ `is_in_current_inventory = false` (cột đã có trong schema). Việc phân biệt "đơn còn tồn / đã rời" nên xử lý bằng cờ, không phải bằng delete.
+> ⚠️ **Không có cột `is_in_current_inventory`.** Schema hiện tại là 12 bảng ở
+> `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql`; không có bảng `waybills`
+> và không có cờ nào như vậy. Tín hiệu "còn tồn / đã rời" nằm ở nhóm slot `inventory_*` của
+> `waybill_projections` (`inventory_code`, `inventory_name`, `inventory_event_at`, …), do
+> `jms_event_policies` phân loại `event_kind = 'inventory'`. Muốn có một cờ boolean riêng thì phải mở
+> migration `006_*.sql` — **không** phải sửa cột đã có. Nguyên tắc "chỉ cập nhật, không delete" vẫn đúng
+> nguyên vẹn.
 
 ## 5. Dừng cập nhật khi trạng thái cuối = "Ký nhận CPN" hoặc "Kết thúc"
 
@@ -78,8 +93,13 @@ private static bool IsTerminalStatus(WaybillDbModel row)
 }
 ```
 
-2. Khi terminal: đặt `IsActive = false` (đã ghi lên DB, `is_active` newest-wins giữ nguyên).
-3. **Quan trọng cho tốc độ:** trước khi dựng danh sách tracking, lọc bỏ đơn `is_active = false`. Đơn đã "Ký nhận CPN"/"Kết thúc" sẽ **không bị hỏi API JMS lại** ở các chu kỳ sau → vừa đúng yêu cầu, vừa giảm tải và tăng tốc.
+2. Khi terminal: đặt `IsActive = false` trên model phía client. ⚠️ **Không có cột `is_active` trên
+   server** — `GetActiveWaybillsAsync` chỉ là alias của `ReadSnapshotAsync(pageSize)`, tức nó trả về
+   nguyên snapshot chứ không lọc gì. Muốn server lọc thì cần cột mới (migration `006_*.sql`) + tham số
+   lọc trên `/projections/snapshot`.
+3. **Quan trọng cho tốc độ:** trước khi dựng danh sách tracking, lọc bỏ đơn terminal **ở client** (suy ra
+   từ `state_name` / `last_activity_name` trong snapshot). Đơn đã "Ký nhận CPN"/"Kết thúc" sẽ **không bị
+   hỏi API JMS lại** ở các chu kỳ sau → vừa đúng yêu cầu, vừa giảm tải và tăng tốc.
 
 > Chuỗi `"Ký nhận CPN"` là giá trị có thật trong dữ liệu — `Main.cs:2551` đã map `"Ký nhận CPN" → ForestGreen`.
 
@@ -91,7 +111,7 @@ private static bool IsTerminalStatus(WaybillDbModel row)
 | 2 | Đổi kéo trang tuần tự → trang 1 rồi song song, bỏ delay 250ms | `InventorySyncService.cs:139–268` |
 | 3 | Test & nâng `PageSize` (500/1000) | `InventorySyncService.cs:19` |
 | 4 | Thêm `IsTerminalStatus` (gồm "Ký nhận CPN" + "Kết thúc") | `DatabaseTracking.cs:106` |
-| 5 | Lọc `is_active = false` khỏi danh sách tracking chu kỳ sau | `DatabaseTracking.cs`, `DataHubClient.GetActiveWaybillsAsync` |
-| 6 | Cập nhật cờ `is_in_current_inventory` cho đơn đã rời kho (không delete) | RPC / merge |
+| 5 | Lọc đơn terminal khỏi danh sách tracking chu kỳ sau (ở client — `GetActiveWaybillsAsync` không lọc) | `DatabaseTracking.cs`, `DataHubClient.GetActiveWaybillsAsync` |
+| 6 | Biểu diễn "đơn đã rời kho" bằng slot `inventory_*` (không delete); nếu cần cờ boolean thì mở migration `006_*.sql` + tham số lọc snapshot | reducer trong `AutoJMS.DataHub.Api` |
 
 Tất cả thay đổi ở mục 6 đều tuân thủ nguyên tắc "chỉ cập nhật, không xóa" và không đụng file protected.

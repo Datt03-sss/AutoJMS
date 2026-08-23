@@ -19,14 +19,14 @@ Backend responsibilities verified from current files:
 
 - Render server: `backend/render-license-server/server.js`.
 - Firebase: license/session/tier state used by the Render server via Firebase Admin SDK.
-- VPS config API: public manifest/config/hash/tier/selector-update files under `infra/datahub/autojms-modules/`.
-- DataHub PostgreSQL: C# client calls waybill tables/RPCs through `DataHubClient`.
+- DataHub API (`dev.jmsauto.online`): data plane plus the public manifest/config/hash/tier/selector-update JSON.
+- DataHub PostgreSQL: private to the API container network; `DataHubClient` reaches it only through REST endpoints.
 - GitHub Releases: Velopack binary assets.
 
 Important mismatches to preserve in audit:
 
 - `server.js` returns `license.modulePolicy`, but `LicenseApiService` parses root `modulePolicy`. Effective module policy behavior is `NEED VERIFY`.
-- `datahub-migration.sql` does not include current waybill/inventory RPC definitions used by the C# code.
+- Resolved 2026-08-23: `DataHubClient` calls REST endpoints only. The schema is `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql`; the old `datahub-migration.sql` is not the source of truth.
 - Checked-in hash manifest sample has a shape mismatch with `HashManifest.cs` expectation.
 
 Use this baseline if older content below conflicts.
@@ -39,7 +39,7 @@ Use this baseline if older content below conflicts.
 │                                                                    │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
 │  │  JMS Website │    │  License     │    │  DataHub   │      │
-│  │  jtexpress.vn │    │  Server      │    │  (Storage)  │      │
+│  │  jtexpress.vn │    │  Server      │    │  API (VPS)  │      │
 │  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘      │
 │         │                   │                   │                  │
 │         │ WebView2         │ HTTP/REST         │ HTTPS            │
@@ -143,58 +143,83 @@ Sessions/
     lastPing: timestamp
 ```
 
-## DataHub (Waybill Data + Storage)
+## DataHub (Data Plane + Manifest Control Plane)
 
-**URL**: https://datahub.example.com
+**URL**: https://dev.jmsauto.online
+**Source**: `src/AutoJMS.DataHub.Api/` · **Contract**: `backend/datahub/openapi/datahub-v1.yaml`
+**Schema**: `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql`
 
-> ⚠️ **SUPERSEDED — do not implement against this section.** The tables and RPC functions below
-> describe the pre-VPS DataHub-as-storage era. The current data plane exposes **no RPCs and no
-> direct database access**: clients call REST under `/api/v1/sites/{siteId}/...` plus the SignalR
-> hub `/hubs/site`, and PostgreSQL is private to the API's Docker network.
->
-> Current schema: [backend/datahub/migrations/001_core.sql](../../backend/datahub/migrations/001_core.sql).
-> Current contract: [backend/datahub/openapi/datahub-v1.yaml](../../backend/datahub/openapi/datahub-v1.yaml).
-> Current design: [datahub-backend-design.vi.md](./datahub-backend-design.vi.md).
->
-> Kept here only so audits can recognise the old shape in historical code and migrations.
+ASP.NET Core net10.0 behind Caddy, with PostgreSQL in Docker on the private compose network.
+Clients never touch the database — every read and write goes through an authenticated endpoint.
+There are no client-callable SQL functions, no row-level security, and no object store.
 
-### PostgreSQL Tables (historical)
+Full design: [datahub-backend-design.vi.md](./datahub-backend-design.vi.md).
+Diagrams: [datahub-backend-diagrams.md](./datahub-backend-diagrams.md).
 
-#### waybills
+### HTTP Surface
 
-| Column | Type | Description |
-|--------|------|-------------|
-| waybill_no | TEXT PK | Tracking number |
-| trang_thai_hien_tai | TEXT | Current status |
-| thao_tac_cuoi | TEXT | Last operation |
-| nguoi_thao_tac | TEXT | Operator |
-| print_count | INT | Times printed |
-| is_active | BOOL | Active tracking flag |
-| last_tracked_at | TIMESTAMP | Last tracking time |
+| Route | Method | Auth |
+|---|---|---|
+| `/health/live`, `/health/ready` | GET | none |
+| `/api/v1/devices/enroll` | POST | license assertion in `Authorization: Bearer` |
+| `/api/v1/sites/{siteId}/jms/ingest` | POST | device token |
+| `/api/v1/sites/{siteId}/jms/observations` | POST | device token |
+| `/api/v1/sites/{siteId}/lease/{acquire,renew,release}` | POST | device token |
+| `/api/v1/sites/{siteId}/changes` | GET | device token |
+| `/api/v1/sites/{siteId}/projections/snapshot` | GET | device token |
+| `/hubs/site` | WS | device token |
 
-#### RPC Functions (historical — removed from the current data plane)
+Adding a route means editing `Endpoints/`, the OpenAPI file, and `scripts/smoke-test.sh`. A route
+present in only one of the three is a bug waiting to ship.
 
-| Function | Purpose |
-|---------|---------|
-| try_acquire_inventory_lease | Get exclusive sync lock |
-| refresh_inventory_lease | Extend lock |
-| release_inventory_lease | Release lock |
-| upsert_new_waybills | Insert waybills (ON CONFLICT DO NOTHING) |
-| merge_waybill_tracking_rows | Upsert tracking data |
+### PostgreSQL Tables
 
-### Storage Buckets
+Twelve tables, all created by the forward-only migrations:
+
+| Table | Role |
+|---|---|
+| `sites` | One row per office; `site_code` is what enrollment matches on |
+| `devices` | Enrolled stations; `status` is `active` \| `revoked` \| `disabled` |
+| `waybill_scan_events` | Append-only event log from `/jms/ingest` |
+| `waybill_projections` | Current-state table read by `/projections/snapshot` |
+| `dashboard_changes` | Change feed rows read by `/changes` |
+| `site_change_counters` | Monotonic `change_seq` per site |
+| `site_fetch_leases` | Single-leader election for JMS fetching |
+| `idempotency_records` | Backs the `Idempotency-Key` header on ingest |
+| `audit_logs` | Enrollment and admin actions |
+| `jms_event_policies` | Which JMS operations map to which projection transitions |
+| `retention_policies` | Per-table retention windows |
+| `schema_migrations` | Applied-migration markers |
+
+The only SQL function is `create_datahub_site(...)`, a provisioning helper invoked by
+`scripts/provision-site.ps1`. It is not reachable from a client.
+
+### Manifest Control Plane
+
+Small JSON served over plain HTTP from `DATAHUB_MANIFEST_BASE_URL` (defaults to
+`DATAHUB_API_BASE_URL`):
 
 ```
-autojms-modules/
+https://dev.jmsauto.online/
 ├── manifest/
+│   ├── app-manifest.json
 │   ├── version-latest.json      ← Version control plane
-│   ├── hash-manifest.json      ← DLL hashes
-│   └── tier-definitions.json  ← Tier definitions
+│   ├── hash-manifest.json       ← DLL hashes
+│   └── tier-definitions.json    ← Tier definitions
 ├── selector-updates/
+│   ├── runtime-config.json
 │   └── selector-update-manifest.json
 └── configs/
-    └── runtime-config.json
+    ├── public-config.json
+    ├── runtime-policy.json
+    ├── runtime-policy.base.json
+    └── runtime-policy.ultra.json
 ```
+
+> **Open gap.** `PUT /api/v1/admin/manifests/{objectPath}` — the publish route
+> `release/build-release.ps1 -Upload` targets — is not implemented, is absent from the OpenAPI
+> file, and has no `Caddyfile` handler. Publishing returns 404; place the JSON on the VPS by hand
+> until the endpoint lands.
 
 ## GitHub Releases (Binaries)
 
@@ -212,8 +237,8 @@ autojms-modules/
 
 | Content | Host | Reason |
 |---------|------|--------|
-| Large binaries (.nupkg, Setup.exe) | GitHub | >50MB DataHub limit |
-| Small manifests (JSON) | VPS config API | <1KB each |
+| Large binaries (.nupkg, Setup.exe) | GitHub Releases | Velopack reads them from there directly |
+| Small manifests (JSON) | DataHub API | Control plane carries JSON only |
 
 ## Security Architecture
 

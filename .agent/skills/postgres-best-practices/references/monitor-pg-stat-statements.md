@@ -52,4 +52,4 @@ where mean_exec_time > 100  -- > 100ms average
 order by mean_exec_time desc;
 ```
 
-Reference: [pg_stat_statements](https://datahub.com/docs/guides/database/extensions/pg_stat_statements)
+Reference: [pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)

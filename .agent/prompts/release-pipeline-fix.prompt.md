@@ -26,7 +26,7 @@ Use this prompt when fixing release/build/update pipeline issues.
 | .NET Reactor | Protect AutoJMS.dll | src/AutoJMS/AutoJMS.csproj |
 | vpk pack | Create Velopack package | build-release.ps1 |
 | GitHub Release | Host binaries | build-release.ps1 |
-| VPS config API | Host manifests | build-release.ps1 |
+| DataHub API | Host manifest JSON | build-release.ps1 |
 | Inno Setup | First install | AutoJMS.iss |
 
 ## Binary Split
@@ -36,9 +36,9 @@ Use this prompt when fixing release/build/update pipeline issues.
 | .nupkg | ~100MB | GitHub Releases |
 | Setup.exe | ~100MB | GitHub Releases |
 | RELEASES | ~1KB | GitHub Releases |
-| version-latest.json | ~1KB | VPS config API |
+| version-latest.json | ~1KB | DataHub API |
 
-**DataHub free plan rejects files > 50MB, so .nupkg goes to GitHub.**
+**The DataHub control plane carries JSON only; every binary goes to GitHub Releases.**
 
 ## Common Issues
 
@@ -91,11 +91,12 @@ Use this prompt when fixing release/build/update pipeline issues.
 **Symptom**: version-latest.json not updated
 
 **Check**:
-1. DATAHUB_ADMIN_TOKEN set?
-2. Bucket exists: autojms-modules
+1. `DATAHUB_ADMIN_TOKEN` set?
+2. Does the response say 404? The route `PUT /api/v1/admin/manifests/{objectPath}` is not
+   implemented yet, so `-Upload` always 404s.
 3. Manifest file is valid JSON
 
-**Fix**: Set env var or use DataHub CLI
+**Fix**: Set the env var; until the admin route lands, publish the JSON on the VPS by hand.
 
 ## Version Format
 

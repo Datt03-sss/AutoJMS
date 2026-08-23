@@ -38,4 +38,4 @@ Pool modes:
 - **Transaction mode**: connection returned after each transaction (best for most apps)
 - **Session mode**: connection held for entire session (needed for prepared statements, temp tables)
 
-Reference: [Connection Pooling](https://datahub.com/docs/guides/database/connecting-to-postgres#connection-pooler)
+Reference: [PgBouncer](https://www.pgbouncer.org/config.html)

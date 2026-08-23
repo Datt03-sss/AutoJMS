@@ -72,7 +72,7 @@ Từ timeline `queryCssWork`, phân loại `Loại thao tác` thành nhóm tín 
 - **Phase 1 — Thu thập**: hoàn tất sync tồn (đã có) + thêm bảng `waybill_scans` và job kéo `queryCssWork` cho đơn active.
 - **Phase 2 — Chỉ số & cảnh báo**: viết hàm tính `risk_score`/`sla_status` từ scans; sinh `dispatch_tasks` tự động.
 - **Phase 3 — Giao diện**: tabDash hiển thị đơn tồn + tín hiệu; tabThoiHieu hiển thị SLA; ô lọc theo bưu cục/nhân viên/loại vấn đề.
-- **Phase 4 — Tự động hóa**: pg_cron/edge function chạy tính chỉ số định kỳ; realtime đẩy cảnh báo xuống client.
+- **Phase 4 — Tự động hóa**: một `BackgroundService` trong `AutoJMS.DataHub.Api` chạy tính chỉ số định kỳ (cùng chỗ với retention — kiến trúc hiện tại không có scheduler trong database); ghi `dashboard_changes` rồi bắn doorbell `/hubs/site` để đẩy cảnh báo xuống client.
 
 ## 6. Rủi ro & lưu ý
 - Kéo hành trình toàn bộ đơn rất nặng ⇒ bắt buộc lịch ưu tiên theo `next_track_at`.

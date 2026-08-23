@@ -43,4 +43,4 @@ Check your driver settings:
 -- JDBC: prepareThreshold=0 to disable
 ```
 
-Reference: [Prepared Statements with Pooling](https://datahub.com/docs/guides/database/connecting-to-postgres#connection-pool-modes)
+Reference: [PREPARE](https://www.postgresql.org/docs/current/sql-prepare.html) / [PgBouncer pool modes](https://www.pgbouncer.org/config.html#pool_mode)

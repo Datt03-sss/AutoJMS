@@ -19,9 +19,12 @@ flowchart TD
     Tier --> Ultra["ULTRA: FullStackOperation + background sync"]
     Ultra --> FullStack["FullStackOperation.cs standalone form"]
     Ultra --> Sync["InventorySyncService + DatabaseTracking"]
-    Sync --> DataHubDb["DataHub PostgreSQL / RPC"]
+    Sync --> DataHubApi["DataHub API /api/v1/sites/..."]
+    Sync --> Hub["SignalR /hubs/site doorbell"]
+    DataHubApi --> DataHubDb["DataHub PostgreSQL (private)"]
+    Hub --> DataHubApi
     Program --> Updates["SmallUpdateService / VelopackUpdateService"]
-    Updates --> DataHubStorage["VPS config API manifests"]
+    Updates --> DataHubStorage["DataHub manifest JSON"]
     Updates --> GitHub["GitHub Releases Velopack assets"]
     Program --> Modules["ModuleSystem dynamic loader"]
     Modules --> DataHubStorage
@@ -38,7 +41,10 @@ Hard rules from current code:
 
 Current verification gaps:
 
-- `datahub-migration.sql` does not define the waybill tables/RPCs used by `DataHubClient`; database schema is `NEED VERIFY`.
+- Resolved 2026-08-23: `DataHubClient` calls REST endpoints only, never SQL functions. The schema
+  lives in `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql` (twelve
+  tables) and is applied by `scripts/apply-migrations.sh --env-file`. The old
+  `datahub-migration.sql` gap no longer applies.
 - Module signature enforcement is inconsistent; module supply-chain trust is `NEED VERIFY`.
 - Historical clean-checkout build blocker from missing root `modules/*.json` was fixed with conditional content includes in `src/AutoJMS/AutoJMS.csproj`; latest recorded Debug build succeeded with warnings only.
 
@@ -70,7 +76,7 @@ Current verification gaps:
 │  JMS (jms.jtexpress.vn) via WebView2 + HTTP API   │
 │  Render License Server (autojms-api.onrender.com)  │
 │  Firebase Realtime Database (keyauthjms)            │
-│  DataHub PostgreSQL + Storage (valmbajjpkjccqslsuou)│
+│  DataHub API (dev.jmsauto.online) + Postgres        │
 │  GitHub Releases (Datt03-sss/AutoJMS-Update)     │
 └─────────────────────────────────────────────────────┘
 ```
@@ -293,7 +299,7 @@ C:\AutoJMS\                    ← InstallRoot (user-chosen)
 
 | Type | Mechanism | Trigger | Binary Source |
 |------|----------|---------|---------------|
-| Small Update | SmallUpdateService | Auto after license | VPS config API |
+| Small Update | SmallUpdateService | Auto after license | DataHub API |
 | Major Update | VelopackUpdateService | Manual (About tab) | GitHub Releases |
 
 ### Major Update Flow

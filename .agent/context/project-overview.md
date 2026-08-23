@@ -20,8 +20,11 @@ External service roles:
 
 - Firebase Realtime Database: license/session/tier data used by the Render server.
 - Render `server.js`: license verification, heartbeat, logout.
-- VPS config API: manifest/config/hash/tier/selector-update files.
-- DataHub PostgreSQL: waybill tracking data and RPCs. SQL definitions for the waybill RPCs are not present in `datahub-migration.sql`; mark database bootstrap as `NEED VERIFY`.
+- DataHub API (`dev.jmsauto.online`): device enrollment, JMS ingest, change feed, fetch lease, the
+  SignalR `/hubs/site` doorbell, plus the manifest/config/hash/tier/selector-update JSON.
+- DataHub PostgreSQL: waybill projection and operational tables, twelve of them, defined by the
+  forward-only migrations in `backend/datahub/migrations/`. Private compose network only — clients
+  reach it through the API, never directly, and there are no client-callable SQL functions.
 - GitHub Releases: large Velopack binary hosting. Do not upload `.nupkg` to DataHub.
 - Inno Setup: first install/reinstall/uninstall and runtime prerequisites.
 - Velopack: in-app updates, major update from About tab only.
@@ -66,7 +69,7 @@ AutoJMS is a **desktop logistics automation application** for Vietnamese logisti
 | JMS API Gateway | Backend API calls | jmsgw.jtexpress.vn |
 | License Server | Verify license, heartbeat | autojms-api.onrender.com |
 | Firebase | License/session data | keyauthjms-default-rtdb |
-| DataHub | Waybill DB, manifests, storage | valmbajjpkjccqslsuou.datahub.co |
+| DataHub API | Enrollment, ingest, changes, lease, hub, manifests | dev.jmsauto.online |
 | GitHub Releases | Velopack binary hosting | Datt03-sss/AutoJMS-Update |
 
 ## Current Version

@@ -23,7 +23,7 @@ Never start editing on a dirty or stale working tree.
 Before starting work on any task:
 
 1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, DataHub manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
-2. For any DataHub work (MCP, migrations, RLS, edge functions) follow `.agents/skills/datahub/SKILL.md`; for Postgres SQL tuning follow `.agents/skills/datahub-postgres-best-practices/SKILL.md`.
+2. For any DataHub work (API endpoints, enrollment, migrations, manifest publish) follow [.agent/rules/05-datahub-firebase-github-rules.md](./.agent/rules/05-datahub-firebase-github-rules.md) and [.agent/skills/datahub-manifest-skill.md](./.agent/skills/datahub-manifest-skill.md); for Postgres SQL tuning follow [.agent/skills/postgres-best-practices/SKILL.md](./.agent/skills/postgres-best-practices/SKILL.md).
 3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
 3. Skills are helpers — project rules in this file and `AGENTS.md` always take precedence over any skill guidance.
 

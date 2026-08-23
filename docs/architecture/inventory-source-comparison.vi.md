@@ -68,9 +68,13 @@ cần giữ lại theo dõi tới khi **có hành trình mới hơn** đẩy đi
 
 ## 5. Đề xuất — chiến lược union + tích luỹ để giảm tối đa sót đơn
 
-### 5.1 Hợp nhất 2 nguồn vào cùng bảng `waybills` (không xóa, chỉ upsert)
-- Cả 2 nguồn đẩy qua cùng RPC upsert newest-wins đã có (`merge_waybill_rows_v2`).
-- Thêm cờ nguồn phát hiện để biết đơn đến từ đâu:
+### 5.1 Hợp nhất 2 nguồn vào cùng `waybill_projections` (không xóa, chỉ upsert)
+- Cả 2 nguồn đẩy qua cùng đường ghi newest-wins đã có: `POST /api/v1/sites/{siteId}/jms/observations`
+  (hoặc `/jms/ingest` cho lô lớn). Reducer trong API là writer duy nhất; không có SQL function nào client
+  gọi được.
+- Thêm cờ nguồn phát hiện để biết đơn đến từ đâu. **Schema hiện tại chưa có cột nào như vậy** — cần một
+  migration `006_*.sql` thêm cột vào `waybill_projections`, cộng field tương ứng trong payload
+  observation:
   - `seen_in_bigdata boolean`, `seen_in_stockcheck boolean` (hoặc `source_flags text` = `bd|kiemkho|both`).
   - `first_seen_at` / `last_seen_at` **cho mỗi nguồn** để biết đơn xuất hiện/biến mất khi nào.
 
@@ -95,32 +99,62 @@ Sau mỗi vòng đồng bộ, so tập mã 2 nguồn:
   ghi nhận thao tác tồn tại bưu cục** — đây chính là mục tiêu cần đạt.
 - Nhờ **không xóa + tích luỹ**, kể cả đơn chỉ thoáng xuất hiện 1 lần rồi biến mất vẫn được giữ lại.
 
-### 5.5 Điều kiện loại khỏi database (tận dụng cơ chế đã có)
-- Đơn thường: theo policy đã triển khai — "Ký nhận CPN" xóa ngay, "Kết thúc" giữ tới khi `is_handled`, còn lại retention 30 ngày.
+### 5.5 Điều kiện loại khỏi database (đề xuất — chưa có)
+- Đơn thường: retention theo `retention_policies`, dọn bởi `BackgroundService` trong API.
 - **Đơn nhảy mã (`suspected_stray`)**: **chỉ loại khi** (a) xuất hiện **hành trình mới hơn** (last_seen dịch chuyển sang bưu cục/thao tác khác) **hoặc** (b) được đánh dấu **`is_handled`** (Đã xử lý). Trước đó **giữ nguyên** để theo dõi.
+- ⚠️ `suspected_stray` và `is_handled` **chưa tồn tại**, nên phần loại trừ này chưa được thực thi: hiện
+  retention dọn theo thời gian thuần, không biết đơn nào là stray.
 
-## 5b. ĐÃ TRIỂN KHAI (migration `202607150005_dual_source_union`)
+## 5b. CHƯA TRIỂN KHAI — trạng thái thật 2026-08-23
 
-Cột mới trên `waybills`: `seen_in_bigdata`, `seen_in_stockcheck`, `bigdata_first/last_seen_at`,
-`stockcheck_first/last_seen_at`, `suspected_stray`; index `idx_waybills_suspected_stray`.
+> ⚠️ **Bản trước ghi mục này là "ĐÃ TRIỂN KHAI (migration `202607150005_dual_source_union`)" và có cả
+> "đã smoke test".** Không đúng. Migration đó không tồn tại — schema hiện tại là `001_core.sql` …
+> `005_change_retention_floor.sql`. Không có bảng `waybills`; không có cột `seen_in_bigdata` /
+> `seen_in_stockcheck` / `suspected_stray` / `is_handled`; không có index
+> `idx_waybills_suspected_stray`; không có RLS (nên không có gì để "bật lại"); và SQL function duy nhất
+> trong database là `create_datahub_site(...)` — helper cấp phát site cho `scripts/provision-site.ps1`,
+> client không gọi được.
 
-RPC:
-- `merge_bigdata_detail(site, jsonb)` — đẩy chi tiết Nguồn #1 + tự đóng dấu `seen_in_bigdata`.
-- `ingest_bigdata_waybills(site, text[])` — đóng dấu Nguồn #1 (dùng khi chỉ có danh sách mã).
-- `ingest_stockcheck_waybills(site, text[])` — nạp Nguồn #2 (insert-if-missing + đóng dấu).
-- `reconcile_inventory_sources(site)` — đặt `suspected_stray = seen_in_stockcheck AND NOT seen_in_bigdata`; tự xoá cờ khi Big Data xác nhận sau.
-- `run_retention_cleanup` cập nhật: **không xoá** đơn `suspected_stray` chưa `is_handled` (giữ tới khi có hành trình mới đẩy vào Big Data hoặc đánh dấu Đã xử lý).
+Phía client, các phương thức mang tên RPC cũ vẫn còn trong `DataHubClient.cs` nhưng **là stub không gửi
+gì lên mạng**:
 
-Luồng đồng bộ mỗi chu kỳ: `merge_bigdata_detail(...)` (Nguồn #1) → `ingest_stockcheck_waybills(...)` (Nguồn #2) → `reconcile_inventory_sources(site)`.
+| Phương thức C# | Hành vi thật |
+|---|---|
+| `IngestBigDataWaybillsAsync` | `return 0` |
+| `IngestStockCheckWaybillsAsync` | gọi lại phương thức trên ⇒ `return 0` |
+| `ReconcileInventorySourcesAsync` | `return 0` |
+| `UpsertNewWaybillsOnlyAsync` | đếm mã hợp lệ rồi trả về, **không gửi** |
+| `UpsertManyWaybillsAsync` / `MergeWaybillRowsV2Async` | ✅ gửi thật, tới `POST /jms/observations` |
 
-Đã smoke test: đơn chỉ có ở kiểm kho → `suspected_stray=true`; retention giữ đơn stray chưa xử lý dù 45 ngày; Big Data xác nhận sau → cờ tự xoá; đơn thường >30 ngày vẫn bị xoá. (Kèm fix `202607150006`: bật lại RLS cho `waybills`.)
+⇒ Union hai nguồn **hiện chưa hoạt động trên server**: cả hai nguồn đổ chung một đường observation, không
+có cờ phân biệt nguồn, và không có bước reconcile.
+
+**Muốn làm thật thì cần, theo đúng kiến trúc API:**
+
+1. Migration `006_*.sql`: thêm `seen_in_bigdata`, `seen_in_stockcheck`, `bigdata_first/last_seen_at`,
+   `stockcheck_first/last_seen_at`, `suspected_stray`, `is_handled` vào `waybill_projections`, cộng index
+   cho `suspected_stray`.
+2. Mở rộng payload của `/jms/observations` (và `/jms/ingest`) mang `sourceKind` = `bigdata` |
+   `stockcheck`; **reducer trong API** đóng dấu cờ tương ứng — không thêm SQL function, vì reducer phải
+   là đường ghi duy nhất.
+3. Bước reconcile chạy trong API (`BackgroundService`, cùng chỗ với retention): đặt
+   `suspected_stray = seen_in_stockcheck AND NOT seen_in_bigdata`, tự xoá cờ khi Big Data xác nhận sau.
+4. `retention_policies` phải loại trừ đơn `suspected_stray` chưa `is_handled`.
+5. Mỗi thay đổi ghi một dòng `dashboard_changes` để client thấy qua `GET /changes`.
+
+Luồng đồng bộ mỗi chu kỳ (sau khi làm xong): fetch #1 // #2 song song → dedup ở client →
+`POST /jms/ingest` mang `sourceKind` → reconcile phía server.
 
 ## 5c. Fetcher nguồn #2 — ĐÃ TRIỂN KHAI (`Services/StockCheckSyncService.cs`)
 
 - `FetchStockCheckWaybillsAsync()` — lấy toàn bộ danh sách "Số đơn tồn" của ngày hôm nay bằng **phân trang song song** (giống nguồn #1): trang 1 lấy tổng số trang → trang 2..N song song `PageConcurrency=5`, `pageSize=100`, cửa sổ `today 00:00:00 → today 23:59:59`.
 - Endpoint: `opt_stocktaking_ret_detail`; parser dung sai (records ở `data.records/list/rows`; mã ở `billcode/waybillNo/...`) để bền với khác biệt field.
 - Payload đã khớp curl thật; `scanAgentCode` tự lấy từ `opt_stocktaking_total`, `scanNetworkCode` = `ActionSiteCode`, `size=100`.
-- ✅ **Union đã wire** (`InventorySyncService.RunInventorySyncAsync`): fetch #1 // #2 **song song** → union (dedup) → `IngestBigDataWaybillsAsync` + `IngestStockCheckWaybillsAsync` + `ReconcileInventorySourcesAsync` (đánh dấu `suspected_stray`). Governor toàn cục giữ tổng luồng ≤ 12.
+- ⚠️ **Union chỉ wire được nửa client** (`InventorySyncService.RunInventorySyncAsync`): fetch #1 // #2
+  **song song** → union (dedup) → gọi `IngestBigDataWaybillsAsync` + `IngestStockCheckWaybillsAsync` +
+  `ReconcileInventorySourcesAsync`. Nhưng cả ba đều trả 0 mà không gửi gì (xem §5b), nên **không có đơn
+  nào được đánh dấu `suspected_stray`**. Phần fetch là thật; phần đẩy lên là no-op. Governor toàn cục giữ
+  tổng luồng ≤ 12.
 
 ## 6. Việc cần làm tiếp
 1. Khảo sát live Nguồn #2 (Thống kê kiểm kho): xác nhận cột export, endpoint, ý nghĩa "Số đơn tồn", có mã vận đơn trong file export không.

@@ -2,6 +2,19 @@
 
 > **Mục đích:** chọn nơi đặt DataHub (VPS / máy client / VPS-tự-fetch) **dựa trên số liệu đo thật** từ
 > đường fetch hiện có, không dựa cảm tính. Kết luận ở §6.
+>
+> **Trạng thái 2026-08-23 — quyết định đã thi hành.** Chọn **PA1**, và đã dựng: ASP.NET Core
+> `AutoJMS.DataHub.Api` + PostgreSQL (Docker, mạng nội bộ) + Caddy trên VPS `dev.jmsauto.online`.
+> Hai điều chỉnh so với bản phân tích này:
+>
+> 1. **Không có Windows Service riêng.** Fetch chạy trong chính process UI của AutoJMS, giữ lease qua
+>    `POST /api/v1/sites/{siteId}/lease/{acquire,renew,release}`. Token JMS vì thế vẫn không rời máy mà
+>    không cần Named Pipe.
+> 2. **Không có PG function làm canonical writer, không RLS.** Writer duy nhất là handler của endpoint
+>    ingest trong API; phạm vi site do **device token** quyết định.
+>
+> Hợp đồng as-built: [architecture/datahub-backend-design.vi.md](./architecture/datahub-backend-design.vi.md).
+> Số liệu §1–§2 vẫn đúng và vẫn là lý do chọn PA1.
 
 ---
 
@@ -59,17 +72,19 @@ ULTRA). Token **không rời máy**: UI → Named Pipe → Service cùng máy �
 quả lên Gateway (HTTPS).
 
 **Phương pháp triển khai**
-- **Fetch leader/lease** như đã chốt: lease theo site + `leader_fencing_token`; máy tắt/hết token ⇒
-  bounded-flush → `clear_active_and_release_leader` (atomic) → máy khác đoạt. Không cần thay đổi gì.
-- **Realtime:** canonical writer (PG function) ghi `event+projection+receipt+datahub_changes` +
-  `pg_notify(site_code, high_watermark)` **trong một transaction** → Gateway `LISTEN` → **SignalR** group
-  `site:{code}` → client delta-pull `(change_seq, stable_id)` → SQLite. Độ trễ thực tế **<500ms** (xem §5).
-- **"Mỗi bưu cục như một folder riêng"** = chọn 1 trong 2, **không** cần nhiều DB instance:
-  - **row-level `site_code` + RLS** (đã chốt v4) — đơn giản nhất, migration một lần cho mọi site;
-  - **schema-per-tenant** — isolation mạnh hơn, `pg_dump` từng bưu cục dễ, nhưng migration phải chạy vòng
-    qua từng schema (drift risk). *Khuyến nghị: row-level trước, schema-per-tenant chỉ khi có yêu cầu
-    pháp lý/isolation cụ thể.*
-- Thêm bưu cục = **1 hàng `site` + license `dataHub.enabled`** (không dựng hạ tầng mới).
+- **Fetch leader/lease** — bảng `site_fetch_leases`, một leader mỗi site, gia hạn/nhả qua
+  `POST /api/v1/sites/{siteId}/lease/{acquire,renew,release}`. Máy tắt hoặc hết token ⇒ flush có giới hạn
+  rồi `release`; lease quá hạn thì máy khác đoạt.
+- **Realtime:** handler ingest ghi `waybill_scan_events` + `waybill_projections` + `dashboard_changes`
+  (tăng `site_change_counters.change_seq`) **trong một transaction**, rồi bắn doorbell **SignalR** tới
+  group `site:{siteId}` trên `/hubs/site` → client pull `GET /changes?after={change_seq}`. Doorbell chỉ
+  rút ngắn khoảng polling; mất hub thì thoái hoá về polling chứ không mất dữ liệu.
+- **"Mỗi bưu cục như một folder riêng"** = **row-level `site_id`** trong một database duy nhất. Không
+  RLS: mọi truy vấn đi qua endpoint, và endpoint lấy `site_id` từ device token nên client không thể khai
+  site khác. (Schema-per-tenant chỉ mở khi có yêu cầu pháp lý cụ thể — migration phải chạy vòng qua từng
+  schema, drift risk.)
+- Thêm bưu cục = **1 hàng `sites`** (qua `scripts/provision-site.ps1`) + license mang `site_codes` tương
+  ứng. Không dựng hạ tầng mới.
 
 **Ưu**
 - Token **không lên cloud** (giữ nguyên nguyên tắc bảo mật đã ký) và JMS vẫn thấy **IP bưu cục**.
@@ -193,8 +208,10 @@ Gateway/SignalR chạy ở đó, tốt nhất là máy văn phòng luôn bật/U
   transaction — nếu xoá thẳng, **client offline sẽ giữ đơn đó vĩnh viễn**. Retention tombstone **≥ cửa sổ
   offline dài nhất** (đề xuất 30–90 ngày).
 - **Archive thay vì xoá hẳn:** chuyển sang bảng lịch sử (hoặc export) để còn đối chiếu/thống kê; chỉ xoá
-  khỏi bảng "đang theo dõi".
-- Chạy bằng **`.NET BackgroundService`** trong Gateway (thay `pg_cron`).
+  khỏi bảng "đang theo dõi". `005_change_retention_floor.sql` đặt sàn để retention không xoá mất cursor
+  mà client đang dùng.
+- Chạy bằng **`.NET BackgroundService`** trong API (đã dựng: retention service đọc `retention_policies`,
+  `DATAHUB_RETENTION_BATCH_SIZE` / `DATAHUB_RETENTION_INTERVAL_SECONDS`). Không dùng scheduler trong DB.
 - Ca đêm cũng là chỗ đặt **backfill `getOrderDetail`** (§1: 50s–4 phút) và **full-scan đối chiếu** cho G0
   (2 scan cùng full-set hash mới cho phép mark-left).
 
@@ -204,24 +221,33 @@ Gateway/SignalR chạy ở đó, tốt nhất là máy văn phòng luôn bật/U
   (`Valid/AuthRejected/Transient/SiteMismatch`) + **two-strike**; **lỗi mạng ≠ token invalid**.
 - **`SiteMismatch` đặc biệt quan trọng ở mô hình shared/nhiều bưu cục:** token hợp lệ của **bưu cục khác**
   vẫn trả `code=1` ⇒ phải đối chiếu `principal`/`actionSiteCode` với site của license mới cho `Valid`.
-- Thứ tự khi hết token: **ngừng JMS → bounded flush dưới fence còn hiệu lực → clear+release leader
-  (atomic) → không flush bằng fence cũ**.
+- Thứ tự khi hết token: **ngừng JMS → bounded flush trong khi lease còn hiệu lực → `POST /lease/release`**.
+  Lease đã hết hạn/đã nhả thì không flush tiếp bằng nó nữa.
 - **Badge "Leader"**: nên hiển thị (title `AutoJMS - … Realtime-Leader` hoặc badge ở nút Đồng bộ) + tooltip
   ghi rõ *"máy này đang chạy fetch nền"*; **không** ngụ ý máy này giữ database.
 
 ### 7.5 Hai điều kiện độc lập (đang sai trong code — phải sửa)
 - **License DataHub hợp lệ ⇒ được ĐỌC** (Gateway/SignalR/delta-pull) — *không* phụ thuộc JMS token.
 - **JMS token hợp lệ ⇒ mới được FETCH** (Worker) / contribute.
-- Hiện `FullStackOperation.cs` (~122) gộp hai điều kiện (DataHub chỉ khởi động khi có JMS token) và
-  desktop vẫn giành lease + bulk-fetch (~488) ⇒ phải tách và chuyển lease hoàn toàn sang Service.
+- Hiện `FullStackOperation.cs` (~122) gộp hai điều kiện (DataHub chỉ khởi động khi có JMS token) ⇒ vẫn
+  phải tách. Việc "chuyển lease sang Windows Service" thì **không còn áp dụng**: fetch chạy trong process
+  UI, nên desktop giành lease là đúng thiết kế — chỉ cần đường ĐỌC không phụ thuộc JMS token.
 
 ---
 
-## 8. Việc phải làm tiếp (không đổi so với P0 hiện tại)
+## 8. Việc phải làm tiếp
 
-1. **G0** hoàn tất (full-set hash 2-scan + failure-injection test) — *độc lập phương án*.
-2. **Spike G1a**: token lấy ở UI process có dùng được từ **Windows Service (tài khoản khác)** cùng máy —
-   **bắt buộc cho PA1/PA2**; nếu FAIL → fetch phải chạy trong process UI (đổi mô hình).
-3. **Spike SignalR + LISTEN/NOTIFY**: reconnect/JWT refresh/catch-up + dedicated listener connection.
+Đã đóng:
+
+- ~~Spike G1a (token dùng được từ Windows Service)~~ — **bỏ**, fetch chạy trong process UI nên không cần.
+- ~~Spike SignalR + LISTEN/NOTIFY~~ — SignalR đã dựng; doorbell phát trực tiếp từ handler ingest, không
+  qua `LISTEN/NOTIFY`, nên ba cạm bẫy ở §7.1 không còn áp dụng cho bản as-built.
+
+Còn mở:
+
+1. **G0** (full-set hash 2-scan + failure-injection test) — *độc lập phương án*.
+2. Tách hai điều kiện ĐỌC / FETCH trong `FullStackOperation.cs` (§7.5).
+3. Tombstone `operation='delete'` khi purge ca đêm (§7.3) — `dashboard_changes` đã có `CHECK` cho
+   `delete`, còn thiếu job phát tombstone.
 4. *(Chỉ nếu cân nhắc PA3)* **Spike IP**: JMS có phạt request từ IP datacenter không.
 5. Chốt `DeploymentMode` (Cloud/OnPrem) làm **cấu hình**, không phải hai nhánh mã.

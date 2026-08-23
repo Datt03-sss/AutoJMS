@@ -23,7 +23,7 @@ Context cần phản ánh:
 - Inno Setup dùng cho cài lần đầu, reinstall, uninstall, chọn đường dẫn và cài runtime thiếu.
 - Velopack dùng cho update trong app.
 - GitHub Releases chứa file Velopack lớn vì DataHub free plan không upload được file lớn.
-- VPS config API chỉ chứa manifest/config/hash/selector-update nhỏ.
+- DataHub API chỉ chứa manifest/config/hash/selector-update nhỏ.
 - Firebase Realtime Database chứa license key, tier, hwid, middleCode, skipHashCheck/modulePolicy.
 - Render `server.js` dùng verify license và heartbeat.
 - .NET Reactor protect `AutoJMS.dll` trước khi pack release và lấy hash.
@@ -35,7 +35,7 @@ Context cần phản ánh:
 `docs/manual/MANUAL_OPERATIONS.md` phải viết bằng tiếng Việt, thực dụng, dạng checklist/manual, gồm đủ 20 section:
 
 1. Mục đích tài liệu.
-2. Sơ đồ trách nhiệm hệ thống: Local project, Inno Setup, Velopack, GitHub Releases, VPS config API, Firebase, Render server, User machine.
+2. Sơ đồ trách nhiệm hệ thống: Local project, Inno Setup, Velopack, GitHub Releases, DataHub API, Firebase, Render server, User machine.
 3. Cấu trúc folder local cần biết.
 4. Cấu trúc cài đặt trên máy user `C:\AutoJMS`.
 5. Quy tắc version: Velopack SemVer hợp lệ, `displayVersion` có thể 4 số, stable/beta, version mới phải lớn hơn.

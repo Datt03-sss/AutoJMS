@@ -50,4 +50,4 @@ select * from orders where user_id = any($1::bigint[]);
 -- Application passes: [1, 2, 3, 4, 5, ...]
 ```
 
-Reference: [N+1 Query Problem](https://datahub.com/docs/guides/database/query-optimization)
+Reference: [Joins](https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-JOIN)

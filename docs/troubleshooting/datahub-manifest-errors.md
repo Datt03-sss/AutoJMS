@@ -12,11 +12,15 @@ Runtime/control-plane issues to verify:
 
 - `hash-manifest.json` sample shape may not match `HashManifest.cs`.
 - `tier-definitions.sec` vs `tier-definitions.json` naming is inconsistent across examples.
-- `datahub-migration.sql` does not define the waybill/inventory RPCs called by `DataHubDbService`.
+- `PUT /api/v1/admin/manifests/{objectPath}` — the route `release/build-release.ps1 -Upload`
+  posts to — is not implemented in `src/AutoJMS.DataHub.Api`, is absent from
+  `backend/datahub/openapi/datahub-v1.yaml`, and has no `Caddyfile` handler. Every publish
+  attempt returns 404 until it lands.
 
 Required rule:
 
-- DataHub Storage is for small manifests/configs. Do not upload `.nupkg` or large Velopack binaries to DataHub.
+- The DataHub control plane carries small manifests/configs only. Binaries — `.nupkg`,
+  `RELEASES`, `Setup.exe` — belong in GitHub Releases.
 
 Older notes below are retained.
 
@@ -24,9 +28,11 @@ Older notes below are retained.
 
 ### Error: Manifest not found
 
-**Cause**: version-latest.json not uploaded
+**Cause**: `version-latest.json` was never published, or `DATAHUB_MANIFEST_BASE_URL` points
+somewhere else than `DATAHUB_API_BASE_URL`.
 
-**Fix**: Upload to DataHub Storage
+**Fix**: `curl` the full public URL. If it 404s, publish the file on the VPS by hand — `-Upload`
+is currently broken (see above).
 
 ### Error: Invalid JSON
 
@@ -44,7 +50,7 @@ Older notes below are retained.
 
 Check manifest accessible:
 ```powershell
-Invoke-RestMethod https://.../version-latest.json
+Invoke-RestMethod https://dev.jmsauto.online/manifest/version-latest.json
 ```
 
 Verify structure:

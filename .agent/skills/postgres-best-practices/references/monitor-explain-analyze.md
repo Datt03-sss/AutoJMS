@@ -42,4 +42,4 @@ Key things to look for:
 -- Sort Method: external merge = work_mem too low
 ```
 
-Reference: [EXPLAIN](https://datahub.com/docs/guides/database/inspect)
+Reference: [Using EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)

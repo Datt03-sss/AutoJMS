@@ -12,6 +12,6 @@ Migration did not open or move known secret files.
 ## Rules
 
 - Do not commit service account JSON.
-- Do not commit `.env`, private keys, `.pfx`, or service-role tokens.
+- Do not commit `.env`, private keys, `.pfx`, or admin/device tokens.
 - Prefer `.example.json` and `.env.example` for safe references.
 

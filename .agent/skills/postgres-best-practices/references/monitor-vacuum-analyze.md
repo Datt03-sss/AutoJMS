@@ -52,4 +52,4 @@ alter table orders set (
 select * from pg_stat_progress_vacuum;
 ```
 
-Reference: [VACUUM](https://datahub.com/docs/guides/database/database-size#vacuum-operations)
+Reference: [Routine Vacuuming](https://www.postgresql.org/docs/current/routine-vacuuming.html)

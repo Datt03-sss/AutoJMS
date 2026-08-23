@@ -19,7 +19,7 @@ Tài liệu này dành cho các thao tác nằm ngoài local production code c�
 | Inno Setup       | cài lần đầu              | tạo setup cuối            | AutoJMS-win-Setup.exe       |
 | Velopack         | update trong app         | tạo RELEASES/.nupkg/Setup | binary update               |
 | GitHub Releases  | lưu Velopack binary lớn  | có                        | RELEASES, .nupkg, Setup.exe |
-| VPS config API | manifest/config nhỏ      | không                     | không upload .nupkg         |
+| DataHub API (VPS) | manifest/config nhỏ   | không                     | không upload .nupkg         |
 | Firebase         | license key/tier/hwid    | không                     | không chứa update URL       |
 | Render server    | verify-license/heartbeat | không                     | server.js deploy            |
 | User machine     | chạy app                 | không                     | C:\AutoJMS                  |
@@ -63,7 +63,7 @@ AutoJMS/
 | `release/output/stable/` | Output release stable. Trong repo hiện có `AutoJMS-stable-Setup.exe`, `RELEASES-stable`, `assets.stable.json`, `releases.stable.json`. |
 | `release/output/beta/` | Output release beta. Nếu chưa có file thì `NEED VERIFY` sau lần build beta đầu tiên. |
 | `backend/render-license-server/` | Source server license/heartbeat dùng deploy lên Render. |
-| `infra/datahub/` | Cấu trúc mẫu bucket VPS config API. |
+| `infra/datahub/` | Cây thư mục mẫu của các file JSON control plane trước khi publish. |
 | `docs/` | Tài liệu architecture, release, troubleshooting, manual. |
 | `.agent/` | Agent context, rules, prompts, skills, workflows, checklists. |
 | `src/AutoJMS/AutoJMS.csproj` | Project .NET 8 WinForms chính. Không sửa khi chỉ làm manual operations. |
@@ -172,7 +172,10 @@ build-release.bat
 
 Ghi chú hiện trạng:
 
-- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, DataHub upload qua `DATAHUB_ADMIN_TOKEN` hoặc DataHub CLI.
+- `release/build-release.ps1` có logic `vpk pack`, GitHub CLI, và publish manifest qua
+  `PUT {base}/api/v1/admin/manifests/{objectPath}` với `Authorization: Bearer $DATAHUB_ADMIN_TOKEN`.
+  Route admin đó **chưa tồn tại** trong `src/AutoJMS.DataHub.Api` nên `-Upload` hiện trả 404 —
+  publish manifest thủ công cho tới khi endpoint được bổ sung.
 - File setup output hiện thấy trong repo có dạng `AutoJMS-stable-Setup.exe`; tên `AutoJMS-win-Setup.exe` là tên setup chuẩn cần verify theo từng pipeline.
 
 ## 7. File Velopack upload lên GitHub Release
@@ -441,34 +444,40 @@ Quy tắc:
 
 ## 15. DataHub manual operations
 
-Upload qua Dashboard:
+Client đọc control plane JSON từ `DATAHUB_MANIFEST_BASE_URL`, mặc định là
+`DATAHUB_API_BASE_URL` (`https://dev.jmsauto.online`). Không có dashboard, không có bucket,
+không có CLI của nhà cung cấp.
 
-```txt
-Storage
-→ bucket autojms-modules
-→ manifest/
-→ upload version-latest.json, hash-manifest.json
-```
-
-Upload qua CLI nếu đã login/link project:
-
-```powershell
-VPS config API cp .\version-latest.json ss:///autojms-modules/manifest/version-latest.json --linked --experimental
-VPS config API cp .\hash-manifest.json ss:///autojms-modules/manifest/hash-manifest.json --linked --experimental
-```
-
-Hoặc upload qua REST nếu có service role key trong môi trường:
+Cách publish mà `build-release.ps1 -Upload` dùng:
 
 ```powershell
 $env:DATAHUB_ADMIN_TOKEN = "<set outside repo>"
+Invoke-WebRequest -Method Put `
+  -Uri "https://dev.jmsauto.online/api/v1/admin/manifests/manifest/version-latest.json" `
+  -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN" } `
+  -ContentType "application/json" `
+  -InFile .\version-latest.json
+```
+
+> **Đang hỏng.** Route `/api/v1/admin/manifests/` chưa có trong `src/AutoJMS.DataHub.Api`,
+> không có trong `backend/datahub/openapi/datahub-v1.yaml`, và `Caddyfile` chưa có handler
+> static file — nên lệnh trên trả 404. Cho tới khi endpoint được bổ sung, đặt file thủ công
+> trên VPS. Không trỏ client sang bucket bên thứ ba để né lỗi này.
+
+Kiểm tra thứ client sẽ thực sự đọc:
+
+```powershell
+Invoke-RestMethod "https://dev.jmsauto.online/manifest/version-latest.json"
+Invoke-RestMethod "https://dev.jmsauto.online/manifest/hash-manifest.json"
 ```
 
 Nhấn mạnh:
 
-- DataHub free plan không upload file Velopack lớn.
-- DataHub chỉ là control plane: manifest, config, hash, selector-update.
+- DataHub chỉ là control plane: manifest, config, hash, selector-update. Không chứa binary.
 - GitHub Release là binary hosting.
-- Không đưa `.nupkg`, `Setup.exe`, private key, service account, token vào DataHub public bucket.
+- Không đưa `.nupkg`, `Setup.exe`, private key, service account, token lên bất kỳ đường dẫn
+  công khai nào của DataHub.
+- `DATAHUB_ADMIN_TOKEN` chỉ dùng server-side khi publish, không bao giờ nằm trong app.
 
 ## 16. Checklist release stable
 
@@ -553,7 +562,7 @@ KHÔNG ĐƯỢC:
 
 | Lỗi | Triệu chứng | Nguyên nhân | Cách xử lý |
 | --- | ----------- | ----------- | ---------- |
-| DataHub upload fail vì `>50MB` | Upload `.nupkg` hoặc `Setup.exe` lên DataHub lỗi size limit | VPS config API free plan không phù hợp cho binary lớn | Upload binary lên GitHub Release; DataHub chỉ giữ manifest/config/hash nhỏ. |
+| Manifest upload trả 404 | `build-release.ps1 -Upload` báo 404 | Route `/api/v1/admin/manifests/` chưa được implement | Publish manifest thủ công trên VPS; binary luôn đi GitHub Release. |
 | Velopack SemVer invalid leading zero | `vpk pack` báo version không hợp lệ với `1.26.05` | SemVer không cho leading zero | Dùng `1.26.5` hoặc bump thành `1.26.6`; beta dùng `1.26.6-beta.1`. |
 | Velopack unexpected character after patch | `vpk pack` báo lỗi parse version sau patch | Version có 4 segment như `1.26.6.1` hoặc suffix sai SemVer | Đổi VelopackVersion thành `1.26.6` hoặc `1.26.6-beta.1`; dùng `InternalBuild=1.26.6.1` nếu cần 4 số. |
 | GitHub CLI chưa login | `gh release create/upload` lỗi auth | Chưa chạy `gh auth login` hoặc token hết hạn | Chạy `gh auth login`, chọn đúng account có quyền repo `Datt03-sss/AutoJMS-Update`. |

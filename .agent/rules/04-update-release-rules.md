@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        VPS CONFIG API                     │
+│                    DATAHUB API (VPS)                        │
 │  version-latest.json (control plane)                       │
 │  hash-manifest.json (DLL hashes)                           │
 │  selector-update-manifest.json (small updates)              │
@@ -71,13 +71,16 @@
 
 ## Velopack Rules
 
-### Never Upload .nupkg to DataHub
+### Never Publish .nupkg Through DataHub
 
-DataHub free plan rejects files > 50MB.
+The DataHub control plane carries small JSON only. Binaries belong in GitHub Releases, which is
+also where Velopack's `GithubSource` looks for them.
 
 ```powershell
 # WRONG
-VPS config API cp AutoJMS.nupkg ss:///$bucket/releases/
+Invoke-WebRequest -Method Put `
+  -Uri "https://dev.jmsauto.online/api/v1/admin/manifests/releases/AutoJMS.nupkg" `
+  -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN" } -InFile AutoJMS.nupkg
 
 # CORRECT
 gh release upload v1.26.6-Release AutoJMS.nupkg

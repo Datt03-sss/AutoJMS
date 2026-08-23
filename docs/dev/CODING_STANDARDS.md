@@ -31,7 +31,7 @@ These standards apply when a future task explicitly allows production code edits
 - Do not log full production tokens.
 - Mask JMS authToken and license JWT in logs.
 - Do not confuse JMS authToken with license JWT.
-- Do not print private keys, service account JSON, or service-role keys.
+- Do not print private keys, service account JSON, or admin-scoped tokens (`DATAHUB_ADMIN_TOKEN`).
 
 ## Tier Policy
 

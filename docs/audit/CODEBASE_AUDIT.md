@@ -52,14 +52,14 @@ Warnings observed:
 ### Verified Security Issues
 
 - Full JMS auth token logging exists in `Main.cs` and `JmsAuthTokenService.cs`. Production logs must mask tokens.
-- `service_account.json` exists in the workspace and contains sensitive Google service account material. Rotate if exposed.
-- DataHub device token is hardcoded in `DataHubClient.cs`; RLS and RPC permissions must be verified.
+- `service_account.json` was reported in the workspace. Resolved 2026-08-23: the file is not present in the tree. Rotate anyway if it was ever committed.
+- Resolved 2026-08-23: the DataHub device token is **not** hardcoded. `DataHubClient.Configure()` takes it from the license response, falling back to `AUTOJMS_DATAHUB_DEVICE_TOKEN`, and masks it via `TokenRedactor.MaskToken`. There is no RLS and no client-callable RPC to audit — the API decides what a token may reach.
 - Dynamic module update trust is incomplete: hash checks exist, but signature enforcement is inconsistent/optional.
 - `SettingsManager` and `UserSettingsService` split encrypted/plain settings paths; token storage behavior is `NEED VERIFY`.
 
 ### Verified Architecture Gaps
 
-- `datahub-migration.sql` does not define the waybill/inventory RPCs used by `DataHubClient`.
+- Resolved 2026-08-23: `DataHubClient` calls REST endpoints only, so there are no RPCs to define. The schema is `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql`; the old `datahub-migration.sql` is not the source of truth. Remaining real gap: several `DataHubClient` methods keep their old RPC names but are stubs (`IngestBigDataWaybillsAsync`, `ReconcileInventorySourcesAsync`, `UpsertNewWaybillsOnlyAsync`) or return `AuxiliaryEntityNotSupported` (`PushOrderNotesAsync`, `MergeOrderChecksAsync`, `MergeDispatchTasksAsync`, `AppendWaybillEventsAsync`) — see `docs/architecture/inventory-source-comparison.vi.md` §5b.
 - `server.js` returns `license.modulePolicy`, while `LicenseApiService` parses root `modulePolicy`; effective module policy parsing is `NEED VERIFY`.
 - Checked-in `hash-manifest.json` shape does not match the `HashManifest` DTO expectation of `versions[version].files["AutoJMS.dll"]`; current integrity manifest compatibility is `NEED VERIFY`.
 

@@ -56,8 +56,9 @@ fingerprint desktop gửi):
   + history), CAS theo revision: `>` apply, `=` no-op-nếu-canonical-giống-else-**conflict**, `<` stale.
   **Bỏ `observation_epoch`.** Rebuild `waybills` = **events + snapshot store** (không chỉ event log).
 
-Loại `observed_at thô / source_client / event_id` khỏi mọi công thức. Edge/private RPC tính fingerprint
-chuẩn khi nhận. Chi tiết + field-mapping (per-nhóm) + snapshot CAS/ACK + replay/backfill:
+Loại `observed_at thô / source_client / event_id` khỏi mọi công thức. **API tính lại fingerprint khi
+nhận** — trong `src/AutoJMS.DataHub.Api`, không phải trong SQL và không phải ở một "edge function"
+nào cả. Chi tiết + field-mapping (per-nhóm) + snapshot CAS/ACK + replay/backfill:
 `datahub-p0-contract.md` P0-B.
 
 ### Local event log + projection fold
@@ -76,18 +77,41 @@ chuẩn khi nhận. Chi tiết + field-mapping (per-nhóm) + snapshot CAS/ACK + 
 > **Target v2:** `OrderDetailObserved` **bỏ khỏi event**, chuyển sang **snapshot store** (CAS revision +
 > FIFO seq). Emitter sẽ viết lại: tracking→transition event; detail→snapshot writer RPC.
 
-### Remote event store (DataHub)
-`backend/datahub/migrations/202607110002_event_store.sql`:
-- Bảng `waybill_events` — `seq bigint identity` (thứ tự server-assigned, chống lệch đồng hồ),
-  `unique(site_code, fingerprint)` (dedupe), RLS theo `jwt_site_code()`, realtime publication.
-- RPC `append_waybill_events(site, events)` — append/dedupe, trả số dòng mới.
-- RPC `pull_events_delta(site, since_seq, limit)` — delta theo **seq cursor** (không phụ thuộc
-  đồng hồ client).
+### Remote event store (DataHub) — hình dạng đã dựng thật
+
+> ⚠️ **Bản trước mô tả sai.** Nó nói tới `backend/datahub/migrations/202607110002_event_store.sql`,
+> bảng `waybill_events`, RLS `jwt_site_code()`, realtime publication, và hai RPC
+> `append_waybill_events` / `pull_events_delta`. **Không có cái nào tồn tại.** Migration duy nhất
+> là `001_core.sql` … `005_change_retention_floor.sql`; không có RLS, không có publication, không có
+> RPC client gọi được. Dưới đây là hợp đồng thật.
+
+`backend/datahub/migrations/001_core.sql`:
+
+- Bảng `waybill_scan_events` — `id bigint GENERATED ALWAYS AS IDENTITY` (thứ tự server-assigned,
+  chống lệch đồng hồ), `UNIQUE (site_id, event_fingerprint)` để dedupe, cộng `fingerprint_version`
+  để đổi công thức mà không mất dedupe cũ.
+- Bảng `waybill_projections` — projection newest-wins, PK `(site_id, waybill_no)`, ba nhóm slot
+  `state_*` / `last_activity_*` / `inventory_*`.
+- Bảng `dashboard_changes` + `site_change_counters` — change feed theo `change_seq` đơn điệu
+  per-site.
+
+Đường vào/ra là **endpoint REST**, không phải RPC:
+
+| Việc | Endpoint |
+|---|---|
+| Append event (bulk) | `POST /api/v1/sites/{siteId}/jms/ingest` + header `Idempotency-Key` |
+| Append observation lẻ | `POST /api/v1/sites/{siteId}/jms/observations` |
+| Delta theo cursor | `GET /api/v1/sites/{siteId}/changes?after={change_seq}&limit=` |
+| Snapshot đầy đủ | `GET /api/v1/sites/{siteId}/projections/snapshot?limit=` |
+| Doorbell | WS `/hubs/site`, group `site:{siteId}`, method `change` |
+
+`site_id` lấy từ **device token**, client không tự khai — nên không cần RLS để chặn chéo site.
 
 ### Sync wiring
-`DataHubClient.Hybrid.cs`: `AppendWaybillEventsAsync / PullEventsDeltaAsync` + realtime
-`waybill_events`. `DataHubSyncService`: outbox thêm kind `EVENT` (push observation lên
-cloud), `PullEventsAsync` kéo delta theo seq → merge vào `fs_events` local.
+
+`src/AutoJMS/Data/DataHubClient.cs` (không có file `DataHubClient.Hybrid.cs`) gọi các endpoint
+trên. `DataHubSyncService` giữ cursor `change_seq`, pull `/changes`, và dùng doorbell SignalR chỉ để
+**rút ngắn khoảng polling** — mất hub thì thoái hoá về polling, không mất dữ liệu.
 
 > ⚠️ **DEFECT cursor (sửa ở P0-C).** `GetMaxRemoteSeqAsync` lấy `MAX(remote_seq)` từ event đã insert;
 > nhưng khi fingerprint đã tồn tại, `INSERT OR IGNORE` **không gắn `remote_seq`** ⇒ cursor không tiến
@@ -100,10 +124,14 @@ cloud), `PullEventsAsync` kéo delta theo seq → merge vào `fs_events` local.
 
 ## 3. Quyền sở hữu projection — CHỐT một writer duy nhất (P0-B)
 
-`waybills` phải có **đúng một writer**. **CHỐT (a):** append event + cập nhật projection trong **cùng
-một RPC/transaction** nguyên tử — RPC đó là writer duy nhất; cả Worker lẫn Edge-contributor gọi chung.
-**Gỡ** đường Worker vừa `merge_waybill_rows_v2` vừa append event ở hai thao tác rời. (Loại (b)
+`waybill_projections` phải có **đúng một writer**. **CHỐT (a):** append event + cập nhật projection
+trong **cùng một transaction** nguyên tử, do **handler của endpoint ingest** thực hiện — đó là writer
+duy nhất, mọi máy (leader hay follower) đều đi qua nó. Không có đường ghi thứ hai: không SQL
+function client gọi được, không "edge contributor", không máy nào ghi thẳng vào bảng. (Loại (b)
 projector-process riêng — thêm moving part, không chọn.)
+
+Reducer sống trong C# (`src/AutoJMS.DataHub.Api`), tra `jms_event_policies` để biết một
+`scan_type_code` thuộc slot nào. Đổi reducer thì bump `reducer_version`.
 
 Scope C (derive-from-events, thứ tự `source_event_at → received_at → seq`, viết lại reducer + writer
 RPC + đường đọc dashboard) **chưa làm** — chỉ mở sau khi P0-B chốt field-mapping + ACK và scope A/B
@@ -122,7 +150,7 @@ Ngưỡng tách DataHub nên ưu tiên trách nhiệm (đa site, bỏ token ở 
 
 ## 5. Acceptance tests (Target v2 — theo hợp đồng P0, KHÔNG theo ordering v1)
 
-- Follower mở đơn → `TrackingObserved` push qua Edge (fingerprint server-recompute), máy khác thấy vài giây.
+- Follower mở đơn → `TrackingObserved` push qua `/jms/observations` (API tính lại fingerprint), máy khác thấy vài giây.
 - 2 máy quan sát cùng trạng thái → **cùng fingerprint theo `source_event_at` (không `now`)** → 1 event.
 - **Projection order `source_event_at → received_at → seq`** (KHÔNG `event_time` v1): A 07:01 vs B 07:00 → không lùi.
 - OrderDetail A→B→A → **snapshot store CAS revision / FIFO `(leader_term, snapshot_seq)`**; retry A muộn KHÔNG đè B.

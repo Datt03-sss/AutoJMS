@@ -102,7 +102,15 @@ Quy tắc (chủ dự án chốt 2026-07-15):
 | **Kết thúc** (đã xử lý) | Đánh dấu `mark_waybill_handled(site, [mã], true)` → cron xóa ở lần chạy kế. |
 | Còn lại (đang theo dõi...) | **Retention 30 ngày** theo `updated_at`, quá hạn thì xóa. |
 
-Cơ chế tự động: **pg_cron** job `autojms-retention-daily` chạy `0 18 * * *` (UTC = 01:00 giờ VN) gọi `run_retention_cleanup(30)`. Hàm này KHÔNG cấp quyền cho anon/authenticated (chỉ cron chạy). Trả về JSON đếm số dòng đã purge mỗi loại.
+Cơ chế tự động **hiện tại**: một `BackgroundService` trong `AutoJMS.DataHub.Api` đọc bảng
+`retention_policies` và dọn theo lô (`DATAHUB_RETENTION_BATCH_SIZE`,
+`DATAHUB_RETENTION_INTERVAL_SECONDS`); `005_change_retention_floor.sql` đặt sàn để không xoá mất cursor
+client đang dùng. Không có job trong database và không có hàm `run_retention_cleanup`.
+
+⚠️ Bảng phân loại ở trên (`purge_signed_receipts`, `mark_waybill_handled`, cờ "đã xử lý") **chưa được
+triển khai**: schema hiện tại không có cột `is_handled`, và retention chạy theo thời gian thuần nên
+**không** giữ riêng đơn "Kết thúc" chưa xử lý. Muốn làm phải mở migration `006_*.sql` + logic loại trừ
+trong service retention.
 
 ## 6. Kiểm thử
 

@@ -10,8 +10,8 @@
                                                           │
                                                           ▼
 ┌──────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  VPS config API │◀────│  version-latest  │     │  GitHub Release │
-│  (manifest only) │     │  .json upload    │     │  (binaries)     │
+│  DataHub API     │◀────│  version-latest  │     │  GitHub Release │
+│  (manifest only) │     │  .json publish   │     │  (binaries)     │
 └──────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
@@ -20,10 +20,10 @@
 | Binary Type | Size | Hosting | Reason |
 |-------------|------|---------|--------|
 | RELEASES | ~1KB | GitHub Releases | Velopack index |
-| .nupkg | ~100MB | GitHub Releases | Too large for DataHub free |
-| Setup.exe | ~100MB | GitHub Releases | Too large for DataHub free |
-| version-latest.json | ~1KB | VPS config API | Control plane |
-| hash-manifest.json | ~1KB | VPS config API | DLL hashes |
+| .nupkg | ~100MB | GitHub Releases | Control plane carries JSON only |
+| Setup.exe | ~100MB | GitHub Releases | Control plane carries JSON only |
+| version-latest.json | ~1KB | DataHub API | Control plane |
+| hash-manifest.json | ~1KB | DataHub API | DLL hashes |
 
 ## Build Steps (build-release.ps1)
 
@@ -80,13 +80,13 @@ release/output/stable/RELEASES
 #### DataHub (Small Manifests)
 
 ```powershell
-# Fetch existing version-latest.json to preserve other channel
-Invoke-RestMethod https://datahub.example.com/manifest/version-latest.json
+# Fetch existing version-latest.json to preserve the other channel
+Invoke-RestMethod https://dev.jmsauto.online/manifest/version-latest.json
 
-# Upload new version-latest.json
-Invoke-RestMethod -Method Post `
-    -Uri "https://datahub.example.com/manifest/version-latest.json" `
-    -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN"; "x-upsert" = "true" } `
+# Publish the merged version-latest.json (PUT is a full replace)
+Invoke-WebRequest -Method Put `
+    -Uri "https://dev.jmsauto.online/api/v1/admin/manifests/manifest/version-latest.json" `
+    -Headers @{ Authorization = "Bearer $env:DATAHUB_ADMIN_TOKEN" } `
     -ContentType "application/json" `
     -InFile version-latest.json
 ```
@@ -208,7 +208,7 @@ Fetch existing version-latest.json from DataHub
     ↓
 Merge new channel data (preserve other channel)
     ↓
-Upload to VPS config API
+Publish to the DataHub API
     ↓
 Upload binaries to GitHub Release
 ```

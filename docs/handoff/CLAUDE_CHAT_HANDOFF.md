@@ -554,15 +554,19 @@ Potential inconsistency:
 
 `DataHubClient` still exists and is used by older sync paths:
 
-- ~~Hardcoded DataHub URL and anon key exist in source.~~ ĐÃ XỬ LÝ: URL và device token nay đọc từ biến môi trường, không còn trong source.
-- RPCs:
-  - `try_acquire_inventory_lease`
-  - `refresh_inventory_lease`
-  - `release_inventory_lease`
-  - `complete_inventory_sync`
-  - `upsert_new_waybills`
-  - `merge_waybill_tracking_rows`
-- Tables/models through DataHub C# client include `WaybillDbModel`.
+- ~~Hardcoded DataHub URL and client key exist in source.~~ ĐÃ XỬ LÝ: URL và device token nay đọc từ license response / biến môi trường `AUTOJMS_DATAHUB_DEVICE_TOKEN`, không còn trong source, và được mask khi log.
+- ~~RPCs~~ ĐÃ HẾT HIỆU LỰC 2026-08-23: DataHub không có RPC nào client gọi được. `DataHubClient` chỉ gọi
+  REST. Ánh xạ tên cũ → thật:
+
+  | Tên RPC cũ | Thay bằng |
+  |---|---|
+  | `try_acquire_inventory_lease` / `refresh_inventory_lease` / `release_inventory_lease` | `POST /api/v1/sites/{siteId}/lease/{acquire,renew,release}` (bảng `site_fetch_leases`, TTL 120 giây do server đặt) |
+  | `complete_inventory_sync` | không còn — không có bước "đóng" riêng |
+  | `merge_waybill_tracking_rows` | `POST /api/v1/sites/{siteId}/jms/observations` (qua `UpsertManyWaybillsAsync` / `MergeWaybillRowsV2Async`) |
+  | `upsert_new_waybills` | ⚠️ `UpsertNewWaybillsOnlyAsync` chỉ đếm mã rồi trả về, **không gửi gì** |
+
+- Tables/models through DataHub C# client include `WaybillDbModel`. Schema phía server là 12 bảng ở
+  `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql`.
 
 Current product direction from recent work:
 
@@ -572,7 +576,7 @@ Current product direction from recent work:
 Risk:
 
 - Existing `Main` still contains DataHub inventory sync methods, but `TierRuntimePolicy` should prevent BASE background sync.
-- ~~Hardcoded anon key~~ đã xử lý (đọc từ biến môi trường); riêng độ phủ migration DataHub vẫn là rủi ro cần rà.
+- ~~Hardcoded client key~~ đã xử lý (đọc từ license response / biến môi trường); riêng độ phủ migration DataHub vẫn là rủi ro cần rà.
 
 ## 16. Google Sheets
 
@@ -811,7 +815,7 @@ Security/config:
 
 - JMS authToken may be logged in full via `JmsAuthTokenService.LogToken()`; fix before production logging.
 - Google `service_account.json` is sensitive. Do not share contents externally.
-- ~~DataHub anon key is hardcoded in `DataHubClient.cs`~~ ĐÃ XỬ LÝ: API-only, token lấy từ biến môi trường; phân quyền do VPS API chịu.
+- ~~DataHub client key is hardcoded in `DataHubClient.cs`~~ ĐÃ XỬ LÝ: API-only, device token lấy từ license response / biến môi trường; phân quyền do VPS API chịu (không có RLS để rà).
 - License server public key/private key rotation model should be reviewed before public distribution.
 
 Architecture:

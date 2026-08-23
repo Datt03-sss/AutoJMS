@@ -63,15 +63,17 @@ Tài liệu nghiên cứu, tổng hợp và chốt kiến trúc xử lý tối �
 
 ### 3.5 Two-tier cadence — ◑ ĐỀ XUẤT
 - **Tier nhanh (mỗi 2–5 phút)**: lấy vài trang đầu (sắp theo thời gian) để bắt đơn mới/đổi + track các đơn tới hạn.
-- **Tier đầy đủ (1–2 lần/ngày)**: full-refresh cả 2 nguồn (hoặc export) để đối chiếu + `mark_left_inventory`.
+- **Tier đầy đủ (1–2 lần/ngày)**: full-refresh cả 2 nguồn (hoặc export) để đối chiếu + cập nhật slot `inventory_*` cho đơn đã rời kho (không có RPC `mark_left_inventory` — reducer trong API làm việc này).
 - Realtime đẩy thay đổi xuống UI, không cần poll toàn bảng.
 
 ### 3.6 Ghi database — ✅ phần lớn ĐÃ LÀM
-- Upsert theo lô 1 RPC (`merge_waybill_tracking_rows`/`merge_waybill_rows_v2`) + fingerprint cache bỏ dòng không đổi.
-- **Bổ sung đề xuất**: chunk payload **500–1000 dòng/RPC** khi inventory rất lớn (tránh payload quá to / timeout).
+- Upsert theo lô **1 request** `POST /api/v1/sites/{siteId}/jms/observations` (qua `UpsertManyWaybillsAsync` / `MergeWaybillRowsV2Async` — tên C# giữ lại từ thời RPC) + fingerprint cache bỏ dòng không đổi.
+- **Bổ sung đề xuất**: chunk payload **500–1000 dòng/request** khi inventory rất lớn (tránh payload quá to / timeout). Đường `POST /jms/ingest` có `Idempotency-Key` nên retry một chunk là an toàn.
 
-### 3.7 Không xóa + dừng đúng + retention — ✅ ĐÃ LÀM
-- newest-wins; `finalize_waybills` + trigger dừng terminal; retention 30 ngày pg_cron; giữ "Kết thúc"/stray tới khi `is_handled`.
+### 3.7 Không xóa + dừng đúng + retention — ◑ MỘT PHẦN
+- ✅ Newest-wins: `waybill_scan_events` append-only (`UNIQUE (site_id, event_fingerprint)`), `waybill_projections` chỉ ghi khi event mới hơn slot đang giữ.
+- ✅ Retention: `retention_policies` + `BackgroundService` trong API (`DATAHUB_RETENTION_BATCH_SIZE`, `DATAHUB_RETENTION_INTERVAL_SECONDS`), sàn ở `005_change_retention_floor.sql`. Không dùng scheduler trong database.
+- ⚠️ **Chưa có**: `finalize_waybills`, trigger dừng terminal, và việc giữ đơn "Kết thúc"/stray tới khi `is_handled` — cột `is_handled` và `suspected_stray` không tồn tại. Dừng tracking đơn terminal hiện làm ở client. Xem `inventory-source-comparison.vi.md` §5b.
 
 ## 4. Mô hình chi phí (ước tính, 1 bưu cục ~4.000 đơn)
 
@@ -80,13 +82,13 @@ Tài liệu nghiên cứu, tổng hợp và chốt kiến trúc xử lý tối �
 | Lấy danh sách | 40–214 request **tuần tự** + delay | ~43 request **//5** (~vài giây), ×2 nguồn song song dưới trần governor |
 | Order detail | ~4.000 request **mỗi** chu kỳ | ~0 (on-demand) |
 | Tracking route | toàn bộ mỗi 2 phút (~106 batch) | chỉ đơn tới hạn (giảm mạnh nhờ interval thích ứng) |
-| Ghi DB | 1 RPC (đã tốt) | 1 RPC/chunk + skip fingerprint |
+| Ghi DB | 1 request (đã tốt) | 1 request/chunk + skip fingerprint |
 | Trần đồng thời | rời rạc, dễ chồng → khóa IP | **≤ 12 toàn cục** (an toàn + nhanh) |
 
 ## 5. Lộ trình còn lại (ưu tiên)
 
-1. **Wire union 2 nguồn**: orchestrator chạy `FetchInventory(#1)` + `FetchStockCheckWaybills(#2)` song song → dedup → `merge_bigdata_detail` / `ingest_stockcheck_waybills` → `reconcile_inventory_sources`. (Cần chốt payload #2 — xem `inventory-source-comparison.vi.md` 5c.)
-2. **Scheduler `next_track_at`** + interval thích ứng (3.4).
+1. **Wire union 2 nguồn — chưa xong phía server.** Orchestrator client đã chạy `FetchInventory(#1)` + `FetchStockCheckWaybills(#2)` song song → dedup, nhưng ba lời gọi tiếp theo (`IngestBigDataWaybillsAsync`, `IngestStockCheckWaybillsAsync`, `ReconcileInventorySourcesAsync`) đều là **stub trả 0**, và cột cờ nguồn chưa có. Cần: migration `006_*.sql` thêm cờ nguồn + `sourceKind` trong payload `/jms/ingest` + bước reconcile trong API. Xem `inventory-source-comparison.vi.md` §5b (cần chốt payload #2 — §5c).
+2. **Scheduler đơn đến hạn** + interval thích ứng (3.4). Cột `next_track_at` chưa tồn tại; hiện `GetWaybillsDueForTrackingAsync` chỉ trả snapshot, việc chọn đơn làm ở client.
 3. **Two-tier cadence** (3.5).
 4. **Chunk upsert** cho inventory rất lớn (3.6).
 5. **Ghi DB cho order-detail on-demand** (viewer → upsert 1 đơn).

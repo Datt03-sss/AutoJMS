@@ -40,4 +40,4 @@ from customers c
 join orders o on o.customer_id = c.id;
 ```
 
-Reference: [Query Optimization](https://datahub.com/docs/guides/database/query-optimization)
+Reference: [Indexes](https://www.postgresql.org/docs/current/indexes.html)

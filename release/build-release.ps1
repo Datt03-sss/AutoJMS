@@ -23,7 +23,7 @@
       2. Verify self-contained publish
       3. vpk pack → produces .nupkg + Setup.exe + RELEASES + releases.{channel}.json
       4. Upload: binaries → GitHub Release (gh), update.xml → GitHub repo,
-         DataHub manifests → Storage bucket manifest/
+         DataHub manifests → PUT {DATAHUB_API_BASE_URL}/api/v1/admin/manifests/manifest/
 
     GitHub release tag format:
       stable: v{VelopackVersion}-Release   (prerelease=false)
@@ -50,10 +50,6 @@
     Publish binaries to GitHub Release + update.xml to the GitHub repo.
 .PARAMETER GitHubRepo
     GitHub repo hosting the binaries (default: Datt03-sss/AutoJMS-Update)
-.PARAMETER DataHubProjectRef
-    DataHub project ref hosting small manifests (default: bnsnnrlwfzxemmizknwy)
-.PARAMETER DataHubBucket
-    VPS config API bucket for AutoJMS manifests (default: autojms-modules)
 .EXAMPLE
     .\build-release.ps1 -Version "1.26.6" -Channel stable
     .\build-release.ps1 -Version "1.26.6-beta.1" -Channel beta
@@ -85,10 +81,6 @@ param(
     [string]$UpdateXmlPath = "update.xml",
 
     [string]$UpdateXmlBranch = "main",
-
-    [string]$DataHubProjectRef = "bnsnnrlwfzxemmizknwy",
-
-    [string]$DataHubBucket = "autojms-modules",
 
     [string]$DataHubWorkdir,
 
@@ -737,8 +729,6 @@ function Publish-UpdateXml {
 
 function Get-DataHubPublicObjectUrl {
     param(
-        [string]$ProjectRef,
-        [string]$Bucket,
         [string]$ObjectPath
     )
 
@@ -885,8 +875,6 @@ function Publish-DataHubManifestObject {
     param(
         [string]$LocalPath,
         [string]$ObjectPath,
-        [string]$ProjectRef,
-        [string]$Bucket,
         [string]$Workdir
     )
 
@@ -1039,8 +1027,8 @@ try {
     Write-Host ""
 
     Write-Log "Step 3c: Generating DataHub manifests..." "Cyan"
-    $versionManifestUrl = Get-DataHubPublicObjectUrl -ProjectRef $DataHubProjectRef -Bucket $DataHubBucket -ObjectPath "manifest/version-latest.json"
-    $hashManifestUrl = Get-DataHubPublicObjectUrl -ProjectRef $DataHubProjectRef -Bucket $DataHubBucket -ObjectPath "manifest/hash-manifest.json"
+    $versionManifestUrl = Get-DataHubPublicObjectUrl -ObjectPath "manifest/version-latest.json"
+    $hashManifestUrl = Get-DataHubPublicObjectUrl -ObjectPath "manifest/hash-manifest.json"
     $existingVersionManifest = Read-PublicJson -Url $versionManifestUrl
     $existingHashManifest = Read-PublicJson -Url $hashManifestUrl
 
@@ -1106,14 +1094,10 @@ try {
         } else {
             Publish-DataHubManifestObject -LocalPath $versionLatestPath `
                 -ObjectPath "manifest/version-latest.json" `
-                -ProjectRef $DataHubProjectRef `
-                -Bucket $DataHubBucket `
                 -Workdir $DataHubWorkdir
 
             Publish-DataHubManifestObject -LocalPath $hashManifestPath `
                 -ObjectPath "manifest/hash-manifest.json" `
-                -ProjectRef $DataHubProjectRef `
-                -Bucket $DataHubBucket `
                 -Workdir $DataHubWorkdir
         }
 

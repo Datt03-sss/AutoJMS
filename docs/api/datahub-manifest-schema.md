@@ -4,7 +4,8 @@
 
 Verified local examples under `infra/datahub/autojms-modules/`.
 
-DataHub Storage is the control plane for small files:
+The DataHub API is the control plane for these small files. They are plain HTTP resources under
+`DATAHUB_MANIFEST_BASE_URL` (default `DATAHUB_API_BASE_URL`), not objects in a bucket:
 
 - `manifest/app-manifest.json`
 - `manifest/version-latest.json`
@@ -16,9 +17,9 @@ DataHub Storage is the control plane for small files:
 
 Rules:
 
-- Do not upload `.nupkg` to DataHub.
+- Do not publish `.nupkg` through DataHub.
 - Large Velopack assets belong in GitHub Releases.
-- DataHub Storage manifests should remain small JSON/control files.
+- DataHub manifests must remain small JSON control files.
 - `channels.*.version` is `VelopackVersion` and must be SemVer: stable `x.y.z`, beta `x.y.z-beta.n`.
 - Four-part values belong in `channels.*.internalBuild`, not in `channels.*.version`.
 
@@ -30,13 +31,13 @@ Compatibility warnings:
 
 Older schema examples below are reference material.
 
-## Storage URL
+## Base URL
 
 ```
-https://datahub.example.com/
+https://dev.jmsauto.online/
 ```
 
-## Bucket: autojms-modules
+## Object Paths
 
 ### manifest/version-latest.json
 
@@ -166,13 +167,24 @@ Small selector/runtime config updates.
 | Provider | Binary Source | Client Implementation |
 |----------|--------------|---------------------|
 | github | GitHub Releases | Velopack GithubSource |
-| datahub | DataHub Storage | Velopack SimpleWebSource |
+| datahub | DataHub API static JSON | Velopack SimpleWebSource |
 
-## Upload Rules
+`provider=github` is the only one used in production. `datahub` exists for an air-gapped
+fallback and has never been exercised — treat it as `NEED VERIFY`.
 
-1. Only upload small JSON (< 1MB)
-2. Never upload .nupkg (> 50MB limit)
-3. Preserve other channels when updating
-4. Use x-upsert=true for updates
-5. Use `DATAHUB_ADMIN_TOKEN` server-side only
+## Publish Rules
+
+1. Only publish small JSON (< 1MB).
+2. Never publish `.nupkg` or `Setup.exe` — binaries go to GitHub Releases.
+3. Fetch the current object first and preserve the other channel. `PUT` is a full replace, so
+   skipping this silently drops whichever channel you did not set.
+4. Publish with `PUT {base}/api/v1/admin/manifests/{objectPath}` and
+   `Authorization: Bearer $DATAHUB_ADMIN_TOKEN`.
+5. `DATAHUB_ADMIN_TOKEN` is server-side only — never in the client, never on Render, never in
+   public JSON.
+
+> **Open gap.** The admin route in rule 4 is not implemented yet: it is absent from
+> `src/AutoJMS.DataHub.Api`, absent from `backend/datahub/openapi/datahub-v1.yaml`, and the
+> `Caddyfile` has no static-file handler. Publishing returns 404 today; place the JSON on the
+> VPS by hand until the endpoint lands.
 

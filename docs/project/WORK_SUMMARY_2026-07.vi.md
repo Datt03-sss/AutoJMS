@@ -12,9 +12,17 @@ làm nền cho các kế hoạch kiểm soát tồn kho và mở rộng database
 
 ### 2. Rule "Skills First"
 - Thêm quy tắc: mỗi task ưu tiên dùng skill trong `.agent/skills/` và `.agents/skills/`, nếu không có thì `find-skills`.
-- Cài `datahub/agent-skills` (2 skill: `datahub`, `datahub-postgres-best-practices`); bắt buộc dùng cho mọi việc DataHub/Postgres.
+- Cài skill Postgres từ nguồn thứ ba (MIT, vendored vào `.agent/skills/postgres-best-practices/`); bắt buộc dùng cho mọi việc Postgres.
 
-### 3. Dựng database DataHub cho FullStackOperation (project `autojms_database` = `jrqxnviixmagiriqysov`)
+### 3. Dựng database cho FullStackOperation (BaaS quản lý — đã bị thay thế)
+
+> ⚠️ **Ghi chép lịch sử, không còn đúng.** Toàn bộ hạ tầng mô tả dưới đây đã bị thay thế bằng
+> `AutoJMS.DataHub.Api` (ASP.NET Core + PostgreSQL riêng trên VPS `dev.jmsauto.online`). Không còn
+> BaaS, không còn RLS, không còn RPC client gọi được, không còn realtime publication. Schema hiện tại
+> là 12 bảng ở `backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql` — xem
+> [`../architecture/fullstack-database-plan.vi.md`](../architecture/fullstack-database-plan.vi.md).
+> Các bảng `order_notes` / `order_checks` / `dispatch_tasks` **không tồn tại** trong schema mới (P1-1).
+
 - Áp 3 migration nền: bootstrap → tighten_privileges → hybrid_sync.
 - Bảng: `waybills` (tenancy `site_code` + cột dashboard), `order_notes`, `order_checks`, `dispatch_tasks`, `inventory_sync_leases`, `app_manifest/modules/configs`.
 - RPC newest-wins + delta-pull; RLS theo `site_code`; realtime publication; lease chống trùng sync.

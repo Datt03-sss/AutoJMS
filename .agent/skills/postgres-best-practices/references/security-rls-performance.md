@@ -7,6 +7,9 @@ tags: rls, performance, security, optimization
 
 ## Optimize RLS Policies for Performance
 
+> **Not the AutoJMS model.** AutoJMS has no RLS policies to optimize — see
+> [security-rls-basics.md](security-rls-basics.md). Kept as generic Postgres reference material.
+
 Poorly written RLS policies can cause severe performance issues. Use subqueries and indexes strategically.
 
 **Incorrect (function called for every row):**
@@ -60,4 +63,4 @@ Always add indexes on columns used in RLS policies:
 create index orders_user_id_idx on orders (user_id);
 ```
 
-Reference: [RLS Performance](https://datahub.com/docs/guides/database/postgres/row-level-security#rls-performance-recommendations)
+Reference: [Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)

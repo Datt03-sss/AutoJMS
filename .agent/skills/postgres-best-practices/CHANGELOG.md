@@ -1,43 +1,23 @@
 # Changelog
 
-## [1.4.0](https://github.com/datahub/agent-skills/compare/v1.3.0...v1.4.0) (2026-07-10)
+This directory holds a **vendored third-party Postgres skill** (MIT). Upstream:
+`supabase/agent-skills` — attribution only; AutoJMS does not run that backend.
 
+The upstream release history that used to sit here was rewritten by an automated find-and-replace
+into links under `github.com/datahub/agent-skills` and `datahub.com/docs`. Neither exists: the
+first is a repo that was never created, the second is an unrelated company's site. Fifteen dead
+links that read as authoritative sources are worse than no changelog, so they are gone.
 
-### Features
+Vendored at version `1.1.1`. Local edits to this skill are tracked in git — use
+`git log -- .agent/skills/postgres-best-practices/` for the real history.
 
-* add schema-constraints reference for safe migration patterns ([#30](https://github.com/datahub/agent-skills/issues/30)) ([9b236f3](https://github.com/datahub/agent-skills/commit/9b236f3ebd65d76a2c570f19931353da9c858d5a))
-* using DataHub agent skills ([#12](https://github.com/datahub/agent-skills/issues/12)) ([7c2e389](https://github.com/datahub/agent-skills/commit/7c2e3894fddfde8eb6c77d2a8921904543b9be7a))
+Local changes so far:
 
-
-### Bug Fixes
-
-* correct broken reference link in postgres best practices skill ([#58](https://github.com/datahub/agent-skills/issues/58)) ([f4e2277](https://github.com/datahub/agent-skills/commit/f4e22777fd8573537297b568c16e5a45a25927da))
-* cover SECURITY DEFINER, auth.role() deprecation, and BOLA in security checklist ([#85](https://github.com/datahub/agent-skills/issues/85)) ([133f43e](https://github.com/datahub/agent-skills/commit/133f43e8c2ffc48823ff0630c692cabecea3e3a3))
-
-## [1.3.0](https://github.com/datahub/agent-skills/compare/v1.2.0...v1.3.0) (2026-06-05)
-
-
-### Features
-
-* add schema-constraints reference for safe migration patterns ([#30](https://github.com/datahub/agent-skills/issues/30)) ([9b236f3](https://github.com/datahub/agent-skills/commit/9b236f3ebd65d76a2c570f19931353da9c858d5a))
-* using DataHub agent skills ([#12](https://github.com/datahub/agent-skills/issues/12)) ([7c2e389](https://github.com/datahub/agent-skills/commit/7c2e3894fddfde8eb6c77d2a8921904543b9be7a))
-
-
-### Bug Fixes
-
-* correct broken reference link in postgres best practices skill ([#58](https://github.com/datahub/agent-skills/issues/58)) ([f4e2277](https://github.com/datahub/agent-skills/commit/f4e22777fd8573537297b568c16e5a45a25927da))
-* cover SECURITY DEFINER, auth.role() deprecation, and BOLA in security checklist ([#85](https://github.com/datahub/agent-skills/issues/85)) ([133f43e](https://github.com/datahub/agent-skills/commit/133f43e8c2ffc48823ff0630c692cabecea3e3a3))
-
-## [1.2.0](https://github.com/datahub/agent-skills/compare/v1.1.1...v1.2.0) (2026-06-02)
-
-
-### Features
-
-* add schema-constraints reference for safe migration patterns ([#30](https://github.com/datahub/agent-skills/issues/30)) ([9b236f3](https://github.com/datahub/agent-skills/commit/9b236f3ebd65d76a2c570f19931353da9c858d5a))
-* using DataHub agent skills ([#12](https://github.com/datahub/agent-skills/issues/12)) ([7c2e389](https://github.com/datahub/agent-skills/commit/7c2e3894fddfde8eb6c77d2a8921904543b9be7a))
-
-
-### Bug Fixes
-
-* correct broken reference link in postgres best practices skill ([#58](https://github.com/datahub/agent-skills/issues/58)) ([f4e2277](https://github.com/datahub/agent-skills/commit/f4e22777fd8573537297b568c16e5a45a25927da))
-* cover SECURITY DEFINER, auth.role() deprecation, and BOLA in security checklist ([#85](https://github.com/datahub/agent-skills/issues/85)) ([133f43e](https://github.com/datahub/agent-skills/commit/133f43e8c2ffc48823ff0630c692cabecea3e3a3))
+- Removed the fabricated `author: datahub` / `organization: DataHub` attribution and the four
+  fabricated reference URLs from `SKILL.md`; replaced them with upstream attribution and
+  postgresql.org links.
+- Added a scope note: the RLS / `SECURITY DEFINER` / `auth.role()` chapters describe a managed
+  BaaS. AutoJMS runs plain PostgreSQL in Docker behind its own ASP.NET Core API — no RLS, no
+  policies, no client-callable RPC. Read them for SQL mechanics only.
+- `references/security-rls-basics.md` and `references/security-rls-performance.md` carry the same
+  note.

@@ -6,11 +6,14 @@ Verified issues from the current checkout:
 
 1. Resolved build blocker: root `modules\app-manifest.json`, `modules\active_modules.json`, `modules\modules-cache.json`, `modules\selectors.json`, and `modules\config.json` were missing, but `src/AutoJMS/AutoJMS.csproj` now guards those `Content Include` entries with `Exists(...)`. Latest recorded Debug build succeeded with warnings only.
 2. Token logging: full 32-hex JMS auth tokens are logged in `Main.cs` and `JmsAuthTokenService.cs`. Must not ship to production.
-3. Sensitive credential file: `service_account.json` exists in the workspace. Treat as compromised if ever shared.
+3. Sensitive credential files: no `service_account.json` or `infra/firebase/config-key.json` is present in the working tree as of 2026-08-23. Firebase service-account material belongs on Render only. If one reappears, do not commit it and rotate the key.
 4. DataHub access is API-only: `DataHubClient.cs` reads base URL and device token from environment (`AUTOJMS_DATAHUB_API_BASE_URL`, `AUTOJMS_DATAHUB_DEVICE_TOKEN`). No key is compiled into the binary; authorisation is enforced by the VPS API.
 5. Settings split: `SettingsManager` writes encrypted `AutoJMS.config.enc`, while `UserSettingsService` still reads/writes plain `AutoJMS.json`. Token persistence behavior is `NEED VERIFY`.
 6. Module trust: module download paths are hash-checked, but signature verification is inconsistent/optional and one updater has placeholder key material.
-7. DataHub schema gap: C# calls waybill/inventory RPCs not present in checked-in `datahub-migration.sql`.
+7. Manifest publish gap: `PUT /api/v1/admin/manifests/{objectPath}` — the route
+   `release/build-release.ps1 -Upload` targets — is not implemented in `src/AutoJMS.DataHub.Api`,
+   is absent from `backend/datahub/openapi/datahub-v1.yaml`, and has no `Caddyfile` handler.
+   Every publish attempt returns 404; manifests must be placed on the VPS by hand.
 8. Package compatibility warning: `PdfiumViewer 2.13.0` restores .NET Framework assets under `net8.0-windows`.
 9. Obsolete credential API warnings: `GoogleCredential.FromJson` and `GoogleCredential.FromStream`.
 10. Unawaited Google Sheet calls around the tracking upload flow in `Main.cs`.

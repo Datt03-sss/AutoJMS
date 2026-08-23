@@ -51,4 +51,4 @@ revoke all on schema public from public;
 revoke all on all tables in schema public from public;
 ```
 
-Reference: [Roles and Privileges](https://datahub.com/blog/postgres-roles-and-privileges)
+Reference: [Database Roles](https://www.postgresql.org/docs/current/user-manag.html) / [Privileges](https://www.postgresql.org/docs/current/ddl-priv.html)

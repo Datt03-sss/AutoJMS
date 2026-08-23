@@ -11,7 +11,7 @@ GitHub Releases hosts Velopack binaries. DataHub hosts small control-plane manif
 | .nupkg | ~100MB | GitHub Releases |
 | *Setup.exe | ~100MB | GitHub Releases |
 | RELEASES | ~1KB | GitHub Releases |
-| version-latest.json | ~1KB | VPS config API |
+| version-latest.json | ~1KB | DataHub API |
 
 **DataHub free plan rejects files > 50MB.**
 

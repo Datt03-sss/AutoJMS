@@ -1,25 +1,24 @@
 # AutoJMS Backend Deploy Status
 
-Date: 2026-06-11
+Date: 2026-08-23
 
 ## Completed
 
-- DataHub project linked: `bnsnnrlwfzxemmizknwy`.
-- DataHub bucket ready: `autojms-modules`.
-- DataHub migrations applied and local/remote history match:
-  - `202606110001_autojms_bootstrap.sql`
-  - `202606110002_tighten_autojms_privileges.sql`
-- Public DataHub JSON files return HTTP 200:
-  - `manifest/app-manifest.json`
-  - `manifest/hash-manifest.json`
-  - `manifest/tier-definitions.json`
-  - `manifest/version-latest.json`
-  - `configs/public-config.json`
-  - `configs/runtime-policy.json`
-  - `configs/runtime-policy.base.json`
-  - `configs/runtime-policy.ultra.json`
-  - `selector-updates/runtime-config.json`
-  - `selector-updates/selector-update-manifest.json`
+- DataHub stack deployed to the VPS at `/opt/autojms-datahub`: containers `caddy`, `api`,
+  `postgres` on Ubuntu 24.04. Public host `https://dev.jmsauto.online`, TLS issued by
+  Let's Encrypt through Caddy.
+- `GET /health/live` and `GET /health/ready` return 200 through Caddy.
+- All five forward-only migrations applied and recorded in `schema_migrations`:
+  - `001_core.sql`
+  - `002_seed_policies.sql`
+  - `003_seed_retention.sql`
+  - `004_projection_slot_payloads.sql`
+  - `005_change_retention_floor.sql`
+- Twelve tables exist; `create_datahub_site(...)` is the only SQL function in `public`.
+- PostgreSQL is not published to the host; only ports 22/80/443 are open.
+- `smoke-test.sh` passes against staging, including the five negative cases.
+- Operational scripts deployed to `/opt/autojms-datahub/bin/`: `dc.sh`, `apply-migrations.sh`,
+  `run-sql.sh`, `smoke-test.sh`, `_datahub-common.sh`.
 - Render server source has a runnable Node project:
   - `backend/render-license-server/package.json`
   - `backend/render-license-server/package-lock.json`
@@ -28,38 +27,53 @@ Date: 2026-06-11
 - Render server supports:
   - `.env` loading for local development.
   - Firebase Admin credential from JSON env, base64 env, credential path, or local fallback file.
-  - DataHub project URL and device token returned to the desktop client.
+  - Signing a short-lived RS256 license assertion and returning it with the API base URL, so the
+    station can enroll itself. Render never holds a device token.
 - Firebase operation timeout through `FIREBASE_OPERATION_TIMEOUT_MS`.
 - Firebase health endpoint: `/health/firebase`.
-- Desktop app builds successfully:
-  - `src/AutoJMS/bin/Debug/net8.0-windows/win-x64/AutoJMS.exe`
+- Desktop app builds successfully with SignalR client and SQLCipher-backed local databases.
 
 ## Current Verification
 
-Commands that passed locally:
+Commands that passed:
 
 ```powershell
 cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm install
 npm run check
 
-cd D:\v1.2605.2(new-test)\backend\datahub
-datahub migration list --linked
-
 cd D:\v1.2605.2(new-test)
-dotnet build .\src\AutoJMS\AutoJMS.csproj -c Debug --no-restore /clp:Summary
+dotnet build .\AutoJMS.slnx -c Release
+powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1
 Invoke-RestMethod "https://autojms-api.onrender.com/health"
+Invoke-RestMethod "https://dev.jmsauto.online/health/ready"
 ```
 
-## Not Completed From This Machine
+On the VPS:
 
-Render production deployment cannot be completed from this local machine because these credentials/tools are not present:
+```bash
+cd /opt/autojms-datahub
+./bin/dc.sh --env-file .env.production ps
+./bin/apply-migrations.sh --env-file .env.production
+./bin/smoke-test.sh --env-file .env.staging --base https://dev.jmsauto.online
+```
 
-- Render CLI or `RENDER_API_KEY`.
-- Render service ID.
-- `JWT_PRIVATE_KEY`.
-- `JWT_PUBLIC_KEY`.
-- Firebase Admin service account credential.
+## Not Completed
+
+- **Manifest write path.** `release/build-release.ps1 -Upload` calls
+  `PUT {base}/api/v1/admin/manifests/{objectPath}`, but that route does not exist in
+  `src/AutoJMS.DataHub.Api`, is absent from `backend/datahub/openapi/datahub-v1.yaml`, and the
+  `Caddyfile` has no static-file handler. `-Upload` currently returns 404; the public JSON must
+  be published by hand until the endpoint lands.
+- **VPS hardening.** fail2ban, unattended-upgrades, and disabling SSH password auth are written
+  up in `backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md` but have not been applied.
+- **Missing endpoints.** No `notes` / `checks` / `tasks` routes, so those FullStackForm panels
+  remain local-only.
+- **`DeviceIdentity.Role`** is carried through enrollment but never enforced.
+- Render production deployment cannot be completed from this local machine because these
+  credentials are not present: Render CLI / `RENDER_API_KEY`, Render service ID,
+  `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, and the Firebase
+  Admin service account credential.
 
 ## Required Render Environment
 
@@ -72,13 +86,21 @@ FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebaseda
 FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 Firebase Admin service account JSON>
 # or FIREBASE_SERVICE_ACCOUNT_JSON=<Firebase Admin service account JSON>
 # or GOOGLE_APPLICATION_CREDENTIALS=<secret file path>
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://dev.jmsauto.online
+DATAHUB_MANIFEST_BASE_URL=https://dev.jmsauto.online
+DATAHUB_CHANNEL=production
+DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY=<RS256 private key PEM>
+DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license
+DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll
+DATAHUB_LICENSE_ASSERTION_TTL_SECONDS=300
+DATAHUB_DEFAULT_SEATS=3
 FIREBASE_OPERATION_TIMEOUT_MS=8000
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=<optional comma-separated hashes>
 ```
+
+`DATAHUB_ADMIN_TOKEN` must never be set on Render. It exists only in `.env.production` on the
+VPS.
 
 ## Final Acceptance Test
 
@@ -94,9 +116,11 @@ After deploying Render:
    - `middleCode`
    - `datahub.baseUrl`
    - `datahub.apiBaseUrl`
-   - `datahub.device enrollment token`
+   - `datahub.licenseAssertion`
    - `datahub.manifests`
-5. Launch `src/AutoJMS/bin/Debug/net8.0-windows/win-x64/AutoJMS.exe`.
-6. Login with a controlled license.
+5. The client exchanges that assertion at `POST https://dev.jmsauto.online/api/v1/devices/enroll`
+   and receives a `deviceToken` plus a `siteId`.
+6. Launch the built `AutoJMS.exe` and log in with a controlled license.
 7. Confirm BASE has no background inventory/database sync.
-8. Confirm ULTRA can open `FullStackOperationForm` and use DataHub-backed sync paths.
+8. Confirm ULTRA can open `FullStackOperationForm`, read `/api/v1/sites/{siteId}/changes`, and
+   connect to `/hubs/site`.

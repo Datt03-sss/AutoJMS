@@ -23,13 +23,13 @@ sau đó tracking gọi **getOrderDetail tuần tự từng đơn** và **lặp 
 - Kết quả: sau chu kỳ đầu, số request order-detail ≈ 0 ⇒ các lần đồng bộ tiếp theo nhanh hơn nhiều; chu kỳ đầu cũng nhanh hơn nhờ song song.
 
 ### 3. Ghi DB (đã tối ưu sẵn)
-- `UpsertManyWaybillsAsync` đã gộp toàn bộ dòng vào **một RPC** `merge_waybill_tracking_rows` (batch JSONB), và có **fingerprint cache** bỏ qua dòng không đổi ⇒ không cần thay đổi.
+- `UpsertManyWaybillsAsync` đã gộp toàn bộ dòng vào **một request** `POST /api/v1/sites/{siteId}/jms/observations` (batch JSON, qua `SendObservationBatchAsync`), và có **fingerprint cache** bỏ qua dòng không đổi ⇒ không cần thay đổi. Server còn dedupe thêm bằng `UNIQUE (site_id, event_fingerprint)`, nên gửi trùng cũng vô hại.
 
 ## Giới hạn đồng thời (chống khóa IP)
 - Lấy trang: tối đa 5 luồng. Order-detail: tối đa 3 luồng (semaphore toàn cục). Tracking batch: giữ nguyên 3.
 - Các mức này cân bằng giữa tốc độ và rủi ro bị JMS khóa IP; có thể tinh chỉnh qua hằng số nếu cần.
 
 ## Gợi ý nâng cấp tiếp (khi cần)
-- Chỉ tracking đơn **đến hạn** (`next_track_at`) theo lịch ưu tiên thay vì toàn bộ mỗi lần (đã có index `idx_waybills_site_due_active`).
-- Chunk payload upsert (VD 500–1000 dòng/lần) nếu inventory rất lớn để tránh payload quá to.
+- Chỉ tracking đơn **đến hạn** theo lịch ưu tiên thay vì toàn bộ mỗi lần. ⚠️ Cột `next_track_at` và index `idx_waybills_site_due_active` **không tồn tại** trong schema hiện tại (12 bảng, `001_core.sql`…`005_*.sql`); muốn làm phải mở migration `006_*.sql` + tham số lọc trên `/projections/snapshot`. Hiện `GetWaybillsDueForTrackingAsync` chỉ là alias của `ReadSnapshotAsync`, việc chọn đơn đến hạn làm ở client.
+- Chunk payload upsert (VD 500–1000 dòng/lần) nếu inventory rất lớn để tránh payload quá to. Dùng `POST /jms/ingest` + `Idempotency-Key` để retry từng chunk an toàn.
 - Dùng nút **Export server-side** của Big Data cho full-refresh (1 request thay vì phân trang) — xem `inventory-source-comparison.vi.md`.

@@ -1,6 +1,6 @@
 # Manual Setup Backend Để AutoJMS Chạy Được
 
-Ngày cập nhật: 2026-06-12
+Ngày cập nhật: 2026-08-23
 
 Manual này dùng cho backend hiện tại trong `D:\v1.2605.2(new-test)\backend`.
 
@@ -8,10 +8,10 @@ Mục tiêu cuối cùng:
 
 - Render license server chạy được `/health`, `/api/verify-license`, `/api/heartbeat`.
 - Firebase có license test để app đăng nhập.
-- DataHub có schema/RPC/storage manifest đúng.
+- DataHub API trên VPS chạy được: `/health/ready`, `/api/v1/devices/enroll`, và các route `/api/v1/sites/...`.
 - AutoJMS build được và đăng nhập bằng license test.
 
-Không ghi secret thật vào repo. Không commit `.env`, Firebase service account, DataHub service-role key, JWT private key, hoặc token production.
+Không ghi secret thật vào repo. Không commit `.env`, Firebase service account, `DATAHUB_ADMIN_TOKEN`, `DATAHUB_DEVICE_TOKEN_SIGNING_KEY`, `DATAHUB_ENROLLMENT_PEPPER`, JWT private key, hoặc token production.
 
 ## 1. Kiến Trúc Backend
 
@@ -19,11 +19,14 @@ Không ghi secret thật vào repo. Không commit `.env`, Firebase service accou
 AutoJMS.exe
   -> Render server /api/verify-license
       -> Firebase Realtime Database: Licenses, sessions
-      -> trả về JWT + tier + DataHub config
-  -> VPS config API: manifest/config/hash/tier/selector-update JSON
-  -> DataHub PostgreSQL/RPC: waybills, inventory sync lease, tracking rows
+      -> trả về JWT + tier + apiBaseUrl + licenseAssertion
+  -> DataHub API POST /api/v1/devices/enroll (đổi assertion lấy device token)
+  -> DataHub API manifest/config/hash/tier/selector-update JSON
+  -> DataHub API /api/v1/sites/{siteId}/... : ingest, changes, snapshot, lease
+  -> DataHub hub WS /hubs/site : doorbell realtime
   -> Render server /api/heartbeat
       -> Firebase sessions
+      -> gia hạn device token trước hạn
 ```
 
 Vai trò từng dịch vụ:
@@ -31,25 +34,29 @@ Vai trò từng dịch vụ:
 | Dịch vụ | Vai trò |
 |---|---|
 | Firebase | License, HWID, session, tier, middleCode |
-| Render | API verify license, heartbeat, logout, cấp JWT |
-| VPS config API | Manifest/config/hash/tier/selector-update JSON |
-| DataHub PostgreSQL | Waybill database và RPC cho ULTRA sync |
+| Render | API verify license, heartbeat, logout, cấp JWT, ký license assertion |
+| DataHub API (VPS) | Enroll thiết bị, ingest JMS, change feed, lease, SignalR hub, manifest JSON |
+| DataHub PostgreSQL | 12 bảng vận hành, chỉ nghe trên private Docker network |
 | GitHub Releases | Velopack binaries, không dùng DataHub để chứa `.nupkg` |
+
+Không có BaaS nào phía sau DataHub: không project ref, không storage bucket, không PostgREST,
+không RPC gọi từ client, không RLS. Mọi lời gọi đi qua một endpoint tường minh trong
+`src/AutoJMS.DataHub.Api` và được xác thực bằng device token.
 
 ## 2. Thông Tin Backend Hiện Tại
 
 ```text
-DataHub project ref: bnsnnrlwfzxemmizknwy
-DataHub project URL: https://datahub.example.com
-DataHub public bucket: autojms-modules
-VPS config API base:
-https://datahub.example.com
+DataHub public host:
+https://dev.jmsauto.online
 
 Render production URL:
 https://autojms-api.onrender.com
 
 Firebase RTDB:
 https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
+
+VPS: Ubuntu 24.04, Docker Compose, container `caddy` + `api` + `postgres`
+Thư mục triển khai: /opt/autojms-datahub
 ```
 
 Source chính:
@@ -59,7 +66,12 @@ backend/render-license-server/server.js
 backend/render-license-server/package.json
 backend/render-license-server/env.template
 backend/render.yaml
+backend/datahub/docker-compose.yml
+backend/datahub/Caddyfile
 backend/datahub/migrations/
+backend/datahub/scripts/
+backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md
+src/AutoJMS.DataHub.Api/
 backend/BACKEND_DEPLOY_STATUS.md
 ```
 
@@ -71,8 +83,15 @@ Kiểm tra trên máy deploy/dev:
 node -v
 npm -v
 dotnet --info
-datahub --version
+ssh -V
 git --version
+```
+
+Trên VPS:
+
+```bash
+docker --version
+docker compose version
 ```
 
 Yêu cầu:
@@ -81,10 +100,14 @@ Yêu cầu:
 |---|---|
 | Node.js >= 20 | Chạy Render license server |
 | npm | Cài dependency backend |
-| .NET SDK 8 hoặc SDK mới có workload Windows | Build AutoJMS |
-| DataHub CLI | Apply/check migration |
-| Render dashboard hoặc Render API/CLI | Deploy server |
+| .NET SDK 10 (workload Windows) | Build AutoJMS và `AutoJMS.DataHub.Api` |
+| SSH tới VPS | Chạy `bin/dc.sh`, `bin/apply-migrations.sh` |
+| Docker + Docker Compose trên VPS | Chạy stack `caddy`/`api`/`postgres` |
+| Render dashboard | Deploy license server |
 | Firebase console access | Tạo service account và license test |
+
+Không có CLI riêng cho DataHub. Migration và vận hành đều qua `docker compose`, bọc bởi các
+script trong `backend/datahub/scripts/`.
 
 ## 4. Secret Cần Chuẩn Bị
 
@@ -95,8 +118,15 @@ Không đặt các giá trị này vào tài liệu hoặc git.
 | `JWT_PRIVATE_KEY` | Tự tạo RSA private key | Render ký license JWT |
 | `JWT_PUBLIC_KEY` | Từ RSA private key | Render verify/chuẩn public key |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console | Render Admin SDK đọc/ghi RTDB |
-| `AUTOJMS_DATAHUB_DEVICE_TOKEN` | DataHub dashboard, Project Settings, API | Render trả về app; quyền hạn do VPS API quyết định theo device token |
-| `DATAHUB_ADMIN_TOKEN` | Cấu hình trên VPS | Chỉ dùng thủ công/server-side khi upload/admin, không trả về client |
+| `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` | Tự tạo RSA private key | Render ký license assertion cho enroll |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` | Từ private key trên | VPS verify assertion |
+| `DATAHUB_DEVICE_TOKEN_SIGNING_KEY` | Tự sinh, 32+ byte random | VPS ký device token (HMAC) |
+| `DATAHUB_ENROLLMENT_PEPPER` | Tự sinh, 32+ byte random | VPS băm device secret khi enroll |
+| `DATAHUB_ADMIN_TOKEN` | Tự sinh, chỉ đặt trên VPS | Route admin server-side, không bao giờ trả về client |
+| `POSTGRES_PASSWORD` | Tự sinh | Container `postgres`, chỉ trong `.env.production` trên VPS |
+
+Render **không** giữ device token. Render giữ khoá ký assertion và phát assertion ngắn hạn cho
+từng lần kích hoạt; máy trạm tự đổi assertion đó lấy device token của riêng nó.
 
 Nếu cần tạo JWT key pair bằng OpenSSL:
 
@@ -109,66 +139,83 @@ Khi nhập vào Render env, có thể dán nguyên PEM nhiều dòng hoặc dùn
 
 ## 5. Setup DataHub
 
-### 5.1. Login Và Link Project
+### 5.1. Đưa Stack Lên VPS
 
-```powershell
-cd D:\v1.2605.2(new-test)\backend\datahub
-datahub login
-datahub link --project-ref bnsnnrlwfzxemmizknwy
+Lần đầu chạy `backend/datahub/deploy/bootstrap-vps.sh`; chi tiết trong
+`backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md`. Sau đó mọi thao tác đều từ
+`/opt/autojms-datahub`:
+
+```bash
+cd /opt/autojms-datahub
+./bin/dc.sh --env-file .env.production ps
+./bin/dc.sh --env-file .env.production logs --tail 50 api
 ```
 
-Nếu project đã link, kiểm tra:
+`--env-file` bắt buộc. `docker-compose.yml` cố tình không có khoá `env_file:`, thiếu nó thì mọi
+`${VAR:?}` sẽ fail ngay — dùng `bin/dc.sh` để không bao giờ quên.
 
-```powershell
-datahub migration list --linked
-```
+Kiểm tra stack sống:
 
-Kết quả đúng phải có local/remote khớp:
-
-```text
-202606110001 | 202606110001
-202606110002 | 202606110002
+```bash
+curl -fsS https://dev.jmsauto.online/health/live
+curl -fsS https://dev.jmsauto.online/health/ready
 ```
 
 ### 5.2. Apply Migration Nếu Chưa Có
 
-```powershell
-cd D:\v1.2605.2(new-test)\backend\datahub
-datahub db push
+```bash
+cd /opt/autojms-datahub
+./bin/apply-migrations.sh --env-file .env.production
 ```
 
-Migration cần có:
+Migration là forward-only, chạy theo thứ tự tên file:
 
 ```text
-backend/datahub/migrations/202606110001_autojms_bootstrap.sql
-backend/datahub/migrations/202606110002_tighten_autojms_privileges.sql
+backend/datahub/migrations/001_core.sql
+backend/datahub/migrations/002_seed_policies.sql
+backend/datahub/migrations/003_seed_retention.sql
+backend/datahub/migrations/004_projection_slot_payloads.sql
+backend/datahub/migrations/005_change_retention_floor.sql
 ```
 
-Schema/RPC kỳ vọng:
+Mỗi file tự ghi marker của nó vào `schema_migrations` bên trong transaction của chính nó, nên
+một lần chạy dở dang không thể tự nhận là đã xong. Không có đường rollback: sai thì thêm file
+mới đánh số tiếp, tuyệt đối không sửa file đã apply.
+
+Schema kỳ vọng — 12 bảng, đúng 1 hàm SQL:
 
 | Loại | Tên |
 |---|---|
-| Table | `public.waybills` |
-| Table | `public.inventory_sync_leases` |
-| Table | `public.app_modules` |
-| Table | `public.app_manifest` |
-| Table | `public.app_configs` |
-| RPC | `try_acquire_inventory_lease` |
-| RPC | `refresh_inventory_lease` |
-| RPC | `release_inventory_lease` |
-| RPC | `complete_inventory_sync` |
-| RPC | `upsert_new_waybills` |
-| RPC | `merge_waybill_tracking_rows` |
+| Table | `sites` |
+| Table | `devices` |
+| Table | `waybill_scan_events` |
+| Table | `waybill_projections` |
+| Table | `dashboard_changes` |
+| Table | `site_change_counters` |
+| Table | `site_fetch_leases` |
+| Table | `idempotency_records` |
+| Table | `audit_logs` |
+| Table | `jms_event_policies` |
+| Table | `retention_policies` |
+| Table | `schema_migrations` |
+| Function | `create_datahub_site(...)` — helper provisioning, không phải RPC cho client |
 
-### 5.3. Kiểm Tra Storage Public JSON
+Kiểm tra:
 
-Bucket public:
-
-```text
-autojms-modules
+```bash
+./bin/run-sql.sh --env-file .env.production /dev/stdin <<'SQL'
+select version from schema_migrations order by version;
+select tablename from pg_tables where schemaname = 'public' order by tablename;
+SQL
 ```
 
-Các file cần trả HTTP `200`:
+`run-sql.sh` nhận **file**, không nhận chuỗi SQL trực tiếp; nó chấp nhận `/dev/stdin` nên
+heredoc chạy được mà không cần tạo file tạm.
+
+### 5.3. Kiểm Tra Manifest JSON Công Khai
+
+Client đọc control-plane JSON từ `DATAHUB_MANIFEST_BASE_URL`, mặc định là
+`DATAHUB_API_BASE_URL`. Các file cần trả HTTP `200`:
 
 ```text
 manifest/app-manifest.json
@@ -186,7 +233,7 @@ selector-updates/selector-update-manifest.json
 Lệnh test:
 
 ```powershell
-$base = "https://datahub.example.com"
+$base = "https://dev.jmsauto.online"
 $paths = @(
   "manifest/app-manifest.json",
   "manifest/hash-manifest.json",
@@ -212,34 +259,59 @@ Tất cả phải là:
 200 <path>
 ```
 
-### 5.4. Kiểm Tra Device Token Không Bị Sai
+> **Đang thiếu.** `release/build-release.ps1 -Upload` đẩy các file này bằng
+> `PUT {base}/api/v1/admin/manifests/{objectPath}`, nhưng route admin đó chưa tồn tại trong
+> `src/AutoJMS.DataHub.Api`, không có trong `openapi/datahub-v1.yaml`, và `Caddyfile` cũng chưa
+> có handler static file — nên `-Upload` hiện trả 404. Trước khi endpoint được bổ sung, publish
+> thủ công trên VPS. Không "chữa" bằng cách trỏ client sang bucket của bên thứ ba.
 
-App chỉ được dùng device token; admin token không bao giờ nằm trong app.
+### 5.4. Kiểm Tra Luồng Enroll Và Device Token
 
-```powershell
-$deviceToken = "<AUTOJMS_DATAHUB_DEVICE_TOKEN>"
-$headers = @{
-  Authorization = "Bearer $deviceToken"
-}
-$base = "https://datahub.example.com"
-
-Invoke-WebRequest "$base/rest/v1/waybills?select=waybill_no&limit=1" -Headers $headers
-```
-
-Test RPC:
+App không bao giờ nhận device token từ config. Nó phải tự enroll bằng license assertion do
+Render ký. Admin token không bao giờ nằm trong app.
 
 ```powershell
-$body = @{ p_waybills = @("TEST_MANUAL_001") } | ConvertTo-Json
-Invoke-WebRequest -Method Post "$base/rest/v1/rpc/upsert_new_waybills" `
-  -Headers $headers `
+$base = "https://dev.jmsauto.online"
+
+# 1. Lấy assertion từ Render bằng access token của phiên đang chạy
+$assertion = (Invoke-RestMethod -Method Post "https://autojms-api.onrender.com/api/datahub/license-assertion" `
+  -Headers @{ Authorization = "Bearer <access token>" } `
+  -ContentType "application/json" -Body "{}").licenseAssertion
+
+# 2. Đổi assertion lấy device token.
+#    Assertion đi ở header Authorization, KHÔNG nằm trong body.
+$enroll = Invoke-RestMethod -Method Post "$base/api/v1/devices/enroll" `
+  -Headers @{ Authorization = "Bearer $assertion" } `
   -ContentType "application/json" `
-  -Body $body
+  -Body (@{ siteCode = "214A02"; deviceName = "MANUAL-TEST"; role = "operator" } | ConvertTo-Json)
+
+$enroll.siteId
+$enroll.deviceToken.Substring(0,4) + "..." + $enroll.deviceToken.Substring($enroll.deviceToken.Length - 4)
 ```
 
-Sau test, xóa row test bằng DataHub SQL editor hoặc CLI admin:
+Response `201`: `deviceId`, `siteId`, `siteCode`, `channel`, `tokenType`, `deviceToken`,
+`tokenVersion`, `expiresAt`. `role` hiện chỉ chấp nhận `operator`.
 
-```sql
-delete from public.waybills where waybill_no = 'TEST_MANUAL_001';
+Đọc thử change feed bằng device token vừa nhận:
+
+```powershell
+$headers = @{ Authorization = "Bearer $($enroll.deviceToken)" }
+Invoke-RestMethod "$base/api/v1/sites/$($enroll.siteId)/changes?sinceSeq=0&limit=1" -Headers $headers
+```
+
+Ba loại credential không thay thế cho nhau: access token RS256 (Render), license assertion
+(một mục đích duy nhất là enroll), device token HMAC (mọi route `/api/v1/sites/...` và hub).
+Dùng nhầm loại nào cũng chỉ nhận `401` mà không có thông báo rõ.
+
+`deviceName` phải ổn định giữa các lần chạy — enrollment idempotent theo `(site_id, name)`, tên
+đổi mỗi lần khởi động sẽ ăn hết seat rồi trả `409 SEAT_LIMIT_REACHED`.
+
+Sau khi test xong, thu hồi thiết bị test:
+
+```bash
+./bin/run-sql.sh --env-file .env.production /dev/stdin <<'SQL'
+update devices set status = 'revoked' where name = 'MANUAL-TEST';
+SQL
 ```
 
 ## 6. Setup Firebase
@@ -371,9 +443,14 @@ FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebaseda
 FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 Firebase Admin service account JSON>
 # or FIREBASE_SERVICE_ACCOUNT_JSON=<Firebase Admin service account JSON>
 
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://dev.jmsauto.online
+DATAHUB_MANIFEST_BASE_URL=https://dev.jmsauto.online
+DATAHUB_CHANNEL=staging
+DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY=<RS256 private key PEM>
+DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license
+DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll
+DATAHUB_LICENSE_ASSERTION_TTL_SECONDS=300
+DATAHUB_DEFAULT_SEATS=3
 
 DEFAULT_UPDATE_CHANNEL=stable
 VALID_EXE_HASHES=
@@ -429,18 +506,29 @@ Env cần set trên Render:
 NODE_ENV=production
 FIREBASE_OPERATION_TIMEOUT_MS=8000
 FIREBASE_DATABASE_URL=https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
-DATAHUB_API_BASE_URL=https://datahub.example.com
-DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_API_BASE_URL=https://dev.jmsauto.online
+DATAHUB_MANIFEST_BASE_URL=https://dev.jmsauto.online
+DATAHUB_CHANNEL=production
+DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license
+DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll
+DATAHUB_LICENSE_ASSERTION_TTL_SECONDS=300
+DATAHUB_DEFAULT_SEATS=3
 DEFAULT_UPDATE_CHANNEL=stable
 
 JWT_PRIVATE_KEY=<secret>
 JWT_PUBLIC_KEY=<secret>
 FIREBASE_SERVICE_ACCOUNT_BASE64=<secret>
-DATAHUB_API_BASE_URL=https://datahub.example.com
+DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY=<secret>
 VALID_EXE_HASHES=<optional>
 ```
 
-Không set `AUTOJMS_DATAHUB_DEVICE_TOKEN` bằng service-role key.
+`DATAHUB_ADMIN_TOKEN` **không** được đặt trên Render. Nó chỉ tồn tại trong `.env.production`
+trên VPS. Render chỉ giữ khoá ký assertion; nếu thiếu khoá đó thì không có assertion nào được
+phát và enrollment đóng lại — đây là mặc định an toàn, không phải lỗi ngầm.
+
+`DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` / `DATAHUB_CHANNEL` phải khớp chính xác với
+`DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` / `DataHub__Channel` trên VPS, nếu lệch thì
+enroll trả `401` mà không có thông báo hữu ích.
 
 Sau deploy:
 
@@ -622,26 +710,32 @@ Kỳ vọng:
 - ABOUT vẫn là tab cuối.
 - Gõ `DASH` ở HOME URL bar mở `FullStackOperationForm`.
 - Background sync chỉ chạy nếu `TierRuntimePolicy` cho phép.
-- DataHub RPC hoạt động khi FullStack/ULTRA sync cần dùng.
+- Enroll thành công, `DataHubClient` có device token và siteId hợp lệ.
+- Hub `/hubs/site` kết nối được; mất hub thì tụt về polling `/changes` chứ không mất dữ liệu.
 
 ## 11. Troubleshooting
 
 | Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
 |---|---|---|
 | `/health` OK nhưng `/api/verify-license` timeout | Render không đọc được Firebase hoặc chưa deploy bản timeout mới | Kiểm tra `FIREBASE_SERVICE_ACCOUNT_BASE64`, `FIREBASE_DATABASE_URL`, redeploy |
-| App báo `device API token is not configured` | Render không trả `datahub.device enrollment token` | Set `AUTOJMS_DATAHUB_DEVICE_TOKEN` trên Render |
+| App chạy offline, không có device token | Render không trả `datahub.licenseAssertion` | Set `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` trên Render |
 | App login fail vì JWT invalid | `JWT_PUBLIC_KEY` trong app/server không khớp private key đang ký | Dùng đúng key pair; nếu đổi public key server-side cần đảm bảo client verify tương thích |
 | License bị báo đang dùng máy khác | Firebase `hwid` đã bind máy khác | Reset `Licenses/<key>/hwid` và xóa session liên quan |
 | BASE chạy background sync | Tier policy sai hoặc license/tier manifest sai | Kiểm tra `tier-definitions.json`, `runtime-policy*.json`, log policy |
-| DataHub RPC 401/403 | RLS/grant/device token sai | Kiểm tra migration `202606110002`, device token, RPC grants |
-| Manifest 404 | Bucket/path sai | Kiểm tra `DATAHUB_API_BASE_URL` và public storage files |
+| Enroll trả `401 ASSERTION_INVALID` | Issuer/audience/channel lệch giữa Render và VPS, hoặc lệch đồng hồ quá TTL | So `DATAHUB_LICENSE_ASSERTION_*` và `DATAHUB_CHANNEL` hai phía |
+| Enroll trả `409 SEAT_LIMIT_REACHED` | `deviceName` đổi mỗi lần chạy nên ăn hết seat | Giữ tên ổn định theo `MachineName` + hwid; chỉ tăng `seats` khi thực sự cần |
+| `/api/v1/sites/...` trả `401` | Device token hết hạn hoặc `tokenVersion` của site đã bị nâng | Để `HeartbeatSupervisor` gia hạn; enroll lại nếu device đã bị revoke |
+| Manifest 404 | File chưa từng được publish, hoặc sai `DATAHUB_MANIFEST_BASE_URL` | Curl thẳng URL công khai; nhớ `-Upload` hiện đang hỏng |
+| `${VAR:?}` fail khi `docker compose` | Quên `--env-file` | Dùng `./bin/dc.sh`, script luôn truyền sẵn |
 | Render deploy fail ở `npm ci` | `package-lock.json` thiếu/không khớp | Chạy `npm install` local, commit lockfile |
 
 ## 12. Quy Tắc Không Được Phá
 
-- Không log full JWT, JMS AuthToken, Firebase credential, DataHub key.
-- Không dùng DataHub service-role key trong desktop client.
-- Không upload `.nupkg`, setup exe, private key lên VPS config API.
+- Không log full JWT, JMS AuthToken, Firebase credential, license assertion, device token. Che `first4...last4`.
+- Không đưa `DATAHUB_ADMIN_TOKEN` vào desktop client, vào Render, hay vào bất kỳ JSON công khai nào.
+- Không bật `DATAHUB_ALLOW_STAGING_TEST_ISSUER` trên production — bật là ai cũng tự ký được assertion.
+- Không publish `.nupkg`, setup exe, private key qua manifest control plane. Binary nằm ở GitHub Releases.
+- Không mở cổng PostgreSQL ra host. Database chỉ nghe trên private Docker network.
 - Không để BASE chạy background inventory/database sync.
 - Không mở GitHub page khi update; Velopack tự xử lý qua GitHub Releases.
 - Không truy cập WebView2 ngoài UI thread.
@@ -654,12 +748,15 @@ Kỳ vọng:
 cd D:\v1.2605.2(new-test)\backend\render-license-server
 npm run check
 
-# DataHub migrations
-cd D:\v1.2605.2(new-test)\backend\datahub
-datahub migration list --linked
+# DataHub stack + migrations (trên VPS)
+ssh datahub-root "cd /opt/autojms-datahub && ./bin/dc.sh --env-file .env.production ps"
+ssh datahub-root "cd /opt/autojms-datahub && ./bin/apply-migrations.sh --env-file .env.production"
+
+# DataHub health
+Invoke-RestMethod "https://dev.jmsauto.online/health/ready"
 
 # DataHub public files
-$base = "https://datahub.example.com"
+$base = "https://dev.jmsauto.online"
 $paths = @(
   "manifest/app-manifest.json",
   "manifest/hash-manifest.json",

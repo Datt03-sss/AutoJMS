@@ -52,4 +52,4 @@ to_tsquery('postgresql | mysql')
 to_tsquery('post:*')
 ```
 
-Reference: [Full Text Search](https://datahub.com/docs/guides/database/full-text-search)
+Reference: [Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)

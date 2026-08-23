@@ -1,114 +1,149 @@
-# Kế hoạch xây dựng database cho FullStackForm
+# Kế hoạch database cho FullStackOperation
 
-Thiết kế database (DataHub `autojms_database` = `jrqxnviixmagiriqysov`) phục vụ các tab của
-FullStackOperation: **tabDash**, **tabThoiHieu**, và các tab mở rộng trong tương lai.
+Cập nhật 2026-08-23. Viết lại toàn bộ theo kiến trúc API hiện tại.
 
-Nguyên tắc chung (đã áp dụng): tenancy theo `site_code` + RLS; ghi qua RPC SECURITY DEFINER
-(không cho ghi trực tiếp bảng); newest-wins; realtime publication; retention 30 ngày; **không xóa** ngoài policy.
+Database phục vụ các tab của cửa sổ FullStackOperation (**tabDash**, **tabThoiHieu**, và các tab
+mở rộng). Nó là PostgreSQL trong Docker trên VPS, **chỉ** API `AutoJMS.DataHub.Api` truy cập được:
+không publish port ra host, không có client nào nối trực tiếp.
 
-## 1. Hiện trạng (đã có)
+Nguyên tắc đang áp dụng:
+
+- Tenancy theo `site_id` (uuid, FK về `sites`), do **device token** quyết định — không phải do
+  client tự khai. Không có RLS, không có policy, không có role `anon`/`authenticated`: việc chặn
+  chéo site nằm ở endpoint, nơi có thể xác thực, rate-limit và ghi audit.
+- Ghi qua endpoint REST, không qua SQL function. Toàn bộ database chỉ có một function duy nhất là
+  `create_datahub_site(...)` — helper cấp phát site cho `scripts/provision-site.ps1`, client không
+  gọi được.
+- Event log append-only + projection newest-wins. Idempotent theo `event_fingerprint`.
+- Realtime là **doorbell**: hub SignalR chỉ báo "có thay đổi", client vẫn pull `/changes` theo
+  `change_seq`. Mất hub thì thoái hoá về polling, không mất dữ liệu.
+- Retention theo `retention_policies`, chạy bởi background service trong API.
+
+## 1. Hiện trạng — 12 bảng đã dựng
+
+`backend/datahub/migrations/001_core.sql` … `005_change_retention_floor.sql` (forward-only, mỗi
+file tự ghi marker `schema_migrations` trong transaction của chính nó).
 
 | Bảng | Dùng cho |
 |---|---|
-| `waybills` | Nguồn chính tabDash & tabThoiHieu (đơn tồn + chỉ số) |
-| `order_notes` | Ghi chú thao tác (append-only) |
-| `order_checks` | Đánh dấu đã kiểm (newest-wins) |
-| `dispatch_tasks` | Nhiệm vụ điều phối/xử lý |
-| `inventory_sync_leases` | Chống trùng sync giữa nhiều máy |
-| `app_manifest/modules/configs` | Manifest & cấu hình |
+| `sites` | Một dòng mỗi bưu cục; `site_code` là thứ enrollment đối chiếu |
+| `devices` | Máy đã enroll; `status` ∈ `active` / `revoked` / `disabled`; unique `(site_id, name)` |
+| `waybill_scan_events` | Event log append-only từ `/jms/ingest` |
+| `waybill_projections` | Bảng trạng thái hiện tại — nguồn chính của tabDash |
+| `dashboard_changes` | Change feed cho `/changes` |
+| `site_change_counters` | `change_seq` tăng đơn điệu theo site |
+| `site_fetch_leases` | Chọn một máy leader đi fetch JMS |
+| `idempotency_records` | Đỡ header `Idempotency-Key` khi ingest |
+| `audit_logs` | Enrollment và hành động admin |
+| `jms_event_policies` | Map `scan_type_code` → `event_kind` |
+| `retention_policies` | Cửa sổ retention từng bảng |
+| `schema_migrations` | Marker migration đã áp |
 
-RPC đã có: `merge_waybill_rows_v2`, `pull_waybill_delta`, `finalize_waybills`, `mark_left_inventory`,
-`purge_signed_receipts`, `mark_waybill_handled`, `run_retention_cleanup`, các lease/notes/checks/tasks RPC.
+### `waybill_scan_events` — timeline thao tác bưu cục
 
-## 2. Bảng mới cần bổ sung
+Nguồn: `podTracking/queryCssWork` phía JMS, đẩy lên qua `POST /api/v1/sites/{siteId}/jms/ingest`.
 
-### 2.1 `waybill_scans` — timeline thao tác bưu cục (Phase 1)
-Nguồn: `podTracking/queryCssWork`. Append-only, idempotent theo `(site_code, waybill_no, scan_seq)` hoặc hash.
+Cột chính: `site_id`, `waybill_no`, `event_fingerprint`, `fingerprint_version`,
+`event_occurred_at`, `ingested_at`, `scan_type_code`, `scan_type_name`, `status`, `network_code`,
+`operator_code`, `package_number`, `task_code`, `payload jsonb`.
 
-```
-waybill_scans(
-  id uuid pk,
-  site_code text,
-  waybill_no text,
-  scan_seq integer,               -- STT trong timeline
-  scan_time timestamptz,          -- Thời gian thao tác
-  upload_time timestamptz,        -- Thời gian tải lên
-  op_type text,                   -- Loại thao tác (Kiểm tra hàng tồn kho, Quét phát hàng...)
-  op_group text,                  -- nhóm suy ra: INBOUND/STOCKCHECK/DELIVERY/PROBLEM/OUTBOUND/FINAL
-  description text,               -- Mô tả lịch sử hành trình
-  source text,                    -- Nguồn (Idata/JMS-PC/AI/Thủ công)
-  op_site_code text, op_site_name text,
-  employee_code text, employee_name text,
-  problem_reason text,            -- nguyên nhân kiện vấn đề (nếu có)
-  weight double precision, volumetric_weight double precision,
-  client_id text,                 -- idempotent push
-  created_at timestamptz,
-  unique(site_code, waybill_no, scan_seq)
-)
-index (site_code, waybill_no, scan_time desc)
-index (site_code, op_group, scan_time desc)   -- lọc theo nhóm tín hiệu
-```
-RPC: `merge_waybill_scans(site, jsonb[])` (upsert idempotent), `pull_scans_delta(site, since, limit)`.
+Chống trùng bằng `UNIQUE (site_id, event_fingerprint)` — không dùng `scan_seq` (số thứ tự JMS
+không ổn định giữa các lần fetch). Index đọc: `(site_id, waybill_no, event_occurred_at)`.
 
-### 2.2 `waybill_problems` — kiện vấn đề (Phase 2, tùy chọn tách riêng)
-Nguồn: `abnormalPieceScanList/pageList`. Có thể suy từ `waybill_scans` (op_group=PROBLEM); tách bảng nếu cần trạng thái xử lý riêng.
+### `waybill_projections` — trạng thái hiện tại
 
-```
-waybill_problems(site_code, waybill_no, reason, first_seen_at, last_seen_at,
-                 occurrence_count, resolved boolean, resolved_at, updated_at,
-                 primary key(site_code, waybill_no, reason))
-```
+Khoá chính `(site_id, waybill_no)`. Ba nhóm slot, mỗi nhóm giữ event mới nhất thuộc loại đó:
 
-## 3. Ánh xạ dữ liệu theo tab
+| Nhóm slot | Cột | Ý nghĩa |
+|---|---|---|
+| `state_*` | `state_code/name/event_at/fingerprint/event_id/kind/status/payload` | Trạng thái vận đơn |
+| `last_activity_*` | cùng bộ hậu tố | Thao tác cuối cùng |
+| `inventory_*` | cùng bộ hậu tố | Tín hiệu kiểm/tồn kho |
+
+Cộng `payload`, `reducer_version`, `version`, `updated_at`.
+
+`*_event_id` là tham chiếu hydrate **không có FK**: retention xoá event không được phép làm một
+dòng dashboard hoá không đọc/không xoá được.
+
+Reducer nằm trong API, không trong SQL. `jms_event_policies` quyết định một `scan_type_code` rơi
+vào slot nào (`state_transition` / `activity` / `inventory` / `communication`).
+
+### `dashboard_changes` — change feed
+
+`(site_id, change_seq)` PK, `entity_type`, `entity_key`, `operation` ∈ `upsert`/`delete`/`resync`,
+`change_at`, `body jsonb`. Client đọc `GET /changes?after={cursor}&limit=` và tự giữ cursor.
+
+## 2. Ánh xạ dữ liệu theo tab
 
 ### tabDash — Dashboard đơn tồn realtime
-- Nguồn: `waybills` (đơn `is_active AND is_in_current_inventory`) + tín hiệu mới nhất từ `waybill_scans`.
-- Cột hiển thị (khớp UI hiện tại): STT, Mã vận đơn, NV xử lý cuối, Trạng thái hiện tại, Thao tác cuối, Thời gian thao tác, NV/nguyên nhân kiện vấn đề, Số lần nhắc, Cập nhật lúc.
-- Đọc nhanh: `pull_waybill_delta` + realtime; index `idx_waybills_dash_hot`.
-- View đề xuất: `v_dashboard_active` = join `waybills` với thao tác cuối (lateral lấy scan mới nhất).
+
+- Snapshot lần đầu: `GET /api/v1/sites/{siteId}/projections/snapshot?limit=`.
+- Sau đó chỉ delta: `GET /changes?after={change_seq}`, được doorbell `/hubs/site` đánh thức.
+- Cột UI lấy từ `waybill_projections`: mã vận đơn ← `waybill_no`; trạng thái hiện tại ←
+  `state_name`; thao tác cuối ← `last_activity_name`; thời gian thao tác ← `last_activity_at`;
+  NV xử lý cuối ← `operator_code` trong `last_activity_payload`; cập nhật lúc ← `updated_at`.
+- Không cần view SQL: endpoint snapshot đã trả đúng hình dạng client cần.
 
 ### tabThoiHieu — Giám sát SLA/thời hiệu
-- Nguồn: `waybills.sla_status`, `sla_deadline`, `days_in_inventory`, `age_hours`.
-- Cần hàm tính SLA từ mốc "TTTC quét gửi kiện"/thời gian tồn so với cam kết → cập nhật khi sync.
-- Index `idx_waybills_site_sla` (đã có). View `v_sla_breaching` = đơn quá/sắp quá hạn.
 
-### Tab tương lai (đề xuất khung sẵn)
-| Tab dự kiến | Bảng/nguồn | Ghi chú |
+SLA hiện **tính ở client** từ `state_event_at` / `inventory_event_at` / `updated_at`. Chưa có cột
+`sla_status`, `sla_deadline`, `days_in_inventory`, `age_hours` trong schema.
+
+Nếu muốn đẩy phép tính về server thì làm trong reducer của API (C#) và thêm cột vào
+`waybill_projections` bằng một migration mới — **không** thêm SQL function, vì reducer phải là một
+đường ghi duy nhất.
+
+### Tab tương lai
+
+| Tab dự kiến | Nguồn hiện có | Còn thiếu |
 |---|---|---|
-| Kiện vấn đề | `waybill_problems` / scans PROBLEM | điều phối xử lý, CSKH |
-| Điều phối | `dispatch_tasks` | giao việc kiểm kho/xử lý |
-| Kiểm kho | `order_checks` + scans STOCKCHECK | đối chiếu kiểm kho thực tế |
-| Trọng tài | `waybills` (is_handled) + notes | đơn "Kết thúc" chờ xử lý khiếu nại |
-| Chat/Zalo | (đang dùng ZaloChatService) | có thể thêm bảng `chat_messages` nếu cần lưu |
+| Kiện vấn đề | event có `scan_type_code` thuộc nhóm problem | endpoint truy vấn riêng |
+| Kiểm kho | slot `inventory_*` | endpoint riêng nếu cần trạng thái đã-kiểm |
+| Điều phối | — | bảng + endpoint `tasks` |
+| Trọng tài | — | bảng + endpoint `notes` |
+| Chat/Zalo | `ZaloChatService` phía client | bảng `chat_messages` nếu cần lưu |
 
-## 4. Chuẩn hoá & quy ước
+> **Khoảng trống đã biết (P1-1).** Các bảng và endpoint `notes` / `checks` / `tasks` chưa tồn tại.
+> Bản kế hoạch cũ liệt kê `order_notes`, `order_checks`, `dispatch_tasks` như "đã có" — không đúng
+> với schema hiện tại. Tab nào cần chúng thì phải mở một migration + endpoint mới.
 
-- **Mọi bảng**: có `site_code`, `updated_at`; bật RLS scoped `site_code`; chỉ ghi qua RPC.
-- **Idempotent**: bảng append-only dùng `client_id`/khóa tự nhiên + `on conflict do nothing/update`.
-- **Newest-wins** cho bảng trạng thái (`where excluded.updated_at >= t.updated_at`).
-- **Realtime**: thêm bảng mới vào publication `datahub_realtime`.
-- **Retention**: bảng scans/problems theo cùng vòng đời `waybills` — khi đơn bị purge, xóa scans liên quan (thêm FK `on delete cascade` hoặc bước trong `run_retention_cleanup`).
-- **search_path** pin cho mọi function; grant execute chỉ cho RPC site-scoped.
+## 3. Chuẩn hoá & quy ước
 
-## 5. Lộ trình migration đề xuất
+- **Mọi bảng dữ liệu site**: có `site_id uuid REFERENCES sites(id)` và cột thời gian cập nhật.
+- **Idempotent**: bảng append-only dùng fingerprint + `ON CONFLICT DO NOTHING`; ingest thêm một
+  lớp `Idempotency-Key` ở `idempotency_records`.
+- **Newest-wins** cho projection: chỉ ghi khi event mới hơn slot đang giữ.
+- **Realtime**: bảng mới không cần "publication" gì cả — muốn client thấy thay đổi thì API ghi một
+  dòng `dashboard_changes` và bắn doorbell.
+- **Retention**: thêm dòng vào `retention_policies`; background service trong API dọn theo lô
+  (`DATAHUB_RETENTION_BATCH_SIZE`, `DATAHUB_RETENTION_INTERVAL_SECONDS`). `005_change_retention_floor.sql`
+  đặt sàn để không xoá mất cursor client đang dùng.
+- **Không** thêm function client gọi được, không `CREATE POLICY`, không `GRANT` cho role mới.
 
-1. `2026071x_waybill_scans.sql` — bảng scans + RPC merge/pull + realtime + cascade retention.
-2. `2026071x_sla_compute.sql` — hàm tính SLA/risk từ scans, cập nhật `waybills`.
-3. `2026071x_waybill_problems.sql` — (nếu cần) bảng kiện vấn đề + RPC.
-4. `2026071x_dashboard_views.sql` — `v_dashboard_active`, `v_sla_breaching`.
+## 4. Lộ trình migration khi mở tab mới
 
-Mỗi migration: idempotent, chạy `get_advisors` sau khi áp, build/verify + commit theo `CLAUDE.md`.
+Đặt tên tiếp số: `006_*.sql`, `007_*.sql`. Mỗi file:
 
-## 6. Sơ đồ quan hệ (rút gọn)
+1. Idempotent (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`).
+2. Tự ghi marker `schema_migrations` **trong** transaction của nó — migration chạy xong mà không
+   ghi marker bị `apply-migrations.sh` coi là thất bại.
+3. Không sửa file migration đã áp. Sai thì thêm file mới.
+4. Áp bằng `./bin/apply-migrations.sh --env-file .env.production` (hoặc `apply-migrations.ps1
+   -DatabaseUrl`), rồi `EXPLAIN ANALYZE` truy vấn nóng và chạy `./bin/smoke-test.sh --env-file`.
+
+## 5. Sơ đồ quan hệ (rút gọn)
 
 ```
-waybills (waybill_no PK, site_code)
-   ├─1..n─ waybill_scans      (timeline thao tác)
-   ├─1..n─ order_notes        (ghi chú)
-   ├─0..1─ order_checks       (kiểm kho)
-   ├─0..n─ dispatch_tasks     (điều phối)
-   └─0..n─ waybill_problems   (kiện vấn đề)
+sites (id uuid PK, site_code)
+   ├─1..n─ devices                (máy đã enroll)
+   ├─1..n─ waybill_scan_events    (event log append-only)
+   ├─1..n─ waybill_projections    (trạng thái hiện tại, PK site_id+waybill_no)
+   ├─1..n─ dashboard_changes      (change feed theo change_seq)
+   ├─0..1─ site_change_counters   (bộ đếm change_seq)
+   └─0..1─ site_fetch_leases      (leader fetch JMS)
 ```
 
-> Lưu ý: các thay đổi schema/bảng mới thuộc vùng "Database schema migrations" (protected trong `CLAUDE.md`)
-> — chỉ triển khai khi chủ dự án yêu cầu cụ thể cho từng migration.
+`waybill_projections` không có FK về `waybill_scan_events` — cố ý, xem ghi chú ở mục 1.
+
+> Lưu ý: schema migration thuộc vùng Protected Files trong `CLAUDE.md` — chỉ triển khai khi chủ dự
+> án yêu cầu cụ thể cho từng migration.

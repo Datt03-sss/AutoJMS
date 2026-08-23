@@ -12,7 +12,7 @@ Verified from the current repository:
 - ULTRA UI: `FullStackOperation.cs`, separate form, not a tab, launched through the `DASH` command after tier policy allows it.
 - License backend: `backend/render-license-server/server.js` exposes `/api/verify-license`, `/api/heartbeat`, and `/api/logout`.
 - Firebase: used by the Render server for license/session records through Firebase Admin SDK.
-- VPS config API: manifests/config/hash/tier/selector-update control plane.
+- DataHub API: manifests/config/hash/tier/selector-update control plane.
 - GitHub Releases: large Velopack binary assets. Do not upload `.nupkg` to DataHub.
 - Inno Setup: first install/reinstall/uninstall and runtime prerequisites.
 - Velopack: in-app update flow, triggered manually from the About tab for major updates.
@@ -108,7 +108,7 @@ Every bugfix response or PR description must include:
 - **Inno Setup**: First install/reinstall/uninstall only
 - **Velopack**: In-app updates
 - **GitHub Releases**: Hosts large Velopack binaries (RELEASES/.nupkg/Setup.exe)
-- **VPS config API**: Hosts small control-plane manifests (version-latest.json)
+- **DataHub API**: Hosts small control-plane manifests (version-latest.json)
 - **Major update**: Only via user click on tab About
 - **No browser** is opened during update
 
