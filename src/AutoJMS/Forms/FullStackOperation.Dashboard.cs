@@ -401,29 +401,54 @@ namespace AutoJMS
             return card;
         }
 
+        /// <summary>The only origin allowed to drive the privileged bridge in <see cref="OnWebViewMessageReceived"/>.</summary>
+        private const string DashboardOrigin = "https://autojms.local";
+
         private async System.Threading.Tasks.Task InitializeWebView2Async()
         {
             if (_webViewInitialized) return;
             try
             {
-                var userDataFolder = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AppData", "BrowserData");
+                // The profile must live under AppPaths.UserDataDir, NOT under BaseDirectory:
+                // BaseDirectory is Velopack's `current\`, which is deleted on every update, so the
+                // old path silently lost the browser profile after each upgrade. This is the same
+                // folder the three WebViews in Main already use (Main.cs sets UserDataFolder =
+                // AppPaths.BrowserDataDir); both sides pass default environment options, so sharing
+                // one profile inside one process is supported — and it is what a dev build has
+                // always done, since InstallRoot == BaseDirectory when not packaged.
+                //
+                // No copy-migration from the legacy `current\AppData\BrowserData`: on a packaged
+                // install that folder is wiped by every update anyway, and Main's WebViews already
+                // hold the shared profile open by the time the dashboard opens — copying into a
+                // live WebView2 profile would risk corrupting it.
+                var userDataFolder = AppPaths.BrowserDataDir;
+                System.IO.Directory.CreateDirectory(userDataFolder);
                 var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, userDataFolder);
                 await _webView.EnsureCoreWebView2Async(env);
 
+                // Deny, not Allow: Deny only blocks OTHER origins from reaching this mapping. The
+                // document served from autojms.local still loads its own subresources, so the
+                // dashboard keeps working while no third-party page can read the Web folder.
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                     "autojms.local",
-                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Web"),
-                    Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+                    AppPaths.InstallResource("Web"),
+                    Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Deny);
 
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+#if !DEBUG
+                // A Release build must not hand out a debugger on a window that owns a privileged
+                // host bridge.
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+#endif
                 // Lock page zoom for the whole dashboard (Ctrl+scroll / pinch / Ctrl±) so image
                 // zoom in the overlay never rescales tabDash itself.
                 _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
                 _webView.ZoomFactor = 1.0;
 
+                _webView.CoreWebView2.NavigationStarting += OnDashboardNavigationStarting;
                 _webView.WebMessageReceived += OnWebViewMessageReceived;
-                _webView.CoreWebView2.Navigate("https://autojms.local/index.html");
+                _webView.CoreWebView2.Navigate(DashboardOrigin + "/index.html");
 
                 _webViewInitialized = true;
             }
@@ -434,15 +459,66 @@ namespace AutoJMS
             }
         }
 
+        /// <summary>
+        /// The dashboard is a local single-page app; it never navigates anywhere else. Anything
+        /// that tries to leave autojms.local (a redirect, an injected link, a rogue asset) is
+        /// cancelled rather than loaded into the window that owns the host bridge.
+        /// </summary>
+        private void OnDashboardNavigationStarting(object sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (IsDashboardUri(e.Uri)) return;
+            e.Cancel = true;
+            AppLogger.Warning("Dashboard navigation blocked: " + (e.Uri ?? "(null)"));
+        }
+
+        private static bool IsDashboardUri(string uri)
+        {
+            if (string.IsNullOrWhiteSpace(uri)) return false;
+            if (string.Equals(uri, "about:blank", StringComparison.OrdinalIgnoreCase)) return true;
+            return Uri.TryCreate(uri, UriKind.Absolute, out var parsed)
+                && parsed.Scheme == Uri.UriSchemeHttps
+                && string.Equals(parsed.Host, "autojms.local", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Every action the dashboard page is allowed to invoke on the host. The bridge grants real
+        /// privileges (JMS calls, Excel export, SQLite writes), so it is an allowlist: an action
+        /// that is not on this list is logged and dropped instead of falling through the if/else
+        /// chain unnoticed.
+        /// </summary>
+        private static readonly System.Collections.Generic.HashSet<string> AllowedWebActions =
+            new(StringComparer.Ordinal)
+            {
+                "READY", "SYNC", "EXPORT",
+                "CHANGE_SOURCE", "CHANGE_SEARCH", "CHANGE_TIME_INTERVAL", "CHANGE_STATUS_SELECT",
+                "CHANGE_DATE_RANGE", "SEARCH",
+                "FETCH_JOURNEY", "REFRESH_JOURNEY", "SELECT_WAYBILL",
+                "FETCH_RECEIVER_NETWORK", "FETCH_NETWORK_INFO", "FETCH_NETWORK_SEARCH",
+                "SUBMIT_ISSUE", "REGISTER_ISSUE", "SAVE_NOTE", "TOGGLE_STAR"
+            };
+
         private void OnWebViewMessageReceived(object sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
             {
+                // Origin check first: only the local dashboard document may drive the bridge.
+                if (!IsDashboardUri(e.Source))
+                {
+                    AppLogger.Warning("Dashboard message rejected from source: " + (e.Source ?? "(null)"));
+                    return;
+                }
+
                 var rawJson = e.WebMessageAsJson;
                 using var doc = System.Text.Json.JsonDocument.Parse(rawJson);
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("action", out var actionProp)) return;
                 var action = actionProp.GetString();
+
+                if (action == null || !AllowedWebActions.Contains(action))
+                {
+                    AppLogger.Warning("Dashboard action not allowed: " + (action ?? "(null)"));
+                    return;
+                }
 
                 if (action == "READY")
                 {

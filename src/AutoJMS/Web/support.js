@@ -151,11 +151,10 @@
     const rootName = rootNameForDocument(doc, location);
     runtime.markFetched(rootName);
     runtime.adoptParsed(rootName, parsed);
-    fetch(location.href).then((res) => res.ok ? res.text() : "").then((t) => {
-      const raw = t ? parseDcText(t) : null;
-      if (raw?.template) runtime.updateHtml(rootName, raw.template);
-    }).catch(() => {
-    });
+    // AutoJMS: the authoring-time re-fetch of location.href (re-download the page and
+    // recompile its template) was removed. adoptParsed above already installed the
+    // template that shipped in the document; re-fetching only mattered for live editing
+    // and gave a second, network-sourced path into the template compiler.
     const dc = doc.querySelector("x-dc");
     const hostEl = doc.createElement("div");
     hostEl.id = "dc-root";
@@ -986,79 +985,33 @@
     }
     return cur;
   }
-  var BABEL_URL = "https://unpkg.com/@babel/standalone@7.26.4/babel.min.js";
   var GLOBAL_POLL_INTERVAL_MS = 50;
   var GLOBAL_POLL_TIMEOUT_MS = 3e4;
   function createExternalModules(onResolved) {
     const cache = /* @__PURE__ */ new Map();
-    let babelLoading = null;
     const reportedMissing = /* @__PURE__ */ new Map();
     const polling = /* @__PURE__ */ new Set();
-    function ensureBabel() {
-      if (window.Babel) return Promise.resolve();
-      if (babelLoading) return babelLoading;
-      babelLoading = new Promise((res, rej) => {
-        const s = document.createElement("script");
-        s.src = BABEL_URL;
-        s.crossOrigin = "anonymous";
-        s.onload = () => res();
-        s.onerror = rej;
-        document.head.appendChild(s);
-      });
-      return babelLoading;
-    }
+    // AutoJMS: `x-import` module loading is disabled in the shipped dashboard.
+    //
+    // The authoring-time implementation fetched an arbitrary URL and ran it through
+    // `new Function`, and for kind="jsx" it first pulled a Babel bundle off a public CDN
+    // (unpkg.com). This runtime lives in the same document as the privileged host bridge
+    // in FullStackOperation.Dashboard.cs, so a remote script here inherits every action
+    // that bridge exposes. The dashboard uses no `x-import`, so the loader is refused
+    // outright instead of being narrowed; the reference degrades to a placeholder.
     function load(kind, url) {
       if (cache.has(url)) return;
-      cache.set(url, null);
-      console.info("[dc-runtime] x-import: loading", url, "(" + kind + ")");
-      const ready = kind === "jsx" ? ensureBabel() : Promise.resolve();
-      ready.then(() => fetch(url)).then((r) => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.text();
-      }).then((src) => {
-        const code = kind === "jsx" ? window.Babel.transform(src, {
-          filename: url,
-          presets: ["react", "typescript"]
-        }).code : src;
-        const module = { exports: {} };
-        const before = new Set(Object.keys(window));
-        //! nosemgrep: eval-and-function-constructor
-        new Function("React", "module", "exports", "require", code)(
-          getReact(),
-          module,
-          module.exports,
-          () => ({})
-        );
-        const globals = {};
-        for (const k of Object.keys(window)) {
-          if (!before.has(k) && typeof window[k] === "function") {
-            globals[k] = window[k];
-          }
-        }
-        cache.set(url, { mod: module.exports, globals });
-        console.info(
-          "[dc-runtime] x-import: loaded",
-          url,
-          "\u2014 exports:",
-          Object.keys(module.exports),
-          "window globals:",
-          Object.keys(globals)
-        );
-        onResolved();
-      }).catch((e) => {
-        cache.set(url, {
-          mod: {},
-          globals: {},
-          error: "failed to load: " + (e instanceof Error && e.message ? e.message : String(e))
-        });
-        console.error(
-          "[dc-runtime] x-import: FAILED to load",
-          url,
-          "(" + kind + ")",
-          e
-        );
-        onResolved();
+      cache.set(url, {
+        mod: {},
+        globals: {},
+        error: "x-import is disabled in AutoJMS (external module loading is not allowed)"
       });
+      console.error(
+        "[dc-runtime] x-import BLOCKED:",
+        url,
+        "(" + kind + ") \u2014 external module loading is disabled in AutoJMS."
+      );
+      onResolved();
     }
     function resolve2(url, name) {
       const entry = cache.get(url);
@@ -1263,7 +1216,6 @@
   }
 
   // src/runtime.ts
-  var COMPONENT_DIR = ".";
   function createRuntime(doc = document) {
     const registry = createRegistry();
     const pseudoClass = createPseudoSheet(doc);
@@ -1283,45 +1235,16 @@
       resolveExternalError: (url, name) => external.getError(url, name),
       pseudoClass
     };
+    // AutoJMS: the authoring-time "sibling fetch" is removed. It used to resolve an
+    // unknown <Name/> by fetching ./Name.dc.html and running its <script data-dc-script>
+    // through `new Function`, which meant dropping one .dc.html file next to index.html
+    // was enough to execute code inside the window that owns the privileged host bridge.
+    // The dashboard ships every component inline, so an unknown name now just renders as
+    // a placeholder.
     function ensureFetched(name) {
       const r = registry.get(name);
       if (r.fetched) return;
       r.fetched = true;
-      const url = COMPONENT_DIR + "/" + encodeURIComponent(name) + ".dc.html";
-      fetch(url).then((res) => {
-        if (!res.ok) {
-          console.error(
-            "[dc-runtime] sibling fetch for <" + name + "/> failed:",
-            url,
-            "returned",
-            res.status,
-            "\u2014 the reference renders as an empty placeholder."
-          );
-          return "";
-        }
-        return res.text();
-      }).then((t) => {
-        if (!t) return;
-        const parsed = parseDcText(t);
-        if (!parsed) {
-          console.error(
-            "[dc-runtime] sibling fetch for <" + name + "/>:",
-            url,
-            "has no <x-dc> block \u2014 not a Design Component."
-          );
-          return;
-        }
-        if (parsed.props) r.propsMeta = parsed.props;
-        if (parsed.preview) r.preview = parsed.preview;
-        if (parsed.template && !r.html) updateHtml(name, parsed.template);
-        if (parsed.js && !r.Logic) updateJs(name, parsed.js);
-      }).catch(
-        (e) => console.error(
-          "[dc-runtime] sibling fetch for <" + name + "/> threw:",
-          url,
-          e
-        )
-      );
     }
     function updateHtml(name, html) {
       const r = registry.get(name);
@@ -1459,53 +1382,22 @@
     const baseCss = document.createElement("style");
     baseCss.textContent = BASE_CSS;
     document.head.prepend(baseCss);
-    const notifyHost = () => {
-      if (window.parent === window) return;
-      const r = runtime.registry.entries[rootName];
-      try {
-        window.parent.postMessage(
-          {
-            type: "__dc_booted",
-            rootName,
-            propsMeta: r && r.propsMeta || null,
-            preview: r && r.preview || null
-          },
-          "*"
-        );
-      } catch {
-      }
+    // AutoJMS: the authoring/editor bridge is not exposed on `window`.
+    //
+    // It used to publish __dcUpdate / __dcSetProps / __dcAnnotatedTemplate /
+    // __dcTemplateSource / __dcRegistry / getDC, plus a postMessage to window.parent.
+    // __dcUpdate(name, "js", src) reaches evalDcLogic, i.e. it is an eval entry point on
+    // the global object of the document that owns the privileged host bridge. The
+    // dashboard never calls any of it (it ships its template and logic inline), so it is
+    // kept local to this closure. Only the DCLogic base class stays published, because it
+    // is a class, not an entry point.
+    const bootNow = () => {
+      rootName = boot(runtime, document) ?? rootName;
     };
-    const api = {
-      __dcUpdate: (name, kind, content, streaming) => {
-        runtime.dcUpdate(name, kind, content, streaming);
-        if (name === rootName && !streaming && kind === "props") notifyHost();
-      },
-      __dcSetProps: (name, overrides) => runtime.setProps(name, overrides),
-      /** Name of the component currently mounted as the page root — DC tools
-       *  push their template-stream here when targeting "the open page". */
-      __dcRootName: () => rootName,
-      /** Editor bridge — the encoded, `data-dc-tpl`-annotated template source.
-       *  The host editor parses this into its own template DOM so it can map a
-       *  rendered node (carrying the same `data-dc-tpl`) back to the source
-       *  node that emitted it. Returns the encoded form (`<sc-comp>`,
-       *  `sc-camel-*` attrs); the editor decodes on serialize. */
-      __dcAnnotatedTemplate: (name) => runtime.annotatedTemplate(name),
-      /** Editor bridge — the *original* (decoded) template source. */
-      __dcTemplateSource: (name) => runtime.templateSource(name),
-      __dcBoot: () => {
-        rootName = boot(runtime, document) ?? rootName;
-        notifyHost();
-      },
-      __dcRegistry: runtime.registry.entries,
-      getDC: (name) => runtime.getDC(name),
-      // `DCLogic` is the documented base class name; `StreamableLogic` is the
-      // implementation alias kept for any project that already references it.
-      DCLogic: runtime.StreamableLogic,
-      StreamableLogic: runtime.StreamableLogic
-    };
-    Object.assign(window, api);
-    if (document.readyState !== "loading") api.__dcBoot();
-    else document.addEventListener("DOMContentLoaded", () => api.__dcBoot());
+    window.DCLogic = runtime.StreamableLogic;
+    window.StreamableLogic = runtime.StreamableLogic;
+    if (document.readyState !== "loading") bootNow();
+    else document.addEventListener("DOMContentLoaded", bootNow);
   }
   hideRawTemplate();
   loadReactUmd().then(init).catch((err) => {

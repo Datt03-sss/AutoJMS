@@ -265,7 +265,12 @@ namespace AutoJMS
             {
                 DataHubSyncService.Instance.DataMerged -= OnCloudDataMerged;
                 DataHubSyncService.Instance.StatusChanged -= OnCloudSyncStatus;
-                _ = DataHubSyncService.Instance.StopAsync();
+                // Not awaited on purpose: StopAsync releases the lease over the network and
+                // FormClosing must not freeze the UI for that. The continuation is only here so a
+                // fault is logged instead of silently discarded as an unobserved task exception.
+                _ = DataHubSyncService.Instance.StopAsync().ContinueWith(
+                    t => AppLogger.Warning("[HybridSync] stop on close failed: " + t.Exception?.GetBaseException().Message),
+                    TaskContinuationOptions.OnlyOnFaulted);
             }
             catch (Exception ex)
             {
@@ -527,12 +532,17 @@ namespace AutoJMS
             }
             finally
             {
-                tabDash_updateData.Enabled = true;
-                tabDash_updateData.Text = "Đồng bộ";
                 _isSyncRunning = false;
                 // T2 just refreshed everything → reset hot-set cadence and resume the tiered timer.
                 _lastHotSetAtUtc = DateTime.UtcNow;
-                if (!_isClosing) _leaderTierTimer?.Start();
+                // Touching the button after the window closed throws ObjectDisposedException from a
+                // finally block, which escapes the async void timer handler and kills the process.
+                if (!_isClosing && !IsDisposed)
+                {
+                    tabDash_updateData.Enabled = true;
+                    tabDash_updateData.Text = "Đồng bộ";
+                    _leaderTierTimer?.Start();
+                }
             }
         }
 
@@ -647,7 +657,21 @@ namespace AutoJMS
         private async void tabDash_dataSource_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_isRefreshingStatusCombos) return;
-            await RefreshDashViewAsync(_cts.Token);
+            // RefreshDashViewAsync hits the network for the PHATLAI source and has no guard of its
+            // own; in an async void handler an escaping exception crashes the process.
+            try
+            {
+                await RefreshDashViewAsync(_cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Form closing — nothing to report.
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[FullStackOperation] refresh dash view failed: " + ex.Message);
+                SetFullStackStatus("Không tải được nguồn dữ liệu đã chọn");
+            }
         }
 
         private void tabDash_statusSelect_SelectedIndexChanged(object sender, EventArgs e)

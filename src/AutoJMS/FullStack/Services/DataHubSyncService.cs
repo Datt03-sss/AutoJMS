@@ -32,15 +32,25 @@ namespace AutoJMS.FullStack.Services
         private readonly SemaphoreSlim _cycleGate = new(1, 1);
         private System.Threading.Timer _timer;
         private volatile bool _started;
+        private volatile bool _starting;
         private volatile bool _hasLease;
         private volatile bool _stopping;
         private int _consecutiveFailures;
         private string _clientId;
         private int _pendingOutboxCount;
+        /// <summary>Cancelled by StopAsync so background cycles stop instead of running detached.</summary>
+        private CancellationTokenSource _lifetimeCts;
+        private int _auxiliaryOutboxWarned;
 
         private const int MaxConsecutiveFailures = 5;
-        private const string LeaseSecondsKey = "cloud_lease_seconds";
-        private const int DefaultLeaseSeconds = 1800;
+
+        /// <summary>
+        /// Outbox kinds the DataHub API has no endpoint for yet. The server only accepts
+        /// JmsObservation, so these rows must stay queued locally rather than be marked
+        /// synced after a push that never happened.
+        /// </summary>
+        private static readonly HashSet<string> AuxiliaryOutboxKinds =
+            new(StringComparer.OrdinalIgnoreCase) { "NOTE", "CHECK", "TASK", "EVENT" };
 
         /// <summary>Fired after remote rows were merged into SQLite (UI should refresh).</summary>
         public event Action DataMerged;
@@ -94,8 +104,10 @@ namespace AutoJMS.FullStack.Services
         // ------------------------------------------------------------------
         public async Task StartAsync(CancellationToken ct = default)
         {
-            if (_started || !IsEnabled) return;
-            _started = true;
+            // _starting is the re-entry guard; _started only flips once init actually succeeded,
+            // so a failed start can never leave the service advertising IsRunning == true.
+            if (_started || _starting || !IsEnabled) return;
+            _starting = true;
             _stopping = false;
             _consecutiveFailures = 0;
 
@@ -117,16 +129,27 @@ namespace AutoJMS.FullStack.Services
                     AppLogger.Warning("[HybridSync] realtime unavailable, falling back to polling: " + ex.Message);
                 }
 
+                _lifetimeCts = new CancellationTokenSource();
+
                 int interval = Math.Max(15, SettingsManager.Load().CloudSyncIntervalSeconds) * 1000;
                 _timer = new System.Threading.Timer(async _ => await RunCycleSafeAsync().ConfigureAwait(false), null, 1500, interval);
+                _started = true;
                 AppLogger.Info($"[HybridSync] started site={site} clientId={_clientId} interval={interval}ms");
                 RaiseStatus("Cloud sync: đang khởi động…");
             }
             catch (Exception ex)
             {
                 _started = false;
+                try { _timer?.Dispose(); } catch { /* ignore */ }
+                _timer = null;
+                try { _lifetimeCts?.Dispose(); } catch { /* ignore */ }
+                _lifetimeCts = null;
                 AppLogger.Error("[HybridSync] start failed", ex);
                 RaiseStatus("Cloud sync: lỗi khởi động (chạy local-only)");
+            }
+            finally
+            {
+                _starting = false;
             }
         }
 
@@ -135,6 +158,7 @@ namespace AutoJMS.FullStack.Services
             if (!_started) return;
             _stopping = true;
             _started = false;
+            try { _lifetimeCts?.Cancel(); } catch { /* ignore */ }
             try { _timer?.Dispose(); } catch { /* ignore */ }
             _timer = null;
             DataHubClient.UnsubscribeSiteChanges();
@@ -152,12 +176,27 @@ namespace AutoJMS.FullStack.Services
                 _hasLease = false;
             }
 
+            try { _lifetimeCts?.Dispose(); } catch { /* ignore */ }
+            _lifetimeCts = null;
+
             AppLogger.Info("[HybridSync] stopped");
         }
 
         public void Dispose()
         {
-            try { StopAsync().GetAwaiter().GetResult(); } catch { /* ignore */ }
+            // Bounded, best-effort teardown. StopAsync awaits a network call (lease release), so
+            // blocking on it without a timeout can hang the UI thread on form close; the lease
+            // simply expires server-side after its TTL if we give up here.
+            try
+            {
+                var stop = StopAsync();
+                if (!stop.Wait(TimeSpan.FromSeconds(3)))
+                    AppLogger.Warning("[HybridSync] Dispose: StopAsync did not finish within 3s, giving up (lease will expire server-side).");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning("[HybridSync] Dispose failed: " + ex.Message);
+            }
         }
 
         private void RequestCycleSoon()
@@ -174,19 +213,36 @@ namespace AutoJMS.FullStack.Services
         // ------------------------------------------------------------------
         // Lease (who pulls from JMS)
         // ------------------------------------------------------------------
+        /// <summary>
+        /// Decides whether this machine may pull from JMS. Three outcomes, deliberately not
+        /// collapsed into one boolean:
+        ///  * Granted     => this machine is the leader (fenced writes allowed).
+        ///  * Denied      => another machine at the site holds the lease, so do NOT pull.
+        ///  * Unreachable => the cloud is down; keep pulling locally (offline-first) but claim
+        ///                   no leadership, otherwise a VPS outage would stop every machine at
+        ///                   the site from pulling JMS at all.
+        /// </summary>
         public async Task<bool> TryBecomeLeaderAsync(CancellationToken ct = default)
         {
             if (!IsEnabled) return true; // cloud off => behave like before (always pull JMS)
             try
             {
                 var site = ResolveSiteCode();
-                _hasLease = await DataHubClient.TryAcquireSiteLeaseAsync(site, DefaultLeaseSeconds).ConfigureAwait(false);
-                AppLogger.Info($"[HybridSync] lease acquire site={site} granted={_hasLease}");
+                var outcome = await DataHubClient.AcquireSiteLeaseAsync(site).ConfigureAwait(false);
+                _hasLease = outcome == DataHubLeaseOutcome.Granted;
+                AppLogger.Info($"[HybridSync] lease acquire site={site} outcome={outcome}");
+
+                if (outcome == DataHubLeaseOutcome.Unreachable)
+                {
+                    AppLogger.Warning("[HybridSync] lease unreachable — pulling JMS locally without a lease.");
+                    return true; // _hasLease stays false: no fenced push, no "máy chủ lease" badge
+                }
+
                 return _hasLease;
             }
             catch (Exception ex)
             {
-                // Cloud unreachable — degrade to local-only behaviour (machine pulls JMS itself).
+                // Unexpected client-side fault (not an HTTP refusal) — treat like unreachable.
                 AppLogger.Warning("[HybridSync] lease acquire failed, fallback to JMS pull: " + ex.Message);
                 _hasLease = false;
                 return true;
@@ -203,20 +259,38 @@ namespace AutoJMS.FullStack.Services
 
             try
             {
+                // Cloud sync can be turned off (or lose its credentials/site code) while the timer
+                // is still running. Reporting "Cloud sync OK" in that state is a lie the operator
+                // would act on, so stop instead and say so.
+                if (!IsEnabled)
+                {
+                    AppLogger.Info("[HybridSync] cloud sync no longer enabled — stopping cycle.");
+                    RaiseStatus("Cloud sync: đã tắt — chỉ lưu local");
+                    await StopAsync().ConfigureAwait(false);
+                    return;
+                }
+
                 var site = ResolveSiteCode();
                 if (string.IsNullOrEmpty(site)) return;
 
+                // Real token: StopAsync cancels it so in-flight HTTP work stops with the service
+                // instead of running on detached after the form closed.
+                var ct = _lifetimeCts?.Token ?? CancellationToken.None;
+                if (ct.IsCancellationRequested) return;
+
                 if (_hasLease)
                 {
-                    try { _hasLease = await DataHubClient.RefreshSiteLeaseAsync(site, DefaultLeaseSeconds).ConfigureAwait(false); }
+                    // No TTL argument: the server fixes the lease at 120 s and renew only needs
+                    // the term we already hold.
+                    try { _hasLease = await DataHubClient.RefreshSiteLeaseAsync(site).ConfigureAwait(false); }
                     catch { _hasLease = false; }
                 }
 
-                int flushed = await FlushOutboxAsync(CancellationToken.None).ConfigureAwait(false);
-                int merged = await PullAllAsync(CancellationToken.None).ConfigureAwait(false);
+                int flushed = await FlushOutboxAsync(ct).ConfigureAwait(false);
+                int merged = await PullAllAsync(ct).ConfigureAwait(false);
 
                 if (_hasLease)
-                    await PushDashboardRowsAsync(CancellationToken.None).ConfigureAwait(false);
+                    await PushDashboardRowsAsync(ct).ConfigureAwait(false);
 
                 _consecutiveFailures = 0;
                 if (merged > 0)
@@ -228,6 +302,11 @@ namespace AutoJMS.FullStack.Services
 
                 if (flushed > 0 || merged > 0)
                     AppLogger.Info($"[HybridSync] cycle done flushed={flushed} merged={merged} lease={_hasLease}");
+            }
+            catch (OperationCanceledException)
+            {
+                // StopAsync cancelled us — a shutdown is not a sync failure.
+                AppLogger.Debug("[HybridSync] cycle cancelled (service stopping).");
             }
             catch (Exception ex)
             {
@@ -849,6 +928,20 @@ LIMIT 300;";
             var doneIds = new List<long>();
             foreach (var group in pending.GroupBy(x => x.Kind))
             {
+                // The DataHub API has no notes/checks/tasks/events endpoints yet. Pushing them
+                // would return without throwing, and the code below marks everything that did not
+                // throw as synced — i.e. it would delete local data that never left the machine.
+                // Leave those rows queued (no synced_at, no error counter) until the endpoints
+                // exist, and warn once per process instead of once per cycle.
+                if (!DataHubClient.SupportsAuxiliaryEntitySync && AuxiliaryOutboxKinds.Contains(group.Key))
+                {
+                    if (Interlocked.Exchange(ref _auxiliaryOutboxWarned, 1) == 0)
+                        AppLogger.Warning(
+                            "[HybridSync] outbox kinds NOTE/CHECK/TASK/EVENT are kept local: DataHub has no endpoint for them yet. " +
+                            "Rows stay in fs_outbox and will flush once the server supports them.");
+                    continue;
+                }
+
                 var payloads = new List<object>();
                 var ids = new List<long>();
                 foreach (var item in group)

@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
+<!-- Content Security Policy. This document owns a privileged host bridge (see
+     FullStackOperation.Dashboard.cs), so it must not be able to pull in or talk to
+     anything remote. Notes on the two loose directives:
+       * 'unsafe-eval' is still required: the dc-runtime in support.js compiles the
+         page's own inline `data-dc-script` block with `new Function`. It stays until
+         the dashboard gets a build step; it is only reachable from same-origin code.
+       * img-src/media-src allow https: because POD photos and videos are served from
+         J&T file hosts (pro-jmsvn-file.jtexpress.vn and regional siblings), and those
+         are passive content, not code.
+     Everything that could execute or exfiltrate is 'self' or 'none'. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="react.production.min.js"></script>
 <script src="react-dom.production.min.js"></script>

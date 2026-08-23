@@ -742,7 +742,12 @@ namespace AutoJMS
                 BindJourneyGrid(local, BuildJourneyLoadedStatus(local.Rows.Count, local.FetchedAt ?? DateTime.Now, "Cache"));
                 SetJourneyAuxButtons(false, true);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                // The form closed mid-load. In an async void handler an escaping exception is
+                // an unhandled exception, i.e. a process crash — swallow the cancellation.
+            }
+            catch (Exception ex)
             {
                 AppLogger.Warning($"Open journey cache failed for {waybillNo}: {ex.Message}");
                 SetJourneyStatus("Không mở được dữ liệu cache.");
@@ -770,7 +775,11 @@ namespace AutoJMS
                 Clipboard.SetText(cache.RawJson);
                 SetJourneyStatus($"Đã copy raw JSON cache {waybillNo}.");
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                // See WaybillJourneyCacheButton_Click: async void must not let anything escape.
+            }
+            catch (Exception ex)
             {
                 AppLogger.Warning($"Copy journey raw JSON failed for {waybillNo}: {ex.Message}");
                 SetJourneyStatus("Không copy được raw JSON.");

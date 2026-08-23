@@ -1611,16 +1611,27 @@ namespace AutoJMS
             }));
         }
 
+        /// <summary>
+        /// ULTRA gate for FullStackOperation. This check used to be commented out "temporarily for
+        /// owner to test from tabHome", which let any BASE machine open the ULTRA window. Debug
+        /// builds keep an escape hatch; Release builds always enforce the tier.
+        /// </summary>
+        private bool IsFullStackOperationAllowed()
+        {
+#if DEBUG
+            return true;
+#else
+            return _tierPolicy != null && _tierPolicy.EnableFullStackOperation;
+#endif
+        }
+
         private void PreCreateFullStackForm()
         {
-            // Bypassed tier check temporarily for owner to test from tabHome
-            /*
-            if (_tierPolicy == null || !_tierPolicy.EnableFullStackOperation)
+            if (!IsFullStackOperationAllowed())
             {
                 AppLogger.Info($"FullStackOperation disabled for {_tierPolicy?.Tier ?? "BASE"} — not pre-created.");
                 return;
             }
-            */
 
             try
             {
@@ -1636,14 +1647,11 @@ namespace AutoJMS
 
         private void ShowFullStackForm()
         {
-            // Bypassed tier check temporarily for owner to test from tabHome
-            /*
-            if (_tierPolicy == null || !_tierPolicy.EnableFullStackOperation)
+            if (!IsFullStackOperationAllowed())
             {
                 AppLogger.Info($"ShowFullStackForm ignored for {_tierPolicy?.Tier ?? "BASE"} — ULTRA only.");
                 return;
             }
-            */
 
             if (_isShowingFullStackForm)
                 return;

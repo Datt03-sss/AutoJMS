@@ -35,7 +35,7 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
         if (siteCodes.Length == 0 || descriptor.ExpiresAt <= _clock.GetUtcNow())
             throw new ArgumentException("A staging assertion requires sites and a future expiry.", nameof(descriptor));
 
-        var payload = new LicensePayload
+        var payload = new LicenseAssertionPayload
         {
             Channel = DataHubRuntimeOptions.AllowedStagingChannel,
             SiteCodes = siteCodes.Select(NormalizeSiteCode).Distinct(StringComparer.Ordinal).ToArray(),
@@ -68,45 +68,19 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
                 HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(parts[1])), suppliedSignature))
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
 
-        LicensePayload? payload;
+        LicenseAssertionPayload? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<LicensePayload>(payloadBytes);
+            payload = JsonSerializer.Deserialize<LicenseAssertionPayload>(payloadBytes);
         }
         catch (JsonException)
         {
             payload = null;
         }
 
-        if (payload is null || !DataHubRuntimeOptions.AllowedStagingChannel.Equals(payload.Channel, StringComparison.Ordinal)
-            && !DataHubRuntimeOptions.AllowedProductionChannel.Equals(payload.Channel, StringComparison.Ordinal))
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
-        if (!string.Equals(payload.Issuer, _options.LicenseAssertionIssuer, StringComparison.Ordinal)
-            || !string.Equals(payload.Audience, _options.LicenseAssertionAudience, StringComparison.Ordinal))
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
-        if (payload.ExpiresAt <= _clock.GetUtcNow().ToUnixTimeSeconds())
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_EXPIRED"));
-        var normalizedSiteCodes = payload.SiteCodes?
-            .Where(code => !string.IsNullOrWhiteSpace(code))
-            .Select(NormalizeSiteCode)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray() ?? [];
-        if (normalizedSiteCodes.Length == 0)
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
-        if (!string.Equals(payload.Channel, _options.Channel, StringComparison.Ordinal))
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure(ApiProblemCodes.ChannelMismatch));
-        if (!string.IsNullOrWhiteSpace(payload.DataHubUrl)
-            && (!Uri.TryCreate(payload.DataHubUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
-            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
-
-        var identity = new LicenseAssertionIdentity(
-            payload.Channel,
-            new HashSet<string>(normalizedSiteCodes, StringComparer.Ordinal),
-            DateTimeOffset.FromUnixTimeSeconds(payload.ExpiresAt),
-            payload.DataHubUrl,
-            Math.Max(payload.TokenVersion, 1),
-            Math.Max(payload.Seats, 1));
-        return ValueTask.FromResult(LicenseAssertionValidationResult.Success(identity));
+        // Claim checks live in LicenseAssertionClaims so the RS256 validator enforces the
+        // identical rule set — see RsaLicenseAssertionValidator.
+        return ValueTask.FromResult(LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow()));
     }
 
     private byte[] SelectValidationKey()
@@ -127,19 +101,7 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
     private static string Sign(string encodedPayload, byte[] key)
         => Base64Url.Encode(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(encodedPayload)));
 
-    private static string NormalizeSiteCode(string value) => value.Trim().ToUpperInvariant();
-
-    private sealed class LicensePayload
-    {
-        public string Channel { get; set; } = "";
-        public string[] SiteCodes { get; set; } = [];
-        public long ExpiresAt { get; set; }
-        public string? DataHubUrl { get; set; }
-        public int Seats { get; set; }
-        public int TokenVersion { get; set; }
-        public string Issuer { get; set; } = "";
-        public string Audience { get; set; } = "";
-    }
+    private static string NormalizeSiteCode(string value) => LicenseAssertionClaims.NormalizeSiteCode(value);
 }
 
 /// <summary>

@@ -17,12 +17,27 @@ public sealed class DataHubRuntimeOptions
     public string LicenseAssertionIssuer { get; set; } = "autojms-license";
     public string LicenseAssertionAudience { get; set; } = "autojms-datahub-enroll";
     public string LicenseAssertionValidationKey { get; set; } = "";
+    /// <summary>PEM of the license issuer's RSA PUBLIC key (\n escapes accepted). Enables production enrollment.</summary>
+    public string LicenseAssertionPublicKeyPem { get; set; } = "";
+    /// <summary>File holding that PEM; takes precedence over the inline value (Docker/systemd secrets).</summary>
+    public string LicenseAssertionPublicKeyPath { get; set; } = "";
     public string StagingTestSigningKey { get; set; } = "";
     public bool AllowStagingTestIssuer { get; set; }
     public int MaximumPoolSize { get; set; } = 20;
     public TimeSpan DeviceTokenLifetime { get; set; } = TimeSpan.FromHours(24);
     public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(15);
     public int RetentionBatchSize { get; set; } = 1000;
+
+    /// <summary>
+    /// CIDR ranges whose X-Forwarded-* headers are honoured. Only the reverse proxy may be
+    /// trusted here: an empty trust list makes ForwardedHeadersMiddleware accept the header
+    /// from any caller, which lets a client forge its own client IP and evade the per-IP
+    /// rate limits. Default covers the Docker/Compose and LAN ranges Caddy runs in.
+    /// </summary>
+    public const string DefaultTrustedProxyNetworks = "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+
+    /// <summary>Comma-separated CIDR list; override with DATAHUB_TRUSTED_PROXY_NETWORKS.</summary>
+    public string TrustedProxyNetworks { get; set; } = DefaultTrustedProxyNetworks;
 
     public bool HasValidChannel => string.Equals(Channel, AllowedStagingChannel, StringComparison.Ordinal)
         || string.Equals(Channel, AllowedProductionChannel, StringComparison.Ordinal);
@@ -41,12 +56,15 @@ public sealed class DataHubRuntimeOptions
             LicenseAssertionIssuer = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_ISSUER"], "autojms-license"),
             LicenseAssertionAudience = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_AUDIENCE"], "autojms-datahub-enroll"),
             LicenseAssertionValidationKey = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY"]),
+            LicenseAssertionPublicKeyPem = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY"]),
+            LicenseAssertionPublicKeyPath = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH"]),
             StagingTestSigningKey = FirstNonEmpty(configuration["DATAHUB_STAGING_TEST_SIGNING_KEY"]),
             AllowStagingTestIssuer = ParseBoolean(configuration["DATAHUB_ALLOW_STAGING_TEST_ISSUER"]),
             MaximumPoolSize = ParseBoundedInt(configuration["DATAHUB_DB_MAX_POOL_SIZE"], 20, 1, 100),
             DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
             RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),
-            RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000)
+            RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000),
+            TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks)
         };
 
         return options;

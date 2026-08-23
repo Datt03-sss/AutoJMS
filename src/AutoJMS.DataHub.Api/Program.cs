@@ -45,10 +45,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
-    // Kestrel is private to the Compose edge network, so Caddy is the only
-    // public ingress and the only trusted forwarded-header hop.
+    // Kestrel is private to the Compose edge network, so Caddy is the only public ingress and
+    // the only trusted forwarded-header hop. Clearing BOTH lists does not express that — it
+    // makes the middleware accept X-Forwarded-For from any peer, so a caller could forge its
+    // client IP and dodge the per-IP enrollment/ingress limits. Trust the proxy ranges only.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    foreach (var network in ParseTrustedProxyNetworks(runtimeOptions.TrustedProxyNetworks))
+        options.KnownIPNetworks.Add(network);
 });
 builder.Services.AddRateLimiter(options =>
 {
@@ -86,6 +90,25 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         }));
 });
+
+static IReadOnlyList<System.Net.IPNetwork> ParseTrustedProxyNetworks(string configured)
+{
+    var parsed = new List<System.Net.IPNetwork>();
+    foreach (var entry in (configured ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+    {
+        if (System.Net.IPNetwork.TryParse(entry, out var network))
+            parsed.Add(network);
+        else
+            Console.Error.WriteLine($"[DataHub] Ignoring malformed trusted proxy network '{entry}'.");
+    }
+
+    // Never fall back to "trust everyone": an unparseable override degrades to the defaults.
+    if (parsed.Count == 0)
+        foreach (var entry in DataHubRuntimeOptions.DefaultTrustedProxyNetworks.Split(','))
+            parsed.Add(System.Net.IPNetwork.Parse(entry));
+
+    return parsed;
+}
 
 var app = builder.Build();
 
@@ -126,11 +149,12 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     ResponseWriter = async (context, report) =>
     {
         context.Response.ContentType = "application/json";
+        // No `channel` here: /health/ready is unauthenticated, and naming the deployment channel
+        // tells an anonymous caller which signing keys and license scope this host expects.
         await context.Response.WriteAsJsonAsync(new
         {
             status = report.Status.ToString(),
-            checks = report.Entries.ToDictionary(pair => pair.Key, pair => pair.Value.Status.ToString()),
-            channel = runtimeOptions.Channel
+            checks = report.Entries.ToDictionary(pair => pair.Key, pair => pair.Value.Status.ToString())
         });
     }
 });

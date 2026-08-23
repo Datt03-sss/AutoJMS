@@ -18,6 +18,9 @@ public sealed record EnrollmentResponse(
 
 public static class EnrollmentEndpoints
 {
+    /// <summary>Roles a device may ask for. Phase 1 grants only "operator".</summary>
+    private static readonly HashSet<string> AllowedEnrollmentRoles = new(StringComparer.Ordinal) { "operator" };
+
     public static IEndpointRouteBuilder MapEnrollmentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/v1/devices/enroll", HandleAsync)
@@ -87,10 +90,21 @@ public static class EnrollmentEndpoints
             return;
         }
 
+        // Allowlist, not pass-through: the client must not be able to name its own role. The
+        // repository is still the authority (it rejects anything but "operator"), this only
+        // makes the intent explicit at the edge and keeps casing from causing a spurious 422.
+        var requestedRole = (request.Role ?? "").Trim().ToLowerInvariant();
+        if (requestedRole.Length == 0) requestedRole = "operator";
+        if (!AllowedEnrollmentRoles.Contains(requestedRole))
+        {
+            await ApiProblemWriter.WriteAsync(context, StatusCodes.Status422UnprocessableEntity, "VALIDATION_FAILED", "role must be 'operator'.");
+            return;
+        }
+
         var result = await repository.EnrollAsync(
             siteCode,
             request.DeviceName.Trim(),
-            string.IsNullOrWhiteSpace(request.Role) ? "operator" : request.Role.Trim(),
+            requestedRole,
             validation.Identity,
             context.RequestAborted);
         if (!result.Succeeded)

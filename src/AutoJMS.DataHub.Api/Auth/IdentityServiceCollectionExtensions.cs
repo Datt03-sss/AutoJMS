@@ -17,11 +17,17 @@ public static class IdentityServiceCollectionExtensions
             services.AddSingleton<ILicenseAssertionValidator>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
             services.AddSingleton<IStagingTestLicenseAssertionIssuer>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
         }
+        else if (RsaLicenseAssertionValidator.HasKeyMaterial(options))
+        {
+            // Production path: verify assertions against the license issuer's RSA public key.
+            // Opt-in by configuration only — no key material, no open enrollment.
+            services.AddSingleton<ILicenseAssertionValidator, RsaLicenseAssertionValidator>();
+        }
         else
         {
             // Do not silently treat the existing desktop token or an arbitrary
-            // production HMAC as a DataHub license. The production verifier is a
-            // separate integration task and must be wired explicitly.
+            // production HMAC as a DataHub license. Without DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY
+            // (or _PATH) enrollment stays closed.
             services.AddSingleton<ILicenseAssertionValidator, UnavailableLicenseAssertionValidator>();
         }
 
