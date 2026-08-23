@@ -285,6 +285,17 @@ Kiểm chứng: `dotnet build -c Release` 0 warning/0 error · `dotnet test` 136
 | P2-6 | ✅ mở đường (phía server) | `RsaLicenseAssertionValidator` xác thực `v1rs256` bằng public key RSA ≥2048 bit, bật bằng `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY(_PATH)`; không có key thì vẫn fail-closed; cấu hình nhầm PRIVATE key cũng bị từ chối. Claim check gom vào `LicenseAssertionClaims` dùng chung với HMAC để hai validator không lệch nhau. Còn thiếu phía client (P1-1). |
 | P2-7 | ✅ đã vá | `csproj` không copy `Web\**\*.bak/.orig/.tmp/~` vào output (kiểm chứng: output không còn file `.bak`). File `.bak` vẫn nằm trên đĩa nhưng không được git theo dõi và không ship. |
 
-Giai đoạn 5 phần **hạ tầng** (thu hẹp ufw `1000:2000/tcp`, `3389`, `3306`, `8080`; gỡ xrdp; `PermitRootLogin prohibit-password`; fail2ban/rate-limit Caddy; sao lưu `.env.staging` ngoài VPS; dọn site/device rác) **chưa thực hiện** — các lệnh này có thể làm mất quyền SSH, cần chủ sở hữu xác nhận trước từng bước.
+Giai đoạn 5 phần **hạ tầng** — cập nhật 2026-08-23:
+
+| Việc | Trạng thái |
+|---|---|
+| Thu hẹp ufw (`3389`, `3306/tcp`, `8080`, `53`, `1000:2000/tcp`) | ✅ **đã làm** — chỉ còn `22/tcp`, `80/tcp`, `443/tcp` (cả v4 + v6); default `deny incoming` / `allow outgoing` / `deny routed`; đã ghi vào `/etc/ufw/user{,6}.rules` nên bền qua reboot. Chạy với lưới an toàn `systemd-run --on-active=15min` hoàn tác tự động (đã huỷ sau khi xác minh SSH). Bản sao rules cũ: `/root/ufw-backup-pre-narrow/`. |
+| Gỡ xrdp | ✅ **đã làm** — purge `xrdp`, `xorgxrdp`, `pipewire-module-xrdp`, `libpipewire-0.3-modules-xrdp`; unit/`/etc/xrdp`/user `xrdp` đều sạch; không còn gì listen trên 3389. |
+| `PermitRootLogin prohibit-password` | ❌ chưa — chưa yêu cầu. |
+| fail2ban / rate-limit ở Caddy | ❌ chưa. |
+| Sao lưu `.env.staging` ngoài VPS | ❌ chưa. |
+| Dọn site/device rác từ smoke test | ❌ chưa. |
+
+> ⚠️ `DOCKER-USER` đang rỗng ⇒ cổng nào Docker publish ra host sẽ **bỏ qua** rule UFW. Hiện chỉ Caddy publish `80`/`443` (đúng ý muốn); `8080` của API và `5432` của Postgres chỉ tồn tại trong network compose, không bind ra host. Nếu sau này publish thêm cổng, phải chặn ở `DOCKER-USER`, không phải `ufw allow/deny`.
 
 Giai đoạn 6 phần tài liệu (`docs/agent/CODEBASE_MAP.md`, `backend/datahub/README.md`) chưa cập nhật theo hành vi mới của Giai đoạn 2.
