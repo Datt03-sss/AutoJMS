@@ -14,6 +14,13 @@
 - **Single Writer**: Only one agent is allowed to write or edit files at any given time.
 - Write concurrency is regulated by: [.agent-lock.md](./.agent-lock.md)
 
+### Agent Roles & Allocation
+- **Antigravity**: **Advisor / Consultant / Reviewer (Strictly Read-Only / No Direct Code Edits)**
+  - Do NOT modify, create, or delete source code files directly.
+  - Role is to analyze codebase, trace logic/bugs, provide opinions, architectural advice, and propose code solutions/suggestions in chat responses for the Owner or writer agents to execute.
+- **Claude Code**: Primary Writer Agent (when lock is acquired in `.agent-lock.md`).
+- **Owner / User**: Final decision maker, code reviewer, and manual test executor.
+
 ---
 
 ## Workspace Lock Rules
