@@ -1613,16 +1613,16 @@ namespace AutoJMS
 
         /// <summary>
         /// ULTRA gate for FullStackOperation. This check used to be commented out "temporarily for
-        /// owner to test from tabHome", which let any BASE machine open the ULTRA window. Debug
-        /// builds keep an escape hatch; Release builds always enforce the tier.
+        /// owner to test from tabHome", which let any BASE machine open the ULTRA window.
+        ///
+        /// KHÔNG có đường thoát cho Debug: bản Debug enforce y hệt Release. Một nhánh
+        /// <c>#if DEBUG return true;</c> nghĩa là mọi bản build nội bộ đều mở FullStack cho
+        /// license BASE, và chỉ cần một lần build sai cấu hình là lọt ra ngoài. Muốn test
+        /// ULTRA thì dùng license ULTRA.
         /// </summary>
         private bool IsFullStackOperationAllowed()
         {
-#if DEBUG
-            return true;
-#else
             return _tierPolicy != null && _tierPolicy.EnableFullStackOperation;
-#endif
         }
 
         private void PreCreateFullStackForm()

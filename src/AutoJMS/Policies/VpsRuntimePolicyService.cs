@@ -95,9 +95,21 @@ public sealed class VpsRuntimePolicyService
             if (policy == null)
                 return null;
 
-            policy.Tier = string.IsNullOrWhiteSpace(policy.Tier)
-                ? NormalizeTier(tier)
-                : NormalizeTier(policy.Tier);
+            // Document không được tự nhận nó thuộc tier khác với tier đang yêu cầu.
+            // Trước đây tier trong file được tin vô điều kiện, nên một file policy
+            // khai tier=ULTRA (kể cả file dùng chung tải về cho máy BASE) sẽ đi tiếp
+            // vào TierRuntimePolicy và nâng quyền. Từ chối luôn ở đây.
+            if (!string.IsNullOrWhiteSpace(policy.Tier)
+                && !string.Equals(NormalizeTier(policy.Tier), NormalizeTier(tier), StringComparison.OrdinalIgnoreCase))
+            {
+                AppLogger.Warning(
+                    $"[Policy] từ chối path={sourcePath}: document khai tier={policy.Tier} " +
+                    $"nhưng đang yêu cầu tier={tier}");
+                return null;
+            }
+
+            // Tier rỗng = file dùng chung, đóng dấu tier đang yêu cầu.
+            policy.Tier = NormalizeTier(tier);
             policy.Source = sourcePath;
             return policy;
         }
@@ -121,8 +133,16 @@ public sealed class VpsRuntimePolicyService
             if (policy == null)
                 return null;
 
+            // Cache của tier khác thì BỎ, không dùng "một cách bảo thủ". File cache
+            // dùng chung một đường dẫn cho mọi tier, nên nếu máy từng chạy ULTRA rồi
+            // đổi sang license BASE, cache ULTRA cũ vẫn còn đó. Trả về null để rơi
+            // xuống SafeDefault(BASE) thay vì mang policy của tier khác đi tiếp.
             if (!string.Equals(policy.Tier, tier, StringComparison.OrdinalIgnoreCase))
-                AppLogger.Warning($"[Policy] cached tier={policy.Tier} differs requested={tier}; using cached policy conservatively");
+            {
+                AppLogger.Warning(
+                    $"[Policy] bỏ cache: tier={policy.Tier} khác tier đang yêu cầu={tier}");
+                return null;
+            }
 
             return policy;
         }

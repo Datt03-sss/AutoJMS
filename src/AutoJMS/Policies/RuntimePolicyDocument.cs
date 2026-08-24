@@ -13,8 +13,17 @@ public sealed class RuntimePolicyDocument
     [JsonPropertyName("updatedAt")]
     public string UpdatedAt { get; set; } = "";
 
+    /// <summary>
+    /// Tier mà document này tự khai. Mặc định là RỖNG, không phải "BASE": rỗng nghĩa
+    /// là "document không khai tier" (file policy dùng chung cho mọi tier), còn "BASE"
+    /// nghĩa là "document này chỉ dành cho BASE". Phân biệt được hai trường hợp đó thì
+    /// <see cref="VpsRuntimePolicyService"/> mới từ chối được policy của tier khác mà
+    /// không từ chối oan file dùng chung.
+    ///
+    /// Đây chỉ là metadata. Thẩm quyền tier nằm ở license, xem TierRuntimePolicy.Resolve.
+    /// </summary>
     [JsonPropertyName("tier")]
-    public string Tier { get; set; } = "BASE";
+    public string Tier { get; set; } = "";
 
     [JsonPropertyName("features")]
     public Dictionary<string, JsonElement> Features { get; set; } = new(StringComparer.OrdinalIgnoreCase);

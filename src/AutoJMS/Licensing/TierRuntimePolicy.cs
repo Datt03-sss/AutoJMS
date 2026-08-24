@@ -53,6 +53,23 @@ namespace AutoJMS
         public bool IsUltra => string.Equals(Tier, "ULTRA", StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
+        /// Policy đang có hiệu lực của tiến trình này. Mặc định fail-closed (BASE)
+        /// cho tới khi Resolve() chạy, nên mọi code hỏi TRƯỚC khi license được xác
+        /// thực đều chỉ nhận quyền BASE.
+        ///
+        /// Dùng cho gate ở tầng service (ví dụ FullStackOperation tự kiểm tra):
+        /// gate ở UI chỉ bảo vệ trải nghiệm, không bảo vệ an ninh.
+        /// </summary>
+        public static TierRuntimePolicy Current { get; private set; } =
+            new TierRuntimePolicy("BASE",
+                inventorySync: false,
+                databaseTracking: false,
+                backgroundAutoSync: false,
+                fullStack: false,
+                manualTracking: true,
+                manualPrint: true);
+
+        /// <summary>
         /// Resolve the runtime policy for a tier. ULTRA is identified by the
         /// presence of the FULLSTACK_OPERATION form in tier-definitions.json,
         /// keeping a single source of truth for "what is ULTRA".
@@ -92,29 +109,60 @@ namespace AutoJMS
                 $"manualTracking={policy.AllowManualTracking}, " +
                 $"manualPrint={policy.AllowManualPrint})");
 
+            Current = policy;
             return policy;
         }
 
-        public static TierRuntimePolicy Resolve(RuntimePolicyDocument policy, string fallbackTier = "BASE")
+        /// <summary>
+        /// Kết hợp entitlement của license với runtime policy lấy từ DataHub.
+        ///
+        /// Nguyên tắc bảo mật: <b>license tier là thẩm quyền bất biến</b>. Runtime
+        /// policy chỉ được phép THU HẸP quyền (true -&gt; false) — kill switch, bảo trì,
+        /// hạ cấp tính năng tạm thời. Nó KHÔNG BAO GIỜ được nâng quyền (false -&gt; true),
+        /// vì như vậy một file JSON trên DataHub sẽ biến license BASE thành ULTRA mà
+        /// không cần đổi license.
+        ///
+        /// Bảng hệ quả cho FullStack:
+        ///   BASE  + policy true  =&gt; false
+        ///   BASE  + policy false =&gt; false
+        ///   ULTRA + policy true  =&gt; true
+        ///   ULTRA + policy false =&gt; false
+        /// </summary>
+        /// <param name="policy">Runtime policy từ DataHub. Chỉ mang tính hạn chế.</param>
+        /// <param name="licenseTier">Tier do license server cấp. Đây là thẩm quyền, không phải gợi ý.</param>
+        public static TierRuntimePolicy Resolve(RuntimePolicyDocument policy, string licenseTier = "BASE")
         {
+            // Trần quyền mà license này được hưởng.
+            var entitlement = Resolve(licenseTier);
             if (policy == null)
-                return Resolve(fallbackTier);
+                return entitlement;
 
-            bool fullStack = policy.FullStack.Enabled ??
-                             policy.GetFeatureBool("forms.fullStackOperation", false);
-            bool backgroundSync = policy.FullStack.BackgroundSync ??
-                                  policy.GetFeatureBool("fullStack.backgroundSync", false);
-            bool inventorySync = policy.GetFeatureBool("fullStack.inventorySync", backgroundSync);
-            bool databaseTracking = policy.GetFeatureBool("fullStack.databaseTracking", backgroundSync);
-            bool manualTracking = policy.GetFeatureBool("tabs.tracking", true);
-            bool manualPrint = policy.GetFeatureBool("tabs.print", true);
+            // Mỗi cờ là phép AND với entitlement. Cờ KHUYẾT trong policy nghĩa là
+            // "không có hạn chế" nên default = true (giữ nguyên entitlement); chỉ giá
+            // trị false tường minh mới thu hẹp được quyền.
+            bool fullStack = entitlement.EnableFullStackOperation
+                             && (policy.FullStack.Enabled ??
+                                 policy.GetFeatureBool("forms.fullStackOperation", true));
+            bool backgroundSync = entitlement.EnableBackgroundAutoSync
+                                  && (policy.FullStack.BackgroundSync ??
+                                      policy.GetFeatureBool("fullStack.backgroundSync", true));
+            bool inventorySync = entitlement.EnableStartupInventorySync
+                                 && policy.GetFeatureBool("fullStack.inventorySync", true);
+            bool databaseTracking = entitlement.EnableStartupDatabaseTracking
+                                    && policy.GetFeatureBool("fullStack.databaseTracking", true);
+            bool manualTracking = entitlement.AllowManualTracking
+                                  && policy.GetFeatureBool("tabs.tracking", true);
+            bool manualPrint = entitlement.AllowManualPrint
+                               && policy.GetFeatureBool("tabs.print", true);
 
-            string effectiveTier = (fullStack || backgroundSync || inventorySync || databaseTracking)
-                ? "ULTRA"
-                : "BASE";
+            if (!string.Equals(policy.Tier, entitlement.Tier, StringComparison.OrdinalIgnoreCase))
+                AppLogger.Warning(
+                    $"[Tier] policy tier={policy.Tier} khác license tier={entitlement.Tier}; " +
+                    $"chỉ license tier được dùng làm thẩm quyền (source={policy.Source}).");
 
+            // Tier KHÔNG suy diễn từ các cờ tính năng — nó là tier của license.
             var resolved = new TierRuntimePolicy(
-                effectiveTier,
+                entitlement.Tier,
                 inventorySync: inventorySync,
                 databaseTracking: databaseTracking,
                 backgroundAutoSync: backgroundSync,
@@ -131,6 +179,7 @@ namespace AutoJMS
                 $"manualTracking={resolved.AllowManualTracking}, " +
                 $"manualPrint={resolved.AllowManualPrint})");
 
+            Current = resolved;
             return resolved;
         }
     }

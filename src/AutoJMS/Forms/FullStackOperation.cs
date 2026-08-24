@@ -110,6 +110,19 @@ namespace AutoJMS
 
         public FullStackOperation()
         {
+            // Gate an ninh, không phải gate UX. Main đã kiểm tra trước khi tạo form,
+            // nhưng gate ở UI có thể bị đi vòng; cửa sổ ULTRA không được phép TỒN TẠI
+            // khi entitlement không cho. PreCreateFullStackForm và ShowFullStackForm đều
+            // bắt exception nên ném ở đây là fail-closed an toàn.
+            if (!TierRuntimePolicy.Current.EnableFullStackOperation)
+            {
+                AppLogger.Warning(
+                    $"[FullStack] Chặn khởi tạo: tier={TierRuntimePolicy.Current.Tier} " +
+                    "không có entitlement FullStackOperation.");
+                throw new UnauthorizedAccessException(
+                    "FullStackOperation yêu cầu entitlement ULTRA.");
+            }
+
             ConfigureFormShell();
             BuildUiInCode();
             WireCodeFirstEvents();
@@ -180,6 +193,16 @@ namespace AutoJMS
 
         private async Task StartRealtimeRuntimeAsync()
         {
+            // Gate thứ hai: đây là nơi phát sinh side effect thật (realtime, sync,
+            // lease, timer). Nếu entitlement không cho thì dừng ngay tại đây.
+            if (!TierRuntimePolicy.Current.EnableFullStackOperation)
+            {
+                AppLogger.Warning(
+                    "[FullStack] Chặn StartRealtimeRuntimeAsync: tier=" +
+                    $"{TierRuntimePolicy.Current.Tier} không có entitlement FullStackOperation.");
+                return;
+            }
+
             if (_isRealtimeStarted) return;
             _isRealtimeStarted = true;
 

@@ -171,7 +171,8 @@ namespace AutoJMS
 
                                 // Initialize new services from license response
                                 InitializeServicesFromLicense(checkResult);
-                                sessionTier = RuntimePolicy?.Tier ?? sessionTier;
+                                // KHÔNG lấy tier từ runtime policy: sessionTier phải giữ tier của
+                                // license. Policy chỉ được thu hẹp quyền, không được đặt tier.
                             }
                             else
                             {
@@ -256,7 +257,7 @@ namespace AutoJMS
 
                         // Initialize new services from license response
                         InitializeServicesFromLicense(activateResult);
-                        sessionTier = RuntimePolicy?.Tier ?? sessionTier;
+                        // KHÔNG lấy tier từ runtime policy — xem ghi chú ở nhánh verify.
                     }
                     else
                     {

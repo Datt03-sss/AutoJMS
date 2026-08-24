@@ -264,7 +264,7 @@ Kiểm chứng: `dotnet build -c Release` 0 warning/0 error · `dotnet test` 136
 
 | # | Trạng thái | Ghi chú |
 |---|---|---|
-| P0-1 | ✅ đã vá | `IsFullStackOperationAllowed()`; Release cưỡng chế tier, Debug giữ đường thoát bằng `#if DEBUG` thay vì comment-out. |
+| P0-1 | ✅ đã vá (siết thêm 2026-08-24) | `IsFullStackOperationAllowed()`. Vòng 1 (`27468d2`): Release cưỡng chế tier, Debug giữ đường thoát `#if DEBUG`. Vòng 2 (xem **mục H**): bỏ hẳn `#if DEBUG` — Debug enforce y hệt Release — và vá thêm 3 điểm cắt khác vì chỉ chặn ở `Main` là chưa đủ. |
 | P0-2 | ✅ đã vá | Dùng `AppPaths.BrowserDataDir`. **Lệch kế hoạch có chủ ý**: không copy-migrate từ `current\AppData\BrowserData` — trên bản đóng gói thư mục đó bị xoá mỗi update, và Main đã mở profile chung nên copy vào profile đang sống có thể làm hỏng nó. |
 | P0-3 | ✅ đã vá | Kiểm tra `e.Source` + allowlist 19 action + `NavigationStarting` chặn ra ngoài `autojms.local` + `AreDevToolsEnabled=false` ở Release. Mapping `Allow` → `Deny`. |
 | P0-4 | ✅ đã vá (còn 1 mục treo) | Bỏ loader `x-import`, bỏ Babel/unpkg.com, bỏ re-fetch `location.href`, không publish cầu nối editor lên `window`. **Còn `'unsafe-eval'` trong CSP** vì dc-runtime biên dịch khối `data-dc-script` nội tuyến của chính trang bằng `new Function`; chỉ bỏ được khi dashboard có bước build (mục 7 của Giai đoạn 1 làm 90%, phần còn lại là bước build). |
@@ -299,3 +299,75 @@ Giai đoạn 5 phần **hạ tầng** — cập nhật 2026-08-23:
 > ⚠️ `DOCKER-USER` đang rỗng ⇒ cổng nào Docker publish ra host sẽ **bỏ qua** rule UFW. Hiện chỉ Caddy publish `80`/`443` (đúng ý muốn); `8080` của API và `5432` của Postgres chỉ tồn tại trong network compose, không bind ra host. Nếu sau này publish thêm cổng, phải chặn ở `DOCKER-USER`, không phải `ufw allow/deny`.
 
 Giai đoạn 6 phần tài liệu (`docs/agent/CODEBASE_MAP.md`, `backend/datahub/README.md`) chưa cập nhật theo hành vi mới của Giai đoạn 2.
+
+---
+
+## H. Vòng 2 — Chuỗi leo quyền BASE → ULTRA (2026-08-24)
+
+Sau khi P0-1 đã vá, **license BASE vẫn mở được FullStack** mà không cần sửa gì ở
+Firebase. Nguyên nhân: `TierRuntimePolicy` suy ra tier **từ nội dung runtime policy**
+thay vì từ license. Chuỗi hoàn chỉnh, 4 điểm cắt độc lập, cả 4 đều hở:
+
+```
+license BASE
+  → VpsRuntimePolicyService.FetchPolicyAsync("BASE")
+      ├─ fetch được file dùng chung / file khai tier=ULTRA   ← điểm cắt 3
+      └─ hoặc fetch fail → đọc cache của phiên ULTRA cũ      ← điểm cắt 3
+  → Program.cs: sessionTier = RuntimePolicy?.Tier            ← điểm cắt 2
+  → new Main("ULTRA") → TierRuntimePolicy.Resolve(policy)
+  → effectiveTier = "ULTRA", fullStack = true                ← điểm cắt 1
+  → IsFullStackOperationAllowed() (#if DEBUG return true)    ← điểm cắt 4
+  → FullStackOperation mở, không tự kiểm tra gì
+```
+
+### Nguyên tắc đã chốt với chủ sở hữu
+
+> **License tier là thẩm quyền bất biến. Runtime policy chỉ được THU HẸP quyền
+> (`true → false`), không bao giờ được nâng quyền (`false → true`). Policy/cache
+> của tier khác thì BỊ TỪ CHỐI, rơi về `SafeDefault(BASE)`.**
+
+Policy vẫn là kill switch dùng được (tắt tính năng của ULTRA từ xa), nhưng không còn
+là công cụ phát license.
+
+### Đã vá
+
+| # | Điểm cắt | File | Thay đổi |
+|---|---|---|---|
+| 1 | Policy suy ra tier | `Licensing/TierRuntimePolicy.cs` | `Resolve(RuntimePolicyDocument, string licenseTier)` tính `entitlement = Resolve(licenseTier)` rồi **AND từng cờ** với entitlement; `Tier` lấy từ license, bỏ hẳn biến `effectiveTier`. Đổi tên tham số `fallbackTier` → `licenseTier` cho đúng nghĩa: nó là thẩm quyền, không phải giá trị dự phòng. |
+| 2 | `sessionTier` bị policy ghi đè | `Program.cs:174, 259` | Bỏ 2 dòng `sessionTier = RuntimePolicy?.Tier ?? sessionTier;`. `sessionTier` giữ tier của license từ đầu đến `new Main(...)`. |
+| 3 | Cache/document của tier khác | `Policies/VpsRuntimePolicyService.cs` | `LoadCachedPolicy` **trả `null`** khi cache lệch tier (trước đó chỉ log warning rồi dùng tiếp "một cách bảo thủ"). `TryParsePolicy` **trả `null`** khi document tự khai tier khác tier đang yêu cầu. |
+| 3b | Không phân biệt "khuyết tier" với "tier=BASE" | `Policies/RuntimePolicyDocument.cs` | `Tier` mặc định `""` thay vì `"BASE"`. Rỗng = file dùng chung (được đóng dấu tier đang yêu cầu); `"BASE"` = file chỉ dành cho BASE (bị từ chối khi máy là ULTRA). Nếu giữ mặc định `"BASE"` thì mọi file dùng chung sẽ bị từ chối oan trên máy ULTRA. |
+| 4 | Đường thoát Debug | `Forms/Main.cs:1619` | Bỏ hẳn `#if DEBUG return true;`. **Debug enforce y hệt Release.** Muốn test ULTRA thì dùng license ULTRA. |
+| 5 | `FullStackOperation` không tự gác | `Forms/FullStackOperation.cs:111, 181` | Thêm `TierRuntimePolicy.Current` (mặc định fail-closed BASE) và 2 gate: constructor `throw UnauthorizedAccessException` (cả `PreCreateFullStackForm` và `ShowFullStackForm` đều bắt exception nên fail-closed an toàn), `StartRealtimeRuntimeAsync()` `return` sớm. Thành 3 lớp: gate UI + gate đối tượng + gate service. |
+
+Kiểm chứng: `dotnet build -c Release` 0 warning/0 error · `dotnet test` 150 + 60 pass
+(thêm 12 test mới trong `tests/AutoJMS.Tests/TierEntitlementTests.cs`) ·
+`eng/harness/verify.ps1` ALL GATES PASSED.
+
+### Thay đổi hành vi cần biết
+
+Mặc định của cờ khuyết **đảo từ `false` sang `true`**, vì sau khi AND với entitlement
+thì "cờ khuyết" phải nghĩa là *không có hạn chế*, không phải *bị cấm*. Hệ quả: máy
+**ULTRA** tải được policy nhưng policy không khai cờ nào thì nay **giữ** FullStack
+(trước đây bị tắt oan). Máy **BASE** thì mọi tổ hợp đều tắt.
+
+Máy ULTRA mất mạng và **không có cache** vẫn rơi về `SafeDefault`, trong đó
+`forms.fullStackOperation = false` tường minh ⇒ FullStack tắt. Đây là hành vi cũ,
+không đổi, và là fail-closed có ý.
+
+### Phát hiện thêm, chưa vá
+
+| # | Vấn đề | Ghi chú |
+|---|---|---|
+| H-1 | `VALID_EXE_HASHES` rỗng ⇒ **tắt kiểm tra hash EXE cho mọi máy** | `backend/render-license-server/server.js:557-559`. Rộng hơn cờ `skipHashCheck` (dòng 547) vì không cần client gửi gì cả. Cần quyết định của chủ sở hữu: bắt buộc có hash, hay chấp nhận tắt. |
+| H-2 | Đường fetch không theo tier | `VpsRuntimePolicyService.cs:68-69` vẫn thử `configs/runtime-policy.json` và `manifest/feature-policy.json`. Sau vòng 2 thì vô hại (file dùng chung được đóng dấu tier đang yêu cầu, và policy không nâng được quyền), nhưng file cache vẫn dùng **một đường dẫn duy nhất** cho mọi tier — đổi license là mất cache. Cache theo tier là việc dọn dẹp, không phải lỗ hổng. |
+
+### Cáo buộc bị bác bỏ ở vòng 2
+
+- **"BASE không được dùng Google Sheets"** — chủ sở hữu xác nhận **BASE được dùng**.
+  `/api/google-sheets/grant` chỉ cần license active, không cần ULTRA. Không sửa.
+- **"authToken 32-hex bị log nguyên vẹn"** — đã lỗi thời; code mask qua
+  `TokenRedactor.MaskToken`/`LogToken`, log chỉ in `valid=32hex`.
+- **"device token của DataHub nằm trong source"** — đã lỗi thời; token đến từ response
+  của license server (`DataHubClient.Configure`), có fallback env
+  `AUTOJMS_DATAHUB_DEVICE_TOKEN`. Không hardcode.
