@@ -1,7 +1,19 @@
 ╔══════════════════════════════════════════════════════════╗
-║  AUTOJMS LICENSE DATA SCHEMA                           ║
+║  AUTOJMS LICENSE DATA SCHEMA — v2                      ║
 ║  Maintain across: Firebase → server.js → C# Client     ║
+║  Last reviewed: 2026-08-24                             ║
 ╚══════════════════════════════════════════════════════════╝
+
+  Đọc kèm: docs/agent/CONFIG_SCHEMA_V2_PROPOSAL.md (bản spec đầy đủ)
+  Template dán được: backend/firebase/config-key.example.json
+  (config-key.json thật bị .gitignore theo luật *-key.json — chỉ nằm ở máy owner)
+
+  ⚠ CẢNH BÁO TRIỂN KHAI
+  Render production hiện chạy repo Datt03-sss/AutoJMS-API, KHÔNG phải
+  backend/render-license-server/ trong repo này. Mọi field v2 dưới đây chỉ có
+  hiệu lực sau khi hai bản server được hợp nhất. Xem section L trong
+  docs/agent/FULLSTACK_BACKEND_RISK_REVIEW.md.
+
 
 ┌─────────────────────────────────────────────────────────┐
 │ 1. FIREBASE (Realtime DB)                               │
@@ -10,67 +22,180 @@
 └─────────────────────────────────────────────────────────┘
 
 {
-  "createdAt":          "26-05-2026 01:22",
+  "schemaVersion":      2,
+
+  // ---- Vòng đời / lifecycle -------------------------------------------
+  "status":             "active",                    // "active" là giá trị DUY NHẤT mở được app
+  "tier":               "ULTRA",                     // "BASE" | "ULTRA" — allowlist, sai chính tả => 403
+  "createdAt":          "2026-08-24T01:22:00+07:00", // ISO-8601 + offset (chấp nhận cả "DD-MM-YYYY HH:mm" cũ)
+  "expiresAt":          "2026-10-16T00:00:00+07:00", // luôn là 00:00 ngày 16 — xem mục 5
+  "activatedAt":        null,                        // SERVER ghi khi bind HWID lần đầu (ISO)
+  "graceDays":          7,                           // sau expiresAt vẫn chạy, client cảnh báo
+  "offlineGraceHours":  72,                          // client được chạy offline bao lâu
+
+  // ---- Danh tính site / tenant -----------------------------------------
+  "middleCode":         "HCM001",                    // ⚠ CHÍNH LÀ site-code của DataHub. PHẢI duy nhất.
+  "siteCodes":          ["HCM001"],                  // tuỳ chọn — khách nhiều chi nhánh
+  "siteId":             "",                          // GUID do DataHub trả về sau enroll (legacy)
+  "seats":              3,                           // số máy tối đa (DataHub cấp lease)
+
+  // ---- Ràng buộc máy / build -------------------------------------------
+  "hwid":               "",                          // rỗng = chưa activate; SERVER tự ghi lần đầu
+  "skipHashCheck":      true,                        // false = kiểm tra exe hash theo VALID_EXE_HASHES
+  "tokenVersion":       1,                           // tăng lên để vô hiệu hoá assertion đã phát
+
+  // ---- Cấu hình vận hành -----------------------------------------------
   "dataSpreadsheetId":  "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
-  "hwid":               "29a534fab857f17e3ba515e7231b807f...",
-  "middleCode":         "0000",
+  "updateChannel":      "stable",                    // "stable" | "beta"
   "modulePolicy": {
-    "autoUpdate":            true,
-    "silentUpdate":          true,
-    "applyOnNextStartup":    true
-  },
-  "skipHashCheck":      true,
-  "status":             "active",
-  "tier":               "ULTRA",           // "BASE" | "ULTRA"
-}
-
-┌─────────────────────────────────────────────────────────┐
-│ 2. SERVER RESPONSE (server.js /api/verify-license)      │
-│    Must forward ALL fields from Firebase to client      │
-└─────────────────────────────────────────────────────────┘
-
-{
-  "payload":    "eyJhbGciOiJSUzI1NiIs...",    // JWT token
-  "sid":        "0463903a-4baf-4807-b688-...", // session ID
-  "tier":       "ULTRA",                       // ← MUST ADD (from data.tier)
-  "skipHashCheck": true,                       // ← MUST ADD (from data.skipHashCheck)
-  "modulePolicy": {                             // ← MUST ADD
-    "autoUpdate":         true,
+    "autoUpdate":         false,
     "silentUpdate":       true,
     "applyOnNextStartup": true
   },
-  "cfg": {
-    "dataSpreadsheetId":  "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
+
+  // ---- Hồ sơ (server KHÔNG đọc — nên để lồng cho rõ ranh giới) ---------
+  "meta": {
+    "customerName":     "",
+    "contact":          "",
+    "orderId":          "",
+    "issuedBy":         "owner",
+    "notes":            ""
   }
 }
 
+  Field vắng mặt = hành vi v1:
+    - expiresAt vắng  → key vĩnh viễn (không hết hạn). Đây là lý do fleet cũ
+                        vẫn chạy sau khi bật lifecycle.
+    - graceDays vắng  → dùng LICENSE_GRACE_DAYS (mặc định 7)
+    - seats vắng      → DATAHUB_DEFAULT_SEATS (mặc định 3)
+    - modulePolicy vắng → server điền autoUpdate/silentUpdate/applyOnNextStartup = true
+
+
+┌─────────────────────────────────────────────────────────┐
+│ 2. SERVER RESPONSE (server.js /api/verify-license)      │
+└─────────────────────────────────────────────────────────┘
+
+{
+  "payload":      "eyJhbGciOiJSUzI1NiIs...",      // JWT RS256, client verify bằng public key nhúng sẵn
+  "sid":          "0463903a-4baf-4807-b688-...",  // session ID
+  "tier":         "ULTRA",                        // giữ ở root cho client cũ
+  "middleCode":   "HCM001",
+  "skipHashCheck": true,
+  "modulePolicy": { "autoUpdate": false, "silentUpdate": true, "applyOnNextStartup": true },
+
+  "license": {
+    "status":            "active",
+    "tier":              "ULTRA",
+    "middleCode":        "HCM001",
+    "siteCode":          "HCM001",                     // = middleCode, đã upper-case
+    "skipHashCheck":     true,
+    "modulePolicy":      { ... },
+    "effectiveStatus":   "active",                     // "active" | "grace" | "expired"
+    "expiresAt":         "2026-10-16T00:00:00+07:00",  // null nếu key v1
+    "graceUntil":        "2026-10-23T00:00:00+07:00",  // null nếu key v1
+    "daysRemaining":     53,                           // null nếu key v1
+    "graceDays":         7,
+    "offlineGraceHours": 72,
+    "billingAnchorDay":  16,
+    "seats":             3
+  },
+
+  "cfg": {
+    "dataSpreadsheetId": "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
+    "updateChannel":     "stable"
+  },
+
+  "datahub": {
+    "apiBaseUrl":         "https://datahub.example.com",
+    "siteId":             "HCM001",
+    "siteCode":           "HCM001",
+    "licenseAssertion":   "eyJhbGciOiJSUzI1NiIs...",   // JWT ngắn hạn để enroll device
+    "assertionExpiresAt": 1789491600,
+    "manifests":          { ... }                       // xem mục 4
+  }
+}
+
+  Mã lỗi (HTTP → error):
+    404 LICENSE_NOT_FOUND           key không tồn tại
+    401 LICENSE_INACTIVE            status != "active"
+    401 HWID_MISMATCH               key đã bind máy khác
+    403 LICENSE_EXPIRED             quá expiresAt + graceDays  (kèm expiresAt/graceUntil)
+    403 LICENSE_TIER_INVALID        tier không thuộc {BASE, ULTRA}
+    403 LICENSE_SITE_CODE_INVALID   middleCode là placeholder (chỉ khi REQUIRE_UNIQUE_SITE_CODE=1)
+    403 HASH_INVALID                exe hash không khớp VALID_EXE_HASHES
+    503 FIREBASE_TIMEOUT            Firebase quá FIREBASE_OPERATION_TIMEOUT_MS
+
+
 ┌─────────────────────────────────────────────────────────┐
 │ 3. C# CLIENT PARSING (LicenseApiService.cs)             │
-│    Reads from root of server response                   │
 └─────────────────────────────────────────────────────────┘
 
-  root.tier               → result.Tier
-  root.skipHashCheck      → result.SkipHashCheck
-  root.modulePolicy       → result.AutoUpdate / SilentUpdate / ApplyOnNextStartup
-  root.cfg.dataSpreadsheetId → AppConfig.Current.DataSpreadsheetId
+  root.tier                    → result.Tier              (thẩm quyền tier DUY NHẤT)
+  root.skipHashCheck           → result.SkipHashCheck
+  root.modulePolicy            → result.AutoUpdate / SilentUpdate / ApplyOnNextStartup
+  root.cfg.dataSpreadsheetId   → AppConfig.Current.DataSpreadsheetId
+  root.datahub.apiBaseUrl      → result.DataHubBaseUrl    (Program.cs gate mọi service DataHub trên field này)
+  root.datahub.licenseAssertion→ result.DataHubLicenseAssertion
+  root.datahub.manifests       → result.DataHubManifests
+
+  Chưa đọc (cần C1 trong CONFIG_SCHEMA_V2_PROPOSAL.md):
+  root.license.expiresAt / effectiveStatus / graceUntil / daysRemaining / seats
+
+  Tier chỉ được cập nhật khi verify-license chạy lại, tức là khi KHỞI ĐỘNG LẠI
+  app (quyết định của owner 2026-08-24). Heartbeat không nâng/hạ tier.
+
 
 ┌─────────────────────────────────────────────────────────┐
-│ 4. VPS CONFIG API (autojms-modules bucket)            │
+│ 4. DATAHUB MANIFEST PATHS (DATAHUB_MANIFESTS)           │
+│    server.js CONFIG → client tải qua DataHub API        │
 └─────────────────────────────────────────────────────────┘
 
-  configs/tier-definitions.json   -- defines what each tier can DO
-  manifest/hash-manifest.json     -- version → DLL hash map
-  modules/modules.json            -- list of downloadable modules
+  manifest/app-manifest.json                    -- metadata bản build
+  manifest/version-latest.json                  -- version mới nhất
+  manifest/hash-manifest.json                   -- version → DLL hash
+  manifest/tier-definitions.json                -- catalogue tier (KHÔNG phải configs/…)
+  manifest/feature-policy.json
+  manifest/google-sheets-policy.json
+  manifest/print-policy.json
+  configs/public-config.json
+  configs/runtime-policy.json                   -- thẩm quyền capability theo tier
+  selector-updates/selector-update-manifest.json
 
-  tier-definitions.json format:
+  tier-definitions.json — shape thật (khớp TierDefinitions.cs):
   {
-    "BASE": {
-      "tabs": ["HOME","DKCH","TRACKING","PRINT","ABOUT"],
-      "modules": []
-    },
-    "ULTRA": {
-      "tabs": ["HOME","DKCH","TRACKING","PRINT","ABOUT"],
-      "modules": [],
-      "backgroundForms": ["FULLSTACK_OPERATION"]
+    "schemaVersion": 2,
+    "tiers": {
+      "BASE":  { "displayName": "...", "tabs": [...], "forms": [] },
+      "ULTRA": { "inherits": "BASE", "tabs": [...], "forms": [ { "name": "FULLSTACK_OPERATION", ... } ] }
     }
   }
+
+  ⚠ "backgroundForms" và "modules" KHÔNG còn tồn tại trong TierConfig. Capability
+    (background sync, local DB, auto-print…) nằm ở configs/runtime-policy.json,
+    không nằm ở tier-definitions.json.
+
+
+┌─────────────────────────────────────────────────────────┐
+│ 5. QUY TẮC EXPIRESAT — MỐC NGÀY 16                      │
+│    backend/render-license-server/license-expiry.js      │
+└─────────────────────────────────────────────────────────┘
+
+  License bán theo kỳ 1 tháng nhưng luôn hết hạn 00:00 ngày 16 (Asia/Ho_Chi_Minh):
+
+      expiresAt = mốc "ngày 16, 00:00 +07:00" SỚM NHẤT mà >= (nửa đêm ngày tạo + 30 ngày)
+
+  Tính theo ngày tròn, không theo giờ tạo key. Ví dụ:
+
+      createdAt            expiresAt            số ngày
+      2026-08-01           2026-09-16           46
+      2026-08-15           2026-09-16           32
+      2026-08-16           2026-09-16           31
+      2026-08-17 10:00     2026-09-16           30   ← nhờ làm tròn ngày
+      2026-08-18           2026-10-16           59
+      2026-08-24           2026-10-16           53
+      2026-12-20           2027-02-16           58
+
+  Cách sinh giá trị:
+      node -e "console.log(require('./license-expiry').computeExpiry('2026-08-24').expiresAt)"
+
+  Test: cd backend/render-license-server && npm test

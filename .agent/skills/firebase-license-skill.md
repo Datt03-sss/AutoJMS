@@ -28,7 +28,8 @@ Firebase Realtime Database
       "status": "active",
       "tier": "ULTRA",
       "hwid": "hashed-machine-id",
-      "activatedAt": 1708000000000,
+      "activatedAt": "2026-08-24T01:22:00+07:00",
+      "expiresAt": "2026-10-16T00:00:00+07:00",
       "middleCode": "0000",
       "skipHashCheck": true,
       "modulePolicy": {

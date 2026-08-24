@@ -8,6 +8,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const fs = require("fs");
 const { GoogleAuth } = require("google-auth-library");
+const licenseLifecycle = require("./license-expiry");
 require("dotenv").config();
 
 const FIREBASE_TIMEOUT_MS = Number(process.env.FIREBASE_OPERATION_TIMEOUT_MS || 8000);
@@ -77,8 +78,28 @@ const CONFIG = {
         "https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/",
 
     DEFAULT_CHANNEL:
-        process.env.DEFAULT_UPDATE_CHANNEL || "stable"
+        process.env.DEFAULT_UPDATE_CHANNEL || "stable",
+
+    // Lifecycle defaults. A license record may override graceDays per key;
+    // offlineGraceHours is advisory and only forwarded to the client.
+    DEFAULT_GRACE_DAYS:
+        Number(process.env.LICENSE_GRACE_DAYS || licenseLifecycle.DEFAULT_GRACE_DAYS),
+
+    OFFLINE_GRACE_HOURS:
+        Number(process.env.LICENSE_OFFLINE_GRACE_HOURS || licenseLifecycle.DEFAULT_OFFLINE_GRACE_HOURS),
+
+    BILLING_ANCHOR_DAY:
+        Number(process.env.LICENSE_BILLING_ANCHOR_DAY || licenseLifecycle.BILLING_ANCHOR_DAY),
+
+    // Site code is the DataHub tenant key. Every key in the fleet still ships
+    // the "0000" placeholder, so enforcement stays opt-in until they are
+    // migrated — flip REQUIRE_UNIQUE_SITE_CODE=1 once that is done.
+    REQUIRE_UNIQUE_SITE_CODE:
+        String(process.env.REQUIRE_UNIQUE_SITE_CODE || "").trim() === "1"
 };
+
+/** middleCode values that are not a real tenant identity. */
+const PLACEHOLDER_SITE_CODES = new Set(["", "0000", "00000", "0", "DEFAULT", "NONE", "TBD"]);
 
 const DATAHUB_MANIFESTS = {
     appManifest:
@@ -291,10 +312,28 @@ function sendTimeoutResponse(res) {
     });
 }
 
+// The only tiers the desktop client knows how to enforce. A typo in Firebase
+// ("Ultra ", "ULTRAA", "PRO") used to pass through untouched and land the
+// station on the BASE entitlement set — a silent downgrade nobody notices
+// until a customer reports a missing feature. Fail loudly instead.
+const KNOWN_TIERS = new Set(["BASE", "ULTRA"]);
+
 function normalizeTier(tier) {
     return String(tier || "BASE")
         .trim()
         .toUpperCase();
+}
+
+function isKnownTier(tier) {
+    return KNOWN_TIERS.has(normalizeTier(tier));
+}
+
+function normalizeSiteCode(middleCode) {
+    return String(middleCode || "").trim().toUpperCase();
+}
+
+function isPlaceholderSiteCode(siteCode) {
+    return PLACEHOLDER_SITE_CODES.has(normalizeSiteCode(siteCode));
 }
 
 function getClientIp(req) {
@@ -543,9 +582,83 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             });
         }
 
+        // ---- Lifecycle gate -------------------------------------------------
+        // expiresAt is anchored to 00:00 +07:00 on the 16th of a month. Records
+        // that predate the field are perpetual, so the fleet in the field keeps
+        // working until an expiry is backfilled.
+        const lifecycle = licenseLifecycle.evaluateLicense(
+            {
+                status: data.status,
+                expiresAt: data.expiresAt,
+                graceDays: data.graceDays ?? CONFIG.DEFAULT_GRACE_DAYS
+            },
+            Date.now()
+        );
+
+        if (!lifecycle.allowed) {
+            console.warn("[LICENSE_EXPIRED]", {
+                licenseKey: maskedLicenseKey,
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+
+            return res.status(403).json({
+                success: false,
+                error: "LICENSE_EXPIRED",
+                message: "License key has expired.",
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+        }
+
+        if (lifecycle.effectiveStatus === "grace") {
+            console.warn("[LICENSE_GRACE]", {
+                licenseKey: maskedLicenseKey,
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+        }
+
+        // ---- Tier allowlist -------------------------------------------------
+        if (!isKnownTier(data.tier)) {
+            console.error("[LICENSE_TIER_INVALID]", {
+                licenseKey: maskedLicenseKey,
+                rawTier: String(data.tier ?? "")
+            });
+
+            return res.status(403).json({
+                success: false,
+                error: "LICENSE_TIER_INVALID",
+                message: "License tier is not recognised. Contact support."
+            });
+        }
+
         const tier = normalizeTier(data.tier);
         const skipHashCheck = data.skipHashCheck === true;
         const middleCode = data.middleCode || "";
+
+        // ---- Site code ------------------------------------------------------
+        // middleCode IS the DataHub site code (owner decision, 2026-08-24), so a
+        // shared placeholder means several customers land in one tenant.
+        if (isPlaceholderSiteCode(middleCode)) {
+            if (CONFIG.REQUIRE_UNIQUE_SITE_CODE) {
+                console.error("[LICENSE_SITE_CODE_INVALID]", {
+                    licenseKey: maskedLicenseKey,
+                    middleCode
+                });
+
+                return res.status(403).json({
+                    success: false,
+                    error: "LICENSE_SITE_CODE_INVALID",
+                    message: "License has no unique site code. Contact support."
+                });
+            }
+
+            console.warn("[LICENSE_SITE_CODE_PLACEHOLDER]", {
+                licenseKey: maskedLicenseKey,
+                middleCode
+            });
+        }
         const modulePolicy = data.modulePolicy || {
             autoUpdate: true,
             silentUpdate: true,
@@ -595,7 +708,9 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             await withTimeout(
                 ref.update({
                     hwid,
-                    activatedAt: Date.now()
+                    // ISO + explicit offset so a human reading the record in the
+                    // Firebase console sees a date, not an epoch number.
+                    activatedAt: licenseLifecycle.toVnIso(Date.now())
                 }),
                 FIREBASE_TIMEOUT_MS,
                 "FIREBASE_LICENSE_UPDATE"
@@ -689,8 +804,26 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 status: data.status || "active",
                 tier,
                 middleCode,
+                // middleCode IS the site code; siteCode mirrors it in the shape
+                // the DataHub API expects.
+                siteCode: normalizeSiteCode(middleCode),
                 skipHashCheck,
-                modulePolicy
+                modulePolicy,
+
+                // Lifecycle. expiresAt is null on v1 records that have no
+                // expiry yet; the client must treat null as "no expiry known"
+                // and not as "expired".
+                effectiveStatus: lifecycle.effectiveStatus,
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil,
+                daysRemaining: lifecycle.daysRemaining,
+                graceDays: Number.isFinite(Number(data.graceDays))
+                    ? Number(data.graceDays)
+                    : CONFIG.DEFAULT_GRACE_DAYS,
+                offlineGraceHours: CONFIG.OFFLINE_GRACE_HOURS,
+                billingAnchorDay: CONFIG.BILLING_ANCHOR_DAY,
+                // Same bounds as the DataHub assertion so the two never disagree.
+                seats: boundedNumber(data.seats, DATAHUB_ASSERTION.DEFAULT_SEATS, 1, 500)
             },
 
             cfg: {
@@ -1031,7 +1164,7 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
 // ==========================================
 // API 5: LOGOUT SESSION
 // ==========================================
-app.post("/api/logout", async (req, res) => {
+app.post("/api/logout", limiter, async (req, res) => {
     const requestId = crypto.randomUUID();
     const started = Date.now();
 
@@ -1040,6 +1173,46 @@ app.post("/api/logout", async (req, res) => {
 
         if (!sid) {
             return res.json({ ok: true });
+        }
+
+        // This route used to be unauthenticated and unmetered: anyone who could
+        // reach the host could burn Firebase writes, and anyone who learned a
+        // sid could end that station's session. A caller must now prove it owns
+        // the session it is ending.
+        const auth = req.headers.authorization;
+
+        if (!auth || !auth.startsWith("Bearer ")) {
+            return res.status(401).json({
+                success: false,
+                error: "UNAUTHORIZED",
+                message: "Missing access token."
+            });
+        }
+
+        let decoded;
+
+        try {
+            decoded = jwt.verify(auth.slice("Bearer ".length).trim(), CONFIG.PUBLIC, {
+                algorithms: ["RS256"],
+                issuer: CONFIG.ISSUER,
+                audience: CONFIG.AUDIENCE
+            });
+        } catch {
+            return res.status(401).json({
+                success: false,
+                error: "UNAUTHORIZED",
+                message: "Access token is expired or invalid."
+            });
+        }
+
+        if (decoded.sid !== sid) {
+            console.warn("[logout] token/sid mismatch", { requestId });
+
+            return res.status(403).json({
+                success: false,
+                error: "SESSION_MISMATCH",
+                message: "Token does not own this session."
+            });
         }
 
         await withTimeout(

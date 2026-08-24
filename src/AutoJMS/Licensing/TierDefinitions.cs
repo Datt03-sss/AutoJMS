@@ -48,11 +48,17 @@ public class TierDefinitions
         return config.Forms ?? new List<TierFormDefinition>();
     }
 
+    // Every field of TierConfig must be carried across, otherwise a tier that
+    // declares "inherits" silently loses whatever the merge forgot — the child
+    // ends up with the parent's value for fields the merge copies and a null for
+    // the rest, even though the JSON set them.
     private static TierConfig MergeWithParent(TierConfig parent, TierConfig child)
     {
         return new TierConfig
         {
             Inherits = null,
+            DisplayName = !string.IsNullOrWhiteSpace(child.DisplayName) ? child.DisplayName : parent.DisplayName,
+            Description = !string.IsNullOrWhiteSpace(child.Description) ? child.Description : parent.Description,
             Tabs = child.Tabs?.Count > 0 ? child.Tabs : parent.Tabs,
             Forms = child.Forms?.Count > 0 ? child.Forms : parent.Forms,
             Modules = child.Modules?.Count > 0 ? child.Modules : parent.Modules
@@ -99,6 +105,14 @@ public class TierConfig
     [JsonPropertyName("inherits")]
     public string Inherits { get; set; }
 
+    /// <summary>Tên hiển thị của tier — dùng cho UI/About, không phải thẩm quyền.</summary>
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; set; }
+
+    /// <summary>Mô tả tier cho tài liệu và bảng giá. Thuần tư liệu.</summary>
+    [JsonPropertyName("description")]
+    public string Description { get; set; }
+
     [JsonPropertyName("tabs")]
     public List<string> Tabs { get; set; } = new();
 
@@ -116,6 +130,7 @@ public class TierConfig
 
     public static TierConfig DefaultBase => new()
     {
+        DisplayName = "AutoJMS Base",
         Tabs = new List<string> { "HOME", "DKCH", "TRACKING", "PRINT", "ABOUT" },
         Forms = new List<TierFormDefinition>(),
         Modules = new List<string>()

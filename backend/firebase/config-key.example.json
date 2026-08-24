@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+
+  "status": "active",
+  "tier": "ULTRA",
+
+  "createdAt": "2026-08-24T01:22:00+07:00",
+  "expiresAt": "2026-10-16T00:00:00+07:00",
+  "activatedAt": null,
+  "graceDays": 7,
+  "offlineGraceHours": 72,
+
+  "middleCode": "HCM001",
+  "siteCodes": ["HCM001"],
+  "siteId": "",
+  "seats": 3,
+
+  "hwid": "",
+  "skipHashCheck": true,
+  "tokenVersion": 1,
+
+  "dataSpreadsheetId": "",
+  "updateChannel": "stable",
+
+  "modulePolicy": {
+    "autoUpdate": false,
+    "silentUpdate": true,
+    "applyOnNextStartup": true
+  },
+
+  "meta": {
+    "customerName": "",
+    "contact": "",
+    "orderId": "",
+    "issuedBy": "owner",
+    "notes": ""
+  }
+}

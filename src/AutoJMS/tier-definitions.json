@@ -1,7 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "updatedAt": "2026-08-24T00:00:00+07:00",
+  "notice": "Chỉ dùng để HIỂN THỊ và làm fallback offline. File này nằm trong thư mục cài đặt nên người dùng ghi được: mọi giá trị ở đây chỉ có thể THU HẸP quyền, không bao giờ mở thêm. Thẩm quyền tier nằm ở license.",
+
   "tiers": {
     "BASE": {
+      "displayName": "AutoJMS Base",
+      "description": "Vận hành thủ công: đăng ký chuyến hàng, tra cứu vận đơn, in tem. Không có tiến trình nền, không đồng bộ kho.",
       "tabs": [
         "HOME",
         "DKCH",
@@ -9,16 +14,13 @@
         "PRINT",
         "ABOUT"
       ],
-      "forms": [],
-      "backgroundJobs": {
-        "inventorySync": false,
-        "databaseTracking": false,
-        "autoSyncTimer": false,
-        "fullStackRealtime": false
-      }
+      "forms": []
     },
+
     "ULTRA": {
       "inherits": "BASE",
+      "displayName": "AutoJMS Ultra",
+      "description": "Toàn bộ Base, cộng FullStack Operation: đồng bộ kho và theo dõi đơn theo thời gian thực qua DataHub.",
       "tabs": [
         "HOME",
         "DKCH",
@@ -33,13 +35,7 @@
           "launch": "AFTER_MAINFORM_SHOWN",
           "fetchApiAfterAuthToken": true
         }
-      ],
-      "backgroundJobs": {
-        "inventorySync": true,
-        "databaseTracking": true,
-        "autoSyncTimer": true,
-        "fullStackRealtime": true
-      }
+      ]
     }
   }
 }

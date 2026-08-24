@@ -196,7 +196,8 @@ Licenses/
     status: "active" | "revoked" | "expired"
     tier: "BASE" | "ULTRA"
     hwid: "<hardware-id>" | null
-    activatedAt: <timestamp>
+    activatedAt: "<ISO-8601 +07:00>"   # bản ghi cũ là epoch ms
+    expiresAt: "<ISO-8601 +07:00>"     # vắng = vĩnh viễn
     middleCode: "<code>"
     skipHashCheck: true | false
     modulePolicy/

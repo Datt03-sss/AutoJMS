@@ -16,7 +16,8 @@ Licenses/
     ├── status: string ("active" | "revoked" | "expired")
     ├── tier: string ("BASE" | "ULTRA")
     ├── hwid: string | null
-    ├── activatedAt: number (timestamp)
+    ├── activatedAt: string (ISO-8601 +07:00; bản ghi cũ là number epoch ms)
+    ├── expiresAt: string (ISO-8601 +07:00; vắng = vĩnh viễn)
     ├── middleCode: string
     ├── skipHashCheck: boolean
     ├── modulePolicy/

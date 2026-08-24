@@ -843,3 +843,115 @@ nhất là guard ở K.10.6.
 | K-6 | `DeviceIdentity.Role` (K.9) | Thay J-4, đã có kết luận. Vá phòng xa hoặc bỏ field |
 | J-1, J-2, J-3 | Assertion không mang tier; tài liệu này nằm trong repo public; `VALID_EXE_HASHES` rỗng | Vẫn chờ, xem J.6 |
 | I-2, I-4, I-5, I-6 | Xem I.6 | Chưa đổi |
+
+**Cập nhật 2026-08-24 sau khi chủ sở hữu chốt sáu quyết định:** K-1 đã có lời
+giải (mốc hết hạn ngày 16, ân hạn 7 ngày / 72 giờ) và phần server đã viết xong
+trong repo; phần heartbeat đọc lại license bị **huỷ** — quyết định là tier chỉ
+cập nhật khi khởi động lại app, nên K.2 chuyển từ "lỗi" thành **giới hạn đã
+biết**. K-3 chốt `site-code = middleCode`. K-4 chốt **giữ nguyên** cơ chế Google
+Sheets, nên K.6 là rủi ro đã biết và được chấp nhận. K-5 đã vá trong repo.
+Chi tiết: [CONFIG_SCHEMA_V2_PROPOSAL.md](./CONFIG_SCHEMA_V2_PROPOSAL.md) PHẦN 0.
+Nhưng xem mục **L** trước khi coi bất cứ mục nào là đã vá ở production.
+
+---
+
+## L. Vòng 6 — Nguồn deploy production KHÔNG phải repo này
+
+**Mức: Nghiêm trọng.** Đây là phát hiện lớn nhất của cả sáu vòng, và nó đặt lại
+giá trị của mọi mục trước đó: phần lớn những gì rà soát ở A–K là code trong
+`backend/render-license-server/`, **không phải code đang chạy ở production**.
+
+### L.1 Bằng chứng
+
+Render tại `https://autojms-api.onrender.com` đang chạy repo
+[`Datt03-sss/AutoJMS-API`](https://github.com/Datt03-sss/AutoJMS-API), không phải
+bản trong monorepo này.
+
+| Kiểm chứng | Kết quả |
+|---|---|
+| `GET /health` | `200 {"ok":true,"service":"autojms-license-server",...}` |
+| `GET /health/firebase/licenses` | **`200 {"ok":true,"service":"firebase-licenses","exists":true,...}`** |
+| Route đó trong `backend/render-license-server/server.js` | **không có** |
+| `git log -S "health/firebase/licenses" -- .` trong repo này | **rỗng** — chưa từng tồn tại ở đây |
+| Route đó trong `AutoJMS-API/server.js` | có, dòng 407 |
+
+Một route trả 200 ở production mà chưa bao giờ có trong lịch sử git của repo này
+thì chỉ có một cách giải thích: production build từ nguồn khác. `AutoJMS-API`
+HEAD là `c6f05433` ngày 2026-06-28; `server.js` ở đó 895 dòng / 27.440 byte, bản
+trong repo này 1.250 dòng / 42.415 byte.
+
+### L.2 Production thiếu những gì
+
+| Có trong repo này | Có ở production | Hệ quả |
+|---|:---:|---|
+| `issueDataHubAssertion` | ❌ | Không cấp được credential enroll device |
+| `resolveLicenseSiteCodes` | ❌ | `siteCodes`/`siteCode` **không được đọc** |
+| `DATAHUB_MANIFESTS` | ❌ | Client không nhận đường dẫn manifest |
+| khối `datahub` trong response verify | ❌ | Xem L.3 |
+| `POST /api/datahub/license-assertion` | ❌ | Không re-mint assertion |
+| `boundedNumber`, `seats`, `tokenVersion` | ❌ | Không có ràng buộc chỗ ngồi, không vô hiệu hoá được token |
+| `datahubAssertionLimiter` | ❌ | Production chỉ có 3 limiter |
+| **Supabase** (`DEFAULT_SUPABASE_PROJECT_REF`, `DEFAULT_SUPABASE_BUCKET`) | ✅ **vẫn còn** | Production vẫn trả `supabase.anonKey` + manifest Supabase cho client |
+
+Nói cách khác: commit `5483e15` ("xoá nốt dấu vết Supabase") đã dọn repo, nhưng
+**production vẫn đang phát Supabase anon key cho mọi client**. Response verify ở
+production kết thúc bằng khối `supabase: { baseUrl, projectUrl, anonKey,
+manifests }` và **không có** khối `datahub`.
+
+### L.3 Chuỗi hệ quả ở client
+
+`Program.cs:345-346` lấy base URL DataHub từ response verify, fallback sang biến
+môi trường; `Program.cs:350` gate **toàn bộ** khối service DataHub trên
+`!string.IsNullOrWhiteSpace(datahubUrl) && manifests != null`. Production không
+trả khối `datahub` → điều kiện đó sai → những thứ sau **đứng null**:
+
+- `DataHubClient` → không enroll device, không lease, không ingest, không sync
+- `DataHubManifest` → không có manifest
+- `RuntimeConfig`, `RuntimePolicy` → **không có runtime policy từ server**
+- `Integrity` → không kiểm tra tính toàn vẹn
+- `MajorUpdateServiceInstance`, `SmallUpdate` → không có cập nhật lớn/nhỏ
+
+Nên hôm nay, ở production: tính năng FullStack có thể mở form nhưng **không có
+DataHub để nói chuyện**, và app **không tự cập nhật**.
+
+### L.4 ULTRA vẫn sống — và vì sao điều đó không may
+
+`RuntimePolicy` null **không** làm mất ULTRA. `Main.cs:150-152` có nhánh dự
+phòng:
+
+```csharp
+_tierPolicy = Program.RuntimePolicy != null
+    ? TierRuntimePolicy.Resolve(Program.RuntimePolicy, CurrentTier)
+    : TierRuntimePolicy.Resolve(CurrentTier);
+```
+
+Overload chỉ-entitlement suy tier từ chính license, nên ULTRA vẫn được
+`fullStack = true`. Đúng về mặt phân quyền — nhưng nó cũng chính là lý do lỗi này
+sống được lâu: **không ai thấy gì hỏng ở tab hay form**, chỉ có những thứ im lặng
+(enrollment, integrity, update) là không chạy.
+
+### L.5 Ảnh hưởng tới các quyết định vừa chốt
+
+Sáu quyết định ngày 2026-08-24 (xem `CONFIG_SCHEMA_V2_PROPOSAL.md` PHẦN 0) đều
+giả định server trong repo này là server thật:
+
+- **Quyết định 5 (`site-code = middleCode`) không thể hoạt động ở production**:
+  `resolveLicenseSiteCodes` không tồn tại ở đó, và response không có chỗ nào để
+  trả `siteCode`.
+- **Quyết định 4 (allowlist tier + khoá API)**: S2 và S7 đã viết vào bản repo
+  này, nên **chưa có tác dụng** cho tới khi hợp nhất.
+- **Quyết định 1 (`expiresAt` mốc ngày 16)**: S1 tương tự — Firebase có điền
+  `expiresAt` thì production cũng không đọc.
+
+### L.6 Việc phải làm
+
+| # | Việc | Ai |
+|---|---|---|
+| L-1 | Chốt nguồn deploy: đẩy `backend/render-license-server/` sang `AutoJMS-API`, hay trỏ Render vào thư mục con của monorepo | **Chủ sở hữu** — không ai khác sửa được cấu hình Render |
+| L-2 | So khớp env: bản repo này cần `DATAHUB_API_BASE_URL`, `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, `DATAHUB_LICENSE_ASSERTION_ISSUER/AUDIENCE/TTL_SECONDS`, `DATAHUB_CHANNEL`, `DATAHUB_DEFAULT_SEATS`, `GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE`. Thiếu là assertion không cấp được | Chủ sở hữu |
+| L-3 | Sau khi hợp nhất: xoá `SUPABASE_ANON_KEY` và các biến Supabase khỏi env Render, và **thu hồi** anon key đó vì nó đã phát cho mọi client trong nhiều tháng | Chủ sở hữu |
+| L-4 | Kiểm lại: verify một license thật và xác nhận response có khối `datahub`, rồi xác nhận `DataHubClient` khác null trong log client | Sau L-1 |
+| L-5 | `AutoJMS-API` là repo **công khai** — làm nặng thêm J-2 | Chủ sở hữu |
+
+Trước khi L-1 xong, mọi kết luận "đã vá" trong tài liệu này chỉ đúng với repo,
+không đúng với production. Đó là câu quan trọng nhất của cả tài liệu.
