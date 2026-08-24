@@ -149,6 +149,66 @@ public sealed class TierEntitlementTests
         Assert.False(resolved.AllowManualPrint);
     }
 
+    // --------------------------------------------- tier-definitions.json
+    // tier-definitions.json ship trong thư mục cài đặt do người dùng chọn, tức là
+    // GHI ĐƯỢC. Nếu "có form FULLSTACK_OPERATION => ULTRA" áp dụng cho mọi tier thì
+    // khách BASE chỉ cần sửa file đã cài là có policy ULTRA đầy đủ, hoàn toàn offline.
+
+    private static TierDefinitions Definitions(string tierName, bool grantFullStack)
+    {
+        string forms = grantFullStack
+            ? "[{\"name\":\"FULLSTACK_OPERATION\",\"type\":\"VISIBLE_FORM\"}]"
+            : "[]";
+        return TierDefinitions.FromJson(
+            "{\"schemaVersion\":1,\"tiers\":{\"" + tierName + "\":{" +
+            "\"tabs\":[\"HOME\",\"DKCH\",\"TRACKING\",\"PRINT\",\"ABOUT\"]," +
+            "\"forms\":" + forms + "}}}");
+    }
+
+    [Fact]
+    public void Base_khong_len_ULTRA_du_tier_definitions_bi_sua()
+    {
+        var tampered = Definitions("BASE", grantFullStack: true);
+        Assert.True(tampered.HasForm("BASE", "FULLSTACK_OPERATION")); // file đã bị sửa thật
+
+        var resolved = TierRuntimePolicy.Resolve("BASE", tampered);
+
+        Assert.Equal("BASE", resolved.Tier);
+        Assert.False(resolved.EnableFullStackOperation);
+        Assert.False(resolved.EnableBackgroundAutoSync);
+        Assert.False(resolved.EnableStartupInventorySync);
+        Assert.False(resolved.EnableStartupDatabaseTracking);
+    }
+
+    [Fact]
+    public void Ten_tier_moi_duoc_cap_form_fullstack_thi_len_ULTRA()
+    {
+        // License server không có allowlist tier, nên tier mới đặt ở Firebase là hợp lệ.
+        // Đường mở rộng qua tier-definitions.json phải còn dùng được cho các tier đó.
+        var resolved = TierRuntimePolicy.Resolve("PRO", Definitions("PRO", grantFullStack: true));
+
+        Assert.Equal("ULTRA", resolved.Tier);
+        Assert.True(resolved.EnableFullStackOperation);
+    }
+
+    [Fact]
+    public void Ten_tier_moi_khong_duoc_cap_form_thi_van_la_BASE()
+    {
+        var resolved = TierRuntimePolicy.Resolve("PRO", Definitions("PRO", grantFullStack: false));
+
+        Assert.Equal("BASE", resolved.Tier);
+        Assert.False(resolved.EnableFullStackOperation);
+    }
+
+    [Fact]
+    public void Ultra_van_la_ULTRA_khi_khong_doc_duoc_tier_definitions()
+    {
+        var resolved = TierRuntimePolicy.Resolve("ULTRA", new TierDefinitions());
+
+        Assert.Equal("ULTRA", resolved.Tier);
+        Assert.True(resolved.EnableFullStackOperation);
+    }
+
     // ------------------------------------------------------------- Current
 
     [Fact]

@@ -70,10 +70,16 @@ namespace AutoJMS
                 manualPrint: true);
 
         /// <summary>
-        /// Resolve the runtime policy for a tier. ULTRA is identified by the
-        /// presence of the FULLSTACK_OPERATION form in tier-definitions.json,
-        /// keeping a single source of truth for "what is ULTRA".
+        /// Resolve the runtime policy for a tier. Tên tier do license (server ký)
+        /// quyết định; tier-definitions.json chỉ dùng để mở rộng cho các tên tier
+        /// mới đặt ở Firebase. BASE không bao giờ được nâng qua file này.
         /// </summary>
+        /// <remarks>
+        /// tier-definitions.json nằm trong thư mục cài đặt (AppPaths.InstallDir) do
+        /// người dùng chọn, tức là ghi được. Nếu chấp nhận "có form FullStack =>
+        /// ULTRA" cho mọi tier thì khách BASE chỉ cần thêm FULLSTACK_OPERATION vào
+        /// tier BASE trong file đã cài là có policy ULTRA đầy đủ.
+        /// </remarks>
         public static TierRuntimePolicy Resolve(string tier, TierDefinitions definitions = null)
         {
             string normalized = (tier ?? "BASE").Trim().ToUpperInvariant();
@@ -81,8 +87,16 @@ namespace AutoJMS
             definitions ??= TierDefinitions.LoadFromFile();
             bool hasFullStack = definitions.HasForm(normalized, "FULLSTACK_OPERATION");
 
-            // ULTRA = explicitly named ULTRA OR granted the FullStack form.
-            bool isUltra = hasFullStack || normalized == "ULTRA";
+            // ULTRA = tên tier đúng là ULTRA, HOẶC một tên tier khác BASE được
+            // tier-definitions.json cấp form FullStack (đường mở rộng cho tier mới:
+            // license server không có allowlist tier nên tên tier mới là hợp lệ).
+            //
+            // BASE bị loại tường minh: file tier-definitions.json ghi được bởi người
+            // dùng, nên nếu BASE nâng được qua HasForm thì đó là một đường leo quyền
+            // hoàn toàn offline. Chuỗi tier trong license thì người dùng không sửa
+            // được, nên chặn BASE ở đây là đủ để đóng đường đó.
+            bool isUltra = normalized == "ULTRA"
+                           || (normalized != "BASE" && hasFullStack);
 
             var policy = isUltra
                 ? new TierRuntimePolicy("ULTRA",

@@ -371,3 +371,121 @@ không đổi, và là fail-closed có ý.
 - **"device token của DataHub nằm trong source"** — đã lỗi thời; token đến từ response
   của license server (`DataHubClient.Configure`), có fallback env
   `AUTOJMS_DATAHUB_DEVICE_TOKEN`. Không hardcode.
+
+---
+
+## I. Vòng 3 — "Báo cáo rủi ro FullStackForm + Backend" (2026-08-24)
+
+Mục tiêu do chủ sở hữu nêu: **phân biệt rõ tier `BASE` và `ULTRA`**. Vòng này rà từng
+cáo buộc của báo cáo về đúng source trên `main`, vá phần thực sự còn hở, và ghi lại
+phần đã đúng từ trước để lần sau không rà lại.
+
+### I.1 Điểm cắt thứ 5 — `tier-definitions.json` nâng được BASE (đã vá)
+
+Vòng 2 đóng 4 điểm cắt trên đường *policy → tier*. Còn một đường thứ 5, độc lập, nằm
+ở chính hàm sinh entitlement:
+
+```
+TierRuntimePolicy.Resolve("BASE")
+  → TierDefinitions.LoadFromFile()               // AppPaths.InstallDir\tier-definitions.json
+  → HasForm("BASE", "FULLSTACK_OPERATION")
+  → isUltra = hasFullStack || normalized == "ULTRA"    // ❌ BASE nâng được
+  → policy Tier="ULTRA", cả 6 cờ = true
+```
+
+`AppPaths.InstallDir` là `AppContext.BaseDirectory`, tức `{InstallRoot}\current\` — thư
+mục người dùng tự chọn khi cài, nên **ghi được**. `tier-definitions.json` ship vào đó
+(`AutoJMS.csproj:57`, `PreserveNewest`). Khách license BASE chỉ cần thêm
+`FULLSTACK_OPERATION` vào tier `BASE` trong file đã cài là có policy ULTRA đầy đủ,
+hoàn toàn offline. Bản vá vòng 2 **không** che được đường này, vì
+`Resolve(policy, "BASE")` lấy entitlement từ đúng lời gọi trên.
+
+Đã vá tại `src/AutoJMS/Licensing/TierRuntimePolicy.cs:90-99`:
+
+```csharp
+bool isUltra = normalized == "ULTRA"
+               || (normalized != "BASE" && hasFullStack);
+```
+
+Chọn cách này thay vì bỏ hẳn `HasForm` vì license server **không có allowlist tier**
+(`normalizeTier` ở `server.js:294` chỉ upper-case; chuỗi `ULTRA` không xuất hiện ở đâu
+trong server.js) — nên tier mới đặt tên ở Firebase là hợp lệ, và đường mở rộng qua
+`tier-definitions.json` phải còn dùng được cho chúng. Người dùng không sửa được chuỗi
+tier do server ký, nên loại riêng `BASE` là đủ khoá đường leo quyền.
+
+Thêm 4 test (`TierEntitlementTests` giờ 16 test): BASE với file đã bị sửa vẫn là BASE;
+tier `PRO` được cấp form thì lên ULTRA; `PRO` không được cấp thì là BASE; `ULTRA` vẫn
+là ULTRA khi không đọc được file.
+
+### I.2 `backgroundJobs` trong `tier-definitions.json` là **config chết**
+
+`TierConfig` (`TierDefinitions.cs:97-123`) chỉ có `Inherits`, `Tabs`, `Forms`,
+`Modules` — **không có** `BackgroundJobs`, nên khối `backgroundJobs` trong JSON bị
+`JsonSerializer` bỏ im lặng. Công tắc thật của background sync là
+`forms[].name == "FULLSTACK_OPERATION"` → `TierRuntimePolicy` → `_tierPolicy.Enable*`.
+
+**Quyết định: giữ nguyên, coi là mô tả, không nối vào code.** Nối `backgroundJobs` vào
+`TierConfig` sẽ tạo *nguồn chân lý thứ hai* nằm trong một file người dùng ghi được —
+đúng loại lỗ vừa bịt ở I.1 — mà không đổi hành vi nào (giá trị trong file trùng khớp
+100% với kết quả suy ra từ `forms[]`: BASE toàn `false`, ULTRA toàn `true`).
+
+### I.3 Phase 4 — heartbeat `kill` có thật sự dừng FullStack + background jobs
+
+Có. `LicenseApiService.cs:645-648` map `action == "kill"` → `HeartbeatOutcome.ServerKill`;
+`HeartbeatSupervisor` xử lý ở `:781-785`: cảnh báo → `Task.Delay(3000)` →
+`System.Windows.Forms.Application.Exit()` → `return` (thoát hẳn vòng lặp).
+
+Đã kiểm ba chỗ có thể chặn:
+
+- `Main_FormClosing` (`Main.cs:997`) chỉ `e.Cancel = true` khi
+  `e.CloseReason == CloseReason.UserClosing`. `Application.Exit()` sinh
+  `ApplicationExitCall` ⇒ **hộp thoại xác nhận thoát không chặn được kill**; nhánh
+  không-UserClosing chạy thẳng `_isExiting = true; _appCts.Cancel()`.
+- `FullStackOperation_FormClosing` (`:273-311`) chạy đủ cleanup (4 timer Stop+Dispose,
+  `_cts.Cancel()`, huỷ subscribe SignalR + `StopAsync()`, `StopAutoReminder()`).
+- Ba `e.Cancel = true` còn lại không liên quan: 2 chỗ `DataGridView.DataError`
+  (`Main.cs:975`, `FullStackOperation.cs:1732`) và 1 chốt chặn điều hướng WebView2
+  (`FullStackOperation.Dashboard.cs:470`).
+
+Tiến trình thoát ⇒ mọi background job chết theo. Không cần sửa.
+
+### I.4 Cách ly staging / production
+
+Chốt chặn ở tầng auth **đã đúng**: `StagingTestIssuerPolicy.IsEnabled` yêu cầu **đồng
+thời** `DATAHUB_ALLOW_STAGING_TEST_ISSUER=true` **và** `ASPNETCORE_ENVIRONMENT=Staging`
+(`src/AutoJMS.DataHub.Api/Configuration/StagingTestIssuerPolicy.cs:5-6`), và compose
+mặc định `:-false` / `:-` (`docker-compose.yml:44-45`). Nên dù cờ có lọt vào
+production, issuer test vẫn không bật được.
+
+Phần còn hở là **triển khai**, không phải auth: `docker-compose.yml:1` cố định
+`name: autojms-datahub` với volume có tên (`postgres_data`, `caddy_data`) và cổng host
+`80:80`/`443:443`. Chạy staging và prod cạnh nhau trên **cùng một** host sẽ dùng chung
+volume Postgres và tranh cổng. Hiện chỉ có một stack trên một VPS nên không phải lỗ
+hổng đang mở — là ràng buộc cần biết trước khi dựng stack thứ hai (phải đổi `-p` và
+`DATAHUB_PUBLIC_HOST`).
+
+### I.5 Cáo buộc đã đúng, nhưng code đã đúng từ trước — không sửa
+
+| Cáo buộc | Thực tế |
+|---|---|
+| Bypass gate tier để mở FullStack cho BASE | Đã đóng ở vòng 2 (4 điểm cắt) + I.1 (điểm thứ 5). `Main.cs` không còn `#if DEBUG`. |
+| Có chỗ hardcode `if (CurrentTier == "ULTRA")` | Không có. Mọi cửa vào background đều qua `_tierPolicy`: `Main.cs:243` (`_autoSyncTimer.Start()`), `:707`, `:738` (sync lúc khởi động), `:767` (`HandleAutoSyncTickAsync`). |
+| Rò rỉ theo lifecycle / thiếu `_isClosing`, `_uiReady` | Đã có đủ; xem I.3. |
+| `license.modulePolicy` vs parse ở root | Server phát **cả hai** (`server.js:686` root, `:693` nested "backward compatibility"); client đọc root. Không lệch. |
+| Hình dạng hash-manifest lệch DTO | Tương thích: field lạ (`displayVersion`) bị bỏ qua khi deserialize. |
+| Log nguyên token JMS | Đã mask qua `TokenRedactor`. |
+| `service_account.json` trong workspace | Không có trên đĩa, không có trong `git ls-files`. |
+| `/devices/enroll` 503 vì thiếu validator bất đối xứng | `RsaLicenseAssertionValidator` đã có (P2-6); client nối xong ở `59de236`. |
+| Còn lời gọi Supabase/RPC cũ | Đã xoá ở `5483e15`. |
+| Còn warning khi build | 0 warning ở cả Release và Debug. |
+
+### I.6 Còn mở sau vòng 3
+
+| # | Vấn đề | Ghi chú |
+|---|---|---|
+| I-1 | `Main.cs:1672` — `_fullStackForm.BackColor = Color.LightBlue;` | Vết test còn sót, làm cửa sổ FullStack xanh nhạt trong bản production. Chỉ ảnh hưởng thị giác. `Main.cs` là Protected File nên chờ chủ sở hữu yêu cầu. |
+| I-2 | DataHub trả 401 thì chỉ log + trả list rỗng | Không có nhánh riêng cho 401: không dừng realtime, không backoff, không báo trạng thái cho người dùng. Token hết hạn giữa phiên sẽ hiện ra như "không có dữ liệu". |
+| I-3 | `TabManager.ApplyTier` đặt `TabPage.Visible = false` | Là no-op trong WinForms (muốn ẩn phải `TabPages.Remove`). Hiện vô hại vì BASE và ULTRA có **cùng** danh sách 5 tab; sẽ thành lỗi thật ngày nào hai tier khác tab. |
+| I-4 | `DataGridView` không dùng `VirtualMode` | Có giới hạn sẵn nên chưa nguy: snapshot clamp 1–5000, changes feed 500 dòng/trang với con trỏ `after` + `HasMore`. |
+| I-5 | `_cts` trong `FullStackOperation` chỉ `Cancel()`, không `Dispose()` | Rò rỉ nhỏ, mỗi lần đóng form một `CancellationTokenSource`. |
+| I-6 | DataHub chưa hỗ trợ multi-node | Đúng, và là chủ ý ở giai đoạn này (một VPS). Lease fencing + rate-limit hiện dựa trên tiến trình đơn. |
