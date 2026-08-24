@@ -44,6 +44,9 @@ namespace AutoJMS.FullStack.Services
 
         private const int MaxConsecutiveFailures = 5;
 
+        /// <summary>0/1 — chặn spam log khi entitlement không cho chạy sync (IsEnabled bị hỏi mỗi nhịp).</summary>
+        private static int _tierDenyLogged;
+
         /// <summary>
         /// fs_sync_state key for the waybill pull cursor. Deliberately a different key from the
         /// old "cloud_pull_waybills_at": the value is now the server's change_seq, so an install
@@ -86,6 +89,23 @@ namespace AutoJMS.FullStack.Services
             {
                 try
                 {
+                    // Gate tầng service. DataHub sync là mặt phẳng dữ liệu của FullStack, tức
+                    // là quyền của ULTRA. Gate ở UI (Main) và ở constructor FullStackOperation
+                    // chỉ chặn đường đi bình thường; chốt thêm ở đây để BASE không bao giờ chạy
+                    // sync kể cả khi tới được service bằng một đường khác. TierRuntimePolicy.Current
+                    // mặc định fail-closed ở BASE nên gọi trước lúc resolve license cũng an toàn.
+                    if (!TierRuntimePolicy.Current.EnableFullStackOperation)
+                    {
+                        // Log một lần thôi: IsEnabled bị hỏi lại mỗi nhịp timer.
+                        if (Interlocked.Exchange(ref _tierDenyLogged, 1) == 0)
+                        {
+                            AppLogger.Info(
+                                $"[HybridSync] tắt cho tier={TierRuntimePolicy.Current.Tier} " +
+                                "— không có entitlement FullStackOperation.");
+                        }
+                        return false;
+                    }
+
                     if (!SettingsManager.Load().CloudSyncEnabled) return false;
                     if (string.IsNullOrEmpty(ResolveSiteCode())) return false;
                     return DataHubClient.HasCredentials;

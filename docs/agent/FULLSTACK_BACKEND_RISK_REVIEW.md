@@ -485,7 +485,117 @@ hổng đang mở — là ràng buộc cần biết trước khi dựng stack th
 |---|---|---|
 | I-1 | `Main.cs:1672` — `_fullStackForm.BackColor = Color.LightBlue;` | Vết test còn sót, làm cửa sổ FullStack xanh nhạt trong bản production. Chỉ ảnh hưởng thị giác. `Main.cs` là Protected File nên chờ chủ sở hữu yêu cầu. |
 | I-2 | DataHub trả 401 thì chỉ log + trả list rỗng | Không có nhánh riêng cho 401: không dừng realtime, không backoff, không báo trạng thái cho người dùng. Token hết hạn giữa phiên sẽ hiện ra như "không có dữ liệu". |
-| I-3 | `TabManager.ApplyTier` đặt `TabPage.Visible = false` | Là no-op trong WinForms (muốn ẩn phải `TabPages.Remove`). Hiện vô hại vì BASE và ULTRA có **cùng** danh sách 5 tab; sẽ thành lỗi thật ngày nào hai tier khác tab. |
+| I-3 | `TabManager.ApplyTier` đặt `TabPage.Visible = false` | Là no-op trong WinForms (muốn ẩn phải `TabPages.Remove`). Hiện vô hại vì BASE và ULTRA có **cùng** danh sách 5 tab; sẽ thành lỗi thật ngày nào hai tier khác tab. **→ Đã vá ở vòng 4, xem J.1.** |
 | I-4 | `DataGridView` không dùng `VirtualMode` | Có giới hạn sẵn nên chưa nguy: snapshot clamp 1–5000, changes feed 500 dòng/trang với con trỏ `after` + `HasMore`. |
 | I-5 | `_cts` trong `FullStackOperation` chỉ `Cancel()`, không `Dispose()` | Rò rỉ nhỏ, mỗi lần đóng form một `CancellationTokenSource`. |
 | I-6 | DataHub chưa hỗ trợ multi-node | Đúng, và là chủ ý ở giai đoạn này (một VPS). Lease fencing + rate-limit hiện dựa trên tiến trình đơn. |
+
+---
+
+## J. Vòng 4 — Phân quyền BASE / ULTRA (2026-08-24)
+
+Vòng này trả lời câu hỏi *"BASE và ULTRA khác nhau ở đâu, và ranh giới đó có
+được thi hành thật không?"* — chứ không chỉ *"có leo quyền được không?"*.
+
+### J.1 Cờ `AllowManualTracking` / `AllowManualPrint` được tính ra rồi bỏ đó
+
+`TierRuntimePolicy` đọc `tabs.tracking` và `tabs.print` từ runtime policy, ghi
+kết quả ra log, và có unit test — nhưng **không một dòng code production nào
+đọc hai cờ đó**. Kill switch tab của runtime policy do đó hoàn toàn vô tác
+dụng: admin tắt `tabs.print` trên DataHub thì client vẫn hiện tab PRINT.
+
+Cùng chỗ đó là I-3: `TabManager.ApplyTier` ẩn tab bằng `TabPage.Visible = false`,
+mà trong WinForms đây là **no-op** — `TabPage` chỉ biến mất khi bị gỡ khỏi
+`TabControl.TabPages`. Hai lỗi này cộng lại nghĩa là **phân quyền tab chưa bao
+giờ có hiệu lực**, kể cả phần theo `tier-definitions.json`.
+
+Đã vá cùng lúc trong `src/AutoJMS/Forms/TabManager.cs`:
+
+- `RegisterTab` ghi lại **thứ tự thiết kế** của từng tab (`_designOrder`).
+- `ApplyTier` gỡ thật bằng `TabPages.Remove`, và chèn lại bằng
+  `TabPages.Insert(InsertIndexFor(...))` để tab hiện lại đúng vị trí cũ —
+  ABOUT vẫn là tab cuối cùng (Tab Boundary Rule).
+- `IsTabAllowed` trả về **giao** của hai nguồn: danh sách `tabs` của tier trong
+  `tier-definitions.json` **và** entitlement đang có hiệu lực. Cùng nguyên tắc
+  như điểm cắt thứ 5 (I.1): file nằm trong thư mục cài đặt nên ghi được, chỉ
+  được phép THU HẸP, không được mở một tab mà entitlement đã tắt.
+
+Năm test mới ở `tests/AutoJMS.Tests/TabEntitlementTests.cs`. Vì
+`TierRuntimePolicy.Current` là static toàn tiến trình, cả hai lớp test đụng tới
+nó nằm chung collection `TierPolicy` với `DisableParallelization = true`.
+
+**Hành vi hôm nay không đổi**: BASE và ULTRA vẫn dùng chung 5 tab và không có
+cờ nào bị tắt, nên không tab nào biến mất. Cái thay đổi là kill switch giờ *hoạt
+động* khi được dùng.
+
+### J.2 Gate tầng service cho DataHub sync
+
+`DataHubSyncService.IsEnabled` trước đây chỉ hỏi `CloudSyncEnabled`, site code và
+credentials — không hỏi tier. Hôm nay không có lỗ thật vì mọi caller đều nằm
+trong `FullStackOperation` (đã bị chặn ở tầng form), nhưng đó là phòng thủ một
+lớp. Đã thêm `TierRuntimePolicy.Current.EnableFullStackOperation` vào đầu
+`IsEnabled` (log một lần rồi thôi, tránh spam vì `IsEnabled` bị hỏi mỗi nhịp).
+`TierRuntimePolicy.Current` mặc định fail-closed ở BASE nên nếu policy chưa
+resolve xong thì sync không chạy.
+
+### J.3 Phát hiện chính: phân quyền tier hiện **100 % phía client**
+
+Đây là khoảng trống lớn nhất còn lại, và không vá được ở client.
+
+| Nơi | Có trường tier không? |
+|---|---|
+| `issueDataHubAssertion` (`backend/render-license-server/server.js:179`) | **Không.** Payload chỉ có `Channel`, `SiteCodes`, `ExpiresAt`, `DataHubUrl`, `Seats`, `TokenVersion`, `Issuer`, `Audience`. |
+| `LicenseAssertionPayload` (`src/AutoJMS.DataHub.Api/Auth/LicenseAssertionPayload.cs:10-20`) | **Không.** Cùng 8 trường, không có `Tier`. |
+| `server.js` nói chung | Chuỗi `ULTRA` **không xuất hiện ở đâu**; `normalizeTier()` (`:294`) chỉ viết hoa. |
+| DataHub device token (HMAC 24 h) | Không mang tier. |
+
+Hệ quả: license BASE vẫn xin được assertion, vẫn `POST /api/v1/devices/enroll`
+thành công, và sau đó dùng được **toàn bộ mặt phẳng dữ liệu DataHub** bằng
+`curl` hoặc một client đã sửa. Mọi thứ đã vá ở vòng 2–4 chỉ chặn *giao diện*
+AutoJMS mở FullStack, không chặn *server* phục vụ một BASE.
+
+Nói cách khác: BASE ≠ ULTRA là **quy ước UI**, chưa phải ranh giới an ninh.
+
+Ba lựa chọn, cần chủ sở hữu quyết vì đều đụng vào production:
+
+1. **Thêm `Tier` vào assertion + DataHub từ chối BASE khi enroll.** Vá triệt để,
+   nhưng là breaking change: khách BASE nào đang sync sẽ mất kết nối ngay sau
+   khi deploy Render + DataHub.
+2. **Thêm `Tier` vào assertion, DataHub chỉ ghi log (chưa chặn).** Additive, không
+   gãy ai, và tạo sẵn dữ liệu để bật chặn sau khi biết chắc không khách BASE nào
+   đang dùng.
+3. **Giữ nguyên**, chấp nhận rằng ranh giới tier chỉ nằm ở client.
+
+Khuyến nghị: (2) trước, (1) sau khi có số liệu.
+
+### J.4 Cấu hình chết trong `tier-definitions.json`
+
+Ngoài `backgroundJobs` đã ghi ở I.2, còn: `TierConfig.Modules`,
+`TierConfig.BackgroundForms`, `TierDefinitions.GetForms()` — parse ra nhưng
+không nơi nào đọc. Sau vòng 4, hai thứ duy nhất trong file này thực sự có tác
+dụng là `HasForm(tier, "FULLSTACK_OPERATION")` và `GetTier().Tabs`. Giữ nguyên
+là **có chủ ý**: file này ghi được bởi người dùng, nối thêm cấu hình từ nó vào
+đường quyết định là tự tạo thêm điểm cắt.
+
+### J.5 Chính tài liệu này đang nằm trong repo công khai
+
+Đầu file có dòng tự dặn không commit lên repo công khai, nhưng
+`Datt03-sss/AutoJMS` là **public** (`gh repo view` → `"visibility":"PUBLIC"`) và
+file này đang được git theo dõi trên `main`. Nội dung gồm đường dẫn file, số
+dòng và mô tả từng điểm yếu — không phải lỗ hổng tự nó, nhưng là bản đồ tấn
+công sẵn cho người khác.
+
+Ba mục H, I, J do Claude Code viết thêm vào file này, tức là **mở rộng** phần
+lộ lọt đó. Cần chủ sở hữu quyết: `git rm` khỏi `main` (lịch sử vẫn còn, chỉ
+giảm khả năng tìm thấy về sau), chuyển sang nơi riêng tư, hay lược bớt chi tiết
+file:line. Dự án cấm rewrite history nên không có phương án xoá sạch dấu vết.
+
+### J.6 Còn mở sau vòng 4
+
+| # | Vấn đề | Ghi chú |
+|---|---|---|
+| J-1 | Assertion không mang tier (J.3) | Chờ quyết định của chủ sở hữu. Đây là mục quan trọng nhất còn lại. |
+| J-2 | Tài liệu này nằm trong repo public (J.5) | Chờ quyết định của chủ sở hữu. |
+| J-3 | `VALID_EXE_HASHES` rỗng | Kiểm tra hash EXE có code nhưng danh sách rỗng nên không thi hành. Cần quy trình điền hash khi phát hành. |
+| J-4 | `DeviceIdentity.Role` | Chưa đánh giá được: không tìm thấy khai báo `class DeviceIdentity` trong repo. |
+| I-1, I-2, I-4, I-5, I-6 | Xem I.6 | Chưa đổi. |

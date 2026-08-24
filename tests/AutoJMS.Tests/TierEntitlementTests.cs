@@ -15,6 +15,7 @@ namespace AutoJMS.Tests;
 /// Các test dưới đây chạy trên logic thuần, không cần tier-definitions.json trên đĩa:
 /// <c>Resolve("ULTRA")</c> nhận ra ULTRA qua chính tên tier khi không đọc được file.
 /// </summary>
+[Collection("TierPolicy")]
 public sealed class TierEntitlementTests
 {
     /// <summary>Policy rỗng: không khai cờ nào, tức là "không có hạn chế nào".</summary>
