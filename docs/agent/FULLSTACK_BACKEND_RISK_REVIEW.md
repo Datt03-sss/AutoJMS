@@ -599,3 +599,247 @@ file:line. Dự án cấm rewrite history nên không có phương án xoá sạ
 | J-3 | `VALID_EXE_HASHES` rỗng | Kiểm tra hash EXE có code nhưng danh sách rỗng nên không thi hành. Cần quy trình điền hash khi phát hành. |
 | J-4 | `DeviceIdentity.Role` | Chưa đánh giá được: không tìm thấy khai báo `class DeviceIdentity` trong repo. |
 | I-1, I-2, I-4, I-5, I-6 | Xem I.6 | Chưa đổi. |
+
+---
+
+## K. Vòng 5 — Rà soát tiếp FullStackForm + backend (2026-08-24)
+
+Vòng này **chỉ đọc, không sửa code**. Chủ sở hữu yêu cầu hai việc: tiếp tục tìm
+và báo cáo rủi ro, và gợi ý viết lại config cho `config-key` + `tier-definitions`.
+Phần thiết kế schema nằm ở tài liệu riêng
+[CONFIG_SCHEMA_V2_PROPOSAL.md](./CONFIG_SCHEMA_V2_PROPOSAL.md); mục K này chỉ ghi
+rủi ro.
+
+Trục xuyên suốt vòng 5: **license hiện tại không có vòng đời.** Không có ngày hết
+hạn, không có đường thu hồi khi app đang chạy, và khi offline thì chạy vô hạn.
+K.1–K.3 là ba mặt của cùng một thiếu sót đó, và cũng chính là lý do chủ sở hữu
+hỏi tới `thời gian hết hạn` trong schema mới.
+
+| # | Phát hiện | Mức | Bằng chứng |
+|---|---|---|---|
+| K.1 | License không có ngày hết hạn ở bất kỳ tầng nào | **Cao** | `server.js:538`, `backend/firebase/config-key.json`, `LicenseApiService.cs:22-60` |
+| K.2 | Không có đường thu hồi / hạ tier khi app đang chạy | **Cao** | `server.js:825-930` vs `server.js:931-1030`, `Program.cs:353-357`, `Main.cs:150-152` |
+| K.3 | Offline chạy vô hạn, đồng thời khách ULTRA mất ULTRA | **Cao** | `Program.cs:139,152,195,203,468` |
+| K.4 | `/api/logout` không xác thực và không rate limit | Trung bình | `server.js:1034-1048` vs `server.js:237-257` |
+| K.5 | `middleCode: "0000"` trở thành site key dùng chung | **Cao** | `server.js:163-173,706`, `config-key.json` |
+| K.6 | Token Google Sheets không bị buộc vào spreadsheet của license | **Cao** | `server.js:732-800` |
+| K.7 | `normalizeTier` không có allowlist | Trung bình | `server.js:294-298` |
+| K.8 | Bản tier-definitions phía server không ai đọc | Trung bình | `VpsManifestService.cs:70`, `VpsConfig.cs:22` |
+| K.9 | `DeviceIdentity.Role` mang theo nhưng không xét quyền | Trung bình (tiềm ẩn) | `AuthContracts.cs:16-20,86-101` |
+| K.10 | Bảy mục nhỏ | Thấp | xem K.10 |
+
+### K.1 License không có ngày hết hạn ở bất kỳ tầng nào — Cao
+
+Tìm chuỗi hết hạn của license trên toàn bộ đường đi thì không có ở đâu:
+
+| Tầng | Trạng thái |
+|---|---|
+| Bản ghi Firebase (`backend/firebase/config-key.json`) | Không có `expiresAt`, `validUntil`, `trialDays` — chỉ có `createdAt` dạng `"26-05-2026 01:22"` |
+| `/api/verify-license` | `server.js:538` chỉ kiểm `data.status !== "active"`. `grep` trên `server.js` không ra field hết hạn nào của license |
+| Response trả về client | `server.js:680-711` không có field hết hạn |
+| `VerifyResult` (client) | `LicenseApiService.cs:22-60` không có field hết hạn |
+| Cache offline | `Program.cs:441-450` chỉ lưu `"{licenseKey}||{hwid}"` |
+
+Mọi `ExpiresAt` trong client đều là của **assertion DataHub** hoặc **device token**
+(`LicenseApiService.cs:52,54,420,426`), không phải của license.
+
+Hệ quả: một key đã bán là **vĩnh viễn**. Cách duy nhất để ngừng một license là
+vào Firebase sửa tay `status`. Không có bản dùng thử, không có gia hạn theo kỳ,
+không có tự hết hạn khi khách ngừng trả tiền. Đây là mục quan trọng nhất của
+vòng 5 và là lý do schema v2 phải có `expiresAt`.
+
+### K.2 Không có đường thu hồi hoặc hạ tier khi app đang chạy — Cao
+
+Ba tầng cùng đóng băng tại thời điểm khởi động:
+
+1. **Heartbeat không đọc lại license.** `/api/heartbeat` (`server.js:825-930`)
+   chỉ đọc `sessions/{sid}` và ký lại token từ `decoded.tier` — nó **không bao
+   giờ** đọc lại `Licenses/{key}`. Sửa `tier: ULTRA → BASE` hoặc
+   `status: active → inactive` trong Firebase có tác dụng **bằng 0** với máy đang
+   chạy, cho tới khi khách tự khởi động lại app.
+2. **Runtime policy chỉ fetch một lần** (`Program.cs:353-357`).
+3. **`TierRuntimePolicy` chỉ resolve một lần** (`Main.cs:150-152`).
+
+Đòn kill duy nhất còn hiệu lực là **xoá `sessions/{sid}`** → heartbeat kế tiếp
+trả `ServerKill` → `Application.Exit()`. Nó thô (đóng app thay vì hạ quyền),
+không có tài liệu, và cần biết `sid`.
+
+Điều đáng chú ý: **mẫu đúng đã có sẵn trong cùng file.**
+`/api/datahub/license-assertion` (`server.js:931-1030`) có đọc lại
+`Licenses/{key}` và kiểm cả `status` lẫn `hwid` trước khi ký. Heartbeat chỉ cần
+làm y như vậy — thêm một lần đọc RTDB mỗi 2 phút mỗi máy — là có ngay đường thu
+hồi và hạ tier gần thực thời.
+
+### K.3 Offline chạy vô hạn, đồng thời khách ULTRA mất ULTRA — Cao
+
+`Program.cs:152` dùng `NetworkInterface.GetIsNetworkAvailable()`. Khi `false`,
+nhánh offline đặt `isAuthorized = true` (`Program.cs:195`, `:203`) mà **không**
+có hạn ân hạn, **không** đọc ngày hết hạn từ cache, **không** kiểm chữ ký gì.
+Rút cáp mạng là chạy mãi.
+
+Mặt ngược lại cũng sai: `sessionTier` giữ nguyên `"BASE"` (`Program.cs:139`) trên
+nhánh offline, nên **khách trả tiền ULTRA bị mất ULTRA khi mất mạng**. Vừa quá
+lỏng với người dùng xấu, vừa quá chặt với khách thật.
+
+Không thể vá bằng cách nhét tier vào cache hiện tại: `BuildCacheSecret`
+(`Program.cs:468`) là `$"{MachineName}|{UserName}|{hwid}|AutoJMS"` — suy ra được
+hoàn toàn từ chính máy đó, nên cache là **che giấu**, không phải biên tin cậy.
+Nhét `tier` vào đó là tạo điểm cắt thứ 6.
+
+Đường đi đúng đã có sẵn: client **đã nhúng public key RS256** và **đã tự xác thực
+chữ ký** (`LicenseApiService.cs:80`, `:675-676`). Server chỉ cần cấp thêm một
+"offline grant" RS256 hạn dài (`exp = min(license.expiresAt, now + offlineGraceHours)`,
+kèm `hwid` và `tier`), client lưu vào cache và khi offline thì xác thực chữ
+ký + `exp` + `hwid` trước khi cấp tier. Vá được cả hai mặt bằng máy móc đã có.
+
+### K.4 `/api/logout` không xác thực và không rate limit — Trung bình
+
+`server.js:1034` là **route duy nhất không có limiter**. Các limiter khai ở
+`server.js:237-257`: `limiter` (20/phút) cho `/api/verify-license`,
+`heartbeatLimiter` (120/phút), `googleSheetsGrantLimiter` (60/phút),
+`datahubAssertionLimiter` (60/phút). Logout không dùng cái nào, cũng không gọi
+`verifyLicenseTokenAndSession` (`server.js:411`).
+
+Rủi ro thực tế cần nói cho đúng mức:
+
+- **Có:** bất kỳ ai cũng POST không giới hạn, mỗi `sid` khác rỗng kích hoạt một
+  lệnh `remove()` lên Firebase (`server.js:1044-1048`) → tiêu quota/chi phí
+  Firebase không kiểm soát, mở rộng thêm bởi `cors()` trần (`server.js:234`).
+- **Có:** ai *nhìn thấy* `sid` (log, máy dùng chung) thì đăng xuất được người khác.
+- **Không:** không chiếm được session — `sid` là UUID, không đoán được.
+- **Không:** không có path traversal xoá sạch `sessions` — RTDB từ chối
+  `.` `#` `$` `[` `]`, và `sessions/a/b` chỉ đi sâu hơn chứ không lên cha.
+
+Vá tối thiểu: thêm `limiter` và yêu cầu access token, dùng đúng helper đã có.
+
+### K.5 `middleCode: "0000"` trở thành site key dùng chung — Cao
+
+`resolveLicenseSiteCodes` (`server.js:163-173`) lấy site code theo thứ tự
+`siteCodes` → `siteCode` → `siteId` → `middleCode`. Template
+`backend/firebase/config-key.json` ship `"middleCode": "0000"` và **không có**
+`siteCode`/`siteCodes`.
+
+Nghĩa là mọi license để nguyên mặc định đều resolve về site code `"0000"`, cùng
+một assertion site (`server.js:706`), tức **cùng một tenant DataHub** — nhìn và
+ghi được dữ liệu của nhau. Đây không phải lỗi code: fallback về `middleCode` là
+có chủ ý để license một-site cũ không phải migrate. Lỗi nằm ở **giá trị mặc định
+trong template**.
+
+Vá: bắt buộc `siteCode` riêng cho từng license, và bỏ `middleCode` mặc định.
+Điểm tốt là hướng fail-closed đã đúng: nếu không có site code nào,
+`issueDataHubAssertion` trả `null` (`server.js:179-183`) = "không enroll được",
+chứ không phải "enroll không giới hạn".
+
+### K.6 Token Google Sheets không bị buộc vào spreadsheet của license — Cao
+
+`/api/google-sheets/grant` (`server.js:732-800`) chỉ đòi license `status ===
+"active"` (`server.js:758`) rồi trả về access token của service account
+(`server.js:776`). **Không có gì** thu hẹp token đó về `data.dataSpreadsheetId`
+của chính license này. Scope `spreadsheets` của service account phủ mọi sheet mà
+SA đó với tới, nên license A biết id sheet của license B là đọc/ghi được.
+
+Việc BASE cũng được dùng Google Sheets là **quyết định của chủ sở hữu** (đã chốt
+ở vòng 2) — vấn đề ở đây khác: phạm vi của token, không phải tier nào được dùng.
+
+Hai hướng: (a) client không nhận token nữa, gọi qua proxy phía server và server
+chỉ cho phép `dataSpreadsheetId` của license đó; (b) mỗi khách một service
+account / một Drive ACL riêng. (a) rẻ hơn và vá đúng chỗ.
+
+### K.7 `normalizeTier` không có allowlist — Trung bình
+
+`server.js:294-298` chỉ `trim()` + `toUpperCase()`. `"ultra "` → `ULTRA` (tốt),
+nhưng `"ULTAR"`, `"Ultra Plus"`, `"VIP"` đều đi qua nguyên vẹn thành một tier lạ
+→ client `TierRuntimePolicy` không nhận ra → `SafeDefault("BASE")` → **khách trả
+tiền bị hạ về BASE, im lặng, không lỗi ở cả hai đầu**.
+
+Vá: allowlist `{ BASE, ULTRA }`, tier lạ thì log cảnh báo + trả lỗi rõ ràng thay
+vì âm thầm hạ quyền.
+
+### K.8 Bản tier-definitions phía server không ai đọc — Trung bình
+
+`VpsManifestService.FetchTierDefinitionsAsync` (`VpsManifestService.cs:70-83`)
+**không có caller nào**. `VpsConfig.TierDefinitions` (`VpsConfig.cs:22`) trỏ
+`manifest/tier-definitions.json`, được server quảng cáo trong `DATAHUB_MANIFESTS`
+(`server.js:100`), nhưng không đường nào đọc nó.
+
+Nên bản tier-definitions duy nhất app thực sự đọc là **bản local ghi được bởi
+người dùng** (`TierDefinitions.LoadFromFile` → `AppPaths.InstallDir`,
+`TierDefinitions.cs:85`). Đó chính xác là vì sao nó thành điểm cắt thứ 5 ở
+commit `8ccdd9c`.
+
+Kiểm kê 12 slot manifest trong `VpsConfig.DataHubManifestUrls` (đếm tham chiếu
+ngoài chính file khai báo):
+
+| Slot | Số tham chiếu | Trạng thái |
+|---|---|---|
+| `versionLatest` | 3 | Sống |
+| `runtimePolicy` | 3 | Sống — kênh tier thật, xem `VpsRuntimePolicyService` |
+| `hashManifest` | 1 | Sống |
+| `selectorUpdateManifest` | 1 | Sống |
+| `featurePolicy` | 1 | Sống (fallback của runtimePolicy) |
+| `tierDefinitions` | 1 | **Chết** — chỉ được method chết gọi |
+| `appManifest` | 0 | Chết |
+| `publicConfig` | 0 | Chết |
+| `googleSheetsPolicy` | 0 | Chết |
+| `printPolicy` | 0 | Chết |
+| `fullStackPolicy` | 0 | Chết |
+| `debugCapturePolicy` | 0 | Chết |
+
+Bảy slot quảng cáo mà không ai tiêu thụ. Rủi ro không phải là code chết, mà là
+**hiểu sai kiến trúc**: nhìn danh sách này thì tưởng có 12 kênh cấu hình
+server-authoritative, thực tế chỉ có `runtimePolicy`/`featurePolicy`.
+
+### K.9 `DeviceIdentity.Role` mang theo nhưng không xét quyền — Trung bình (tiềm ẩn)
+
+Đây là **kết luận cho J-4**, mục vòng 4 phải để mở vì không tìm ra khai báo:
+`DeviceIdentity` là `record`, không phải `class`, nên grep `class DeviceIdentity`
+không ra. Nó ở `AuthContracts.cs:16-20`.
+
+`TenantAuthorizationEvaluator.Evaluate` (`AuthContracts.cs:86-101`) kiểm `Channel`
+rồi kiểm `SiteId`, rồi `Success()` — **`Role` không được đọc lần nào**, dù nó
+nằm trong device token và trong `DeviceIdentity`. Ba caller:
+`IngestEndpoints.cs:41`, `LeaseEndpoints.cs:74`, `SyncEndpoints.cs:67`.
+
+Hôm nay **vô hại**: `EnrollmentEndpoints.cs:22` chỉ cho phép xin role
+`"operator"`, nên mọi token đều cùng một quyền. Tiềm ẩn: ngày nào thêm
+`"viewer"`/`"readonly"` vào allowlist đó, token viewer sẽ có full quyền ghi +
+quyền lease mà không ai phải sửa dòng nào — đúng dạng lỗi phân quyền lặng lẽ.
+
+Vá phòng xa (rẻ): cho `Evaluate` nhận thêm role tối thiểu và kiểm, hoặc bỏ `Role`
+khỏi `DeviceIdentity` cho tới khi thật sự dùng. Đừng để field quyền tồn tại mà
+không có ai thi hành.
+
+### K.10 Bảy mục nhỏ
+
+| # | Mục | Bằng chứng | Ghi chú |
+|---|---|---|---|
+| K.10.1 | Client không gửi `appVersion` khi verify | body chỉ `{licenseKey, hwid, exeHash}` | Session ghi `appVersion: ""` → không có telemetry phiên bản, và không chặn được build cũ từ server |
+| K.10.2 | `seats` không được thi hành như khái niệm license | `server.js:199` (chỉ là claim của assertion) | Không nơi nào đếm số máy đã kích hoạt trên một key |
+| K.10.3 | HWID tự bind một lần, không có đường reset | `server.js:593-604` | Khách đổi bo mạch là bị chặn tới khi có người sửa Firebase bằng tay |
+| K.10.4 | Thiếu `modulePolicy` thì mặc định **bật hết** | `server.js:549-552` (`autoUpdate: true`) | Fail-open: quên field là bật auto-update |
+| K.10.5 | `AppConfig.AtomicWriteAllText` không nguyên tử | `AppConfig.cs:166` | Delete-rồi-Move; crash giữa hai bước là mất config |
+| K.10.6 | Không có guard `PRAGMA cipher_version` | `AutoJMS.csproj:78-84`, `LocalDbEncryption.cs` | Nếu provider bị đổi sang `bundle_e_sqlite3`, `PRAGMA key` thành no-op: DB nằm plaintext mà `IsEnabled` vẫn báo true |
+| K.10.7 | `DeriveKey` chỉ một vòng hash | `Program.cs:640-661` | MD5+SHA256 một lượt, không PBKDF2. Đủ cho việc che giấu bằng khoá suy-ra-từ-máy, nhưng đường `AUTOJMS_CONFIG_KEY` (passphrase người đặt, `AppConfig.cs` `ResolveSecret`) chỉ được bảo vệ bằng **một** vòng hash |
+
+### K.11 Sửa lại một kết luận của vòng trước
+
+**P2-2 "SQLite local không mã hoá" là sai/đã lỗi thời.** SQLCipher được đấu dây
+thật: `AutoJMS.csproj:78-84` dùng `Microsoft.Data.Sqlite.Core` 8.0.11 +
+`SQLitePCLRaw.bundle_e_sqlcipher` 2.1.10 (kèm chú thích đúng về việc không được
+ship hai provider cùng lúc), và `LocalDbEncryption` giữ khoá 32 byte bảo vệ bằng
+DPAPI `LocalMachine`, migrate in-place có kiểm chứng (`sqlcipher_export` +
+`integrity_check` + so số dòng từng bảng + `File.Replace`). Điều còn thiếu duy
+nhất là guard ở K.10.6.
+
+### K.12 Còn mở sau vòng 5
+
+| # | Vấn đề | Cần ai quyết |
+|---|---|---|
+| K-1 | Không có `expiresAt` (K.1) + heartbeat không đọc lại license (K.2) | Chủ sở hữu. Đây là mục lớn nhất; thiết kế ở `CONFIG_SCHEMA_V2_PROPOSAL.md` |
+| K-2 | Offline chạy vô hạn / mất ULTRA khi offline (K.3) | Chủ sở hữu — cần chốt số giờ ân hạn offline |
+| K-3 | `middleCode: "0000"` dùng chung site (K.5) | Chủ sở hữu — cần backfill `siteCode` cho các key đang chạy. Độc lập và gấp |
+| K-4 | Scope token Google Sheets (K.6) | Chủ sở hữu — chọn hướng proxy hay SA riêng |
+| K-5 | `/api/logout` (K.4), `normalizeTier` (K.7) | Vá được ngay, chỉ cần chủ sở hữu cho deploy Render |
+| K-6 | `DeviceIdentity.Role` (K.9) | Thay J-4, đã có kết luận. Vá phòng xa hoặc bỏ field |
+| J-1, J-2, J-3 | Assertion không mang tier; tài liệu này nằm trong repo public; `VALID_EXE_HASHES` rỗng | Vẫn chờ, xem J.6 |
+| I-2, I-4, I-5, I-6 | Xem I.6 | Chưa đổi |
