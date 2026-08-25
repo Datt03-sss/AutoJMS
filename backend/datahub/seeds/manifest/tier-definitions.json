@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "updatedAt": "2026-08-24T00:00:00+07:00",
+  "notice": "Bản trên DataHub của tier-definitions.json. Khác bản trong thư mục cài đặt ở một điểm: người dùng không ghi được file này. Nhưng TierRuntimePolicy.Resolve vẫn loại BASE khỏi đường HasForm, nên kể cả bản này cũng không thể nâng BASE — thêm FULLSTACK_OPERATION vào BASE ở đây sẽ không có tác dụng. Dùng file này để khai báo TÊN TIER MỚI (ví dụ PRO) mà license server cấp: một tên tier khác BASE có form FULLSTACK_OPERATION sẽ được resolve thành policy ULTRA.",
+
+  "tiers": {
+    "BASE": {
+      "displayName": "AutoJMS Base",
+      "description": "Vận hành thủ công: đăng ký chuyến hàng, tra cứu vận đơn, in tem. Không có tiến trình nền, không đồng bộ kho.",
+      "tabs": [
+        "HOME",
+        "DKCH",
+        "TRACKING",
+        "PRINT",
+        "ABOUT"
+      ],
+      "forms": []
+    },
+
+    "ULTRA": {
+      "inherits": "BASE",
+      "displayName": "AutoJMS Ultra",
+      "description": "Toàn bộ Base, cộng FullStack Operation: đồng bộ kho và theo dõi đơn theo thời gian thực qua DataHub.",
+      "tabs": [
+        "HOME",
+        "DKCH",
+        "TRACKING",
+        "PRINT",
+        "ABOUT"
+      ],
+      "forms": [
+        {
+          "name": "FULLSTACK_OPERATION",
+          "type": "VISIBLE_FORM",
+          "launch": "AFTER_MAINFORM_SHOWN",
+          "fetchApiAfterAuthToken": true
+        }
+      ]
+    }
+  }
+}

@@ -194,16 +194,20 @@ public sealed class RetentionRepository(PostgresDataSource dataSource)
         }
         await reader.CloseAsync();
 
-        foreach (var (siteId, sequence) in floors)
+        // One statement for every site, not one per site: this transaction already
+        // holds row locks, and a per-site round trip extends the hold for as long as
+        // the loop takes. GREATEST keeps the same never-move-backwards semantics.
+        if (floors.Count > 0)
         {
             const string floorSql = """
-                UPDATE site_change_counters
-                   SET pruned_through_seq = GREATEST(pruned_through_seq, @sequence)
-                 WHERE site_id = @site_id;
+                UPDATE site_change_counters c
+                   SET pruned_through_seq = GREATEST(c.pruned_through_seq, f.seq)
+                  FROM unnest(@floor_site_ids::uuid[], @floor_seqs::bigint[]) AS f(site_id, seq)
+                 WHERE c.site_id = f.site_id;
                 """;
             await using var floorCommand = new NpgsqlCommand(floorSql, connection, transaction);
-            floorCommand.Parameters.AddWithValue("site_id", siteId);
-            floorCommand.Parameters.AddWithValue("sequence", sequence);
+            floorCommand.Parameters.Add("floor_site_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = floors.Keys.ToArray();
+            floorCommand.Parameters.Add("floor_seqs", NpgsqlDbType.Array | NpgsqlDbType.Bigint).Value = floors.Values.ToArray();
             await floorCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 

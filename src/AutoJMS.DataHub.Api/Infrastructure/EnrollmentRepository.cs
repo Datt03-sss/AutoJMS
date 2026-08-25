@@ -116,9 +116,7 @@ public sealed class EnrollmentRepository(
             }
         }
         var token = tokenService.Issue(new DeviceTokenDescriptor(deviceId, siteId, options.Channel, role, tokenVersion, expiresAt));
-        var credentialHash = Convert.ToHexString(HMACSHA256.HashData(
-            Encoding.UTF8.GetBytes(options.EnrollmentPepper),
-            Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        var credentialHash = DeviceCredentialHash.Compute(options.EnrollmentPepper, token);
 
         const string deviceSql = """
             INSERT INTO devices (id, site_id, name, credential_hash, token_version, status, last_seen_at)

@@ -21,6 +21,9 @@ or backup bucket.
    `Get-Content -Raw ./tests/001_core_catalog_assertions.sql | docker compose --env-file ./.env.staging exec -T postgres sh -ec 'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set ON_ERROR_STOP=1 --file -'`.
 5. Start the API and Caddy, then wait for `/health/ready` to return 200:
    `pwsh ./scripts/start-stack.ps1 -ComposeEnvFile ./.env.staging`.
+6. **Publish the control-plane seeds. This step is not optional** — see below:
+   `./scripts/publish-manifests.sh --env-file ./.env.staging` (or
+   `pwsh ./scripts/publish-manifests.ps1 -ComposeEnvFile ./.env.staging`).
 
 The API does not auto-create sites during enrollment. A staging test assertion
 issuer is enabled only when `ASPNETCORE_ENVIRONMENT=Staging` and the explicit flag
@@ -29,10 +32,54 @@ For a staging canary, issue a short-lived assertion from the operator shell with
 `pwsh ./scripts/issue-staging-assertion.ps1`; keep the signing key only in the
 untracked VPS environment and never paste the assertion into logs or source.
 
-Production readiness intentionally remains red until the existing license
-authority is wired behind `ILicenseAssertionValidator` with asymmetric issuer/
-JWKS validation. The production HMAC-shaped test seam is fail-closed and cannot
-enroll devices; do not bypass this gate by placing a shared key in the env file.
+Production enrollment is verified by `RsaLicenseAssertionValidator`
+(`v1rs256.<payload>.<signature>`, RSASSA-PKCS1-v1_5 over SHA-256, key ≥ 2048
+bits). It is registered **only** when `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` or
+`_PATH` is set; with neither, `AddDataHubIdentity` installs
+`UnavailableLicenseAssertionValidator` and enrollment answers `503`. Deploy the
+issuer's **public** half only — a supplied private key is rejected with a log
+line rather than quietly turning this API into a license issuer — and make
+`DATAHUB_LICENSE_ASSERTION_ISSUER`/`_AUDIENCE` match the license server's two
+variables byte for byte, because a mismatch rejects a correctly signed assertion
+as `LICENSE_ASSERTION_INVALID` and the station only reports "enroll failed".
+
+## Step 6 in detail: a fresh VPS is unusable for ULTRA until the seeds are published
+
+A deployment that passes every health check still serves `404` on every policy
+path until something publishes one, and that `404` is **not** neutral. The
+desktop's `VpsRuntimePolicyService` tries six paths in order, and when all six
+miss it falls back to `RuntimePolicyDocument.SafeDefault("BASE")`. A policy
+document can only ever *narrow* an entitlement, so the practical result is that
+every ULTRA station runs with BASE features, nothing logs an error, and nothing
+fails — the fleet is simply quietly downgraded.
+
+`scripts/publish-manifests.sh` (and the `.ps1` twin) walks `seeds/`, where the
+directory layout *is* the object path — `seeds/configs/runtime-policy.json` is
+published as `configs/runtime-policy.json`. Each object is `PUT` with the admin
+token and then read back **anonymously**, and the two ETags are compared. That
+read-back is the point of the script: a `PUT` the API accepts while the public
+`GET` still `404`s is what a misconfigured reverse proxy looks like, and it is
+invisible if you only check the publish response.
+
+```bash
+./scripts/publish-manifests.sh --env-file /opt/autojms-datahub/.env.staging --dry-run
+./scripts/publish-manifests.sh --env-file /opt/autojms-datahub/.env.staging
+```
+
+The token never reaches a command line — argv is world-readable through `/proc`,
+so it is passed through a `curl --config` document written by a shell builtin —
+and the script refuses plain `http` for anything but localhost. `--dry-run`
+prints the exact `PUT` for each file without sending anything.
+
+What to publish, and what to deliberately leave out, is documented in
+[`seeds/README.md`](./seeds/README.md). Two traps are worth repeating here:
+Google Sheets must be configured through the typed `googleSheets` block rather
+than the `features` map, because `RuntimeGoogleSheetsPolicy.Provider` defaults to
+a non-blank value that wins; and `print.*` / `debugCapture.*` are omitted on
+purpose, since publishing them overrides each technician's local `AppSettings`
+choice at every launch. Published JSON is parsed with `JsonDocument.Parse`, so —
+unlike the desktop's own tolerant reader — comments and trailing commas are
+rejected at publish time.
 
 ## Bash counterparts (hosts without PowerShell)
 
@@ -46,6 +93,7 @@ inside the `postgres` container) and share `scripts/_datahub-common.sh`:
 | `dc.sh` | `docker compose --env-file … --file …` | compose with the env file and compose file already wired |
 | `apply-migrations.sh` | `apply-migrations.ps1 -ComposeFile` | apply pending migrations, verify each version marker |
 | `run-sql.sh` | the `Get-Content \| docker compose exec` pipeline above | run a `.sql` file, passing `--variable` through to psql |
+| `publish-manifests.sh` | `publish-manifests.ps1` | publish `seeds/` to the control plane, then verify each object anonymously |
 | `smoke-test.sh` | — | ten-step end-to-end staging smoke (24 checks) |
 
 Every script needs the env file, which lives outside the repo: pass

@@ -5,6 +5,7 @@ using AutoJMS.DataHub.Api.Endpoints;
 using AutoJMS.DataHub.Api.Health;
 using AutoJMS.DataHub.Api.Hubs;
 using AutoJMS.DataHub.Api.Infrastructure;
+using AutoJMS.DataHub.Api.Manifests;
 using AutoJMS.DataHub.Api.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -35,6 +36,7 @@ builder.Services.AddSingleton<IngestRepository>();
 builder.Services.AddSingleton<IngestPipeline>();
 builder.Services.AddSingleton<IDoorbellPublisher, SignalRDoorbellPublisher>();
 builder.Services.AddSingleton<ChangeRepository>();
+builder.Services.AddSingleton<ManifestStore>();
 builder.Services.AddSingleton<RetentionRepository>();
 builder.Services.AddHostedService<RetentionHostedService>();
 builder.Services.AddHealthChecks()
@@ -80,6 +82,18 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         });
     });
+    // The operator token is already checked and per-IP limited in
+    // AdminAuthenticationMiddleware; this is the endpoint-level bound on how fast a
+    // holder of a valid token can rewrite the fleet's policy.
+    options.AddPolicy("manifestAdmin", context => RateLimitPartition.GetFixedWindowLimiter(
+        $"manifest-admin:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
     options.AddPolicy("enrollment", context => RateLimitPartition.GetFixedWindowLimiter(
         $"enroll:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
         _ => new FixedWindowRateLimiterOptions
@@ -127,6 +141,9 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 }));
 app.UseForwardedHeaders();
 app.UseMiddleware<IngressRateLimitMiddleware>();
+// Before device authentication: an admin route must be reachable with the operator
+// token alone, and a device token must never be sufficient for one.
+app.UseMiddleware<AdminAuthenticationMiddleware>();
 app.UseMiddleware<DeviceAuthenticationMiddleware>();
 app.UseRateLimiter();
 app.UseMiddleware<DeviceStatusMiddleware>();
@@ -159,6 +176,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     }
 });
 
+app.MapManifestEndpoints();
 app.MapEnrollmentEndpoints();
 app.MapLeaseEndpoints();
 app.MapIngestEndpoints();

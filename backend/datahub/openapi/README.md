@@ -91,13 +91,23 @@ projection snapshot, so a client can apply a delta without fetching each key.
 counter in the same transaction as the projection update. Clients must not require
 `N + 1`; the HTTP response is authoritative.
 
-`GET /api/v1/sites/{siteId}/projections/snapshot` is a phase-1 buffered response:
-the API keeps one PostgreSQL `REPEATABLE READ` transaction, captures one
+`GET /api/v1/sites/{siteId}/projections/snapshot?limit=5000` is a phase-1 buffered
+response: the API keeps one PostgreSQL `REPEATABLE READ` transaction, captures one
 `snapshot_seq`, reads the site's ordered projection set, commits, and returns that
 watermark with the projection rows. After applying the response, the client sets
 its cursor to `snapshot_seq` and reads `/changes?after=snapshot_seq`. Snapshot
 tokens, streaming, and multi-request paging are intentionally deferred; staging
 must measure snapshot size and latency before production canary.
+
+`limit` defaults to 5000 and is capped at 10000. It exists because the client has
+always sent it while the server had no such parameter, so model binding discarded
+it and every snapshot returned the site's entire projection table in one body. When
+a site holds more rows than the limit, the response sets `truncated: true` and the
+server logs a warning: `items` is then a prefix ordered by waybill number, and a
+client that adopts `snapshot_seq` as its cursor anyway loses the remainder until
+those waybills next change. Both `limit` parameters reject an out-of-range value
+with `400 BAD_REQUEST` instead of clamping — clamping told a client asking for 2000
+nothing about the 500 it actually got.
 
 The SignalR hub is `/hubs/site` (with the normal `/hubs/site/negotiate` endpoint).
 After commit it sends only this doorbell message:
@@ -115,6 +125,49 @@ The message contains no projection data. On connect, reconnect, missed messages,
 or the 30-60 second safety pull, fetch HTTP changes from the local cursor. The
 server chooses the `site:{siteId}` group from claims; a client cannot subscribe to
 another site.
+
+## Control plane
+
+The same host serves the published objects the desktop reads before it has any
+credential at all. Four containers are allowlisted, and the path allowlist is the
+entire perimeter:
+
+| Container | Read by | Typical objects |
+| --- | --- | --- |
+| `/manifest/` | `VpsManifestService`, `VpsRuntimePolicyService` | `version-latest.json`, `tier-definitions.json`, `feature-policy.{tier}.json` |
+| `/configs/` | `VpsRuntimePolicyService`, `VpsConfig` | `runtime-policy.json`, `runtime-policy.{tier}.json`, `runtime-config.enc` |
+| `/selector-updates/` | `SmallUpdateService` | encrypted payload plus detached signature |
+| `/modules/` | `VpsModuleProvider` | module blobs |
+
+Reads are anonymous by necessity: a station must read tier definitions and the
+update manifest before enrollment, and `VpsManifestService` fetches with a bare
+`HttpClient`. **A published object must therefore never contain a secret.**
+
+Both `GET` and `HEAD` are served. Nothing in the desktop sends `HEAD` — it only
+calls `GetStringAsync` — but the publish script verifies its own work that way, and
+an operator asking "is the policy actually published?" should not have to download
+it. Responses carry a strong ETag (quoted lowercase SHA-256 of the content) and
+`Cache-Control: public, max-age=60, must-revalidate`, so a policy change reaches
+the fleet within minutes without a restart storm re-downloading every object.
+`If-None-Match` is honoured, including a `W/`-weakened tag.
+
+Any unservable path — wrong container, too many segments, a traversal attempt —
+answers the same `404 NOT_FOUND` as a missing object. An anonymous caller learns
+whether a path is servable, never why a rejected one failed.
+
+`PUT /api/v1/admin/manifests/{objectPath}` publishes. It requires the operator
+bearer token (`DATAHUB_ADMIN_TOKEN`, `AdminBearer`); a device token is explicitly
+not sufficient, because an enrolled station is a customer machine, not the
+publisher. With no token configured the route answers `503` rather than accepting
+anything. `201` for a new path, `200` for a replacement, both returning
+`{ objectPath, etag, length }` and an `ETag` header. A `.json` object must parse
+before it is stored — comments and trailing commas are rejected here even though
+the desktop's own reader tolerates them, so a seed that would parse on a station
+can still be refused at publish time. Objects are capped at 1 MiB and the route is
+limited to 30 requests/minute/IP; a release publishes about a dozen objects.
+Publishes are audited to the application log rather than `audit_logs`, because that
+table needs a PostgreSQL transaction and a publish must still work while the
+database is down.
 
 ## Errors
 
@@ -139,6 +192,11 @@ contract defines these important outcomes:
 | 422 | `VALIDATION_FAILED` | Schema or domain validation failed |
 | 429 | `RATE_LIMITED` | Caller exceeded a bounded rate |
 | 503 | `SERVICE_UNAVAILABLE` | API/PostgreSQL dependency is unavailable |
+
+Control-plane failures reuse `BAD_REQUEST` rather than adding codes: a rejected
+object path and an over-1-MiB body both answer `BAD_REQUEST` (at 400 and 413
+respectively). `PAYLOAD_TOO_LARGE` stays reserved for the ingest item/body
+contract, where a client distinguishes it to decide whether to split a batch.
 
 `/health/live` is process liveness and does not require PostgreSQL. `/health/ready`
 returns 503 when PostgreSQL, required secrets, or channel configuration is not

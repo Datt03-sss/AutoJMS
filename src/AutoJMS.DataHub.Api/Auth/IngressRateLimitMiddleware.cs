@@ -22,10 +22,27 @@ public sealed class IngressIpRateLimiter : IAsyncDisposable
             AutoReplenishment = true
         }));
 
+    // A release publishes ~12 objects; nothing legitimate needs more than this, and a
+    // tight budget is what keeps the operator token from being guessable online.
+    private readonly PartitionedRateLimiter<string> _adminLimiter = PartitionedRateLimiter.Create<string, string>(key =>
+        RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+
     public ValueTask<RateLimitLease> AcquireAsync(HttpContext context)
     {
         var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         return _limiter.AcquireAsync($"ingress:{address}", 1, context.RequestAborted);
+    }
+
+    public ValueTask<RateLimitLease> AcquireAdminAsync(HttpContext context)
+    {
+        var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return _adminLimiter.AcquireAsync($"admin:{address}", 1, context.RequestAborted);
     }
 
     public ValueTask<RateLimitLease> AcquireDeviceAsync(Guid deviceId, CancellationToken cancellationToken)
@@ -35,6 +52,7 @@ public sealed class IngressIpRateLimiter : IAsyncDisposable
     {
         await _limiter.DisposeAsync();
         await _deviceLimiter.DisposeAsync();
+        await _adminLimiter.DisposeAsync();
     }
 }
 

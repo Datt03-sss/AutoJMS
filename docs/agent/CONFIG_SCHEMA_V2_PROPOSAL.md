@@ -433,6 +433,45 @@ không chỉ tiết kiệm công:
 - **K.2 chuyển từ "lỗi" thành "giới hạn đã biết".** Vẫn ghi trong sổ rủi ro, kèm
   đúng câu này.
 
+### 3.2 Phía DataHub (VPS) — trạng thái sau vòng 7
+
+Bảng S1–S8 chỉ nói về license server. Nửa còn lại của backend là
+`src/AutoJMS.DataHub.Api/`, và vòng 7 (`FULLSTACK_BACKEND_RISK_REVIEW.md` mục M)
+đóng nốt phần cấu hình của nó:
+
+| Hạng mục | Trạng thái | Ghi chú |
+|---|---|---|
+| Xác minh assertion bất đối xứng | ✅ **code đã đủ** | `RsaLicenseAssertionValidator`: `v1rs256`, RSASSA-PKCS1-v1_5/SHA-256, sàn 2048 bit, **từ chối khoá private**. Tài liệu kiến trúc §13 trước đây nói ngược — đã sửa |
+| `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` | ❌ **đã xoá** | Biến chết: `ValidateAsync` trả `LICENSE_ASSERTION_UNAVAILABLE` trừ khi staging opt-in **và** `channel == staging`, mà nhánh chọn khoá cũng rẽ dưới đúng điều kiện đó. Tác dụng duy nhất là làm người vận hành tin đã cấu hình xong |
+| `DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS` | ✅ nối vào compose + hai template | Bị kẹp `300..2592000` giây, nên gõ sai không tắt được expiry |
+| Publish seed control-plane | ✅ script + tài liệu | `scripts/publish-manifests.{sh,ps1}`, có `--dry-run` |
+
+**Điều quan trọng nhất cho phần chốt này:** rào cuối của enrollment production
+**không phải code**, mà là hai biến `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (nửa
+public, **không bao giờ** nửa private) và `_ISSUER`/`_AUDIENCE` phải **khớp từng
+ký tự** với license server. Lệch một ký tự thì assertion ký đúng vẫn bị từ chối
+là `LICENSE_ASSERTION_INVALID`, và triệu chứng ở máy trạm chỉ là "enroll thất
+bại".
+
+**Và một cái bẫy đụng trực tiếp vào quyết định về tier:** VPS chưa publish seed
+trả 404 cho cả sáu đường policy, mà 404 đó dẫn tới
+`RuntimePolicyDocument.SafeDefault("BASE", ...)`. Nên **một VPS mới chạy mọi máy
+trạm ULTRA với quyền BASE, im lặng hoàn toàn** — không log lỗi, không có gì fail.
+Publish seed là bước bắt buộc của mọi lần triển khai mới, không phải bước tuỳ
+chọn. Chi tiết ở `backend/datahub/README.md`.
+
+Khi tự viết `configs/runtime-policy.{tier}.json`, hai điều dễ mất thời gian:
+
+1. **Google Sheets phải dùng khối typed.** `RuntimeGoogleSheetsPolicy.Provider`
+   mặc định `"TokenBroker"` (không rỗng) và `RuntimePolicyApplier` chỉ đọc
+   `features["googleSheets.provider"]` khi giá trị typed **rỗng**.
+2. **Đừng publish `print.*` / `debugCapture.*`** nếu không thật sự muốn ép: khi
+   thiếu, chúng theo `AppSettings` của máy trạm; khi có, chúng ghi đè lựa chọn của
+   kỹ thuật viên **ở mỗi lần khởi động**.
+
+Ngoài ra `tabs.home`, `tabs.dkch`, `tabs.about` **không có ai đọc** — đặt trong
+seed không có tác dụng. Từ vựng thật là 11 khoá, xem mục M.4.1 của sổ rủi ro.
+
 ## PHẦN 4 — Thay đổi ở client
 
 | # | Nơi | Thay đổi | Trạng thái | File bảo vệ? |
@@ -466,6 +505,13 @@ C1, C4, C6 nằm trong Protected Files nên cần chủ sở hữu cho phép the
 Thứ tự vẫn theo nguyên tắc cũ — **vá lỗ hổng dữ liệu trước, rồi vá lỗ hổng rẻ,
 rồi mới đến tính năng có thể khoá oan khách** — nhưng pha 0 chen lên đầu vì nếu
 Render vẫn chạy `AutoJMS-API` thì mọi pha sau chỉ là sửa code không ai chạy.
+
+Phía VPS có lộ trình riêng, **song song** và độc lập với bảng trên, gồm đúng hai
+cửa (xem §3.2): (a) đặt `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` cùng
+`_ISSUER`/`_AUDIENCE` khớp từng ký tự — không có nó thì enroll đóng; (b) publish
+seed control-plane — không có nó thì **mọi máy ULTRA chạy như BASE, im lặng**.
+Cửa (b) phải xong **trước** khi giao máy ULTRA đầu tiên, chứ không phải sau khi
+có ai đó báo "thiếu tính năng".
 
 ## PHẦN 6 — Hai bản ghi mẫu
 
@@ -560,3 +606,5 @@ Sáu câu hỏi vòng trước đã chốt hết (PHẦN 0). Còn lại:
 | 3 | Cho làm C1 (`LicenseApiService.cs` — file bảo vệ) để client cảnh báo trước khi hết hạn? | Rủi ro 2 ở trên |
 | 4 | J-2: tài liệu rủi ro này nằm trong repo **công khai** | Mục K và L nêu thêm nhiều lỗ hổng chưa vá, và `AutoJMS-API` cũng công khai |
 | 5 | J-3: `VALID_EXE_HASHES` đang rỗng → kiểm hash EXE vô hiệu | Chặn việc lật `skipHashCheck` sang `false` |
+| 6 | L-2: đặt `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` trên VPS và khớp `_ISSUER`/`_AUDIENCE` với license server | §3.2. Code đã đủ; đây là secret production, chỉ chủ sở hữu giữ. Nửa **private** phải ở license server, không ở VPS |
+| 7 | L-3: thu hồi Supabase anon key sau khi hợp nhất | Nó đã phát cho mọi client nhiều tháng qua production |

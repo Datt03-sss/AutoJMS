@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-24T00:00:00+07:00",
+  "tier": "BASE",
+  "notice": "Policy cho license tier BASE. Các cờ fullStack ở đây là false, nhưng KHÔNG phải chúng tạo ra giới hạn: entitlement của BASE trong TierRuntimePolicy.Resolve đã là false sẵn. Chúng có mặt để file tự mô tả đúng tier của nó. VpsRuntimePolicyService từ chối file khai tier=BASE khi máy đang yêu cầu tier khác, nên file này không thể hạ cấp một máy ULTRA.",
+  "features": {
+    "forms.fullStackOperation": false,
+    "fullStack.backgroundSync": false,
+    "fullStack.inventorySync": false,
+    "fullStack.databaseTracking": false,
+    "tabs.tracking": true,
+    "tabs.print": true
+  },
+  "googleSheets": {
+    "enabled": true,
+    "provider": "TokenBroker"
+  },
+  "modulePolicy": {
+    "autoUpdate": false,
+    "silentUpdate": false,
+    "applyOnNextStartup": true
+  }
+}

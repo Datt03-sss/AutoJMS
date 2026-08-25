@@ -67,8 +67,18 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
         return (false, new ChangePage(siteId, after, items, hasMore, next));
     }
 
-    public async Task<SnapshotResponse> ReadSnapshotAsync(Guid siteId, CancellationToken cancellationToken)
+    /// <summary>Absolute ceiling on a single snapshot, whatever the caller asks for.</summary>
+    public const int MaximumSnapshotRows = 10_000;
+
+    /// <summary>Applied when the caller sends no limit at all.</summary>
+    public const int DefaultSnapshotRows = 5_000;
+
+    public async Task<SnapshotResponse> ReadSnapshotAsync(
+        Guid siteId,
+        int maxRows,
+        CancellationToken cancellationToken)
     {
+        maxRows = Math.Clamp(maxRows, 1, MaximumSnapshotRows);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
         await using var timeout = new NpgsqlCommand("SET LOCAL statement_timeout = '30s';", connection, transaction);
@@ -91,17 +101,24 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
                    payload, reducer_version, version, updated_at
               FROM waybill_projections
              WHERE site_id = @site_id
-             ORDER BY waybill_no;
+             ORDER BY waybill_no
+             LIMIT @limit;
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("site_id", siteId);
+        // One extra row is the cheapest way to learn whether more exist without a
+        // second COUNT(*) over the same table inside the snapshot transaction.
+        command.Parameters.AddWithValue("limit", maxRows + 1);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var items = new List<ProjectionBody>();
         while (await reader.ReadAsync(cancellationToken))
             items.Add(ReadBody(reader));
         await reader.CloseAsync();
         await transaction.CommitAsync(cancellationToken);
-        return new SnapshotResponse(siteId, snapshotSeq, items, items.Count, DateTimeOffset.UtcNow);
+
+        var truncated = items.Count > maxRows;
+        if (truncated) items.RemoveAt(items.Count - 1);
+        return new SnapshotResponse(siteId, snapshotSeq, items, items.Count, DateTimeOffset.UtcNow, truncated);
     }
 
     private static async Task<(long PrunedThrough, long Current)?> ReadWatermarkAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid siteId, CancellationToken cancellationToken)

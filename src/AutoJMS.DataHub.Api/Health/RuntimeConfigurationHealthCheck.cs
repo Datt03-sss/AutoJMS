@@ -22,7 +22,13 @@ public sealed class RuntimeConfigurationHealthCheck(DataHubRuntimeOptions option
             && string.Equals(options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal);
         if (isProduction)
         {
-            missing.Add("production license verifier integration (asymmetric issuer/JWKS)");
+            // Was unconditional, which made a correctly-configured production host
+            // report Unhealthy forever — and /health/ready is what the deploy gate
+            // and the proxy read, so the instance could never be brought into
+            // service. Report on the key material that actually decides whether
+            // IdentityServiceCollectionExtensions can wire the RSA validator.
+            if (!Auth.RsaLicenseAssertionValidator.HasKeyMaterial(options))
+                missing.Add("DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY or DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH");
         }
         else if (stagingIssuerEnabled)
         {
@@ -34,8 +40,16 @@ public sealed class RuntimeConfigurationHealthCheck(DataHubRuntimeOptions option
             missing.Add("staging license verifier (enable the staging test issuer or install the signed-assertion verifier)");
         }
 
+        // Reported, not enforced. A missing publish token closes PUT
+        // /api/v1/admin/manifests/** with a 503 and a logged error; it must not take
+        // the host out of rotation, because reads and enrollment are unaffected and
+        // an unready host serves nobody.
+        var notes = HasSecret(options.ManifestAdminToken)
+            ? "Runtime configuration is valid."
+            : "Runtime configuration is valid. DATAHUB_ADMIN_TOKEN is not configured, so manifest publishing is closed.";
+
         var result = missing.Count == 0
-            ? HealthCheckResult.Healthy("Runtime configuration is valid.")
+            ? HealthCheckResult.Healthy(notes)
             : HealthCheckResult.Unhealthy("Missing or invalid configuration: " + string.Join(", ", missing));
         return Task.FromResult(result);
     }

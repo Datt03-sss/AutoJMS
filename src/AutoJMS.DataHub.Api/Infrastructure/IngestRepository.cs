@@ -42,6 +42,21 @@ public sealed class IngestRepository(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // Server-side deadlines, which the read paths already set. Npgsql's
+        // CommandTimeout only sends a cancel request from this process: if the API is
+        // SIGKILLed mid-transaction the cancel never arrives, and Postgres keeps the
+        // FOR UPDATE locks on site_change_counters and every touched projection row
+        // until TCP keepalive notices — minutes during which every ingest for the site
+        // queues behind a dead transaction. lock_timeout also makes a competing ingest
+        // fail fast instead of blocking for the full statement budget.
+        await using (var deadlines = new NpgsqlCommand(
+            "SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '60s';",
+            connection,
+            transaction))
+        {
+            await deadlines.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         // Fence before looking up an idempotency replay. A stale bulk leader must
         // not receive a successful response for an old key after it lost the lease.
         if (requireFence)
@@ -180,6 +195,19 @@ public sealed class IngestRepository(
         long? lastSeq = null;
         if (changed.Count > 0)
         {
+            // checked(sequence + 1) below throws OverflowException, which no caller
+            // catches, so the site's ingest would answer 500 with no code an operator
+            // could act on. Refuse up front with a named failure instead. The
+            // idempotency key stays reserved-and-rolled-back either way.
+            if (long.MaxValue - changed.Count < startingSequence.Value)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return IngestOperationResult.Failure(
+                    StatusCodes.Status500InternalServerError,
+                    "COUNTER_OVERFLOW",
+                    "The site change sequence counter has reached its maximum value and must be reset.");
+            }
+
             var sequence = startingSequence.Value;
             foreach (var entry in changed)
             {

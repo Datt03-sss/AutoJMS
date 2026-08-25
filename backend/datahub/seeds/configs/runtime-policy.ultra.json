@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-24T00:00:00+07:00",
+  "tier": "ULTRA",
+  "notice": "Policy cho license tier ULTRA: không áp đặt hạn chế nào. Đây là file quyết định một máy ULTRA có chạy đúng ULTRA hay không — nếu nó 404 và cache trống, VpsRuntimePolicyService rơi xuống SafeDefault(BASE) và máy ULTRA im lặng chạy như BASE. Đổi một cờ thành false ở đây là kill switch cho toàn bộ fleet ULTRA; hãy chắc chắn đó là ý định.",
+  "features": {
+    "forms.fullStackOperation": true,
+    "fullStack.backgroundSync": true,
+    "fullStack.inventorySync": true,
+    "fullStack.databaseTracking": true,
+    "tabs.tracking": true,
+    "tabs.print": true
+  },
+  "googleSheets": {
+    "enabled": true,
+    "provider": "TokenBroker"
+  },
+  "modulePolicy": {
+    "autoUpdate": false,
+    "silentUpdate": false,
+    "applyOnNextStartup": true
+  }
+}

@@ -37,13 +37,30 @@ services:
       DATAHUB_DEVICE_TOKEN_ISSUER: ${DATAHUB_DEVICE_TOKEN_ISSUER:?set DATAHUB_DEVICE_TOKEN_ISSUER}
       DATAHUB_DEVICE_TOKEN_AUDIENCE: ${DATAHUB_DEVICE_TOKEN_AUDIENCE:?set DATAHUB_DEVICE_TOKEN_AUDIENCE}
       DATAHUB_DEVICE_TOKEN_SIGNING_KEY: ${DATAHUB_DEVICE_TOKEN_SIGNING_KEY:?set DATAHUB_DEVICE_TOKEN_SIGNING_KEY}
+      # Device bearer lifetime. Clamped to 300..2592000 seconds by DataHubRuntimeOptions,
+      # so a typo shortens or lengthens the window but can never disable expiry.
+      DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS: ${DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS:-86400}
       DATAHUB_ENROLLMENT_PEPPER: ${DATAHUB_ENROLLMENT_PEPPER:?set DATAHUB_ENROLLMENT_PEPPER}
       DATAHUB_LICENSE_ASSERTION_ISSUER: ${DATAHUB_LICENSE_ASSERTION_ISSUER:?set DATAHUB_LICENSE_ASSERTION_ISSUER}
       DATAHUB_LICENSE_ASSERTION_AUDIENCE: ${DATAHUB_LICENSE_ASSERTION_AUDIENCE:?set DATAHUB_LICENSE_ASSERTION_AUDIENCE}
-      DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY: ${DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY:-}
+      # Production enrollment needs the license issuer's RSA PUBLIC key through one of
+      # these two. Neither was passed through before, so a production host could never
+      # validate a real assertion no matter what was in .env.
+      DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY: ${DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY:-}
+      DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH: ${DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH:-}
       DATAHUB_STAGING_TEST_SIGNING_KEY: ${DATAHUB_STAGING_TEST_SIGNING_KEY:-}
       DATAHUB_ALLOW_STAGING_TEST_ISSUER: ${DATAHUB_ALLOW_STAGING_TEST_ISSUER:-false}
+      DATAHUB_TRUSTED_PROXY_NETWORKS: ${DATAHUB_TRUSTED_PROXY_NETWORKS:-}
+      # Operator token for PUT /api/v1/admin/manifests/**. Required at deploy time on
+      # purpose: without it release/build-release.ps1 gets a 503 on every publish and
+      # the fleet silently never receives a policy or an update.
+      DATAHUB_ADMIN_TOKEN: ${DATAHUB_ADMIN_TOKEN:?set DATAHUB_ADMIN_TOKEN}
+      DATAHUB_MANIFEST_ROOT: ${DATAHUB_MANIFEST_ROOT:-/manifests}
       ConnectionStrings__DataHub: Host=postgres;Port=5432;Database=${POSTGRES_DB:?set POSTGRES_DB};Username=${POSTGRES_USER:?set POSTGRES_USER};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD};Pooling=true;Maximum Pool Size=${DATAHUB_DB_MAX_POOL_SIZE:-20};Timeout=5;Command Timeout=30
+    volumes:
+      # Published manifests and configs must outlive the container: they are written
+      # once per release and read by every station on every start.
+      - manifests_data:/manifests
     expose:
       - "8080"
     depends_on:
@@ -94,6 +111,7 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+  manifests_data:
 
 networks:
   edge:

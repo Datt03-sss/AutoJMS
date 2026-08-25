@@ -29,6 +29,17 @@ tags:
     description: Bulk and interactive observation ingestion
   - name: Sync
     description: Per-site committed changes and consistent snapshots
+  - name: ControlPlane
+    description: |
+      Anonymously readable published objects (update manifest, tier definitions,
+      runtime policy, selector updates, modules) and the operator-authenticated
+      publish route that writes them.
+
+      Reads are anonymous by necessity, not by convenience: a station must be able
+      to read the tier definitions and the update manifest before it has enrolled a
+      device, and `VpsManifestService` fetches with a bare `HttpClient`. The path
+      allowlist is therefore the entire perimeter, and a published object must never
+      contain a secret.
   - name: Health
     description: Liveness and dependency readiness probes
   - name: Realtime
@@ -430,17 +441,27 @@ paths:
         tokens and multi-request paging are intentionally deferred to a later phase.
         The client applies the response, sets its cursor to `snapshot_seq`, then calls
         `/changes?after=snapshot_seq`.
+
+        The response is bounded by `limit`, ordered by waybill number. When the site
+        holds more projections than that, `truncated` is `true` and the body is a
+        prefix of the site's state — a client that adopts `snapshot_seq` as its cursor
+        anyway has silently lost the remainder until those waybills next change. The
+        server also logs a warning, because the caller cannot fix that on its own.
       security:
         - DeviceBearer: []
       x-transaction-isolation: REPEATABLE READ
       x-snapshot-watermark: snapshot_seq
+      parameters:
+        - $ref: '#/components/parameters/SnapshotLimit'
       responses:
         '200':
-          description: Complete consistent projection snapshot
+          description: Consistent projection snapshot, bounded by `limit`
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -451,6 +472,266 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/admin/manifests/{objectPath}:
+    parameters:
+      - $ref: '#/components/parameters/ManifestObjectPath'
+    put:
+      tags: [ControlPlane]
+      operationId: publishManifestObject
+      summary: Publish or replace a control-plane object
+      description: |
+        Used by `release/build-release.ps1` and
+        `backend/datahub/scripts/publish-manifests.{sh,ps1}`. Requires the operator
+        bearer token (`DATAHUB_ADMIN_TOKEN`); a device token is never sufficient,
+        because an enrolled station is a customer machine, not the publisher.
+
+        The write is idempotent by content: publishing identical bytes to an existing
+        path returns `200` with the same ETag, and a new path returns `201`. The
+        object path must canonicalise into one of the four allowed containers, and a
+        `.json` object must parse as JSON before it is stored — comments and trailing
+        commas are rejected here even though the desktop's own reader tolerates them.
+
+        Publishes are audited to the application log rather than `audit_logs`: that
+        table needs a PostgreSQL transaction, and a publish must still succeed while
+        the database is down.
+      security:
+        - AdminBearer: []
+      x-max-body-bytes: 1048576
+      x-rate-limit-per-minute: 30
+      requestBody:
+        required: true
+        description: |
+          Raw object bytes. `application/json` for any `.json` path;
+          `application/octet-stream` for an encrypted selector-update payload, a
+          detached signature, or a module blob.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Object replaced
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestPublishResponse'
+          headers:
+            ETag:
+              schema:
+                type: string
+        '201':
+          description: Object created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestPublishResponse'
+          headers:
+            ETag:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+        '400':
+          description: |
+            The object path is not in an allowed container, exceeds 200 characters or
+            4 segments, contains a traversal or reserved character, or a `.json` body
+            does not parse. The `code` is `BAD_REQUEST` and the `detail` names the
+            reason — this route is authenticated, so a precise message is safe here in
+            a way it is not on the anonymous read path.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: |
+            The object exceeds 1 MiB. The `code` is `BAD_REQUEST`, not
+            `PAYLOAD_TOO_LARGE`: that code belongs to the ingest item/body contract.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: |
+            `DATAHUB_ADMIN_TOKEN` is not configured on this host. The route
+            fails closed rather than accepting any token.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /manifest/{objectPath}:
+    parameters:
+      - $ref: '#/components/parameters/ManifestObjectPath'
+    get:
+      tags: [ControlPlane]
+      operationId: readManifestObject
+      summary: Read a published update or policy manifest object
+      description: |
+        Objects fetched by `VpsManifestService` and `VpsRuntimePolicyService`:
+        `version-latest.json`, `tier-definitions.json`, `feature-policy.{tier}.json`.
+        A station reads these before enrollment, so no credential is required.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObject'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    head:
+      tags: [ControlPlane]
+      operationId: headManifestObject
+      summary: Check a manifest object without downloading it
+      description: |
+        Same status codes and headers as `GET`, with no body. Nothing in the desktop
+        sends `HEAD` — `VpsManifestService` only ever calls `GetStringAsync` — but the
+        publish script verifies its own work this way, and an operator asking "is the
+        policy actually published?" should not have to download it.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObjectHead'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /configs/{objectPath}:
+    parameters:
+      - $ref: '#/components/parameters/ManifestObjectPath'
+    get:
+      tags: [ControlPlane]
+      operationId: readConfigObject
+      summary: Read a published runtime configuration object
+      description: |
+        `runtime-policy.json`, `runtime-policy.{tier}.json`, `runtime-config.enc` and
+        its detached signature. A tier-specific policy is tried first; a policy whose
+        declared `tier` disagrees with the requested tier is discarded by the client.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObject'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    head:
+      tags: [ControlPlane]
+      operationId: headConfigObject
+      summary: Check a configuration object without downloading it
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObjectHead'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /selector-updates/{objectPath}:
+    parameters:
+      - $ref: '#/components/parameters/ManifestObjectPath'
+    get:
+      tags: [ControlPlane]
+      operationId: readSelectorUpdateObject
+      summary: Read a published selector-update payload
+      description: |
+        Consumed by `SmallUpdateService`: an encrypted payload plus a detached
+        signature. Both are served as `application/octet-stream` so nothing here can
+        be rendered by a browser.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObject'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    head:
+      tags: [ControlPlane]
+      operationId: headSelectorUpdateObject
+      summary: Check a selector-update payload without downloading it
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObjectHead'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /modules/{objectPath}:
+    parameters:
+      - $ref: '#/components/parameters/ManifestObjectPath'
+    get:
+      tags: [ControlPlane]
+      operationId: readModuleObject
+      summary: Read a published module blob
+      description: Consumed by `VpsModuleProvider`.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObject'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    head:
+      tags: [ControlPlane]
+      operationId: headModuleObject
+      summary: Check a module blob without downloading it
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IfNoneMatch'
+      responses:
+        '200':
+          $ref: '#/components/responses/PublishedObjectHead'
+        '304':
+          $ref: '#/components/responses/NotModified'
+        '404':
+          $ref: '#/components/responses/ObjectNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /health/live:
     get:
@@ -572,9 +853,20 @@ components:
       description: |
         Derived device credential returned by enrollment. Claims include `device_id`,
         `site_id`, `channel`, role, and `token_version`. It is required for every
-        endpoint except health and enrollment. The API rejects a channel claim that
-        differs from `DATAHUB_CHANNEL` and never trusts a raw channel/site header or
-        body field.
+        endpoint except health, enrollment, and control-plane reads. The API rejects a
+        channel claim that differs from `DATAHUB_CHANNEL` and never trusts a raw
+        channel/site header or body field.
+    AdminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: operator-token
+      description: |
+        Operator publish token (`DATAHUB_ADMIN_TOKEN`), compared in constant time and
+        accepted only under `/api/v1/admin`. It is held by the release script, never by
+        a station: a device token is explicitly not sufficient for an admin route.
+        With no token configured the route answers `503` rather than accepting
+        anything, and the authenticated marker the middleware sets is re-checked inside
+        the endpoint so a future pipeline reordering cannot leave the route open.
   parameters:
     SiteId:
       name: siteId
@@ -616,12 +908,55 @@ components:
       name: limit
       in: query
       required: false
-      description: Maximum number of changes in one bounded response.
+      description: |
+        Maximum number of changes in one bounded response. Out-of-range values are
+        rejected with `400 BAD_REQUEST` rather than clamped: clamping silently gave a
+        client asking for 2000 a 500-row page with no way to tell its own page size had
+        been ignored.
       schema:
         type: integer
         minimum: 1
         maximum: 500
         default: 500
+    SnapshotLimit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        Maximum number of projection rows in one snapshot response. Out-of-range values
+        are rejected with `400 BAD_REQUEST`. See `truncated` on the response.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10000
+        default: 5000
+    ManifestObjectPath:
+      name: objectPath
+      in: path
+      required: true
+      description: |
+        Object path inside the container, for example `version-latest.json` under
+        `/manifest/`. Canonicalised before use and rejected outright rather than
+        normalised: 2-4 total segments including the container, at most 200 characters,
+        each segment 1-80 characters of letters, digits, `.`, `_` or `-` starting and
+        ending alphanumerically, and no `\`, `..`, `//`, `:` or trailing `/`. Matching
+        is case-sensitive, because the objects live on a case-sensitive filesystem and
+        the desktop always requests the lowercase form.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 199
+      example: version-latest.json
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: |
+        Conditional read against the object's content ETag. A `W/` prefix is accepted
+        (a cache may weaken the tag in transit; the content hash is the same either
+        way) and so is `*`.
+      schema:
+        type: string
   schemas:
     EnrollRequest:
       type: object
@@ -1016,6 +1351,30 @@ components:
         generatedAt:
           type: string
           format: date-time
+        truncated:
+          type: boolean
+          default: false
+          description: |
+            True when the site holds more projections than the requested `limit`, so
+            `items` is a prefix ordered by waybill number rather than the whole state.
+            A client that adopts `snapshot_seq` as its cursor after a truncated
+            snapshot has lost the remainder until those waybills next change.
+    ManifestPublishResponse:
+      type: object
+      additionalProperties: false
+      required: [objectPath, etag, length]
+      properties:
+        objectPath:
+          type: string
+          description: Canonical path the object was stored under, including the container.
+          example: manifest/version-latest.json
+        etag:
+          type: string
+          description: Quoted content hash, identical to the ETag served on a read.
+        length:
+          type: integer
+          minimum: 0
+          description: Stored object size in bytes.
     SignalRDoorbell:
       type: object
       additionalProperties: false
@@ -1231,6 +1590,67 @@ components:
           examples:
             idempotencyKeyReused:
               $ref: '#/components/examples/IdempotencyKeyReused'
+    PublishedObject:
+      description: |
+        The published object. `application/json` for a `.json` path, otherwise
+        `application/octet-stream` — an encrypted payload or a detached signature must
+        never be served as something a browser would render.
+      headers:
+        ETag:
+          description: Strong ETag; a quoted lowercase SHA-256 of the content.
+          schema:
+            type: string
+        Cache-Control:
+          description: |
+            Always `public, max-age=60, must-revalidate`. Short and revalidated: a
+            policy change must reach the fleet within minutes, but a restart storm must
+            not re-download every object.
+          schema:
+            type: string
+        Last-Modified:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    PublishedObjectHead:
+      description: The object exists. Same headers as `GET`, with no body.
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+        Last-Modified:
+          schema:
+            type: string
+    NotModified:
+      description: The caller's `If-None-Match` matches the current content ETag.
+      headers:
+        ETag:
+          schema:
+            type: string
+        Cache-Control:
+          schema:
+            type: string
+    ObjectNotFound:
+      description: |
+        No such published object — and also the answer for a path that is not servable
+        at all (wrong container, too many segments, a traversal attempt). Deliberately
+        indistinguishable: an anonymous caller learns whether a path is servable, never
+        why a rejected one failed. The precise reason is available only on the
+        authenticated publish route.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     ResyncRequired:
       description: Cursor is older than retained changes; take a consistent snapshot
       content:

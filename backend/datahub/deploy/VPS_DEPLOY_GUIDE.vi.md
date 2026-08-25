@@ -355,7 +355,8 @@ cd ~/AutoJMS/backend/datahub && cp env.staging.template .env.staging && chmod 60
 | `DATAHUB_ENROLLMENT_PEPPER` | giá trị hex từ 7.1 |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | giá trị hex từ 7.1 |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | để `true` (chỉ staging) |
-| `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` | để **trống** ở staging |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` | để **trống** ở staging (staging dùng HMAC test issuer) |
+| `DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS` | để `86400`, hoặc `900` nếu muốn ép re-enroll để test |
 
 Giữ nguyên `ASPNETCORE_ENVIRONMENT=Staging`, `DATAHUB_CHANNEL=staging`,
 `POSTGRES_DB=datahub_staging`, `POSTGRES_USER=datahub_staging`.
@@ -377,14 +378,25 @@ Nếu file lọt vào `git status`, dừng lại và sửa `.gitignore` trước
 | `DATAHUB_CHANNEL` | `staging` | `production` |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | `true` | `false` (hoặc bỏ hẳn) |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | có | **trống** |
-| `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` | trống | khoá xác minh assertion thật |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (hoặc `_PATH`) | trống | **PEM public key của license server** |
+| `DATAHUB_LICENSE_ASSERTION_ISSUER` | `autojms-license-staging` | `autojms-license-production` |
+| `DATAHUB_LICENSE_ASSERTION_AUDIENCE` | `autojms-datahub-enroll-staging` | `autojms-datahub-enroll-production` |
 
-> ⚠️ **Chặn go-live production:** hiện tại chưa có adapter xác minh assertion bất đối xứng
-> (JWS/JWKS). Production sẽ nạp `UnavailableLicenseAssertionValidator` và
-> `POST /api/v1/devices/enroll` trả **`503`**. Đây là *fail-closed có chủ ý*, không phải bug.
-> Mọi bước khác (stack, migration, provision, health, lease, ingest bằng token phát tay) vẫn
-> chạy được. Xem lỗ hổng #1 trong
-> [thiết kế backend §13](../../../docs/architecture/datahub-backend-design.vi.md#13-lỗ-hổng-đã-biết-chưa-làm-có-chủ-ý).
+> ⚠️ **Điều kiện go-live production:** production nạp `RsaLicenseAssertionValidator` **chỉ khi**
+> có key material (`DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` hoặc `_PATH` —
+> xem `AddDataHubIdentity` trong `Auth/IdentityServiceCollectionExtensions.cs:20`).
+> Không có key ⇒ nạp `UnavailableLicenseAssertionValidator` và
+> `POST /api/v1/devices/enroll` trả **`503 LICENSE_ASSERTION_UNAVAILABLE`**. Đây là
+> *fail-closed có chủ ý*, không phải bug. Mọi bước khác (stack, migration, provision,
+> health, lease, ingest bằng token phát tay) vẫn chạy được.
+>
+> Chỉ nạp **nửa public**. Nửa private nằm trên license server dưới tên
+> `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`; nếu VPS giữ nửa private thì một VPS bị chiếm
+> có thể tự phát license.
+>
+> `_ISSUER`/`_AUDIENCE` phải **khớp từng ký tự** với hai biến cùng tên trên license server.
+> Lệch một ký tự thì assertion ký đúng vẫn bị từ chối là `LICENSE_ASSERTION_INVALID`,
+> và triệu chứng ở máy trạm chỉ là "enroll thất bại" — không nói vì sao.
 
 ---
 
@@ -958,7 +970,7 @@ Lặp lại bước 1 → 11 với các thay đổi:
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
 | Secret | **sinh mới toàn bộ**, không copy từ staging |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | `false` |
-| `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` | khoá xác minh thật |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (hoặc `_PATH`) | PEM public key của license server |
 | Thư mục backup | riêng biệt, không trộn với staging |
 | Image digest | **đúng digest đã kiểm ở staging** |
 

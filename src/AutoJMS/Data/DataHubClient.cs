@@ -98,6 +98,19 @@ public static class DataHubClient
     private const string WaybillProjectionEntity = "waybill_projection";
 
     /// <summary>
+    /// Mirrors IngestRepository's hard cap of 200 observations per request. Exceeding it is a
+    /// 413 PAYLOAD_TOO_LARGE, so this is a limit to chunk at, not a limit to discover.
+    /// </summary>
+    private const int MaximumIngestItems = 200;
+
+    /// <summary>
+    /// Mirrors ChangeRepository.DefaultSnapshotRows. The snapshot endpoint rejects a limit above
+    /// MaximumSnapshotRows (10000) with 400 rather than clamping it, so the client must ask for a
+    /// value the server accepts instead of omitting the parameter and taking whatever it gets.
+    /// </summary>
+    private const int SnapshotPageLimit = 5000;
+
+    /// <summary>
     /// JMS writes naive local time and the local tables store it that way. Vietnam has no DST,
     /// so a fixed offset is exact and keeps this off the Windows time-zone database.
     /// </summary>
@@ -446,11 +459,11 @@ public static class DataHubClient
         }
 
         // AcquireAsync takes no body parameter on the server, so none is sent.
-        var (state, reachable) = await SendLeaseRequestAsync(baseUrl, siteId, token, "acquire", null).ConfigureAwait(false);
+        var (state, definitive) = await SendLeaseRequestAsync(baseUrl, siteId, token, "acquire", null).ConfigureAwait(false);
         if (state == null)
         {
             lock (LeaseLock) _leaderTerm = 0;
-            return reachable ? DataHubLeaseOutcome.Denied : DataHubLeaseOutcome.Unreachable;
+            return definitive ? DataHubLeaseOutcome.Denied : DataHubLeaseOutcome.Unreachable;
         }
 
         var term = state.Value<long?>("leaderTerm") ?? 0;
@@ -503,11 +516,18 @@ public static class DataHubClient
     }
 
     /// <summary>
-    /// Returns the parsed lease state, plus whether the server answered at all. A null state
-    /// with Reachable=true is a real refusal (409 fenced / lease held); with Reachable=false
-    /// the network or the VPS is the problem and nothing about leadership is known.
+    /// Returns the parsed lease state, plus whether the server gave a DEFINITIVE answer about
+    /// leadership. A null state with Definitive=true means another machine really does hold the
+    /// lease (409 fenced / lease held). Definitive=false means nothing about leadership is
+    /// known — the network, the device token or the VPS is the problem.
+    ///
+    /// Only 409 is definitive. Every other failure (401 stale device token, 403 suspended, 429
+    /// throttled, 5xx) says nothing about who leads, and reporting one as Denied is worse than
+    /// reporting it as unknown: Denied makes this station stand down believing a peer took over,
+    /// so when the real cause is an expired token or a down VPS every station stands down at
+    /// once and the site stops ingesting with nothing in the log but "lease denied".
     /// </summary>
-    private static async Task<(JObject State, bool Reachable)> SendLeaseRequestAsync(string baseUrl, Guid siteId, string token, string action, long? leaderTerm)
+    private static async Task<(JObject State, bool Definitive)> SendLeaseRequestAsync(string baseUrl, Guid siteId, string token, string action, long? leaderTerm)
     {
         var endpoint = baseUrl + "/api/v1/sites/" + siteId.ToString("D") + "/lease/" + action;
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
@@ -527,10 +547,11 @@ public static class DataHubClient
             {
                 // 409 is the normal "someone else is leader" / "your term is stale" answer,
                 // so it is logged as information rather than as a failure.
+                bool fenced = response.StatusCode == HttpStatusCode.Conflict;
                 var text = "DataHub lease " + action + " -> " + (int)response.StatusCode + " " + Truncate(body, 300);
-                if (response.StatusCode == HttpStatusCode.Conflict) AppLogger.Info(text);
-                else AppLogger.Warning(text);
-                return (null, true);
+                if (fenced) AppLogger.Info(text);
+                else AppLogger.Warning(text + " (leadership unknown, not denied)");
+                return (null, fenced);
             }
             return (string.IsNullOrWhiteSpace(body) ? new JObject() : JObject.Parse(body), true);
         }
@@ -566,12 +587,50 @@ public static class DataHubClient
         long term = CurrentLeaderTerm;
         bool bulk = term > 0;
         var endpoint = baseUrl + "/api/v1/sites/" + siteId.ToString("D") + (bulk ? "/jms/ingest" : "/jms/observations");
-        var payload = JsonConvert.SerializeObject(new { items });
 
+        // The server caps a request at MaximumIngestItems observations, so anything larger is a
+        // guaranteed 413. Callers routinely hand this method a page of 1000 rows, and the whole
+        // page used to be posted as one request, rejected, logged, and thrown away — while
+        // UpsertManyWaybillsAsync discards the return value, so nothing surfaced the loss.
+        int accepted = 0;
+        for (int offset = 0; offset < items.Count; offset += MaximumIngestItems)
+        {
+            var chunk = items.GetRange(offset, Math.Min(MaximumIngestItems, items.Count - offset));
+            var (sent, fenced) = await SendIngestChunkAsync(endpoint, token, chunk, bulk, term).ConfigureAwait(false);
+            accepted += sent;
+            if (fenced)
+            {
+                // The fence rejected us: stop claiming leadership until a fresh acquire, and do
+                // not keep pushing the remaining chunks under a term the server no longer honours.
+                lock (LeaseLock) _leaderTerm = 0;
+                AppLogger.Warning("DataHub ingest fenced after " + accepted.ToString(CultureInfo.InvariantCulture)
+                    + " of " + items.Count.ToString(CultureInfo.InvariantCulture) + " observation(s); abandoning the rest of the batch.");
+                break;
+            }
+        }
+
+        return accepted;
+    }
+
+    /// <summary>
+    /// Posts one chunk, halving and retrying if the server still answers 413. The item cap is
+    /// not the only 413: the body is also capped at 1 MiB, and observation payloads carry a
+    /// clone of the whole source row, so a chunk that is legal by count can still be too fat.
+    /// Halving finds the workable size without needing to model the server's byte budget here.
+    /// Returns the number of observations the server accepted, and whether the fence rejected us.
+    /// </summary>
+    private static async Task<(int Accepted, bool Fenced)> SendIngestChunkAsync(
+        string endpoint, string token, List<JObject> chunk, bool bulk, long term)
+    {
+        if (chunk.Count == 0) return (0, false);
+
+        var payload = JsonConvert.SerializeObject(new { items = chunk });
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         // Content-derived, not random: a retry of the same batch must reuse the same key or
-        // the server's idempotency check cannot dedupe it.
+        // the server's idempotency check cannot dedupe it. Deriving it from the chunk rather
+        // than the whole batch is what makes splitting safe -- each half gets its own key, so
+        // neither is mistaken for a replay of the request that was rejected.
         request.Headers.Add("Idempotency-Key", ComputeIdempotencyKey(payload));
         if (bulk) request.Headers.Add("X-Leader-Term", term.ToString(CultureInfo.InvariantCulture));
         request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
@@ -579,21 +638,36 @@ public static class DataHubClient
         try
         {
             using var response = await Http.SendAsync(request).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode) return items.Count;
+            if (response.IsSuccessStatusCode) return (chunk.Count, false);
 
             var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            AppLogger.Warning("DataHub ingest -> " + (int)response.StatusCode + " " + Truncate(body, 400));
-            if (bulk && response.StatusCode == HttpStatusCode.Conflict)
+            AppLogger.Warning("DataHub ingest (" + chunk.Count.ToString(CultureInfo.InvariantCulture)
+                + " item(s)) -> " + (int)response.StatusCode + " " + Truncate(body, 400));
+
+            if (bulk && response.StatusCode == HttpStatusCode.Conflict) return (0, true);
+            if (response.StatusCode != HttpStatusCode.RequestEntityTooLarge) return (0, false);
+
+            if (chunk.Count == 1)
             {
-                // The fence rejected us: stop claiming leadership until a fresh acquire.
-                lock (LeaseLock) _leaderTerm = 0;
+                // One observation the server will not take at any size. Dropping it is the only
+                // option left, but say so explicitly instead of folding it into a batch total.
+                AppLogger.Warning("DataHub ingest dropped a single oversized observation: "
+                    + Truncate(chunk[0].Value<string>("waybillNo") ?? "(no waybillNo)", 64));
+                return (0, false);
             }
-            return 0;
+
+            int half = chunk.Count / 2;
+            var (leftSent, leftFenced) = await SendIngestChunkAsync(
+                endpoint, token, chunk.GetRange(0, half), bulk, term).ConfigureAwait(false);
+            if (leftFenced) return (leftSent, true);
+            var (rightSent, rightFenced) = await SendIngestChunkAsync(
+                endpoint, token, chunk.GetRange(half, chunk.Count - half), bulk, term).ConfigureAwait(false);
+            return (leftSent + rightSent, rightFenced);
         }
         catch (Exception ex)
         {
             AppLogger.Warning("DataHub observation ingest failed: " + ex.Message);
-            return 0;
+            return (0, false);
         }
     }
 
@@ -700,7 +774,7 @@ public static class DataHubClient
             return new List<WaybillDbModel>();
 
         using var request = CreateAuthorizedRequest(HttpMethod.Get,
-            $"{baseUrl}/api/v1/sites/{siteId:D}/projections/snapshot?limit={Math.Clamp(limit, 1, 5000)}", token);
+            $"{baseUrl}/api/v1/sites/{siteId:D}/projections/snapshot?limit={Math.Clamp(limit, 1, SnapshotPageLimit)}", token);
         try
         {
             using var response = await Http.SendAsync(request).ConfigureAwait(false);
@@ -790,8 +864,10 @@ public static class DataHubClient
         var rows = new List<JObject>();
         if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token)) return (rows, 0);
 
+        // Always ask for an explicit limit. Omitting it left the server on its own default and
+        // gave no way to tell a complete snapshot from a truncated one.
         using var request = CreateAuthorizedRequest(HttpMethod.Get,
-            $"{baseUrl}/api/v1/sites/{siteId:D}/projections/snapshot", token);
+            $"{baseUrl}/api/v1/sites/{siteId:D}/projections/snapshot?limit={SnapshotPageLimit}", token);
         try
         {
             using var response = await Http.SendAsync(request).ConfigureAwait(false);
@@ -809,6 +885,14 @@ public static class DataHubClient
                     var row = ToWaybillRow(item);
                     if (row != null) rows.Add(row);
                 }
+            }
+            // A truncated snapshot is the one failure here that looks like success: the rows that
+            // did arrive are correct and the delta resumes cleanly, so the tail of the projection
+            // is simply missing locally with nothing else to show it.
+            if (json.Value<bool?>("truncated") == true)
+            {
+                AppLogger.Warning("DataHub snapshot was TRUNCATED at " + SnapshotPageLimit.ToString(CultureInfo.InvariantCulture)
+                    + " rows; the local projection is incomplete for this site. Raise the server's snapshot cap or reduce retention.");
             }
             // snapshot_seq is the change_seq the snapshot was taken at, so resuming the delta
             // from it neither replays nor skips.
@@ -869,7 +953,11 @@ public static class DataHubClient
         return request;
     }
 
-    private static WaybillDbModel ToWaybill(JObject projection)
+    /// <summary>
+    /// Snapshot-reader twin of <see cref="ToWaybillRow"/>. Internal, like its twin, so a test can
+    /// pin the two to the same fallback order — the mismatch between them was invisible in both.
+    /// </summary>
+    internal static WaybillDbModel ToWaybill(JObject projection)
     {
         if (projection == null) return null;
         var payload = projection["payload"] as JObject
@@ -878,9 +966,19 @@ public static class DataHubClient
             ?? new JObject();
         var row = payload.ToObject<WaybillDbModel>() ?? new WaybillDbModel();
         row.WaybillNo ??= projection.Value<string>("waybillNo");
-        row.TrangThaiHienTai ??= projection.Value<string>("stateStatus");
-        row.ThaoTacCuoi ??= projection.Value<string>("stateName") ?? projection.Value<string>("lastActivityName");
-        row.ThoiGianThaoTac ??= projection.Value<string>("stateEventAt") ?? projection.Value<string>("lastActivityAt");
+
+        // Same projection, same fallback order as ToWaybillRow -- deliberately, because both
+        // read the SAME server rows and write the SAME local columns. This method used to
+        // prefer stateName/stateEventAt while ToWaybillRow preferred lastActivityName/
+        // lastActivityAt, so a waybill's "last action" depended on whether it arrived through
+        // the snapshot reader or the change feed, and the two disagreed for any waybill whose
+        // latest activity had not yet advanced its state.
+        row.TrangThaiHienTai ??= FirstString(projection, "stateStatus", "lastActivityStatus");
+        row.ThaoTacCuoi ??= FirstString(projection, "lastActivityName", "stateName");
+        // And JMS-local naive, not the server's offset form, for the reason given in
+        // ToWaybillRow: the merge compares this column with SQLite's datetime(), so an offset
+        // timestamp here shifts every comparison by 7 hours.
+        row.ThoiGianThaoTac ??= ToJmsLocalTimestamp(FirstString(projection, "lastActivityAt", "stateEventAt"));
         return row;
     }
 

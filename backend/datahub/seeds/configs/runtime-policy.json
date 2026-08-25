@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-24T00:00:00+07:00",
+  "tier": "",
+  "notice": "File dùng chung cho mọi tier (tier rỗng = không khai tier). Chỉ được THU HẸP quyền: TierRuntimePolicy.Resolve AND từng cờ ở đây với entitlement của license, nên đặt true ở đây KHÔNG thể nâng BASE thành ULTRA. Ngược lại, đặt false ở đây sẽ hạ cấp MỌI máy đọc file này — kể cả ULTRA. Vì vậy bản dùng chung phải là bản không áp đặt hạn chế nào.",
+  "features": {
+    "forms.fullStackOperation": true,
+    "fullStack.backgroundSync": true,
+    "fullStack.inventorySync": true,
+    "fullStack.databaseTracking": true,
+    "tabs.tracking": true,
+    "tabs.print": true
+  },
+  "googleSheets": {
+    "enabled": true,
+    "provider": "TokenBroker"
+  },
+  "modulePolicy": {
+    "autoUpdate": false,
+    "silentUpdate": false,
+    "applyOnNextStartup": true
+  }
+}

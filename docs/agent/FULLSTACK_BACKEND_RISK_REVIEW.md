@@ -955,3 +955,252 @@ giả định server trong repo này là server thật:
 
 Trước khi L-1 xong, mọi kết luận "đã vá" trong tài liệu này chỉ đúng với repo,
 không đúng với production. Đó là câu quan trọng nhất của cả tài liệu.
+
+---
+
+## M. Vòng 7 — Hoàn thiện backend (2026-08-25)
+
+Vòng này không tìm thêm lỗ leo quyền; nó đóng những gì vòng trước để hở ở **cả
+hai** backend (`backend/render-license-server/` và `src/AutoJMS.DataHub.Api/`),
+sửa một tuyên bố **sai** trong tài liệu kiến trúc, và vá bốn lỗi hợp đồng ở phía
+client đọc/ghi DataHub. Câu ở cuối mục L vẫn nguyên giá trị: những gì dưới đây
+đúng với repo, và chỉ đúng với production sau khi L-1 xong.
+
+### M.1 `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` là biến chết — đã xoá
+
+**Mức: Trung bình, nhưng thuộc loại tệ nhất — misconfiguration im lặng.**
+
+Biến này chưa bao giờ có tác dụng. Chứng minh bằng ba điểm trong cùng một file:
+
+| Điểm | Nội dung |
+|---|---|
+| `HmacLicenseAssertionService.ValidateAsync` | Trả ngay `LICENSE_ASSERTION_UNAVAILABLE` **trừ khi** `StagingTestIssuerPolicy.IsEnabled(...)` **và** `Channel == "staging"` |
+| `SelectValidationKey()` | Rẽ nhánh staging **dưới đúng điều kiện đó** → nhánh fallback đọc `_VALIDATION_KEY` không thể chạm tới |
+| `AddDataHubIdentity` | Chỉ đăng ký `HmacLicenseAssertionService` **cũng dưới đúng điều kiện đó** |
+
+Nghĩa là: ở production, đặt biến này **không** bật xác minh assertion. Tác dụng
+duy nhất của nó là làm người vận hành **tin rằng** production đã cấu hình xong,
+trong khi production cần `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY`. Enrollment vẫn
+đóng, và triệu chứng ở máy trạm chỉ là "enroll thất bại".
+
+Đã xoá **trọn chuỗi**, không đổi tên: `docker-compose.yml`,
+`env.production.template`, `env.staging.template`, hai bảng trong
+`deploy/VPS_DEPLOY_GUIDE.vi.md` (§7.2, §15.2), bảng §12 của
+`docs/architecture/datahub-backend-design.vi.md`, và hai test trong
+`RuntimeConfigurationHealthCheckTests.cs` còn set nó.
+
+Lý do xoá thay vì giữ lại cho tương thích: một tuỳ chọn không làm gì nhưng trông
+như đang làm gì thì tệ hơn là không có tuỳ chọn nào.
+
+### M.2 Sửa một tuyên bố sai: adapter bất đối xứng **đã có**
+
+**Đây là chỗ tài liệu tự làm hại mình.** `VPS_DEPLOY_GUIDE.vi.md` §7.4 và
+`datahub-backend-design.vi.md` §13 (gap #1) đều nói production còn thiếu adapter
+xác minh assertion bất đối xứng (JWS/JWKS). Đọc code thì không phải:
+
+`Auth/RsaLicenseAssertionValidator.cs` là bản hoàn chỉnh —
+
+- định dạng `v1rs256`, RSASSA-PKCS1-v1_5 trên SHA-256 của payload đã encode;
+- sàn khoá **2048 bit** (`MinimumKeySizeBits`);
+- `_PUBLIC_KEY_PATH` **ưu tiên hơn** PEM inline; inline nhận escape `\n`;
+- **từ chối khoá private**: gọi `rsa.ExportParameters(includePrivateParameters: true)`
+  trong `try` rồi fail nếu lệnh đó **thành công**;
+- kiểm claim dùng chung `LicenseAssertionClaims.Validate` với nhánh HMAC.
+
+Thứ tự đăng ký ở `AddDataHubIdentity` (`Auth/IdentityServiceCollectionExtensions.cs:20`):
+HMAC staging (opt-in **và** `channel == staging`) → nếu không thì RSA khi
+`HasKeyMaterial` → nếu không thì `UnavailableLicenseAssertionValidator`.
+
+**Hệ quả: rào cuối của production không phải code, mà là cấu hình ops.** Giữ
+nguyên tuyên bố sai kia thì một lần go-live chỉ cách đúng một biến môi trường sẽ
+bị hoãn vô thời hạn. Đã sửa cả ba chỗ; §13 gap #1 giờ ghi
+`~~Chưa có adapter…~~ — **ĐÃ ĐÓNG (code)**, còn lại là **cấu hình**`.
+
+Ghi chú: hàng `P2-6` ở mục C (dòng ~285) vốn **đã đúng** — nó ghi "✅ mở đường
+(phía server)" và mô tả đúng validator RSA. Chỗ cũ là §13 của tài liệu kiến trúc,
+không phải bảng này.
+
+Hai điều VPS_DEPLOY_GUIDE nay nói rõ, vì cả hai đều từng gây mất thời gian:
+
+- VPS chỉ giữ **nửa public**. Nếu VPS giữ nửa private thì một VPS bị chiếm có thể
+  tự phát license.
+- `_ISSUER` / `_AUDIENCE` phải **khớp từng ký tự** với license server. Lệch một
+  ký tự thì assertion ký đúng vẫn bị từ chối là `LICENSE_ASSERTION_INVALID`, và
+  triệu chứng ở máy trạm chỉ là "enroll thất bại" — không nói vì sao.
+
+### M.3 `DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS` chưa được nối ra ngoài
+
+`DataHubRuntimeOptions` đọc và **kẹp** giá trị này vào khoảng `300..2592000`
+giây, nên gõ sai chỉ làm cửa sổ ngắn hoặc dài hơn, **không bao giờ tắt được
+expiry**. Nhưng biến chưa có trong compose và cả hai template, nên trên thực tế
+mọi triển khai đều chạy mặc định 86400 mà không ai biết là có knob.
+
+Đã thêm vào `docker-compose.yml`, `env.production.template` (kèm ghi chú: máy
+trạm **tự re-enroll** khi token hết hạn, nên rút ngắn chỉ tốn một round trip chứ
+không gây gián đoạn) và `env.staging.template` (staging là nơi hợp lý để đặt 900
+nhằm ép chạy thật đường re-enrollment).
+
+### M.4 Publish seeds là bước **bắt buộc**, không phải tuỳ chọn
+
+**Mức: Cao — đây là lỗi vận hành dễ mắc nhất của cả hệ thống.**
+
+Một VPS mới trả 404 cho **cả sáu** đường policy mà `VpsRuntimePolicyService`
+thử (`configs/runtime-policy.{tier}.json` → `Urls.RuntimePolicy` →
+`manifest/feature-policy.{tier}.json` → `Urls.FeaturePolicy` →
+`configs/runtime-policy.json` → `manifest/feature-policy.json`). 404 đó **không
+trung tính**: fetch fail → `LoadCachedPolicy` → `RuntimePolicyDocument.SafeDefault("BASE", "safe-default")`.
+
+Nên trên một VPS chưa seed: **mọi máy trạm ULTRA chạy với quyền BASE, không có
+gì log lỗi, không có gì fail.** Kết hợp với quy tắc "policy chỉ thu hẹp, không
+bao giờ cấp thêm" (`TierRuntimePolicy.Resolve(RuntimePolicyDocument, string)`:
+`entitlement = Resolve(licenseTier)` rồi AND từng cờ), đây là một downgrade
+tuyệt đối im lặng.
+
+`backend/datahub/README.md` nay có bước 6 trong "First staging boot" ghi rõ
+**"This step is not optional"**, cùng một mục riêng giải thích:
+
+- layout thư mục **chính là** object path (`seeds/configs/runtime-policy.json` →
+  `configs/runtime-policy.json`);
+- vì sao phải đọc lại bằng đường **anonymous** rồi so ETag: một `PUT` mà API nhận
+  trong khi `GET` công khai vẫn 404 chính là hình dạng của reverse proxy cấu hình
+  sai, và nó **vô hình** nếu chỉ xem response của lệnh publish;
+- vì sao admin token không bao giờ nằm trên command line (argv đọc được qua
+  `/proc`) mà đi qua `curl --config -` viết bằng builtin;
+- hai cái bẫy khi tự viết seed (xem M.4.1).
+
+Script: `scripts/publish-manifests.sh` và `scripts/publish-manifests.ps1`, cả hai
+có `--dry-run`.
+
+#### M.4.1 Hai cái bẫy khi tự viết seed
+
+| Bẫy | Vì sao |
+|---|---|
+| **Google Sheets phải dùng khối typed, không dùng `features["googleSheets.provider"]`** | `RuntimeGoogleSheetsPolicy.Provider` mặc định là `"TokenBroker"` (**không rỗng**), và `RuntimePolicyApplier:32-34` chỉ đọc `features[...]` khi giá trị typed **rỗng**. Viết vào `features` là viết vào chỗ không ai đọc. |
+| **Không publish `print.*` / `debugCapture.*` nếu không thực sự muốn ép** | Khi thiếu, chúng fallback về `AppSettings` của chính máy trạm. Khi có, chúng **ghi đè lựa chọn cục bộ của kỹ thuật viên ở mỗi lần khởi động**. Vì vậy các seed cố ý bỏ trống hai nhóm này. |
+
+Ngoài ra: `VpsRuntimePolicyService.JsonOpts` bật `ReadCommentHandling = Skip` và
+`AllowTrailingCommas`, nhưng `ManifestStore.TryValidatePayload` dùng
+`JsonDocument.Parse` mặc định — **từ chối** comment và dấu phẩy thừa. Nên seed
+phải sạch comment; nếu không thì publish fail chứ không phải client fail.
+
+Từ vựng policy thực sự được đọc là **11 khoá**: sáu cờ tier
+(`forms.fullStackOperation`, `fullStack.backgroundSync`, `fullStack.inventorySync`,
+`fullStack.databaseTracking`, `tabs.tracking`, `tabs.print`), cộng
+`googleSheets.enabled`, `googleSheets.provider`, `print.defaultAutoPrint`,
+`print.enablePrinterPreflight`, `debugCapture.enabled`. `tabs.home`, `tabs.dkch`,
+`tabs.about` **được `SafeDefault` ghi ra nhưng không có ai đọc** — đặt chúng
+trong seed không có tác dụng gì.
+
+### M.5 Bốn lỗi hợp đồng ở `DataHubClient` — đã vá
+
+`src/AutoJMS/Data/DataHubClient.cs` **không** nằm trong danh sách Protected
+Files, nên bốn lỗi dưới đây được vá trực tiếp.
+
+#### M.5.1 Lease: mọi thất bại đều bị hiểu là "đã có máy khác giữ" — **nặng nhất**
+
+`SendLeaseRequestAsync` trả `(JObject State, bool Reachable)` và chỗ gọi map
+`!Reachable → Denied`. Nhưng **chỉ 409 là kết luận được**. 401 (device token hết
+hạn), 403 (bị suspend), 429 (bị throttle), 5xx (VPS sập) **không nói gì** về việc
+ai đang giữ lease.
+
+Hệ quả cũ: khi VPS sập hoặc token hết hạn đồng loạt, **mọi** máy trạm cùng lúc
+tin rằng một máy khác đã lên leader và **cùng lúc đứng xuống**. Cả site ngừng
+ingest, còn trong log chỉ có "lease denied" — không có gì chỉ tới nguyên nhân
+thật.
+
+Đã đổi tuple thành `(JObject State, bool Definitive)` với
+`bool fenced = response.StatusCode == HttpStatusCode.Conflict`, chỗ gọi thành
+`definitive ? Denied : Unreachable`, và các thất bại không-definitive nay log
+thêm `" (leadership unknown, not denied)"`.
+
+#### M.5.2 Ingest: batch > 200 dòng bị 413 và **rơi im lặng**
+
+Có **hai** nguồn 413 khác nhau, và trước đây client không biết nguồn nào:
+
+| Giới hạn | Ở đâu | Nội dung |
+|---|---|---|
+| Số item | `IngestRepository.cs:35-36` | `request.Items.Count > 200` → `413 PAYLOAD_TOO_LARGE` |
+| Kích thước body | `IngestEndpoints.cs:35-36` | 1 MiB (`MaximumBodyBytes`) |
+
+Một chunk **hợp lệ về số lượng** vẫn có thể quá nặng, vì `payload` của mỗi
+observation mang theo bản clone của cả dòng nguồn.
+
+Vì `UpsertManyWaybillsAsync` **bỏ giá trị trả về**, mọi bulk upsert một trang
+1000 dòng trước đây fail **toàn bộ và hoàn toàn im lặng**.
+
+Đã sửa thành hai lớp:
+
+1. **Chunk chủ động ở 200** trong `SendObservationBatchAsync`, cộng dồn `accepted`;
+   khi gặp fenced (409 bulk) thì log rõ "fenced after N of M" rồi bỏ phần còn lại.
+2. **`SendIngestChunkAsync` chia đôi và đệ quy** khi gặp
+   `HttpStatusCode.RequestEntityTooLarge`, đáy là `chunk.Count == 1` (log
+   `waybillNo` bị bỏ).
+
+Điểm khiến việc chia đôi **an toàn**: `Idempotency-Key` được suy ra từ **chính
+chunk**, không phải từ cả batch — nên mỗi nửa có key riêng và không nửa nào bị
+nhận nhầm là replay của request vừa bị từ chối.
+
+#### M.5.3 Snapshot: không biết mình đọc thiếu
+
+`ChangeRepository.DefaultSnapshotRows = 5_000`, `MaximumSnapshotRows = 10_000`,
+và `limit` ngoài khoảng bị **từ chối 400** chứ không bị kẹp. Client trước đây bỏ
+trống `limit` và nhận mặc định, rồi **không đọc cờ `truncated`** —
+`SnapshotResponse.Truncated` có sẵn trong response.
+
+Đã sửa: `ReadSnapshotRowsAsync` xin đúng `?limit={SnapshotPageLimit}` (5000) và
+log `Warning` khi `truncated == true`, nói rõ projection cục bộ **không đầy đủ**
+cho site này. `ReadSnapshotAsync` kẹp `Math.Clamp(limit, 1, SnapshotPageLimit)`.
+
+#### M.5.4 Hai reader cùng đọc một projection nhưng **không đồng ý với nhau**
+
+`ToWaybill` (snapshot) và `ToWaybillRow` (change feed / resync) đọc **cùng** một
+projection và ghi **cùng** những cột cục bộ, nên chúng phải giống nhau. Chúng
+không giống: `ToWaybill` ưu tiên `stateName`/`stateEventAt`, `ToWaybillRow` ưu
+tiên `lastActivityName`/`lastActivityAt`. Hai giá trị này **khác nhau** với mọi
+vận đơn có activity mới nhất chưa kịp đẩy state.
+
+Đã đồng bộ `ToWaybill` theo `ToWaybillRow` (activity trước, state sau) và đổi nó
+thành `internal` để test ghim được **cả hai** vào cùng một thứ tự fallback —
+trước đây sự lệch này vô hình ở cả hai phía.
+
+Kèm 5 test mới trong `tests/AutoJMS.Tests/DataHubClientWireContractTests.cs`
+(18 test trong class), gồm một test ghim `05:30Z → "2026-08-23 12:30:00"` (giờ
+JMS naive, không phải dạng có offset của server — lệch ở đây làm mọi so sánh
+merge trôi 7 giờ) và một test ghim một hành vi dễ mất thời gian: `WaybillDbModel`
+**không có** alias `[JsonProperty]`, nên payload viết tay theo snake_case
+**không bind**; giá trị không mất (projection lấp chỗ) nhưng cũng **không được
+tôn trọng**.
+
+### M.6 Giới hạn kiểm thử — phải nói rõ
+
+`DataHubClient.Http` là `private static readonly HttpClient` **không có chỗ tiêm
+handler**. Vì vậy hai bản vá M.5.1 (map lease) và M.5.2 (chia chunk 413) **chưa
+có unit test** — thêm một seam cho việc đó vượt quá Minimal Edit Rule. Chỉ M.5.4
+là test được, và đã test.
+
+Tương tự, những mục sau **cần Postgres thật** nên vẫn ở trạng thái báo cáo, chưa
+kiểm chứng: `enrollment-siteCode-authorization-untested` (siteCode sai → 403
+`SITE_NOT_LICENSED`, đúng → 201), validation biên của `limit` ở snapshot/changes,
+credential-hash lệch → 401, và `retention-pruned-through-seq-untested`.
+
+### M.7 Một cáo buộc bị bác bỏ trong vòng này
+
+**`MajorUpdateService` bỏ qua tham số `releases` — không phải bug.**
+`MajorUpdateService(VpsManifestService manifestService, VpsReleasesConfig releases = null, string channel = "stable")`
+(`src/AutoJMS/Updates/MajorUpdateService.cs:15-19`) chỉ gán `_manifestService` và
+`_channel`; `releases` bị **bỏ đi có chủ ý**. Nguồn cập nhật đến từ các channel
+trong `manifest/version-latest.json` qua `BuildSource(VersionChannel ch)`. Tham
+số kia là dư thừa, không phải một đường dẫn bị bỏ quên.
+
+### M.8 Trạng thái build/verify của vòng này
+
+| Hạng mục | Kết quả |
+|---|---|
+| `dotnet build AutoJMS.slnx -c Release` | 0 warning, 0 error |
+| `AutoJMS.Tests` | **173/173** |
+| `AutoJMS.DataHub.Api.Tests` | **142/142** |
+| `node --test` (license server) | **115/115** (9 file) |
+
+Ghi chú về test Node: `node --test` spawn **một process cho mỗi file test**, nên
+mỗi file có ngân sách rate-limiter riêng. Đó là lý do các test verify-license bị
+tách sang file khác — để không đụng giới hạn 20/phút.

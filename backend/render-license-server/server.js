@@ -9,6 +9,7 @@ const cors = require("cors");
 const fs = require("fs");
 const { GoogleAuth } = require("google-auth-library");
 const licenseLifecycle = require("./license-expiry");
+const { parseServiceAccount, resolveFirebaseServiceAccount } = require("./firebase-credentials");
 require("dotenv").config();
 
 const FIREBASE_TIMEOUT_MS = Number(process.env.FIREBASE_OPERATION_TIMEOUT_MS || 8000);
@@ -32,35 +33,6 @@ if (!process.env.JWT_PRIVATE_KEY || !process.env.JWT_PUBLIC_KEY) {
 const formatKey = (k) => {
     if (!k) return "";
     return k.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
-};
-
-const parseJsonEnv = (value, name) => {
-    if (!value) return null;
-    try {
-        return JSON.parse(value);
-    } catch (err) {
-        console.error(`Invalid ${name}:`, err.message);
-        process.exit(1);
-    }
-};
-
-const loadFirebaseServiceAccount = () => {
-    const fromJson = parseJsonEnv(process.env.FIREBASE_SERVICE_ACCOUNT_JSON, "FIREBASE_SERVICE_ACCOUNT_JSON");
-    if (fromJson) return fromJson;
-
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
-        const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, "base64").toString("utf8");
-        const fromBase64 = parseJsonEnv(decoded, "FIREBASE_SERVICE_ACCOUNT_BASE64");
-        if (fromBase64) return fromBase64;
-    }
-
-    const credentialPath = process.env.GOOGLE_APPLICATION_CREDENTIALS || "./serviceAccountKey.json";
-    if (fs.existsSync(credentialPath)) {
-        return require(credentialPath);
-    }
-
-    console.error("Missing Firebase service account. Set FIREBASE_SERVICE_ACCOUNT_JSON, FIREBASE_SERVICE_ACCOUNT_BASE64, GOOGLE_APPLICATION_CREDENTIALS, or provide serviceAccountKey.json.");
-    process.exit(1);
 };
 
 const CONFIG = {
@@ -238,10 +210,23 @@ function issueDataHubAssertion(data, middleCode) {
 // ==========================================
 // FIREBASE INIT
 // ==========================================
-const serviceAccount = loadFirebaseServiceAccount();
+let firebaseCredential;
+try {
+    firebaseCredential = resolveFirebaseServiceAccount({ moduleDir: __dirname });
+} catch (err) {
+    // The only failure this process cannot recover from, so it stays an exit —
+    // but the message now names which source was tried and why it was rejected,
+    // instead of claiming nothing was configured.
+    console.error("[firebase]", err.message);
+    process.exit(1);
+}
+
+console.log(
+    `[firebase] service account from ${firebaseCredential.source}, project_id: ${firebaseCredential.serviceAccount.project_id}`
+);
 
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(firebaseCredential.serviceAccount),
     databaseURL: CONFIG.FIREBASE_DATABASE_URL
 });
 
@@ -252,7 +237,12 @@ const app = express();
 
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors());
+// origin:false, not the default wildcard. Every caller here is a WinForms desktop
+// using HttpClient, which does not perform a CORS check at all — the wildcard bought
+// nothing and told any browser on the internet that it could read these responses
+// cross-origin with whatever cookies it had. Preflight still gets a 204 so a
+// misconfigured caller sees a CORS error rather than a hang.
+app.use(cors({ origin: false }));
 app.use(express.json({ limit: "512kb" }));
 
 const limiter = rateLimit({
@@ -263,6 +253,14 @@ const limiter = rateLimit({
 const heartbeatLimiter = rateLimit({
     windowMs: 60_000,
     max: 120
+});
+
+// The Firebase probes talk to the database, so they cost the same as a real
+// request. Render's own health check only polls /health (no limiter needed for a
+// static JSON reply), but /health/firebase was reachable by anyone at any rate.
+const healthLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 30
 });
 
 const googleSheetsGrantLimiter = rateLimit({
@@ -332,6 +330,37 @@ function normalizeSiteCode(middleCode) {
     return String(middleCode || "").trim().toUpperCase();
 }
 
+// `Licenses/${licenseKey}` puts the caller's string straight into a Realtime
+// Database path. Firebase forbids . $ # [ ] / and control characters in a key
+// name: a slash walks to a different node, and any of the others throws inside
+// ref(), which surfaces as a 500 that says nothing. This is a "cannot break the
+// path" guard on purpose and not a format check — the fleet's key format is not
+// recorded anywhere, and a stricter pattern would lock out live keys.
+const LICENSE_KEY_PATTERN = /^[^.#$[\]/\u0000-\u001f\u007f]{4,128}$/;
+
+/** HWID is stored as a value, never a path, so only length and control chars matter. */
+const HWID_PATTERN = /^[^\u0000-\u001f\u007f]{8,256}$/;
+
+/**
+ * The lifecycle gate, in one place.
+ *
+ * verify-license was the only route that ran it, which meant expiry took effect
+ * at the next app launch and nowhere else: while the app stayed open the
+ * heartbeat kept minting fresh 60-minute tokens, the Sheets broker kept handing
+ * out Google credentials, and DataHub re-enrollment kept being signed. A station
+ * left running never expired at all.
+ */
+function evaluateLicenseRecord(data) {
+    return licenseLifecycle.evaluateLicense(
+        {
+            status: data?.status,
+            expiresAt: data?.expiresAt,
+            graceDays: data?.graceDays ?? CONFIG.DEFAULT_GRACE_DAYS
+        },
+        Date.now()
+    );
+}
+
 function isPlaceholderSiteCode(siteCode) {
     return PLACEHOLDER_SITE_CODES.has(normalizeSiteCode(siteCode));
 }
@@ -389,16 +418,12 @@ function loadGoogleSheetsServiceAccount() {
         throw new Error("GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE not found");
     }
 
-    const json = fs.readFileSync(filePath, "utf8");
-    const serviceAccount = JSON.parse(json);
-
-    if (
-        !serviceAccount.project_id ||
-        !serviceAccount.client_email ||
-        !serviceAccount.private_key
-    ) {
-        throw new Error("Google Sheets service account file is missing required fields");
-    }
+    // Same parser as the Firebase credential, so a malformed file produces one
+    // wording rather than two, and "missing required fields" says which fields.
+    const serviceAccount = parseServiceAccount(
+        fs.readFileSync(filePath, "utf8"),
+        "Google Sheets service account file"
+    );
 
     googleSheetsServiceAccount = serviceAccount;
     console.log("[google-sheets] service account project_id:", serviceAccount.project_id);
@@ -507,7 +532,7 @@ app.get("/health", (req, res) => {
     });
 });
 
-app.get("/health/firebase", async (req, res) => {
+app.get("/health/firebase", healthLimiter, async (req, res) => {
     const started = Date.now();
 
     try {
@@ -523,9 +548,51 @@ app.get("/health/firebase", async (req, res) => {
             elapsedMs: Date.now() - started
         });
     } catch (err) {
+        // The raw message used to be echoed to the caller. A Firebase error string
+        // carries the database URL, the project id, and sometimes the service
+        // account email — none of which an anonymous caller needs, and all of which
+        // an operator can read in the Render log instead.
+        console.error("[health/firebase] probe failed", { error: err.message });
+
         return res.status(503).json({
             ok: false,
-            error: err.message,
+            error: isTimeoutError(err) ? "FIREBASE_TIMEOUT" : "FIREBASE_UNAVAILABLE",
+            elapsedMs: Date.now() - started
+        });
+    }
+});
+
+// The /health/firebase probe only proves a socket to the database. This one proves
+// the service account may actually READ /Licenses, which is the failure this server
+// cannot survive and the one a rules change causes. limitToFirst(1) so a poll costs
+// one small node, not the whole fleet, and no license content is ever returned.
+app.get("/health/firebase/licenses", healthLimiter, async (req, res) => {
+    const started = Date.now();
+
+    try {
+        const snap = await withTimeout(
+            admin.database().ref("Licenses").limitToFirst(1).once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_HEALTH_LICENSES_READ"
+        );
+
+        return res.json({
+            ok: true,
+            service: "firebase-licenses",
+            readable: true,
+            // Whether the node has any child at all. Deliberately not a count and
+            // never a key: an empty /Licenses on a live deployment means the wrong
+            // database URL, and that is worth distinguishing from "cannot read".
+            hasAny: snap.exists(),
+            elapsedMs: Date.now() - started
+        });
+    } catch (err) {
+        console.error("[health/firebase/licenses] probe failed", { error: err.message });
+
+        return res.status(503).json({
+            ok: false,
+            service: "firebase-licenses",
+            error: isTimeoutError(err) ? "FIREBASE_TIMEOUT" : "FIREBASE_UNAVAILABLE",
             elapsedMs: Date.now() - started
         });
     }
@@ -549,6 +616,27 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 success: false,
                 error: "MISSING_REQUIRED_FIELDS",
                 message: "License key and HWID are required."
+            });
+        }
+
+        // Checked before the string reaches ref(). A LICENSE_NOT_FOUND for a
+        // malformed key would be the friendlier answer, but it is also a lie: the
+        // key was never looked up.
+        if (typeof licenseKey !== "string" || !LICENSE_KEY_PATTERN.test(licenseKey)) {
+            console.warn("[verify-license] malformed license key", { requestId });
+
+            return res.status(400).json({
+                success: false,
+                error: "LICENSE_KEY_INVALID",
+                message: "License key contains characters that are not allowed."
+            });
+        }
+
+        if (typeof hwid !== "string" || !HWID_PATTERN.test(hwid)) {
+            return res.status(400).json({
+                success: false,
+                error: "HWID_INVALID",
+                message: "HWID is not a valid hardware identifier."
             });
         }
 
@@ -586,14 +674,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         // expiresAt is anchored to 00:00 +07:00 on the 16th of a month. Records
         // that predate the field are perpetual, so the fleet in the field keeps
         // working until an expiry is backfilled.
-        const lifecycle = licenseLifecycle.evaluateLicense(
-            {
-                status: data.status,
-                expiresAt: data.expiresAt,
-                graceDays: data.graceDays ?? CONFIG.DEFAULT_GRACE_DAYS
-            },
-            Date.now()
-        );
+        const lifecycle = evaluateLicenseRecord(data);
 
         if (!lifecycle.allowed) {
             console.warn("[LICENSE_EXPIRED]", {
@@ -896,6 +977,29 @@ app.post("/api/google-sheets/grant", googleSheetsGrantLimiter, async (req, res) 
             });
         }
 
+        // Same gate as verify-license. Without it an expired license kept receiving
+        // Google credentials for as long as its access token stayed refreshable —
+        // and the heartbeat refreshes that token every minute, so "as long as the
+        // app stays open" meant indefinitely.
+        const grantLifecycle = evaluateLicenseRecord(licenseData);
+
+        if (!grantLifecycle.allowed) {
+            console.warn("[LICENSE_EXPIRED]", {
+                route: "google-sheets-grant",
+                licenseKey: maskedLicenseKey,
+                expiresAt: grantLifecycle.expiresAt,
+                graceUntil: grantLifecycle.graceUntil
+            });
+
+            return res.status(403).json({
+                ok: false,
+                error: "LICENSE_EXPIRED",
+                message: "License key has expired.",
+                expiresAt: grantLifecycle.expiresAt,
+                graceUntil: grantLifecycle.graceUntil
+            });
+        }
+
         const grant = await getGoogleSheetsAccessGrant();
 
         console.log(
@@ -986,6 +1090,18 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             });
         }
 
+        // A token with no jti is not a replay-safe token: jtiCache.has(undefined)
+        // is always false and jtiCache.set(undefined, ...) records nothing, so the
+        // whole replay check silently did nothing for such a token and it could be
+        // reused forever. Every token this server issues carries one, so a missing
+        // jti means the token was not issued here.
+        if (!decoded.jti || typeof decoded.jti !== "string") {
+            return res.status(401).json({
+                action: "kill",
+                reason: "Token thiếu định danh chống nhân bản."
+            });
+        }
+
         if (jtiCache.has(decoded.jti)) {
             return res.status(401).json({
                 action: "kill",
@@ -1018,6 +1134,73 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             });
         }
 
+        // ---- Lifecycle gate -------------------------------------------------
+        // This is the only place expiry can take effect on a station that is
+        // already running. verify-license runs at launch and nowhere else, so
+        // without this the heartbeat kept minting a fresh 60-minute token every
+        // minute for a license that had expired days earlier — a station left on
+        // never expired at all, and revoking a license only worked if the customer
+        // happened to restart the app.
+        //
+        // The extra Firebase read is the price: one small node per heartbeat, on
+        // top of the session read that already happens here.
+        const licenseSnap = await withTimeout(
+            admin.database().ref(`Licenses/${decoded.key}`).once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_HEARTBEAT_LICENSE_READ"
+        );
+        const licenseData = licenseSnap.val();
+
+        if (!licenseData) {
+            // The license row is gone, so nothing can re-authorise this session.
+            await withTimeout(sessionRef.remove(), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_REMOVE");
+
+            return res.status(401).json({
+                action: "kill",
+                error: "LICENSE_NOT_FOUND",
+                reason: "Không tìm thấy license của phiên làm việc."
+            });
+        }
+
+        const lifecycle = evaluateLicenseRecord(licenseData);
+
+        if (!lifecycle.allowed) {
+            console.warn("[LICENSE_EXPIRED]", {
+                route: "heartbeat",
+                licenseKey: maskLicenseKey(decoded.key),
+                effectiveStatus: lifecycle.effectiveStatus,
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+
+            // Drop the session as well as refusing the token. Leaving it active
+            // would let the next launch's verify-license see a live session for a
+            // dead license, and it is the session that the Sheets broker and the
+            // DataHub assertion route check.
+            await withTimeout(sessionRef.remove(), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_REMOVE");
+
+            return res.status(401).json({
+                action: "kill",
+                error: lifecycle.effectiveStatus === "expired" ? "LICENSE_EXPIRED" : "LICENSE_INACTIVE",
+                reason: lifecycle.effectiveStatus === "expired"
+                    ? "License đã hết hạn. Vui lòng gia hạn để tiếp tục."
+                    : "License đã bị khóa hoặc thu hồi.",
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+        }
+
+        // A license re-bound to another machine must not keep this station alive.
+        if (licenseData.hwid && decoded.hwid && licenseData.hwid !== decoded.hwid) {
+            await withTimeout(sessionRef.remove(), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_REMOVE");
+
+            return res.status(401).json({
+                action: "kill",
+                error: "HWID_MISMATCH",
+                reason: "License đã được gán cho một máy khác."
+            });
+        }
+
         await withTimeout(
             sessionRef.update({
                 lastPing: Date.now()
@@ -1026,17 +1209,31 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             "FIREBASE_SESSION_UPDATE"
         );
 
+        // The tier still comes from the token, not from the record just read: a tier
+        // change takes effect on restart by owner decision (2026-08-24), and the
+        // client caches its entitlement at launch. Reading it here would make the
+        // heartbeat disagree with the running app instead of changing it.
+        const tier = decoded.tier || sessionData.tier || "BASE";
+
         const newToken = signAccessToken({
             licenseKey: decoded.key,
             hwid: decoded.hwid,
             sessionId: decoded.sid,
-            tier: decoded.tier || sessionData.tier || "BASE"
+            tier
         });
 
         return res.json({
             action: "continue",
             payload: newToken,
-            tier: decoded.tier || sessionData.tier || "BASE"
+            tier,
+            // Forwarded so a station can warn before expiry instead of dying at it.
+            // Nothing on the client reads these yet — LicenseApiService is a
+            // protected file — but they cost nothing and the data has to exist
+            // before the warning can be built.
+            effectiveStatus: lifecycle.effectiveStatus,
+            expiresAt: lifecycle.expiresAt,
+            graceUntil: lifecycle.graceUntil,
+            daysRemaining: lifecycle.daysRemaining
         });
     } catch (e) {
         console.error(`[heartbeat] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
@@ -1125,6 +1322,28 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
                 success: false,
                 error: "HWID_MISMATCH",
                 message: "License key is bound to another machine."
+            });
+        }
+
+        // Same gate as verify-license. An assertion is what buys a 24h DataHub
+        // device token, so without this an expired license could keep renewing its
+        // access to the whole data plane — writes included — one assertion at a time.
+        const lifecycle = evaluateLicenseRecord(data);
+
+        if (!lifecycle.allowed) {
+            console.warn("[LICENSE_EXPIRED]", {
+                route: "datahub-assertion",
+                licenseKey: maskLicenseKey(decoded.key),
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
+            });
+
+            return res.status(403).json({
+                success: false,
+                error: "LICENSE_EXPIRED",
+                message: "License key has expired.",
+                expiresAt: lifecycle.expiresAt,
+                graceUntil: lifecycle.graceUntil
             });
         }
 
@@ -1244,6 +1463,13 @@ app.post("/api/logout", limiter, async (req, res) => {
 // ==========================================
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-    console.log("AutoJMS Server Running port:", PORT);
-});
+// listen() only when this file IS the entry point. Render runs `node server.js`,
+// so production is unchanged; a test that requires this module gets the app
+// without a bound socket, which is what makes the routes testable at all.
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log("AutoJMS Server Running port:", PORT);
+    });
+}
+
+module.exports = app;

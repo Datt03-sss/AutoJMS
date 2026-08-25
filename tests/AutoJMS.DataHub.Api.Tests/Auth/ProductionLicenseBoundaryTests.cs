@@ -15,8 +15,7 @@ public sealed class ProductionLicenseBoundaryTests
             EnvironmentName = "Production",
             Channel = "production",
             AllowStagingTestIssuer = true,
-            StagingTestSigningKey = new string('s', 32),
-            LicenseAssertionValidationKey = new string('p', 32)
+            StagingTestSigningKey = new string('s', 32)
         });
         await using var provider = services.BuildServiceProvider();
         var validator = provider.GetRequiredService<ILicenseAssertionValidator>();
@@ -36,8 +35,7 @@ public sealed class ProductionLicenseBoundaryTests
             EnvironmentName = "Staging",
             Channel = "production",
             AllowStagingTestIssuer = true,
-            StagingTestSigningKey = new string('s', 32),
-            LicenseAssertionValidationKey = new string('p', 32)
+            StagingTestSigningKey = new string('s', 32)
         });
         await using var provider = services.BuildServiceProvider();
         var validator = provider.GetRequiredService<ILicenseAssertionValidator>();

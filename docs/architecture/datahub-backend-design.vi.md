@@ -498,8 +498,9 @@ Giá trị ngoài biên bị clamp; thiếu biến bắt buộc ⇒ `/health/rea
 | `DATAHUB_DEVICE_TOKEN_ISSUER` / `_AUDIENCE` | ✅ | — | — |
 | `DATAHUB_DEVICE_TOKEN_SIGNING_KEY` | ✅ | — | ≥ 32 byte |
 | `DATAHUB_ENROLLMENT_PEPPER` | ✅ | — | ≥ 32 ký tự |
-| `DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` | ✅ | — | — |
-| `DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY` | production | trống | trống ⇒ enroll `503` |
+| `DATAHUB_LICENSE_ASSERTION_ISSUER` / `_AUDIENCE` | ✅ | — | phải khớp từng ký tự với license server |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` | production | trống | PEM public key; trống **và** `_PATH` trống ⇒ enroll `503` |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH` | production | trống | đường dẫn file PEM; **ưu tiên hơn** giá trị inline |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | chỉ staging | trống | ≥ 32 ký tự |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | chỉ staging | `false` | chỉ có tác dụng khi channel = `staging` |
 | `DATAHUB_DB_MAX_POOL_SIZE` | ❌ | 20 | 1–100 |
@@ -517,7 +518,7 @@ Template: [env.staging.template](../../backend/datahub/env.staging.template),
 
 | # | Lỗ hổng | Ảnh hưởng | Ghi chú |
 |---|---|---|---|
-| 1 | Chưa có adapter xác minh assertion bất đối xứng (JWS/JWKS) | **Production chưa enroll được thiết bị** (`503`) | Fail-closed là đúng; cần làm trước khi go-live production |
+| 1 | ~~Chưa có adapter xác minh assertion bất đối xứng~~ — **ĐÃ ĐÓNG (code)**, còn lại là **cấu hình** | Production enroll được **chỉ khi** nạp public key; thiếu key vẫn `503` | [`RsaLicenseAssertionValidator`](../../src/AutoJMS.DataHub.Api/Auth/RsaLicenseAssertionValidator.cs) xác minh `v1rs256.<payload>.<signature>` (RSASSA-PKCS1-v1_5 / SHA-256, ≥ 2048 bit) — cùng định dạng license server phát ra. Chỉ nhận **public** key: nạp private key thì từ chối kèm log, chứ không im lặng biến API thành nơi phát license. Việc còn phải làm là ops: đặt `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY(_PATH)` và cho `_ISSUER`/`_AUDIENCE` khớp license server |
 | 2 | ~~Không có client SignalR trong `src/AutoJMS`~~ — **ĐÃ ĐÓNG** | — | `DataHubClient` có `HubConnection` (`BuildHubConnection`, `SubscribeSiteChangesAsync`, `UnsubscribeSiteChanges`); mất hub thì thoái hoá về polling |
 | 3 | ~~`backend-architecture.md` mô tả mặt phẳng dữ liệu theo kiến trúc cũ~~ — **ĐÃ ĐÓNG 2026-08-23** | — | Mục DataHub trong tài liệu đó đã viết lại theo endpoint + 12 bảng thật |
 | 3b | Nhiều phương thức `DataHubClient` giữ tên RPC cũ nhưng là **stub trả 0**: `IngestBigDataWaybillsAsync`, `IngestStockCheckWaybillsAsync`, `ReconcileInventorySourcesAsync`, `UpsertNewWaybillsOnlyAsync`; và `PushOrderNotesAsync` / `MergeOrderChecksAsync` / `MergeDispatchTasksAsync` / `AppendWaybillEventsAsync` trả `AuxiliaryEntityNotSupported` | Union 2 nguồn và notes/checks/tasks **không hoạt động** | `SupportsAuxiliaryEntitySync = false` nên outbox giữ lại thay vì báo đã gửi. Cần endpoint + migration mới — xem `inventory-source-comparison.vi.md` §5b |

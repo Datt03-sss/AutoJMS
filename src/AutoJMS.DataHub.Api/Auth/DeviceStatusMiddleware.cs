@@ -28,7 +28,21 @@ public sealed class DeviceStatusMiddleware(RequestDelegate next)
             return;
         }
 
-        if (!await deviceRepository.TouchActiveAsync(identity, context.RequestAborted))
+        // An identity without a digest means the pipeline was reordered so that this
+        // middleware runs outside device authentication. Fail closed rather than fall
+        // back to the identity-only check the digest exists to strengthen.
+        var credentialHash = context.GetDeviceCredentialHash();
+        if (string.IsNullOrEmpty(credentialHash))
+        {
+            await ApiProblemWriter.WriteAsync(
+                context,
+                StatusCodes.Status401Unauthorized,
+                ApiProblemCodes.Unauthorized,
+                "The device credential could not be verified.");
+            return;
+        }
+
+        if (!await deviceRepository.TouchActiveAsync(identity, credentialHash, context.RequestAborted))
         {
             await ApiProblemWriter.WriteAsync(
                 context,

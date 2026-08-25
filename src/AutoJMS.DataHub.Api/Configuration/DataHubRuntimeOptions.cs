@@ -16,13 +16,23 @@ public sealed class DataHubRuntimeOptions
     public string EnrollmentPepper { get; set; } = "";
     public string LicenseAssertionIssuer { get; set; } = "autojms-license";
     public string LicenseAssertionAudience { get; set; } = "autojms-datahub-enroll";
-    public string LicenseAssertionValidationKey { get; set; } = "";
     /// <summary>PEM of the license issuer's RSA PUBLIC key (\n escapes accepted). Enables production enrollment.</summary>
     public string LicenseAssertionPublicKeyPem { get; set; } = "";
     /// <summary>File holding that PEM; takes precedence over the inline value (Docker/systemd secrets).</summary>
     public string LicenseAssertionPublicKeyPath { get; set; } = "";
     public string StagingTestSigningKey { get; set; } = "";
     public bool AllowStagingTestIssuer { get; set; }
+
+    /// <summary>
+    /// Operator token for PUT /api/v1/admin/manifests/**, published by
+    /// release/build-release.ps1 as DATAHUB_ADMIN_TOKEN. Empty means administrative
+    /// publishing is closed, not open.
+    /// </summary>
+    public string ManifestAdminToken { get; set; } = "";
+
+    /// <summary>Directory the control-plane objects are served from; a named volume in Compose.</summary>
+    public string ManifestRoot { get; set; } = DefaultManifestRoot;
+
     public int MaximumPoolSize { get; set; } = 20;
     public TimeSpan DeviceTokenLifetime { get; set; } = TimeSpan.FromHours(24);
     public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(15);
@@ -38,6 +48,13 @@ public sealed class DataHubRuntimeOptions
 
     /// <summary>Comma-separated CIDR list; override with DATAHUB_TRUSTED_PROXY_NETWORKS.</summary>
     public string TrustedProxyNetworks { get; set; } = DefaultTrustedProxyNetworks;
+
+    /// <summary>
+    /// Container mount point for the manifest volume. Absolute so it does not depend
+    /// on the working directory, and outside the app directory so a redeploy that
+    /// replaces the image cannot take the published objects with it.
+    /// </summary>
+    public const string DefaultManifestRoot = "/manifests";
 
     public bool HasValidChannel => string.Equals(Channel, AllowedStagingChannel, StringComparison.Ordinal)
         || string.Equals(Channel, AllowedProductionChannel, StringComparison.Ordinal);
@@ -55,11 +72,12 @@ public sealed class DataHubRuntimeOptions
             EnrollmentPepper = FirstNonEmpty(configuration["DATAHUB_ENROLLMENT_PEPPER"]),
             LicenseAssertionIssuer = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_ISSUER"], "autojms-license"),
             LicenseAssertionAudience = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_AUDIENCE"], "autojms-datahub-enroll"),
-            LicenseAssertionValidationKey = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY"]),
             LicenseAssertionPublicKeyPem = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY"]),
             LicenseAssertionPublicKeyPath = FirstNonEmpty(configuration["DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY_PATH"]),
             StagingTestSigningKey = FirstNonEmpty(configuration["DATAHUB_STAGING_TEST_SIGNING_KEY"]),
             AllowStagingTestIssuer = ParseBoolean(configuration["DATAHUB_ALLOW_STAGING_TEST_ISSUER"]),
+            ManifestAdminToken = FirstNonEmpty(configuration["DATAHUB_ADMIN_TOKEN"]),
+            ManifestRoot = FirstNonEmpty(configuration["DATAHUB_MANIFEST_ROOT"], DefaultManifestRoot),
             MaximumPoolSize = ParseBoundedInt(configuration["DATAHUB_DB_MAX_POOL_SIZE"], 20, 1, 100),
             DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
             RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),

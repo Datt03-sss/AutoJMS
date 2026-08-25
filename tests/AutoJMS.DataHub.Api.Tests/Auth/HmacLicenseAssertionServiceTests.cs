@@ -35,8 +35,7 @@ public sealed class HmacLicenseAssertionServiceTests
         {
             Channel = "production",
             EnvironmentName = "Production",
-            AllowStagingTestIssuer = true,
-            LicenseAssertionValidationKey = new string('l', 32)
+            AllowStagingTestIssuer = true
         }, TimeProvider.System);
 
         Assert.Throws<InvalidOperationException>(() => service.Issue(
@@ -44,13 +43,15 @@ public sealed class HmacLicenseAssertionServiceTests
     }
 
     [Fact]
-    public async Task Hmac_validator_is_unavailable_outside_staging_even_with_a_validation_key()
+    public async Task Hmac_validator_is_unavailable_outside_staging_even_with_key_material()
     {
+        // Key material present, production channel: the HMAC validator must still
+        // refuse. It is a staging integration seam, never a production trust root.
         var service = new HmacLicenseAssertionService(new DataHubRuntimeOptions
         {
             Channel = "production",
             EnvironmentName = "Production",
-            LicenseAssertionValidationKey = new string('p', 32)
+            StagingTestSigningKey = new string('p', 32)
         }, TimeProvider.System);
 
         var result = await service.ValidateAsync("v1.payload.signature", CancellationToken.None);

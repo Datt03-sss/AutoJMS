@@ -44,7 +44,6 @@ public sealed class StagingTestIssuerPolicyTests
         EnvironmentName = environment,
         AllowStagingTestIssuer = allow,
         DeviceTokenSigningKey = new string('d', 32),
-        LicenseAssertionValidationKey = new string('l', 32),
         StagingTestSigningKey = new string('s', 32)
     };
 }

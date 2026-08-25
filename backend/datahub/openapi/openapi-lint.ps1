@@ -98,6 +98,12 @@ $requiredTokens = @(
     '^components:',
     '^    LicenseAssertion:',
     '^    DeviceBearer:',
+    '^    AdminBearer:',
+    '^  /api/v1/admin/manifests/\{objectPath\}:',
+    '^  /manifest/\{objectPath\}:',
+    '^  /configs/\{objectPath\}:',
+    '^  /selector-updates/\{objectPath\}:',
+    '^  /modules/\{objectPath\}:',
     '/api/v1/devices/enroll:',
     '/api/v1/sites/\{siteId\}/lease/acquire:',
     '/api/v1/sites/\{siteId\}/lease/renew:',
@@ -145,7 +151,30 @@ if ($document -match '(?m)^\s{8}uploadTime\s*:') {
     throw 'OpenAPI contract check failed: uploadTime must not be a hot/top-level observation property.'
 }
 
+# Control plane. The publish route must be operator-authenticated and every read
+# container must stay anonymous: a station reads policy before it has a device
+# token, so requiring a credential there would break enrollment itself.
+Assert-PathContains '/api/v1/admin/manifests/{objectPath}' '(?ms)security:\s+- AdminBearer:\s*\[\]' 'manifest publish must require the operator token'
+$publishBlock = Get-PathBlock -PathKey '/api/v1/admin/manifests/{objectPath}'
+if ($publishBlock -match 'DeviceBearer') {
+    throw 'OpenAPI contract check failed: a device token must never be accepted on the manifest publish route.'
+}
+foreach ($container in @('/manifest/{objectPath}', '/configs/{objectPath}', '/selector-updates/{objectPath}', '/modules/{objectPath}')) {
+    Assert-PathContains $container '(?m)^    head:' 'published objects must answer HEAD as well as GET'
+    $readBlock = Get-PathBlock -PathKey $container
+    if ($readBlock -match 'AdminBearer|DeviceBearer|LicenseAssertion') {
+        throw "OpenAPI contract check failed: reads of $container must stay anonymous."
+    }
+    if (([regex]::Matches($readBlock, '(?m)^      security: \[\]')).Count -lt 2) {
+        throw "OpenAPI contract check failed: both GET and HEAD of $container must declare empty security."
+    }
+}
+
 Assert-Contains 'snapshot_seq' 'snapshot response must expose snapshot_seq'
+Assert-Contains '(?m)^    SnapshotLimit:' 'snapshot must publish a bounded limit parameter'
+Assert-Contains '(?m)^        truncated:' 'snapshot response must expose truncated'
+$snapshotLimitRef = [regex]::Escape('$ref: ''#/components/parameters/SnapshotLimit''')
+Assert-PathContains '/api/v1/sites/{siteId}/projections/snapshot' $snapshotLimitRef 'snapshot must accept the published limit parameter'
 Assert-Contains 'REPEATABLE READ' 'snapshot contract must require REPEATABLE READ'
 Assert-Contains 'x-transaction-isolation:\s*REPEATABLE READ' 'snapshot isolation extension is missing'
 foreach ($field in @('siteId', 'changeSeq', 'entityType', 'entityKey')) {

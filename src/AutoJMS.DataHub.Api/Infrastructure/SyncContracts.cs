@@ -26,4 +26,13 @@ public sealed record SnapshotResponse(
     long SnapshotSeq,
     IReadOnlyList<ProjectionBody> Items,
     int ItemCount,
-    DateTimeOffset GeneratedAt);
+    DateTimeOffset GeneratedAt,
+    /// <summary>
+    /// True when the site holds more projections than the requested limit, so
+    /// <see cref="Items"/> is a prefix ordered by waybill number rather than the whole
+    /// state. A caller that adopts <see cref="SnapshotSeq"/> as its cursor after a
+    /// truncated snapshot has silently lost the remainder: the missing waybills
+    /// reappear only when they next change. Bounding the query without saying so
+    /// would trade a server-side memory risk for a client-side correctness bug.
+    /// </summary>
+    bool Truncated = false);

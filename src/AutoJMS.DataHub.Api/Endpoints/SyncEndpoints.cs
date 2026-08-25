@@ -6,6 +6,9 @@ namespace AutoJMS.DataHub.Api.Endpoints;
 
 public static class SyncEndpoints
 {
+    /// <summary>Matches the ChangeLimit schema published in datahub-v1.yaml.</summary>
+    private const int MaximumChangeLimit = 500;
+
     public static IEndpointRouteBuilder MapSyncEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/v1/sites/{siteId:guid}/changes", ReadChangesAsync).RequireRateLimiting("device");
@@ -26,6 +29,11 @@ public static class SyncEndpoints
             return Problem(StatusCodes.Status403Forbidden, authorization.ProblemCode!, "The device is not authorized for this site or deployment.");
         if (after < 0)
             return Problem(StatusCodes.Status400BadRequest, ApiProblemCodes.BadRequest, "after cannot be negative.");
+        // The repository clamps, but clamping alone is a silent lie: a client asking for
+        // 2000 got 500 back and no way to tell that its own page size was ignored. The
+        // published contract says 1-500, so anything else is a client bug worth naming.
+        if (limit is < 1 or > MaximumChangeLimit)
+            return Problem(StatusCodes.Status400BadRequest, ApiProblemCodes.BadRequest, $"limit must be between 1 and {MaximumChangeLimit}.");
 
         (bool ResyncRequired, ChangePage? Page) result;
         try
@@ -45,15 +53,32 @@ public static class SyncEndpoints
         HttpContext context,
         Guid siteId,
         ChangeRepository repository,
-        DataHubRuntimeOptions options)
+        DataHubRuntimeOptions options,
+        ILoggerFactory loggerFactory,
+        // The client has always sent ?limit=, but this parameter did not exist, so
+        // model binding discarded it and every snapshot returned the site's entire
+        // projection table in one response body.
+        int limit = ChangeRepository.DefaultSnapshotRows)
     {
         var authorization = Authorize(context.GetDeviceIdentity(), siteId, options.Channel);
         if (!authorization.Allowed)
             return Problem(StatusCodes.Status403Forbidden, authorization.ProblemCode!, "The device is not authorized for this site or deployment.");
+        if (limit is < 1 or > ChangeRepository.MaximumSnapshotRows)
+            return Problem(StatusCodes.Status400BadRequest, ApiProblemCodes.BadRequest, $"limit must be between 1 and {ChangeRepository.MaximumSnapshotRows}.");
 
         try
         {
-            return Results.Ok(await repository.ReadSnapshotAsync(siteId, context.RequestAborted));
+            var snapshot = await repository.ReadSnapshotAsync(siteId, limit, context.RequestAborted);
+            if (snapshot.Truncated)
+            {
+                // Operator-visible, because the caller cannot fix this on its own: the
+                // site has outgrown a single-response snapshot and needs the cursor feed.
+                loggerFactory.CreateLogger("DataHub.Sync").LogWarning(
+                    "Snapshot for site {SiteId} was truncated at {Limit} rows; the client is missing the remainder until those waybills change.",
+                    siteId,
+                    limit);
+            }
+            return Results.Ok(snapshot);
         }
         catch (KeyNotFoundException)
         {

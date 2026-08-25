@@ -29,7 +29,6 @@ public sealed class RuntimeConfigurationHealthCheckTests
             ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
             DeviceTokenSigningKey = new string('d', 32),
             EnrollmentPepper = new string('e', 32),
-            LicenseAssertionValidationKey = string.Empty,
             AllowStagingTestIssuer = true,
             StagingTestSigningKey = new string('s', 32),
             EnvironmentName = "Production"
@@ -38,7 +37,52 @@ public sealed class RuntimeConfigurationHealthCheckTests
         var result = await check.CheckHealthAsync(new HealthCheckContext());
 
         Assert.Equal(HealthStatus.Unhealthy, result.Status);
-        Assert.Contains("production license verifier", result.Description, StringComparison.OrdinalIgnoreCase);
+        // A staging HMAC key is not license key material, so the production path must
+        // still name the public key it actually needs.
+        Assert.Contains("DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY", result.Description);
+    }
+
+    [Fact]
+    public async Task Check_is_healthy_for_production_once_the_license_public_key_is_present()
+    {
+        // Regression: this used to report Unhealthy unconditionally on the production
+        // channel, so /health/ready never went green and a correctly-configured host
+        // could not be brought into service.
+        var check = new RuntimeConfigurationHealthCheck(new DataHubRuntimeOptions
+        {
+            Channel = "production",
+            ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
+            DeviceTokenSigningKey = new string('d', 32),
+            EnrollmentPepper = new string('e', 32),
+            LicenseAssertionPublicKeyPem = "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----",
+            EnvironmentName = "Production"
+        });
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Healthy, result.Status);
+    }
+
+    [Fact]
+    public async Task A_missing_publish_token_is_reported_without_taking_the_host_out_of_rotation()
+    {
+        var check = new RuntimeConfigurationHealthCheck(new DataHubRuntimeOptions
+        {
+            Channel = "production",
+            ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
+            DeviceTokenSigningKey = new string('d', 32),
+            EnrollmentPepper = new string('e', 32),
+            LicenseAssertionPublicKeyPem = "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----",
+            EnvironmentName = "Production",
+            ManifestAdminToken = ""
+        });
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        // Reads and enrollment do not depend on the publish token; readiness must not
+        // either. The operator still gets told.
+        Assert.Equal(HealthStatus.Healthy, result.Status);
+        Assert.Contains("DATAHUB_ADMIN_TOKEN", result.Description);
     }
 
     [Fact]
@@ -69,7 +113,6 @@ public sealed class RuntimeConfigurationHealthCheckTests
             ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
             DeviceTokenSigningKey = new string('d', 32),
             EnrollmentPepper = new string('e', 32),
-            LicenseAssertionValidationKey = new string('l', 32),
             AllowStagingTestIssuer = false,
             EnvironmentName = "Staging"
         });
@@ -92,7 +135,6 @@ public sealed class RuntimeConfigurationHealthCheckTests
             ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
             DeviceTokenSigningKey = new string('d', 32),
             EnrollmentPepper = new string('e', 32),
-            LicenseAssertionValidationKey = new string('l', 32),
             StagingTestSigningKey = new string('s', 32),
             AllowStagingTestIssuer = true
         });

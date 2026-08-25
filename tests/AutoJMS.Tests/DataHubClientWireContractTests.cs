@@ -115,4 +115,97 @@ public class DataHubClientWireContractTests
         Assert.True(DataHubClient.TryNormalizeScanTime("2026-08-23T14:05:09", out var normalized));
         Assert.Equal("2026-08-23 14:05:09", normalized);
     }
+
+    // ── Read projections ──────────────────────────────────────────────────
+    //
+    // ToWaybill (snapshot reader) and ToWaybillRow (change feed / resync) read the SAME server
+    // projection and write the SAME local columns, so they must agree. They did not: ToWaybill
+    // preferred stateName/stateEventAt and ToWaybillRow preferred lastActivityName/lastActivityAt,
+    // which disagree for any waybill whose newest activity has not yet advanced its state.
+
+    /// <summary>A projection whose activity and state deliberately disagree on all three fields.</summary>
+    private static JObject DivergentProjection() => new()
+    {
+        ["waybillNo"] = "886900000001",
+        ["stateName"] = "Đang trung chuyển",
+        ["stateStatus"] = "IN_TRANSIT",
+        ["stateEventAt"] = "2026-08-23T02:00:00+00:00",
+        ["lastActivityName"] = "Phát hàng",
+        ["lastActivityStatus"] = "DELIVERING",
+        ["lastActivityAt"] = "2026-08-23T05:30:00+00:00"
+    };
+
+    [Fact]
+    public void Both_readers_prefer_the_latest_activity_over_the_state()
+    {
+        var model = DataHubClient.ToWaybill(DivergentProjection());
+        var row = DataHubClient.ToWaybillRow(DivergentProjection());
+
+        Assert.Equal("Phát hàng", model.ThaoTacCuoi);
+        Assert.Equal("Phát hàng", row.Value<string>("thao_tac_cuoi"));
+        Assert.Equal(model.ThaoTacCuoi, row.Value<string>("thao_tac_cuoi"));
+        Assert.Equal(model.TrangThaiHienTai, row.Value<string>("trang_thai_hien_tai"));
+    }
+
+    [Fact]
+    public void Both_readers_emit_jms_local_naive_time_not_the_servers_offset_form()
+    {
+        var model = DataHubClient.ToWaybill(DivergentProjection());
+        var row = DataHubClient.ToWaybillRow(DivergentProjection());
+
+        // 05:30Z is 12:30 in Asia/Ho_Chi_Minh. The local columns are compared against SQLite's
+        // datetime(), so an offset-bearing value here shifts every merge comparison by 7 hours.
+        Assert.Equal("2026-08-23 12:30:00", model.ThoiGianThaoTac);
+        Assert.Equal("2026-08-23 12:30:00", row.Value<string>("thoi_gian_thao_tac"));
+    }
+
+    [Fact]
+    public void Both_readers_fall_back_to_the_state_when_no_activity_is_present()
+    {
+        var projection = new JObject
+        {
+            ["waybillNo"] = "886900000002",
+            ["stateName"] = "Đang trung chuyển",
+            ["stateStatus"] = "IN_TRANSIT",
+            ["stateEventAt"] = "2026-08-23T02:00:00+00:00"
+        };
+
+        var model = DataHubClient.ToWaybill((JObject)projection.DeepClone());
+        var row = DataHubClient.ToWaybillRow((JObject)projection.DeepClone());
+
+        Assert.Equal("Đang trung chuyển", model.ThaoTacCuoi);
+        Assert.Equal("Đang trung chuyển", row.Value<string>("thao_tac_cuoi"));
+        Assert.Equal("2026-08-23 09:00:00", model.ThoiGianThaoTac);
+        Assert.Equal("2026-08-23 09:00:00", row.Value<string>("thoi_gian_thao_tac"));
+    }
+
+    [Fact]
+    public void An_embedded_payload_still_wins_over_the_projections_own_fields()
+    {
+        var projection = DivergentProjection();
+        // PascalCase because that is what ToObservation puts on the wire: it serialises the model
+        // itself (JObject.FromObject), so the round trip binds back onto the same properties.
+        projection["payload"] = new JObject
+        {
+            ["WaybillNo"] = "886900000001",
+            ["ThaoTacCuoi"] = "Ghi chú tại chỗ"
+        };
+
+        // ToWaybill hydrates the model from payload first and only fills the gaps, so a value the
+        // pushing leader supplied must not be overwritten by the reducer's view.
+        Assert.Equal("Ghi chú tại chỗ", DataHubClient.ToWaybill(projection).ThaoTacCuoi);
+    }
+
+    [Fact]
+    public void A_snake_case_payload_key_does_not_bind_and_the_projection_fills_the_gap()
+    {
+        // WaybillDbModel carries no [JsonProperty] aliases, so Newtonsoft binds by property name
+        // only. A hand-written snake_case payload silently fails to bind — the value is not lost
+        // (the projection's own field fills in) but it is also not honoured, which is worth
+        // knowing before anyone hand-authors a payload the way ToWaybillRow writes its columns.
+        var projection = DivergentProjection();
+        projection["payload"] = new JObject { ["thao_tac_cuoi"] = "Ghi chú tại chỗ" };
+
+        Assert.Equal("Phát hàng", DataHubClient.ToWaybill(projection).ThaoTacCuoi);
+    }
 }

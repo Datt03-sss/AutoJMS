@@ -83,13 +83,17 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
         return ValueTask.FromResult(LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow()));
     }
 
+    /// <summary>
+    /// Always the staging test key. There used to be a fallback to a separate
+    /// DATAHUB_LICENSE_ASSERTION_VALIDATION_KEY here, but it could never be reached:
+    /// <see cref="ValidateAsync"/> refuses before this point unless the staging test
+    /// issuer is enabled on a staging channel, and AddDataHubIdentity only registers
+    /// this class as the validator under that same condition. Its only effect was to
+    /// make an operator who set it believe production assertion validation was
+    /// configured, when production needs DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY.
+    /// </summary>
     private byte[] SelectValidationKey()
-    {
-        if (StagingTestIssuerPolicy.IsEnabled(_options.EnvironmentName, _options.AllowStagingTestIssuer)
-            && string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
-            return Encoding.UTF8.GetBytes(_options.StagingTestSigningKey);
-        return Encoding.UTF8.GetBytes(_options.LicenseAssertionValidationKey ?? "");
-    }
+        => Encoding.UTF8.GetBytes(_options.StagingTestSigningKey ?? "");
 
     private byte[] GetStagingKey()
     {
