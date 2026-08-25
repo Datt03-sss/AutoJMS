@@ -80,6 +80,13 @@ test("an active license activates and returns the full client contract", async (
     assert.equal(response.body.datahub.manifests.versionLatest, "manifest/version-latest.json");
     assert.equal(response.body.datahub.manifests.tierDefinitions, "manifest/tier-definitions.json");
 
+    // Two manifest keys sharing one path is always a copy-paste, never a design:
+    // `smallUpdateManifest` used to duplicate `selectorUpdateManifest` exactly.
+    // The client drops keys its model does not declare, so the duplicate was
+    // invisible from both ends until someone diffed the object by hand.
+    const paths = Object.values(response.body.datahub.manifests);
+    assert.equal(new Set(paths).size, paths.length, "manifest paths must be distinct");
+
     const session = onlySession();
     assert.equal(session.value.status, "active");
     assert.equal(session.value.tier, "ULTRA");

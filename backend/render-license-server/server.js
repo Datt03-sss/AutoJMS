@@ -52,8 +52,10 @@ const CONFIG = {
     DEFAULT_CHANNEL:
         process.env.DEFAULT_UPDATE_CHANNEL || "stable",
 
-    // Lifecycle defaults. A license record may override graceDays per key;
-    // offlineGraceHours is advisory and only forwarded to the client.
+    // Lifecycle defaults, used when the licence record does not carry its own.
+    // Both graceDays and offlineGraceHours may be overridden per key. Neither is
+    // enforced here beyond graceDays: offlineGraceHours is advisory and only
+    // forwarded to the client, which decides how long it runs unreachable.
     DEFAULT_GRACE_DAYS:
         Number(process.env.LICENSE_GRACE_DAYS || licenseLifecycle.DEFAULT_GRACE_DAYS),
 
@@ -83,10 +85,13 @@ const DATAHUB_MANIFESTS = {
     hashManifest:
         "manifest/hash-manifest.json",
 
+    // SmallUpdateService reads this one too — small updates ARE selector updates
+    // here. There used to be a second `smallUpdateManifest` key beside it holding
+    // the identical path, which no client ever read: DataHubManifestUrls in
+    // VpsConfig.cs declares no such property and System.Text.Json drops unknown
+    // members silently. Removed rather than pointed at a new path, because
+    // inventing a URL nothing fetches is the more expensive kind of dead config.
     selectorUpdateManifest:
-        "selector-updates/selector-update-manifest.json",
-
-    smallUpdateManifest:
         "selector-updates/selector-update-manifest.json",
 
     tierDefinitions:
@@ -158,10 +163,20 @@ function resolveLicenseSiteCodes(data, middleCode) {
         ? data.siteCodes
         : [data?.siteCode, data?.siteId, middleCode];
 
+    // Placeholders are dropped here, not merely warned about in verify-license.
+    // "0000" is a truthy string, so `filter(Boolean)` let it through and every
+    // license still carrying the placeholder was minted an assertion for the SAME
+    // SiteCodes list — those customers would enroll into one DataHub tenant and
+    // read and write each other's rows. Dropping placeholders empties the list,
+    // and an empty list already means "cannot enroll" in the caller below.
+    //
+    // This is deliberately stricter than REQUIRE_UNIQUE_SITE_CODE, which gates
+    // login: a station with a placeholder still signs in and works locally, it
+    // just does not get a data-plane credential until it has a real site code.
     return [...new Set(
         raw
             .map(code => String(code || "").trim().toUpperCase())
-            .filter(Boolean)
+            .filter(code => code && !PLACEHOLDER_SITE_CODES.has(code))
     )];
 }
 
@@ -351,6 +366,20 @@ const HWID_PATTERN = /^[^\u0000-\u001f\u007f]{8,256}$/;
  * left running never expired at all.
  */
 function evaluateLicenseRecord(data) {
+    // An expiresAt the parser cannot read is indistinguishable from a v1 record
+    // that has no expiry at all, so evaluateLicense returns "perpetual" and the
+    // key never expires. That is the correct behaviour for v1 records and the
+    // wrong one for a typo ("2026/10/16", "Oct 16 2026"), and the two are
+    // impossible to tell apart downstream. Log it so a mistyped key is findable
+    // instead of quietly becoming a lifetime licence.
+    const rawExpiresAt = data?.expiresAt;
+    if (rawExpiresAt !== null && rawExpiresAt !== undefined && rawExpiresAt !== ""
+        && licenseLifecycle.parseInstant(rawExpiresAt) === null) {
+        console.warn("[LICENSE_EXPIRES_AT_UNPARSEABLE]", {
+            expiresAt: String(rawExpiresAt)
+        });
+    }
+
     return licenseLifecycle.evaluateLicense(
         {
             status: data?.status,
@@ -359,6 +388,23 @@ function evaluateLicenseRecord(data) {
         },
         Date.now()
     );
+}
+
+/**
+ * Hours a station may keep running without reaching this server.
+ *
+ * Per-key first, env second. The v2 schema publishes offlineGraceHours on the
+ * licence record and the docs describe it as per-key, but the record value was
+ * never read — a key asking for 168 silently received the fleet default. Guarded
+ * the same way graceDays is, because Number(null) === 0 would hand back a zero
+ * offline window rather than the default.
+ */
+function resolveOfflineGraceHours(data) {
+    const raw = data?.offlineGraceHours;
+    if (raw === null || raw === undefined || raw === "") return CONFIG.OFFLINE_GRACE_HOURS;
+
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : CONFIG.OFFLINE_GRACE_HOURS;
 }
 
 function isPlaceholderSiteCode(siteCode) {
@@ -740,6 +786,21 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 middleCode
             });
         }
+
+        // ---- Module policy --------------------------------------------------
+        // NOTE (owner decision pending): this fallback grants autoUpdate by
+        // absence, while the v2 template in backend/firebase/config-key.json ships
+        // autoUpdate:false. A record missing modulePolicy therefore self-updates,
+        // which is the opposite of what whoever wrote the template intended.
+        // Flipping the default would freeze updates on every v1 record still in the
+        // field, so it is a release-policy call, not a code cleanup — left as is and
+        // logged instead, so the records needing a backfill can be listed.
+        if (!data.modulePolicy) {
+            console.warn("[LICENSE_MODULE_POLICY_MISSING]", {
+                licenseKey: maskedLicenseKey,
+                appliedDefault: "autoUpdate=true"
+            });
+        }
         const modulePolicy = data.modulePolicy || {
             autoUpdate: true,
             silentUpdate: true,
@@ -901,7 +962,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 graceDays: Number.isFinite(Number(data.graceDays))
                     ? Number(data.graceDays)
                     : CONFIG.DEFAULT_GRACE_DAYS,
-                offlineGraceHours: CONFIG.OFFLINE_GRACE_HOURS,
+                offlineGraceHours: resolveOfflineGraceHours(data),
                 billingAnchorDay: CONFIG.BILLING_ANCHOR_DAY,
                 // Same bounds as the DataHub assertion so the two never disagree.
                 seats: boundedNumber(data.seats, DATAHUB_ASSERTION.DEFAULT_SEATS, 1, 500)
@@ -1467,8 +1528,22 @@ const PORT = process.env.PORT || 3000;
 // so production is unchanged; a test that requires this module gets the app
 // without a bound socket, which is what makes the routes testable at all.
 if (require.main === module) {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log("AutoJMS Server Running port:", PORT);
+    });
+
+    // Render sends SIGTERM on every deploy and every scale event. Without a
+    // handler Node exits immediately, cutting off whatever request was in
+    // flight — and the requests this server serves are not read-only: verify
+    // -license binds hwid and activatedAt, and writes the session row. A client
+    // killed mid-write retries against a half-written session.
+    //
+    // Registered only in the entry-point branch, so the test harness (which
+    // requires this module and calls listen() itself) does not inherit a
+    // process-wide handler that would outlive its server.
+    process.on("SIGTERM", () => {
+        console.log("SIGTERM received, closing server");
+        server.close(() => process.exit(0));
     });
 }
 
