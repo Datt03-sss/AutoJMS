@@ -56,10 +56,29 @@ Write-Host ''
 # ─── Part 2: Check git-tracked files for secret patterns ───
 Write-Host '[2/4] Scanning tracked files for secrets...' -ForegroundColor Yellow
 
-# Get list of tracked files
+# Get list of tracked files.
+#
+# -c core.quotepath=false is not cosmetic. With git's default (quotepath=true) a tracked path
+# containing non-ASCII characters is printed wrapped in double quotes with octal escapes —
+# "docs/layout/tabThoiHieu/B\341\272\243ng th\341\273\235i hi\341\273\207u N-1.svg". A double
+# quote is an illegal character in a Windows path, so [System.IO.Path]::GetExtension() throws
+# and $ErrorActionPreference = 'Stop' kills the entire scan in part 2 — parts 3 and 4 never run.
+# This is invisible on a machine whose git config already sets core.quotepath=false (as the
+# Owner's does); on a CI runner it is the default, and it aborted this script there.
+#
+# [Console]::OutputEncoding: Windows PowerShell decodes a child process's stdout using the
+# console code page, which turns those UTF-8 names into mojibake. The path then fails Test-Path
+# and the file is skipped in silence — a hole in the gate rather than a crash.
+$previousOutputEncoding = $null
 try {
     Push-Location $Root
-    $trackedFiles = & git ls-files 2>&1
+    try {
+        $previousOutputEncoding = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    } catch {
+        # Some hosts refuse to change it; the quotepath fix below still applies.
+    }
+    $trackedFiles = & git -c core.quotepath=false ls-files 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host '  WARNING: git ls-files failed. Falling back to file system scan.' -ForegroundColor Yellow
         $trackedFiles = Get-ChildItem -Path $Root -Recurse -File |
@@ -67,8 +86,24 @@ try {
             ForEach-Object { $_.FullName.Substring($Root.Length + 1).Replace('\', '/') }
     }
 } finally {
+    if ($previousOutputEncoding) {
+        try { [Console]::OutputEncoding = $previousOutputEncoding } catch { }
+    }
     Pop-Location
 }
+
+# Belt and braces: whatever the git config on this machine, never hand an unusable string to the
+# path APIs below. Warn instead of dying, so one odd filename cannot switch the gate off.
+$invalidPathChars = [System.IO.Path]::GetInvalidPathChars()
+$trackedFiles = @($trackedFiles | Where-Object {
+    $candidate = "$_"
+    if (-not $candidate.Trim()) { return $false }
+    if ($candidate.IndexOfAny($invalidPathChars) -ge 0) {
+        Write-Host "  WARNING: skipping unscannable path from git ls-files: $candidate" -ForegroundColor Yellow
+        return $false
+    }
+    return $true
+})
 
 # Dangerous filename patterns
 $dangerousFiles = @(
@@ -146,7 +181,9 @@ Write-Host ''
 Write-Host '[3/4] Checking staged files...' -ForegroundColor Yellow
 try {
     Push-Location $Root
-    $stagedFiles = & git diff --cached --name-only 2>&1
+    # Same reason as part 2: a staged path with non-ASCII characters would otherwise arrive
+    # quoted and octal-escaped, and would not match the $dangerousFiles patterns below.
+    $stagedFiles = & git -c core.quotepath=false diff --cached --name-only 2>&1
     if ($LASTEXITCODE -eq 0 -and $stagedFiles) {
         foreach ($file in $stagedFiles) {
             foreach ($pattern in $dangerousFiles) {
