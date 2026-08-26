@@ -1,0 +1,26 @@
+# Build context exclusions for backend/render-license-server (rootDir of the Render service).
+
+# Rebuilt inside the image by `npm ci`; copying the host tree in would also clobber that layer
+# with Windows-built binaries.
+node_modules
+
+# Test suite is not needed at runtime.
+test
+
+.git
+npm-debug.log
+
+# Secrets must never end up in an image layer - deleting them in a later layer does not remove
+# them from the image. server.js calls dotenv.config(), so a .env sitting in this folder would
+# be both copied in AND loaded; the credential loaders read a *path* from the environment
+# (GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE) which Render mounts
+# under /etc/secrets at run time, so no key file belongs in the build context either.
+# See the Secret Policy in CLAUDE.md. env.template is deliberately NOT excluded: it holds
+# names only, no values.
+.env
+.env.*
+service_account*.json
+service_accout*.json
+googleSheetsServiceAccount*.json
+*.pem
+*.pfx
