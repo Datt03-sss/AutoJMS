@@ -50,8 +50,20 @@ jobs:
             Write-Host '::error::Secret AUTOJMS_FORBIDDEN_VALUES rong hoac chua ton tai. Phan 4 cua check-secrets.ps1 se chay o che do INACTIVE (in NOTICE roi PASS). Tao lai tai Settings > Secrets and variables > Actions, noi dung giong eng/harness/forbidden-values.local.txt tren may Owner.'
             exit 1
           }
-          $entries = $env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n;]+' |
-            Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('#') }
+          # Đếm giống hệt cách check-secrets.ps1 phần 4 đọc: bỏ chú thích TRƯỚC rồi mới tách ';'.
+          # Tách trước sẽ biến phần đuôi của một dòng chú thích có dấu ';' thành "entry".
+          $entries = @()
+          foreach ($line in ($env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n]+')) {
+            $text = "$line"
+            $commentAt = $text.IndexOf('#')
+            if ($commentAt -ge 0) { $text = $text.Substring(0, $commentAt) }
+            if (-not $text.Trim()) { continue }
+            $entries += ($text -split ';' | Where-Object { $_.Trim() })
+          }
+          if ($entries.Count -eq 0) {
+            Write-Host '::error::AUTOJMS_FORBIDDEN_VALUES chi chua chu thich, khong co gia tri nao. Cong se chay o che do INACTIVE.'
+            exit 1
+          }
           Write-Host "Infra denylist reached the runner: $($entries.Count) entry(ies)."
 
       - name: Run infra leak gate

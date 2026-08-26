@@ -225,14 +225,30 @@ Write-Host ''
 Write-Host '[4/4] Checking for infrastructure identifiers...' -ForegroundColor Yellow
 
 $forbiddenListPath = Join-Path $PSScriptRoot 'forbidden-values.local.txt'
-$forbiddenRaw = @()
+$forbiddenLines = @()
 $forbiddenSource = $null
 if (Test-Path $forbiddenListPath) {
-    $forbiddenRaw = Get-Content $forbiddenListPath -ErrorAction SilentlyContinue
+    $forbiddenLines = Get-Content $forbiddenListPath -ErrorAction SilentlyContinue
     $forbiddenSource = 'forbidden-values.local.txt'
 } elseif ($env:AUTOJMS_FORBIDDEN_VALUES) {
-    $forbiddenRaw = $env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n;]+'
+    $forbiddenLines = $env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n]+'
     $forbiddenSource = 'AUTOJMS_FORBIDDEN_VALUES'
+}
+
+# Comment stripped FIRST, ';' split second. The other order was a real bug: the env-var branch
+# used to split on '[\r\n;]+' before dropping comments, so a comment line containing a semicolon
+# turned its own tail into an "entry". The reference file has three such lines, so CI parsed 5
+# entries where the local run parsed 2 — one of them 3 characters long, which matched 30 ordinary
+# source files and reported them all as infrastructure leaks. Same denylist, two different
+# answers, and the CI one was noise. A '#' inside a value is not supported (no IP, hostname or
+# path needs one) and ';' remains a separator so the whole list can be pasted on a single line.
+$forbiddenRaw = @()
+foreach ($line in $forbiddenLines) {
+    $text = "$line"
+    $commentAt = $text.IndexOf('#')
+    if ($commentAt -ge 0) { $text = $text.Substring(0, $commentAt) }
+    if (-not $text.Trim()) { continue }
+    $forbiddenRaw += ($text -split ';')
 }
 
 # Entry format: "<literal value>" or "<literal value> | <label>". The label is what gets
@@ -240,14 +256,23 @@ if (Test-Path $forbiddenListPath) {
 # into the CI log it was meant to protect.
 $forbidden = @()
 $entryIndex = 0
+# No infrastructure identifier is shorter than this. A shorter entry means the list was
+# mis-authored (a truncated paste, a stray separator), and a short fragment matches ordinary
+# source code — which is how a 3-character entry once produced 30 "leaks" in one CI run. Fail
+# loudly with the length instead of silently drowning the real entries in noise.
+$minEntryLength = 6
 foreach ($line in $forbiddenRaw) {
     $trimmed = "$line".Trim()
-    if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+    if (-not $trimmed) { continue }
     $entryIndex++
     $parts = $trimmed -split '\|', 2
     $value = $parts[0].Trim()
     if (-not $value) { continue }
     $label = if ($parts.Count -gt 1 -and $parts[1].Trim()) { $parts[1].Trim() } else { "entry #$entryIndex" }
+    if ($value.Length -lt $minEntryLength) {
+        $issues += "DENYLIST ENTRY TOO SHORT ($label): $($value.Length) char(s), minimum $minEntryLength. Fix the list in $forbiddenSource; the value is not printed here."
+        continue
+    }
     $forbidden += @{ Value = $value; Label = $label }
 }
 
