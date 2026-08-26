@@ -105,3 +105,9 @@ service_accout*.json
 # is injected as $env:AUTOJMS_FORBIDDEN_VALUES), but a variant name such as
 # forbidden-values.ci.txt is an easy accident and must not be commitable either.
 eng/harness/forbidden-values*.txt
+
+# Render CLI binary — tải về bằng tools/render-cli/install-render-cli.ps1, không commit.
+# 8.7 MB nhị phân theo nền tảng (windows/amd64) không thuộc về một repo PUBLIC, và commit nó
+# biến repo thành nơi phân phối lại binary của nhà cung cấp. Script cài ĐƯỢC commit và ghim
+# phiên bản, nên bất kỳ máy nào cũng dựng lại đúng CLI đó. Xem tools/render-cli/README.md.
+tools/render-cli/bin/

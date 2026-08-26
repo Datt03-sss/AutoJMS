@@ -107,9 +107,11 @@ cd /opt/autojms-datahub
   remain local-only.
 - **`DeviceIdentity.Role`** is carried through enrollment but never enforced.
 - Render production deployment cannot be completed from this local machine because these
-  credentials are not present: Render CLI / `RENDER_API_KEY`, Render service ID,
+  credentials are not present: `RENDER_API_KEY`, Render service ID,
   `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, and the Firebase
-  Admin service account credential.
+  Admin service account credential. The CLI itself is no longer missing — it is installed
+  repo-local and pinned at v2.24.0 (`tools/render-cli/`) — but it is unauthenticated, and it
+  cannot perform any of A1-a…A1-g; those stay dashboard operations.
 
 ## Required Render Environment
 
