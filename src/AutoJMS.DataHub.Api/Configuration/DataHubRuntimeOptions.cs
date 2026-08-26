@@ -66,6 +66,29 @@ public sealed class DataHubRuntimeOptions
     public int RetentionBatchSize { get; set; } = 1000;
 
     /// <summary>
+    /// How long a <c>delete</c> tombstone survives in <c>dashboard_changes</c> after the
+    /// projection it announces is gone.
+    ///
+    /// This is the only thing that decides whether a station ever learns a waybill was
+    /// deleted. A station that was offline longer than this window reconnects to find the
+    /// notice already pruned and keeps the row in its local SQLite forever — which is the
+    /// bug the tombstone exists to fix, so the floor is a correctness bound and not a
+    /// tuning knob. It is deliberately far longer than the 14-day <c>dashboard_changes</c>
+    /// clock: an ordinary change that a client missed is recoverable from a snapshot, and a
+    /// deletion is not.
+    ///
+    /// The cost is stated plainly because it is real: change pruning removes only a
+    /// contiguous prefix, so a retained tombstone pins every later row of that site's feed
+    /// for as long as it lives. A site with a tombstone therefore keeps up to this much
+    /// change history rather than 14 days' worth.
+    /// </summary>
+    public TimeSpan TombstoneRetention { get; set; } = TimeSpan.FromDays(DefaultTombstoneRetentionDays);
+
+    public const int DefaultTombstoneRetentionDays = 90;
+    public const int MinimumTombstoneRetentionDays = 30;
+    public const int MaximumTombstoneRetentionDays = 365;
+
+    /// <summary>
     /// CIDR ranges whose X-Forwarded-* headers are honoured. Only the reverse proxy may be
     /// trusted here: an empty trust list makes ForwardedHeadersMiddleware accept the header
     /// from any caller, which lets a client forge its own client IP and evade the per-IP
@@ -144,6 +167,11 @@ public sealed class DataHubRuntimeOptions
             DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
             RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),
             RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000),
+            TombstoneRetention = TimeSpan.FromDays(ParseBoundedInt(
+                configuration["DATAHUB_TOMBSTONE_RETENTION_DAYS"],
+                DefaultTombstoneRetentionDays,
+                MinimumTombstoneRetentionDays,
+                MaximumTombstoneRetentionDays)),
             TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks),
             PublicHost = NormalizePublicHost(configuration["DATAHUB_PUBLIC_HOST"])
         };

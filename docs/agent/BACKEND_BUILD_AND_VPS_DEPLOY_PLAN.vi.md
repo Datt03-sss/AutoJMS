@@ -431,12 +431,12 @@ Làm trên máy dev, không cần VPS. Mỗi việc kết thúc bằng `verify.p
 | ~~**B9**~~ ✅ | ~~Sinh `backend/backend-schema-dump.sql` thật từ một DB đã áp 001–005~~ **XONG 2026-08-26** | `backend/backend-schema-dump.sql` (574 dòng, 12 bảng, 6 index) | Dump lấy từ DB thật trên VPS (Postgres 16 Alpine, đã áp 001–005). Đã lược các chỉ thị `\restrict`/`\unrestrict` của `pg_dump` để file mở được bằng `psql` bản cũ hơn |
 | ~~**B10**~~ ✅ | ~~Thêm `.github/workflows/verify.yml` gọi đúng các bước của `verify.ps1`~~ **XONG 2026-08-26** | `.github/workflows/verify.yml` (mới) | Không có CI là mọi gate đều là gate danh dự. Workflow **gọi** `verify.ps1` chứ không chép lại các bước, để CI và máy dev không thể lệch nhau. `windows-latest` là bắt buộc chứ không phải sở thích: `AutoJMS.slnx` có `src/AutoJMS` target `net8.0-windows/win-x64`. Cài **cả** SDK 8.0.x và 10.0.x vì app là net8.0 còn DataHub API là net10.0. **Còn nợ**: `eng/harness/verify.ps1` in nhãn `Tests: PASS (or WARNING: no tests)` ngay cả khi test **đã chạy và pass** — nhãn sai, không phải gate sai (`test.ps1` fail đúng); và license server Node chưa có job `npm run check` |
 | ~~**B11**~~ ✅ | ~~Tách điều kiện READ khỏi điều kiện FETCH: "License DataHub hợp lệ ⇒ được ĐỌC", không phụ thuộc token JMS~~ **XONG 2026-08-26** | `src/AutoJMS/Forms/FullStackOperation.cs` (`StartLocalRuntimeAsync` mới + `RunSyncAsync`) | Mục §8 của `datahub-deployment-options.md`. Nguyên nhân gốc: `StartRealtimeRuntimeAsync` **gộp** việc ĐỌC (`LoadDataAndRefreshViewsAsync`, `StartCloudSync`) với việc FETCH (`_autoRefreshTimer`, `_leaderTierTimer`) sau **một** cổng `AuthStateService.IsAuthenticated` ⇒ máy có license ULTRA + device token hợp lệ nhưng chưa đăng nhập JMS mở form ra **grid rỗng** trong khi dữ liệu nằm sẵn trong SQLite local. Nay hai nửa có hai latch riêng (`_isLocalRuntimeStarted` / `_isRealtimeStarted`). **Cố ý giữ nguyên**: máy không có token JMS **không được** giành lease (leader không kéo được JMS thì bỏ đói cả bưu cục) — nó đi đường follower `PullAllAsync`; `LeaderTierTickAsync` và `OpportunisticWaybillRefreshAsync` vẫn gác token JMS vì chúng fetch từ JMS thật |
-| **B12** | Job night-purge phát **tombstone** (`operation='delete'`) trước khi hard-delete; retention tombstone ≥ cửa sổ offline dài nhất (đề xuất 30–90 ngày) | API | Vá S7 |
+| ~~**B12**~~ ✅ | ~~Job night-purge phát **tombstone** (`operation='delete'`) trước khi hard-delete; retention tombstone ≥ cửa sổ offline dài nhất (đề xuất 30–90 ngày)~~ **XONG 2026-08-26** | `Infrastructure/RetentionRepository.cs` (`DeleteProjectionsAsync` mới) + `Configuration/DataHubRuntimeOptions.cs` + `Services/RetentionHostedService.cs` + `src/AutoJMS/Data/DataHubClient.cs` + `src/AutoJMS/FullStack/Services/DataHubSyncService.cs` | Vá S7. **Lệch quan trọng nhất so với đề bài: "hard-delete dữ liệu cũ" mà tombstone phải đi trước KHÔNG TỒN TẠI.** `RunOnceAsync` xoá `idempotency_records`, `dashboard_changes`, `waybill_scan_events`, `audit_logs` — **chưa bao giờ** xoá `waybill_projections`, và `003_seed_retention.sql` không seed policy nào cho bảng đó. S7 vì vậy là lỗ hổng **tiềm ẩn**, không phải đang xảy ra. Bản vá **dựng cả cơ chế** thay vì chèn tombstone vào một chỗ trống: `DeleteProjectionsAsync` phát tombstone **rồi** mới xoá projection, **trong một câu lệnh** — data-modifying CTE của PostgreSQL luôn chạy đến hết, nên không có thứ tự lỗi nào commit được cái xoá mà thiếu cái báo; và `DELETE` lấy `inserted` làm driver nên **không đường nào** xoá một hàng mà không có tombstone. **Cố ý opt-in**: không seed policy ⇒ part này không tìm thấy gì và không đổi hành vi cho đến khi operator `INSERT` một dòng — "cũ" không đồng nghĩa với "đã bị xoá", một mặc định theo tuổi sẽ bảo cả fleet bỏ đi lịch sử chúng vẫn đang dùng. **Ràng buộc cho operator trước khi bật**: projection sinh từ `waybill_scan_events`, nên đồng hồ projection **ngắn hơn** đồng hồ event sẽ để một lần re-ingest dựng lại đúng hàng vừa báo xoá. **Nửa client là bắt buộc, không phải tuỳ chọn**: `PullWaybillChangesAsync` trước đây **bỏ qua** `operation` và merge mọi change thành upsert, nên một tombstone (body chỉ có key) sẽ ghi hàng rỗng lên hàng tốt — nay tách sang `DataHubChangePage.DeletedWaybillNos` và áp `DELETE FROM fs_waybills` **bất chấp `_hasLease`**, vì tombstone do retention phát chứ không phải echo của chính máy này: leader giữ hàng lại sẽ push nó lên lần sau và **hồi sinh** waybill cho cả bưu cục. **Giá phải trả, chấp nhận có ý thức**: `dashboard_changes` chỉ prune được **tiền tố liên tục**, nên một tombstone còn sống ghim toàn bộ feed phía sau nó của site đó suốt 30–90 ngày — đổi lấy điều này vì một change thường bị mất còn cứu được bằng snapshot, còn một lần xoá thì không. **Không cần migration**: `ck_dashboard_changes_operation` đã cho `'delete'`, `retention_policies.table_name` không có CHECK allow-list (allow-list nằm trong C#) |
 | ~~**B13**~~ ✅ | ~~Migration `006`: bảng `jti_cache`/revocation + index `dashboard_changes(site_id, change_at)` + index `waybill_scan_events(site_id, event_occurred_at)` + index phục vụ retention `audit_logs`~~ **XONG 2026-08-26 — chủ sở hữu đã cho phép** | `backend/datahub/migrations/006_revocation_and_retention_indexes.sql` (mới) | **Bảng tên `revoked_device_credentials`, KHÔNG phải `jti_cache`** — đây là lệch có chủ ý: device token của DataHub **không có jti** để cache. `HmacDeviceTokenService` ký `{deviceId, siteId, channel, role, tokenVersion, expiresAt, issuer, audience}` và không gì khác, nên cột `jti` sẽ **không đường code nào điền được** — một bảng trông như chống replay mà về cấu trúc không thể chống. `jtiCache` trong kế hoạch thuộc **license server Node** (`server.js:293`), tiến trình khác, format token khác. Thứ DataHub thật sự thu hồi được là `credential_hash` mà `DeviceAuthenticationMiddleware` đã tính mỗi request. **Ba index**: `dashboard_changes(site_id, change_at, change_seq)` (cột thứ ba để aggregate của `DeleteChangesAsync` trả index-only); `waybill_scan_events(site_id, event_occurred_at)` (index cũ dẫn đầu bằng `waybill_no` nên vô dụng với vị từ không nêu waybill); `audit_logs(at, id)` (retention quét **liên site**, `ix_audit_logs_site_at` dẫn đầu `site_id` không dùng được). **Chạy trong transaction, KHÔNG `CONCURRENTLY`** — chấp nhận được **chỉ vì** ba bảng hiện rỗng-đến-nhỏ; áp lại lên site có lịch sử thật phải chuyển sang dạng `_notx`. **Chỉ là schema**: chưa đường code nào đọc bảng này, `TouchActiveAsync` thêm `AND NOT EXISTS` ở một thay đổi sau |
 | ~~**B16**~~ ❌ | ~~Thêm sub-check schema cho `/health/ready`~~ **VIỆC KHÔNG TỒN TẠI** | — | `PostgresDataSource.CanConnectAsync` đã làm đúng việc này từ trước (xem G12). Giữ dòng này để không ai "vá" lại lần nữa |
 | ~~**B17**~~ ✅ | ~~Ép server-side `DeviceIdentity.Role` (hiện enroll ghi `'operator'` nhưng **không endpoint nào kiểm**)~~ **XONG 2026-08-26** | `Auth/AuthContracts.cs` (`DeviceRoles`, `DeviceCapability`, `DeviceRolePolicy`, `Evaluate` 4 tham số) + `Auth/DeviceAuthenticationMiddleware.cs` + `SyncEndpoints.cs` / `LeaseEndpoints.cs` / `IngestEndpoints.cs` | **Ràng buộc quyết định hình dạng bản vá**: `EnrollmentEndpoints.AllowedEnrollmentRoles = { "operator" }`, nên **cả fleet** là `operator` — gác quyền ghi vào `leader`/`admin` sẽ **khoá sạch mọi thiết bị**. Luật ép được là **allow-list đóng**: role không nằm trong `DeviceRoles.All` ⇒ 403, kiểm trong `DeviceAuthenticationMiddleware` vì `SiteHub.OnConnectedAsync` không có route handler để gác. Thứ tự cố ý: sai site báo trước sai role, để log không mách nước rằng enrollment của chính máy đó hỏng |
 | ~~**B14**~~ ✅ | ~~`statement_timeout` cho `IngestPipeline`, `LeaseRepository`, `EnrollmentRepository`, `DeviceRepository`~~ **XONG 2026-08-26** | `Configuration/DataHubRuntimeOptions.cs` + `Infrastructure/PostgresDataSource.cs` (`BuildConnectionString`) + `Infrastructure/IngestRepository.cs` | Một query treo ở lease là fencing sai. **Phát hiện đáng ghi: `SET LOCAL statement_timeout = '60s'` của `IngestRepository` chưa bao giờ nổ được** — `CommandTimeout` mặc định của Npgsql 8.0.6 là 30 s, nên client bỏ đi trước server 30 s. Deadline nay đặt bằng **startup option** của PostgreSQL (`Options=-c statement_timeout=…`) để sống qua `DISCARD ALL` khi connection trả về pool, áp cho **mọi** repository chứ không riêng ingest; `Options` do operator cấu hình được **nối sau cùng** (PostgreSQL áp `-c` theo thứ tự, cái sau thắng) để override không cần sửa code; `CommandTimeout = seconds + 5` để **server** huỷ trước (57014, backend chết và nhả lock) chứ không phải Npgsql bỏ đi khi query vẫn đang chạy. Giá trị 0 bị clamp về Minimum — đó là giá trị duy nhất PostgreSQL đọc thành "không deadline", tức biến chốt an toàn thành phản diện của nó |
-| **B15** | License server: graceful shutdown (`server.close()` khi SIGTERM/SIGINT) + structured logging + `/api/version` | `backend/render-license-server/server.js` | Không có graceful shutdown ⇒ mỗi lần deploy là cắt request đang bay |
+| ~~**B15**~~ ✅ | ~~License server: graceful shutdown (`server.close()` khi SIGTERM/SIGINT) + structured logging + `/api/version`~~ **XONG 2026-08-26** | `backend/render-license-server/server.js` + `test/version.test.js` + `test/shutdown.test.js` (mới) + `test/helpers/harness.js` | **Handler SIGTERM đã có từ trước** — nên việc thật không phải "thêm graceful shutdown" mà là **vá bốn lỗ trong cái đã có**: (a) không có SIGINT, nên `node server.js` bị Ctrl+C vẫn chết giữa lúc ghi session; (b) không có timeout ép thoát — `server.close()` chờ **mọi** connection, và một keep-alive socket rỗi cũng tính là connection, nên callback có thể không bao giờ nổ và Render SIGKILL lúc 30 s (nay có `closeIdleConnections()` + hạn ép thoát 10 s, `unref()` để bộ đếm không tự giữ event loop sống); (c) không idempotent — signal thứ hai gọi `close()` trên server đang đóng ⇒ `ERR_SERVER_NOT_RUNNING` ⇒ **báo một lần deploy sạch thành thất bại**; (d) exit code cứng 0, nên platform không phân biệt được đóng sạch với ép thoát. `SHUTDOWN_TIMEOUT_MS=0` bị clamp về 1000 — đúng lý do như `statement_timeout=0` ở B14. `createShutdownHandler` **export ra** để test được: chuỗi này là hành vi mức process, gửi signal thật cho test runner sẽ giết cả lần chạy. `/api/version` **và** `/health/version` cùng payload (monitor đã scope `/health/*` không cần allow-list mới), anonymous + `healthLimiter` vì smoke test chạy **trước khi** có token — đánh đổi có ý thức: repo public nên commit hash live là thông tin công khai; gác sau admin token là một dòng nếu chủ sở hữu muốn. Logging đã chuyển toàn bộ đường license-verification và session-lifecycle sang `logEvent` JSON một dòng (Render biến field JSON thành filter được, template string thì chỉ grep được), `sessionId` ghi đầy đủ **có chủ ý** vì nó là khoá join giữa `session.created` / `heartbeat` / `session.closed` và bản thân không phải credential. **Kết quả: `npm test` 123 → 139 pass, 0 fail; `npm run check` pass** |
 
 > ✅ **`CREATE INDEX CONCURRENTLY` trong B13 — đã mở đường (2026-08-26).** Cách đúng để thêm
 > index vào bảng đang chạy production là `CONCURRENTLY` (không lock bảng), nhưng `CONCURRENTLY`
@@ -469,14 +469,72 @@ Làm trên máy dev, không cần VPS. Mỗi việc kết thúc bằng `verify.p
 > stdin. Nhánh host-psql do đó **chưa bao giờ áp được một migration nào**; chỉ nhánh container
 > từng chạy thật. Đã vá bằng `--file`.
 
-**Thứ tự khuyến nghị** (cập nhật 2026-08-26 — B1, B4, B16 đã ra khỏi hàng đợi):
-**B3** → B2 → B0 → B9 → B10 → (B5…B8 nhóm client) → B11 → B12 → B14 → B15 → B17 → B13 (chờ phép).
-
-**B3 nay là việc đứng đầu và là việc lợi/chi phí cao nhất còn lại của cả Chặng B** — một mình
-nó vá G5, S9, S10, S11.
+**Thứ tự khuyến nghị** — **hàng đợi Chặng B nay rỗng** (2026-08-26). B0…B17 đã xong hoặc đã
+được ghi nhận là việc không tồn tại (B16). Không còn hạng mục nào chờ.
 
 **Điều kiện ra**: `dotnet build AutoJMS.slnx -c Release` 0 error, `verify.ps1` **ALL GATES
-PASSED**, và B13 đã được cho phép hoặc đã được ghi nhận là hoãn có ý thức.
+PASSED**, và B13 đã được cho phép hoặc đã được ghi nhận là hoãn có ý thức. — **Đã đạt cả ba**
+(build 0 warning/0 error, verify ALL GATES PASSED, B13 đã được chủ sở hữu cho phép và đã áp
+trên VPS).
+
+> ⚠️ **Hai việc còn nợ do chính Chặng B sinh ra — đọc trước khi coi chặng này là đóng.**
+>
+> 1. **`backend/backend-schema-dump.sql` nay đã cũ.** Dump ở B9 lấy từ một DB áp **001–005**;
+>    migration `006` đã áp trên VPS sau đó, nên file thiếu `revoked_device_credentials` và 4
+>    index mới. Header của file tự yêu cầu cập nhật dòng "Reflects" mỗi khi có migration mới,
+>    nên đây là mâu thuẫn với chính nó, không phải chuyện thẩm mỹ. Sinh lại bằng `pg_dump -s`
+>    trên VPS (việc của Antigravity — VPS Ops).
+> 2. **SQL mới của B12 chưa từng chạy trên PostgreSQL thật.** Máy dev không có `psql` và không
+>    có Docker, và không có test integration nào chạm DB, nên hai câu lệnh mới
+>    (`DeleteProjectionsAsync`, và bộ lọc `CASE`/tombstone của `DeleteChangesAsync`) chỉ được
+>    kiểm bằng compile. Một lỗi cú pháp ở đây **không** làm sập API: `RetentionHostedService`
+>    bắt mọi exception và log `LogWarning`, nên hậu quả là **retention âm thầm ngừng chạy**.
+>    Phải `EXPLAIN` cả hai câu trên DB staging trước khi tin là chúng chạy.
+
+### Bật xoá projection của B12 (tombstone) — công thức cho operator
+
+Cơ chế tombstone đã có trong code nhưng **ngủ**: `003_seed_retention.sql` không seed policy nào
+cho `waybill_projections`, nên `DeleteProjectionsAsync` không tìm thấy hàng nào và không đổi hành
+vi. Nó chỉ chạy khi operator tự `INSERT` một dòng policy:
+
+```sql
+-- Một site cụ thể (khuyến nghị: bật thử một site trước)
+INSERT INTO retention_policies (site_id, table_name, clock_column, delete_after)
+VALUES ('<site-uuid>', 'waybill_projections', 'updated_at', interval '180 days')
+ON CONFLICT (site_id, table_name) WHERE site_id IS NOT NULL
+DO UPDATE SET delete_after = EXCLUDED.delete_after;
+
+-- Hoặc toàn hệ thống (site_id NULL = policy mặc định)
+INSERT INTO retention_policies (site_id, table_name, clock_column, delete_after)
+VALUES (NULL, 'waybill_projections', 'updated_at', interval '180 days')
+ON CONFLICT (table_name) WHERE site_id IS NULL
+DO UPDATE SET delete_after = EXCLUDED.delete_after;
+```
+
+Hai chi tiết dễ sai trong chính hai câu trên: `clock_column` là `NOT NULL` nên **bắt buộc** phải
+điền (bỏ trống ⇒ lỗi NOT NULL), nhưng `DeleteProjectionsAsync` **không đọc** nó — cột đồng hồ của
+projection **hardcode** là `updated_at` trong C# (tên bảng/cột không bao giờ được nội suy từ dữ
+liệu policy, đó là allow-list chống injection), nên điền `'updated_at'` để dữ liệu khớp hành vi
+thật chứ không phải để code dùng. Và hai unique index của bảng là **partial**
+(`WHERE site_id IS NULL` / `WHERE site_id IS NOT NULL`), nên `ON CONFLICT` **phải** kèm đúng
+predicate đó, ngược lại PostgreSQL không suy ra được arbiter index và câu lệnh thất bại.
+
+**Ba ràng buộc phải kiểm trước khi INSERT — vi phạm cái nào cũng làm mất dữ liệu âm thầm:**
+
+1. **`delete_after` của `waybill_projections` KHÔNG được ngắn hơn của `waybill_scan_events`**
+   (mặc định seed là 60 ngày). Projection sinh **từ** scan event: nếu event còn sống mà projection
+   đã bị xoá, một lần re-ingest sẽ dựng lại đúng hàng vừa báo là đã xoá — client nhận tombstone
+   rồi nhận lại upsert, và không log nào nói rằng nó vừa xoá oan.
+2. **`delete_after` phải dài hơn cửa sổ offline dài nhất trừ đi `DATAHUB_TOMBSTONE_RETENTION_DAYS`
+   (mặc định 90).** Máy offline lâu hơn cửa sổ tombstone quay lại sẽ không thấy thông báo xoá và
+   giữ hàng trong SQLite mãi mãi — đúng cái bug mà tombstone tồn tại để vá.
+3. **Site phải có dòng trong `site_change_counters`.** Không có counter thì không cấp được
+   `change_seq`, và code **cố ý giữ nguyên projection** trong trường hợp đó thay vì xoá không kèm
+   thông báo.
+
+Sau khi bật, theo dõi log `DataHub retention removed … {Projections} projections ({Tombstones}
+tombstones published)`: **`Tombstones` nhỏ hơn `Projections`** là tín hiệu có site mất hàng mà
+không thông báo được — dừng lại và điều tra, đừng chờ ca sau.
 
 ---
 
@@ -923,8 +981,9 @@ Hiện **không có** `rollback.sh`/`rollback.ps1`. §13 của guide mô tả ba
 A  Chốt nguồn deploy license server        ⛔ chủ sở hữu       [CHẶN TẤT CẢ]
 │  └─ ra: verify-license trả khối `datahub` có assertion
 ▼
-B  Vá code trên máy dev (B0…B15)           agent               [B13 cần phép]
-│  └─ ra: build 0 error + verify.ps1 ALL GATES PASSED
+B  Vá code trên máy dev (B0…B17)           agent               ✅ XONG 2026-08-26
+│  └─ ra: build 0 error + verify.ps1 ALL GATES PASSED — đã đạt; B13 đã được phép và đã áp
+│     (còn nợ: sinh lại backend-schema-dump.sql sau 006, EXPLAIN SQL mới của B12)
 ▼
 C  VPS staging: mua, DNS, hardening        ⛔ + agent
 │  └─ ra: chỉ 22/80/443 mở, 5432 kín, clock synced

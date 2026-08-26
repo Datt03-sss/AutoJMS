@@ -17,10 +17,35 @@ const GOOGLE_SHEETS_GRANT_TIMEOUT_MS = Number(process.env.GOOGLE_SHEETS_GRANT_TI
 const GOOGLE_SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 // ==========================================
+// STRUCTURED LOGGING
+// ==========================================
+// Render's log viewer turns a JSON line into filterable fields; a template string
+// is only greppable. Every license-verification and session-lifecycle event goes
+// through this so an operator can filter on event/requestId instead of matching
+// bracket prefixes by eye, and so the field names stay the same across routes.
+//
+// Contract for callers: pass identifiers, never secrets. License keys arrive here
+// already masked by maskLicenseKey(); raw tokens, private keys and Firebase error
+// strings (which carry the database URL and project id) are not fields.
+const LOG_SINKS = { info: "log", warn: "warn", error: "error" };
+
+function logEvent(level, event, fields) {
+    const sink = console[LOG_SINKS[level] || "log"];
+
+    try {
+        sink(JSON.stringify({ level, event, ...(fields || {}) }));
+    } catch {
+        // A caller that hands over a circular or BigInt field must not take the
+        // request down with it — the event name is worth more than the fields.
+        sink(`{"level":"${level}","event":"${event}","logError":"UNSERIALIZABLE_FIELDS"}`);
+    }
+}
+
+// ==========================================
 // ERROR HANDLER
 // ==========================================
-process.on("uncaughtException", err => console.error("[FATAL]", err));
-process.on("unhandledRejection", err => console.error("[FATAL]", err));
+process.on("uncaughtException", err => logEvent("error", "fatal.uncaught_exception", { message: err && err.message, stack: err && err.stack }));
+process.on("unhandledRejection", err => logEvent("error", "fatal.unhandled_rejection", { message: err && err.message, stack: err && err.stack }));
 
 // ==========================================
 // ENV CONFIG
@@ -375,7 +400,7 @@ function evaluateLicenseRecord(data) {
     const rawExpiresAt = data?.expiresAt;
     if (rawExpiresAt !== null && rawExpiresAt !== undefined && rawExpiresAt !== ""
         && licenseLifecycle.parseInstant(rawExpiresAt) === null) {
-        console.warn("[LICENSE_EXPIRES_AT_UNPARSEABLE]", {
+        logEvent("warn", "license.expires_at_unparseable", {
             expiresAt: String(rawExpiresAt)
         });
     }
@@ -568,6 +593,26 @@ async function verifyLicenseTokenAndSession(req) {
 }
 
 // ==========================================
+// BUILD IDENTITY
+// ==========================================
+// Which commit is actually serving traffic. Render exposes RENDER_GIT_COMMIT to
+// the running process; the other names are what a plain Docker or CI deploy tends
+// to pass, so the endpoint keeps working off-Render instead of reporting "unknown".
+const BUILD_COMMIT = String(
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.GIT_COMMIT ||
+    process.env.SOURCE_VERSION ||
+    process.env.COMMIT_SHA ||
+    ""
+).trim() || "unknown";
+
+// Read from package.json rather than duplicated here, so `npm version` stays the
+// single place the number changes.
+const BUILD_VERSION = String(require("./package.json").version || "0.0.0");
+
+const PROCESS_STARTED_AT = Date.now();
+
+// ==========================================
 // HEALTH CHECK
 // ==========================================
 app.get("/health", (req, res) => {
@@ -577,6 +622,34 @@ app.get("/health", (req, res) => {
         time: Date.now()
     });
 });
+
+// Answers "what is deployed, and what do I roll back to" without opening the
+// Render dashboard — the gap that made a rollback guesswork. Anonymous and rate
+// limited, matching /health, because a smoke test runs before any token exists.
+//
+// Trade-off, deliberately taken: the repo is public, so publishing the exact
+// commit tells a reader which revision of the source is live. Gating it behind
+// the admin token is a one-line change if the owner would rather trade the smoke
+// test for that; nothing else here depends on it being anonymous.
+const versionPayload = () => ({
+    ok: true,
+    service: "autojms-license-server",
+    version: BUILD_VERSION,
+    commit: BUILD_COMMIT,
+    // Short form first in the operator's eye line; the full sha is what
+    // `git checkout` and a Render rollback actually need.
+    commitShort: BUILD_COMMIT === "unknown" ? "unknown" : BUILD_COMMIT.slice(0, 12),
+    node: process.version,
+    startedAt: PROCESS_STARTED_AT,
+    uptimeSeconds: Math.floor((Date.now() - PROCESS_STARTED_AT) / 1000),
+    time: Date.now()
+});
+
+app.get("/api/version", healthLimiter, (req, res) => res.json(versionPayload()));
+
+// Same payload under the health prefix, so an uptime monitor already scoped to
+// /health/* does not need a new allow-list entry.
+app.get("/health/version", healthLimiter, (req, res) => res.json(versionPayload()));
 
 app.get("/health/firebase", healthLimiter, async (req, res) => {
     const started = Date.now();
@@ -598,7 +671,7 @@ app.get("/health/firebase", healthLimiter, async (req, res) => {
         // carries the database URL, the project id, and sometimes the service
         // account email — none of which an anonymous caller needs, and all of which
         // an operator can read in the Render log instead.
-        console.error("[health/firebase] probe failed", { error: err.message });
+        logEvent("error", "health.firebase_probe_failed", { message: err.message, elapsedMs: Date.now() - started });
 
         return res.status(503).json({
             ok: false,
@@ -633,7 +706,7 @@ app.get("/health/firebase/licenses", healthLimiter, async (req, res) => {
             elapsedMs: Date.now() - started
         });
     } catch (err) {
-        console.error("[health/firebase/licenses] probe failed", { error: err.message });
+        logEvent("error", "health.firebase_licenses_probe_failed", { message: err.message, elapsedMs: Date.now() - started });
 
         return res.status(503).json({
             ok: false,
@@ -655,7 +728,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         const { licenseKey, hwid, exeHash, appVersion } = req.body || {};
         const maskedLicenseKey = maskLicenseKey(licenseKey);
 
-        console.log(`[verify-license] start requestId=${requestId} license=${maskedLicenseKey}`);
+        logEvent("info", "verify_license.start", { requestId, license: maskedLicenseKey, appVersion: appVersion || null });
 
         if (!licenseKey || !hwid) {
             return res.status(400).json({
@@ -669,7 +742,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         // malformed key would be the friendlier answer, but it is also a lie: the
         // key was never looked up.
         if (typeof licenseKey !== "string" || !LICENSE_KEY_PATTERN.test(licenseKey)) {
-            console.warn("[verify-license] malformed license key", { requestId });
+            logEvent("warn", "verify_license.rejected", { requestId, reason: "LICENSE_KEY_INVALID" });
 
             return res.status(400).json({
                 success: false,
@@ -688,19 +761,18 @@ app.post("/api/verify-license", limiter, async (req, res) => {
 
         const ref = admin.database().ref(`Licenses/${licenseKey}`);
 
-        console.log("[verify-license] firebase license read start");
         const licenseReadStarted = Date.now();
         const snap = await withTimeout(
             ref.once("value"),
             FIREBASE_TIMEOUT_MS,
             "FIREBASE_LICENSE_READ"
         );
-        console.log(`[verify-license] firebase license read done elapsedMs=${Date.now() - licenseReadStarted}`);
+        logEvent("info", "verify_license.firebase_read", { requestId, step: "license", elapsedMs: Date.now() - licenseReadStarted });
 
         const data = snap.val();
 
         if (!data) {
-            console.log(`[verify-license] license not found requestId=${requestId} elapsedMs=${Date.now() - started}`);
+            logEvent("info", "verify_license.rejected", { requestId, license: maskedLicenseKey, reason: "LICENSE_NOT_FOUND", elapsedMs: Date.now() - started });
             return res.status(404).json({
                 success: false,
                 error: "LICENSE_NOT_FOUND",
@@ -723,8 +795,10 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         const lifecycle = evaluateLicenseRecord(data);
 
         if (!lifecycle.allowed) {
-            console.warn("[LICENSE_EXPIRED]", {
-                licenseKey: maskedLicenseKey,
+            logEvent("warn", "license.expired", {
+                route: "verify-license",
+                requestId,
+                license: maskedLicenseKey,
                 expiresAt: lifecycle.expiresAt,
                 graceUntil: lifecycle.graceUntil
             });
@@ -739,8 +813,10 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         }
 
         if (lifecycle.effectiveStatus === "grace") {
-            console.warn("[LICENSE_GRACE]", {
-                licenseKey: maskedLicenseKey,
+            logEvent("warn", "license.grace", {
+                route: "verify-license",
+                requestId,
+                license: maskedLicenseKey,
                 expiresAt: lifecycle.expiresAt,
                 graceUntil: lifecycle.graceUntil
             });
@@ -748,8 +824,9 @@ app.post("/api/verify-license", limiter, async (req, res) => {
 
         // ---- Tier allowlist -------------------------------------------------
         if (!isKnownTier(data.tier)) {
-            console.error("[LICENSE_TIER_INVALID]", {
-                licenseKey: maskedLicenseKey,
+            logEvent("error", "license.tier_invalid", {
+                requestId,
+                license: maskedLicenseKey,
                 rawTier: String(data.tier ?? "")
             });
 
@@ -769,8 +846,9 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         // shared placeholder means several customers land in one tenant.
         if (isPlaceholderSiteCode(middleCode)) {
             if (CONFIG.REQUIRE_UNIQUE_SITE_CODE) {
-                console.error("[LICENSE_SITE_CODE_INVALID]", {
-                    licenseKey: maskedLicenseKey,
+                logEvent("error", "license.site_code_invalid", {
+                    requestId,
+                    license: maskedLicenseKey,
                     middleCode
                 });
 
@@ -781,8 +859,9 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 });
             }
 
-            console.warn("[LICENSE_SITE_CODE_PLACEHOLDER]", {
-                licenseKey: maskedLicenseKey,
+            logEvent("warn", "license.site_code_placeholder", {
+                requestId,
+                license: maskedLicenseKey,
                 middleCode
             });
         }
@@ -796,8 +875,9 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         // field, so it is a release-policy call, not a code cleanup — left as is and
         // logged instead, so the records needing a backfill can be listed.
         if (!data.modulePolicy) {
-            console.warn("[LICENSE_MODULE_POLICY_MISSING]", {
-                licenseKey: maskedLicenseKey,
+            logEvent("warn", "license.module_policy_missing", {
+                requestId,
+                license: maskedLicenseKey,
                 appliedDefault: "autoUpdate=true"
             });
         }
@@ -821,10 +901,11 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 const localHash = String(exeHash || "").toLowerCase();
 
                 if (!localHash || !validHashes.includes(localHash)) {
-                    console.warn("[HASH_INVALID]", {
-                        licenseKey: maskedLicenseKey,
+                    logEvent("warn", "license.hash_invalid", {
+                        requestId,
+                        license: maskedLicenseKey,
                         hasExeHash: Boolean(exeHash),
-                        appVersion
+                        appVersion: appVersion || null
                     });
 
                     return res.status(403).json({
@@ -857,7 +938,11 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 FIREBASE_TIMEOUT_MS,
                 "FIREBASE_LICENSE_UPDATE"
             );
-            console.log(`[verify-license] firebase license update done elapsedMs=${Date.now() - licenseUpdateStarted}`);
+            logEvent("info", "license.hwid_bound", {
+                requestId,
+                license: maskedLicenseKey,
+                elapsedMs: Date.now() - licenseUpdateStarted
+            });
         }
 
         // Clear old sessions of same license + same device
@@ -871,7 +956,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             FIREBASE_TIMEOUT_MS,
             "FIREBASE_SESSIONS_READ"
         );
-        console.log(`[verify-license] firebase sessions read done elapsedMs=${Date.now() - sessionsReadStarted}`);
+        logEvent("info", "verify_license.firebase_read", { requestId, step: "sessions", elapsedMs: Date.now() - sessionsReadStarted });
 
         const updates = {};
 
@@ -890,13 +975,19 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 FIREBASE_TIMEOUT_MS,
                 "FIREBASE_SESSIONS_UPDATE"
             );
-            console.log(`[verify-license] firebase sessions update done elapsedMs=${Date.now() - sessionsUpdateStarted}`);
+            // How many rows the re-verify displaced. A station that reports several
+            // here on every start is re-verifying instead of resuming its session.
+            logEvent("info", "session.revoked_previous", {
+                requestId,
+                license: maskedLicenseKey,
+                revokedCount: Object.keys(updates).length,
+                elapsedMs: Date.now() - sessionsUpdateStarted
+            });
         }
 
         // Create new session
         const sessionId = crypto.randomUUID();
 
-        console.log("[verify-license] session write start");
         const sessionWriteStarted = Date.now();
         await withTimeout(
             admin.database().ref(`sessions/${sessionId}`).set({
@@ -913,7 +1004,16 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             FIREBASE_TIMEOUT_MS,
             "FIREBASE_SESSION_WRITE"
         );
-        console.log(`[verify-license] session write done elapsedMs=${Date.now() - sessionWriteStarted}`);
+        // sessionId is logged in full on purpose: it is the join key across
+        // session.created / heartbeat / session.closed, and it is not a credential
+        // on its own — heartbeat and logout both require the signed token as well.
+        logEvent("info", "session.created", {
+            requestId,
+            license: maskedLicenseKey,
+            sessionId,
+            tier,
+            elapsedMs: Date.now() - sessionWriteStarted
+        });
 
         const token = signAccessToken({
             licenseKey,
@@ -926,13 +1026,21 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         // component that has just proven the license is active and bound to this machine.
         const datahubAssertion = issueDataHubAssertion(data, middleCode);
         if (!datahubAssertion) {
-            console.warn(`[verify-license] no DataHub assertion issued requestId=${requestId} license=${maskedLicenseKey}`);
+            logEvent("warn", "verify_license.no_datahub_assertion", { requestId, license: maskedLicenseKey });
         }
 
         // Backward compatibility only: legacy clients still read modulePolicy
         // from Render. New clients use DataHub runtime-policy as the feature
         // authority after Render authenticates license identity/session.
-        console.log(`[verify-license] success elapsedMs=${Date.now() - started} requestId=${requestId}`);
+        logEvent("info", "verify_license.success", {
+            requestId,
+            license: maskedLicenseKey,
+            sessionId,
+            tier,
+            lifecycle: lifecycle.effectiveStatus,
+            datahubAssertion: Boolean(datahubAssertion),
+            elapsedMs: Date.now() - started
+        });
 
         return res.json({
             payload: token,
@@ -985,9 +1093,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             }
         });
     } catch (e) {
-        console.error(`[verify-license] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
-            error: e.message
-        });
+        logEvent("error", "verify_license.error", { requestId, elapsedMs: Date.now() - started, message: e.message });
 
         if (isTimeoutError(e)) {
             return sendTimeoutResponse(res);
@@ -1009,7 +1115,7 @@ app.post("/api/google-sheets/grant", googleSheetsGrantLimiter, async (req, res) 
     const started = Date.now();
 
     try {
-        console.log(`[google-sheets-grant] start requestId=${requestId}`);
+        logEvent("info", "google_sheets_grant.start", { requestId });
 
         const { decoded } = await verifyLicenseTokenAndSession(req);
         const maskedLicenseKey = maskLicenseKey(decoded.key);
@@ -1045,9 +1151,10 @@ app.post("/api/google-sheets/grant", googleSheetsGrantLimiter, async (req, res) 
         const grantLifecycle = evaluateLicenseRecord(licenseData);
 
         if (!grantLifecycle.allowed) {
-            console.warn("[LICENSE_EXPIRED]", {
+            logEvent("warn", "license.expired", {
                 route: "google-sheets-grant",
-                licenseKey: maskedLicenseKey,
+                requestId,
+                license: maskedLicenseKey,
                 expiresAt: grantLifecycle.expiresAt,
                 graceUntil: grantLifecycle.graceUntil
             });
@@ -1063,9 +1170,11 @@ app.post("/api/google-sheets/grant", googleSheetsGrantLimiter, async (req, res) 
 
         const grant = await getGoogleSheetsAccessGrant();
 
-        console.log(
-            `[google-sheets-grant] success requestId=${requestId} license=${maskedLicenseKey} elapsedMs=${Date.now() - started}`
-        );
+        logEvent("info", "google_sheets_grant.success", {
+            requestId,
+            license: maskedLicenseKey,
+            elapsedMs: Date.now() - started
+        });
 
         return res.json({
             ok: true,
@@ -1077,9 +1186,7 @@ app.post("/api/google-sheets/grant", googleSheetsGrantLimiter, async (req, res) 
             scopes: [GOOGLE_SHEETS_SCOPE]
         });
     } catch (e) {
-        console.error(`[google-sheets-grant] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
-            error: e.message
-        });
+        logEvent("error", "google_sheets_grant.error", { requestId, elapsedMs: Date.now() - started, message: e.message });
 
         if (isTimeoutError(e)) {
             return res.status(503).json({
@@ -1226,9 +1333,10 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
         const lifecycle = evaluateLicenseRecord(licenseData);
 
         if (!lifecycle.allowed) {
-            console.warn("[LICENSE_EXPIRED]", {
+            logEvent("warn", "license.expired", {
                 route: "heartbeat",
-                licenseKey: maskLicenseKey(decoded.key),
+                requestId,
+                license: maskLicenseKey(decoded.key),
                 effectiveStatus: lifecycle.effectiveStatus,
                 expiresAt: lifecycle.expiresAt,
                 graceUntil: lifecycle.graceUntil
@@ -1239,6 +1347,14 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             // dead license, and it is the session that the Sheets broker and the
             // DataHub assertion route check.
             await withTimeout(sessionRef.remove(), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_REMOVE");
+
+            logEvent("info", "session.closed", {
+                route: "heartbeat",
+                requestId,
+                license: maskLicenseKey(decoded.key),
+                sessionId: decoded.sid,
+                reason: lifecycle.effectiveStatus === "expired" ? "LICENSE_EXPIRED" : "LICENSE_INACTIVE"
+            });
 
             return res.status(401).json({
                 action: "kill",
@@ -1254,6 +1370,14 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
         // A license re-bound to another machine must not keep this station alive.
         if (licenseData.hwid && decoded.hwid && licenseData.hwid !== decoded.hwid) {
             await withTimeout(sessionRef.remove(), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_REMOVE");
+
+            logEvent("warn", "session.closed", {
+                route: "heartbeat",
+                requestId,
+                license: maskLicenseKey(decoded.key),
+                sessionId: decoded.sid,
+                reason: "HWID_MISMATCH"
+            });
 
             return res.status(401).json({
                 action: "kill",
@@ -1297,9 +1421,7 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             daysRemaining: lifecycle.daysRemaining
         });
     } catch (e) {
-        console.error(`[heartbeat] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
-            error: e.message
-        });
+        logEvent("error", "heartbeat.error", { requestId, elapsedMs: Date.now() - started, message: e.message });
 
         if (isTimeoutError(e)) {
             return sendTimeoutResponse(res);
@@ -1392,9 +1514,10 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
         const lifecycle = evaluateLicenseRecord(data);
 
         if (!lifecycle.allowed) {
-            console.warn("[LICENSE_EXPIRED]", {
+            logEvent("warn", "license.expired", {
                 route: "datahub-assertion",
-                licenseKey: maskLicenseKey(decoded.key),
+                requestId,
+                license: maskLicenseKey(decoded.key),
                 expiresAt: lifecycle.expiresAt,
                 graceUntil: lifecycle.graceUntil
             });
@@ -1417,7 +1540,13 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
             });
         }
 
-        console.log(`[datahub-assertion] issued requestId=${requestId} license=${maskLicenseKey(decoded.key)} elapsedMs=${Date.now() - started}`);
+        logEvent("info", "datahub_assertion.issued", {
+            requestId,
+            license: maskLicenseKey(decoded.key),
+            sessionId: decoded.sid,
+            assertionExpiresAt: issued.expiresAt,
+            elapsedMs: Date.now() - started
+        });
         return res.json({
             apiBaseUrl: CONFIG.DATAHUB_API_BASE_URL,
             siteCode: issued.siteCodes[0],
@@ -1425,9 +1554,7 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
             assertionExpiresAt: issued.expiresAt
         });
     } catch (e) {
-        console.error(`[datahub-assertion] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
-            error: e.message
-        });
+        logEvent("error", "datahub_assertion.error", { requestId, elapsedMs: Date.now() - started, message: e.message });
 
         if (isTimeoutError(e)) {
             return sendTimeoutResponse(res);
@@ -1486,7 +1613,7 @@ app.post("/api/logout", limiter, async (req, res) => {
         }
 
         if (decoded.sid !== sid) {
-            console.warn("[logout] token/sid mismatch", { requestId });
+            logEvent("warn", "logout.session_mismatch", { requestId, license: maskLicenseKey(decoded.key) });
 
             return res.status(403).json({
                 success: false,
@@ -1501,11 +1628,18 @@ app.post("/api/logout", limiter, async (req, res) => {
             "FIREBASE_SESSION_REMOVE"
         );
 
+        logEvent("info", "session.closed", {
+            route: "logout",
+            requestId,
+            license: maskLicenseKey(decoded.key),
+            sessionId: sid,
+            reason: "CLIENT_LOGOUT",
+            elapsedMs: Date.now() - started
+        });
+
         return res.json({ ok: true });
     } catch (e) {
-        console.error(`[logout] error requestId=${requestId} elapsedMs=${Date.now() - started}`, {
-            error: e.message
-        });
+        logEvent("error", "logout.error", { requestId, elapsedMs: Date.now() - started, message: e.message });
 
         if (isTimeoutError(e)) {
             return sendTimeoutResponse(res);
@@ -1520,6 +1654,73 @@ app.post("/api/logout", limiter, async (req, res) => {
 });
 
 // ==========================================
+// GRACEFUL SHUTDOWN
+// ==========================================
+// Render sends SIGTERM on every deploy and every scale event, then SIGKILL roughly
+// 30 seconds later. Without a handler Node exits immediately, cutting off whatever
+// request was in flight — and the requests this server serves are not read-only:
+// verify-license binds hwid and activatedAt and writes the session row, so a client
+// killed mid-write retries against a half-written session.
+//
+// The budget stays well under Render's SIGKILL so the process always gets to log
+// its own last line instead of vanishing.
+const SHUTDOWN_TIMEOUT_MS = Math.max(1000, Number(process.env.SHUTDOWN_TIMEOUT_MS || 10_000));
+
+function createShutdownHandler({ server, timeoutMs = SHUTDOWN_TIMEOUT_MS, exit = code => process.exit(code) }) {
+    let closing = false;
+
+    return signal => {
+        // A second signal — a SIGINT chasing a SIGTERM, or an impatient operator
+        // pressing Ctrl+C twice — would call close() on an already-closing server,
+        // which hands ERR_SERVER_NOT_RUNNING to the callback and would report a
+        // clean shutdown as a failed one.
+        if (closing) {
+            logEvent("info", "shutdown.signal_ignored", { signal, reason: "ALREADY_SHUTTING_DOWN" });
+            return;
+        }
+
+        closing = true;
+        logEvent("info", "shutdown.started", { signal, timeoutMs });
+
+        // close() stops accepting new connections and waits for in-flight requests,
+        // but an idle keep-alive socket also counts as a connection, and the desktop
+        // client uses keep-alive. Without this the callback can wait out the whole
+        // keepAliveTimeout on a server that has nothing left to serve.
+        if (typeof server.closeIdleConnections === "function") {
+            server.closeIdleConnections();
+        }
+
+        const forced = setTimeout(() => {
+            // A request wedged on a Firebase call that never settles must not hold the
+            // process past SIGKILL: exiting on our own terms at least records why.
+            logEvent("error", "shutdown.forced", { signal, timeoutMs });
+            exit(1);
+        }, timeoutMs);
+
+        // Unref'd so the timer is never the only reason the loop stays alive. An
+        // in-flight request keeps its own socket handle open, so this still fires
+        // when something is genuinely stuck — it just does not add a 10s floor to
+        // a shutdown that had nothing left to wait for.
+        if (typeof forced.unref === "function") {
+            forced.unref();
+        }
+
+        server.close(err => {
+            clearTimeout(forced);
+
+            if (err) {
+                logEvent("error", "shutdown.close_failed", { signal, message: err.message });
+                exit(1);
+                return;
+            }
+
+            logEvent("info", "shutdown.completed", { signal });
+            exit(0);
+        });
+    };
+}
+
+// ==========================================
 // START SERVER
 // ==========================================
 const PORT = process.env.PORT || 3000;
@@ -1529,22 +1730,23 @@ const PORT = process.env.PORT || 3000;
 // without a bound socket, which is what makes the routes testable at all.
 if (require.main === module) {
     const server = app.listen(PORT, () => {
-        console.log("AutoJMS Server Running port:", PORT);
+        logEvent("info", "server.listening", { port: Number(PORT), version: BUILD_VERSION, commit: BUILD_COMMIT });
     });
 
-    // Render sends SIGTERM on every deploy and every scale event. Without a
-    // handler Node exits immediately, cutting off whatever request was in
-    // flight — and the requests this server serves are not read-only: verify
-    // -license binds hwid and activatedAt, and writes the session row. A client
-    // killed mid-write retries against a half-written session.
-    //
-    // Registered only in the entry-point branch, so the test harness (which
-    // requires this module and calls listen() itself) does not inherit a
-    // process-wide handler that would outlive its server.
-    process.on("SIGTERM", () => {
-        console.log("SIGTERM received, closing server");
-        server.close(() => process.exit(0));
-    });
+    // Registered only in the entry-point branch, so the test harness (which requires
+    // this module and calls listen() itself) does not inherit a process-wide handler
+    // that would outlive its server. The factory is exported instead, which is what
+    // lets the sequence be asserted without signalling the test runner itself.
+    const shutdown = createShutdownHandler({ server });
+
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    // SIGINT as well: a local `node server.js` interrupted with Ctrl+C used to take
+    // the default action and die mid-write exactly like an unhandled SIGTERM.
+    process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 module.exports = app;
+module.exports.createShutdownHandler = createShutdownHandler;
+// The resolved budget, so the clamp is assertable: SHUTDOWN_TIMEOUT_MS=0 would
+// otherwise mean "force-exit immediately", turning the safeguard into its opposite.
+module.exports.shutdownTimeoutMs = SHUTDOWN_TIMEOUT_MS;

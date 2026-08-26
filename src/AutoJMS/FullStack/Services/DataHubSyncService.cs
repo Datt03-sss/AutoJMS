@@ -637,7 +637,8 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
                 _snapshotTruncated = page.Truncated;
             }
 
-            if (rows.Count == 0)
+            var deleted = page.DeletedWaybillNos;
+            if (rows.Count == 0 && deleted.Count == 0)
             {
                 await AdvanceWaybillCursorAsync(afterSeq, page, ct).ConfigureAwait(false);
                 return 0;
@@ -648,6 +649,20 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
 
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+            // Deletions are applied whatever the lease says, unlike the merge below. A tombstone
+            // is not our own echo: it is issued by the server's retention pass, never pushed by
+            // this machine, so the leader has never seen it. A leader that kept the row would
+            // publish it again on its next push and resurrect the waybill for the whole site.
+            foreach (var waybillNo in deleted)
+            {
+                ct.ThrowIfCancellationRequested();
+                await using var deleteCommand = connection.CreateCommand();
+                deleteCommand.Transaction = transaction;
+                deleteCommand.CommandText = "DELETE FROM fs_waybills WHERE waybill_no = $waybill_no;";
+                AddJ(deleteCommand, "$waybill_no", waybillNo);
+                applied += await deleteCommand.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
 
             foreach (var row in rows)
             {
@@ -797,7 +812,8 @@ WHERE excluded.updated_at > fs_waybills.updated_at
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             await AdvanceWaybillCursorAsync(afterSeq, page, ct).ConfigureAwait(false);
-            if (applied > 0) AppLogger.Info($"[HybridSync] pulled waybills rows={rows.Count} applied={applied}");
+            if (applied > 0)
+                AppLogger.Info($"[HybridSync] pulled waybills rows={rows.Count} applied={applied} deleted={deleted.Count}");
             return applied;
         }
 

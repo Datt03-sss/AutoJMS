@@ -175,6 +175,14 @@ async function startServer(options = {}) {
         LICENSE_BILLING_ANCHOR_DAY: undefined,
         REQUIRE_UNIQUE_SITE_CODE: undefined,
         VALID_EXE_HASHES: undefined,
+        // Build identity. Unset by default and listed for the same reason as the
+        // rest: a developer or CI runner with GIT_COMMIT exported in their shell
+        // would otherwise make the "reports unknown" test pass or fail by accident.
+        RENDER_GIT_COMMIT: undefined,
+        GIT_COMMIT: undefined,
+        SOURCE_VERSION: undefined,
+        COMMIT_SHA: undefined,
+        SHUTDOWN_TIMEOUT_MS: undefined,
         ...(options.env || {})
     };
 

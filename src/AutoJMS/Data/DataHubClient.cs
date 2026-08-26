@@ -35,13 +35,20 @@ public enum DataHubLeaseOutcome
 /// </summary>
 public sealed class DataHubChangePage
 {
-    public DataHubChangePage(List<JObject> rows, long nextAfter, bool hasMore, bool resynced, bool truncated = false)
+    public DataHubChangePage(
+        List<JObject> rows,
+        long nextAfter,
+        bool hasMore,
+        bool resynced,
+        bool truncated = false,
+        List<string> deletedWaybillNos = null)
     {
         Rows = rows ?? new List<JObject>();
         NextAfter = nextAfter;
         HasMore = hasMore;
         Resynced = resynced;
         Truncated = truncated;
+        DeletedWaybillNos = deletedWaybillNos ?? new List<string>();
     }
 
     public List<JObject> Rows { get; }
@@ -64,6 +71,18 @@ public sealed class DataHubChangePage
     /// missing its older waybills. Always false on a delta page — only a snapshot truncates.
     /// </summary>
     public bool Truncated { get; }
+
+    /// <summary>
+    /// Waybill numbers the server has deleted, carried separately from <see cref="Rows"/>
+    /// because a deletion is not a row shape: its change body holds only the key.
+    ///
+    /// Kept apart rather than folded into <see cref="Rows"/> with a flag column so a caller
+    /// that does not know about deletions cannot merge one as an upsert and blank out a good
+    /// local row. Always empty on a <see cref="Resynced"/> page: a snapshot states what
+    /// exists, not what was removed, and it may be <see cref="Truncated"/>, so absence from
+    /// it is not evidence of deletion.
+    /// </summary>
+    public List<string> DeletedWaybillNos { get; }
 }
 
 /// <summary>
@@ -109,6 +128,12 @@ public static class DataHubClient
 
     /// <summary>The only entity type the change feed publishes today.</summary>
     private const string WaybillProjectionEntity = "waybill_projection";
+
+    /// <summary>
+    /// The change operation that says a row is gone. Emitted by the server's retention pass,
+    /// never by ingest, so it is the one operation that arrives without a usable body.
+    /// </summary>
+    private const string DeleteOperation = "delete";
 
     /// <summary>
     /// Mirrors IngestRepository's hard cap of 200 observations per request. Exceeding it is a
@@ -299,6 +324,13 @@ public static class DataHubClient
             long seq = item.Value<long?>("changeSeq") ?? 0;
             if (seq <= 0) continue;
 
+            // Tombstones are deliberately NOT skipped here, tempting though it looks: this
+            // cursor is MAX(remote_seq) over the rows actually stored, so dropping a change
+            // stops the cursor dead and a page of nothing but tombstones would be re-read
+            // forever. They are harmless as event rows — FoldProjectionAsync folds only
+            // TrackingObserved and OrderDetailObserved, so a "waybill_projection" row with a
+            // key-only payload is inert. The deletion itself is applied from the waybill
+            // pull, which carries operation separately.
             var body = item["body"] as JObject;
             var waybillNo = FirstString(item, "entityKey") ?? (body == null ? null : FirstString(body, "waybillNo"));
             if (string.IsNullOrWhiteSpace(waybillNo)) continue;   // the event log rejects these anyway
@@ -828,17 +860,48 @@ public static class DataHubClient
             return new DataHubChangePage(rows, snapshotSeq > 0 ? snapshotSeq : afterSeq, false, true, truncated);
         }
 
-        var mapped = new List<JObject>(page.Items.Count);
-        foreach (var item in page.Items)
+        var (mapped, deleted) = ProjectChangeItems(page.Items);
+        return new DataHubChangePage(mapped, page.NextAfter, page.HasMore, false, false, deleted);
+    }
+
+    /// <summary>
+    /// Splits one raw change page into rows to merge and keys to delete. Extracted from the
+    /// pull so the operation routing can be tested without a server: reading a tombstone as
+    /// an upsert writes a blank record over a good one, and the resulting local row looks
+    /// perfectly valid, so nothing downstream would report it.
+    /// </summary>
+    internal static (List<JObject> Rows, List<string> Deleted) ProjectChangeItems(IReadOnlyList<JObject> items)
+    {
+        var mapped = new List<JObject>(items?.Count ?? 0);
+        var deleted = new List<string>();
+        if (items == null) return (mapped, deleted);
+
+        foreach (var item in items)
         {
+            if (item == null) continue;
+
             // Only waybill projections belong in fs_waybills; anything else the server starts
             // publishing here must be ignored rather than merged blindly.
             if (!string.Equals(item.Value<string>("entityType"), WaybillProjectionEntity, StringComparison.OrdinalIgnoreCase))
                 continue;
+
+            // A tombstone's body carries only the key, so it must be read off entityKey and
+            // routed away from the upsert path. The operation field is the only thing
+            // separating the two, and ignoring it is what left deleted waybills sitting in
+            // local SQLite forever.
+            if (string.Equals(item.Value<string>("operation"), DeleteOperation, StringComparison.OrdinalIgnoreCase))
+            {
+                var waybillNo = FirstString(item, "entityKey");
+                if (!string.IsNullOrWhiteSpace(waybillNo))
+                    deleted.Add(waybillNo.Trim().ToUpperInvariant());
+                continue;
+            }
+
             var row = ToWaybillRow(item["body"] as JObject);
             if (row != null) mapped.Add(row);
         }
-        return new DataHubChangePage(mapped, page.NextAfter, page.HasMore, false);
+
+        return (mapped, deleted);
     }
 
     private static async Task<(List<JObject> Items, long NextAfter, bool HasMore, bool ResyncRequired)> ReadChangePageAsync(
