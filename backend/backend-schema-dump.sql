@@ -1,10 +1,14 @@
 --
 -- AutoJMS DataHub — reference schema dump
 --
--- Source      : pg_dump --schema-only, PostgreSQL 16.15 (postgres:16-alpine) on the
---               staging VPS, taken 2026-08-26.
--- Reflects    : forward-only migrations 001_core .. 005_change_retention_floor, i.e.
---               every row present in schema_migrations at the time of the dump.
+-- Source      : pg_dump --schema-only --no-owner --no-privileges, PostgreSQL 16.13,
+--               regenerated 2026-08-26 by applying migrations 001..006 in order to
+--               an empty database. Its body is identical to the 16.15 staging-VPS
+--               dump it replaces except for the version banner and the objects that
+--               006 adds, which is the evidence that the VPS carries no drift outside
+--               the migrations.
+-- Reflects    : forward-only migrations 001_core .. 006_revocation_and_retention_indexes,
+--               i.e. every row present in schema_migrations at the time of the dump.
 -- Purpose     : a reviewable picture of what the migrations actually produce, so a
 --               reader can diff intent against reality without a database.
 --
@@ -24,8 +28,8 @@
 --
 
 
--- Dumped from database version 16.15
--- Dumped by pg_dump version 16.15
+-- Dumped from database version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
+-- Dumped by pg_dump version 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -192,6 +196,24 @@ ALTER TABLE public.retention_policies ALTER COLUMN id ADD GENERATED ALWAYS AS ID
     NO MINVALUE
     NO MAXVALUE
     CACHE 1
+);
+
+
+--
+-- Name: revoked_device_credentials; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.revoked_device_credentials (
+    credential_hash text NOT NULL,
+    device_id uuid NOT NULL,
+    site_id uuid NOT NULL,
+    token_version integer NOT NULL,
+    reason text DEFAULT 'manual'::text NOT NULL,
+    revoked_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    CONSTRAINT ck_revoked_device_credentials_hash_not_blank CHECK ((length(btrim(credential_hash)) > 0)),
+    CONSTRAINT ck_revoked_device_credentials_reason_not_blank CHECK ((length(btrim(reason)) > 0)),
+    CONSTRAINT ck_revoked_device_credentials_token_version_positive CHECK ((token_version > 0))
 );
 
 
@@ -374,6 +396,14 @@ ALTER TABLE ONLY public.retention_policies
 
 
 --
+-- Name: revoked_device_credentials revoked_device_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revoked_device_credentials
+    ADD CONSTRAINT revoked_device_credentials_pkey PRIMARY KEY (credential_hash);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -446,10 +476,24 @@ ALTER TABLE ONLY public.waybill_scan_events
 
 
 --
+-- Name: ix_audit_logs_retention; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_retention ON public.audit_logs USING btree (at, id);
+
+
+--
 -- Name: ix_audit_logs_site_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_audit_logs_site_at ON public.audit_logs USING btree (site_id, at);
+
+
+--
+-- Name: ix_dashboard_changes_site_change_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_dashboard_changes_site_change_at ON public.dashboard_changes USING btree (site_id, change_at, change_seq);
 
 
 --
@@ -464,6 +508,20 @@ CREATE INDEX ix_devices_site_status ON public.devices USING btree (site_id, stat
 --
 
 CREATE INDEX ix_idempotency_records_expiry ON public.idempotency_records USING btree (expires_at);
+
+
+--
+-- Name: ix_revoked_device_credentials_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_revoked_device_credentials_expiry ON public.revoked_device_credentials USING btree (expires_at);
+
+
+--
+-- Name: ix_waybill_scan_events_site_occurred; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_waybill_scan_events_site_occurred ON public.waybill_scan_events USING btree (site_id, event_occurred_at);
 
 
 --
@@ -525,6 +583,22 @@ ALTER TABLE ONLY public.idempotency_records
 
 ALTER TABLE ONLY public.retention_policies
     ADD CONSTRAINT retention_policies_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
+-- Name: revoked_device_credentials revoked_device_credentials_device_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revoked_device_credentials
+    ADD CONSTRAINT revoked_device_credentials_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(id) ON DELETE CASCADE;
+
+
+--
+-- Name: revoked_device_credentials revoked_device_credentials_site_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revoked_device_credentials
+    ADD CONSTRAINT revoked_device_credentials_site_id_fkey FOREIGN KEY (site_id) REFERENCES public.sites(id);
 
 
 --

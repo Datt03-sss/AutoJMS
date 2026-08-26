@@ -654,6 +654,10 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
             // is not our own echo: it is issued by the server's retention pass, never pushed by
             // this machine, so the leader has never seen it. A leader that kept the row would
             // publish it again on its next push and resurrect the waybill for the whole site.
+            //
+            // Applying every deletion before every merge is only safe because ProjectChangeItems
+            // collapses each page down to one operation per waybill: no key reaches here in both
+            // lists, so this loop cannot delete a row the merge below is about to write back.
             foreach (var waybillNo in deleted)
             {
                 ct.ThrowIfCancellationRequested();

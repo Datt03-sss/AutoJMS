@@ -869,12 +869,26 @@ public static class DataHubClient
     /// pull so the operation routing can be tested without a server: reading a tombstone as
     /// an upsert writes a blank record over a good one, and the resulting local row looks
     /// perfectly valid, so nothing downstream would report it.
+    ///
+    /// Within one page only the LAST operation for a waybill survives. The caller applies the
+    /// two lists in separate loops — every deletion, then every merge — so a key present in
+    /// both was applied in list order rather than in change_seq order: a page carrying
+    /// "upsert W" and then "delete W" ran DELETE W followed by INSERT W and left W in local
+    /// SQLite after the server had removed it, with the cursor already past the tombstone so
+    /// nothing corrected it afterwards. Collapsing here keeps a key out of both lists, which
+    /// is the invariant those two loops depend on.
     /// </summary>
     internal static (List<JObject> Rows, List<string> Deleted) ProjectChangeItems(IReadOnlyList<JObject> items)
     {
         var mapped = new List<JObject>(items?.Count ?? 0);
         var deleted = new List<string>();
         if (items == null) return (mapped, deleted);
+
+        // Insertion-ordered, so surviving operations keep the order the server sent them in; a
+        // null value marks a deletion. /changes is ordered by change_seq server-side, so page
+        // position already IS sequence order and nothing has to be re-sorted here.
+        var surviving = new List<KeyValuePair<string, JObject>>(items.Count);
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var item in items)
         {
@@ -885,6 +899,9 @@ public static class DataHubClient
             if (!string.Equals(item.Value<string>("entityType"), WaybillProjectionEntity, StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            string key;
+            JObject row;
+
             // A tombstone's body carries only the key, so it must be read off entityKey and
             // routed away from the upsert path. The operation field is the only thing
             // separating the two, and ignoring it is what left deleted waybills sitting in
@@ -892,13 +909,39 @@ public static class DataHubClient
             if (string.Equals(item.Value<string>("operation"), DeleteOperation, StringComparison.OrdinalIgnoreCase))
             {
                 var waybillNo = FirstString(item, "entityKey");
-                if (!string.IsNullOrWhiteSpace(waybillNo))
-                    deleted.Add(waybillNo.Trim().ToUpperInvariant());
-                continue;
+                if (string.IsNullOrWhiteSpace(waybillNo)) continue;
+                key = waybillNo.Trim().ToUpperInvariant();
+                row = null;
+            }
+            else
+            {
+                // Keyed on the row's own normalized waybill_no rather than on entityKey,
+                // because that is the value a DELETE has to match in fs_waybills.
+                //
+                // An upsert that yields no row is skipped without recording anything, so it
+                // cannot cancel an earlier tombstone for the same key: that would drop the
+                // deletion while writing no replacement, and a missed deletion is the one
+                // failure a later snapshot cannot repair — a dropped upsert comes back with
+                // the next change to that waybill.
+                row = ToWaybillRow(item["body"] as JObject);
+                if (row == null) continue;
+                key = row.Value<string>("waybill_no");
+                if (string.IsNullOrWhiteSpace(key)) continue;
             }
 
-            var row = ToWaybillRow(item["body"] as JObject);
-            if (row != null) mapped.Add(row);
+            if (positions.TryGetValue(key, out var index))
+                surviving[index] = new KeyValuePair<string, JObject>(key, row);
+            else
+            {
+                positions[key] = surviving.Count;
+                surviving.Add(new KeyValuePair<string, JObject>(key, row));
+            }
+        }
+
+        foreach (var entry in surviving)
+        {
+            if (entry.Value == null) deleted.Add(entry.Key);
+            else mapped.Add(entry.Value);
         }
 
         return (mapped, deleted);

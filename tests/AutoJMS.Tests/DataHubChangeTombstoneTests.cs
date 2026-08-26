@@ -145,4 +145,96 @@ public class DataHubChangeTombstoneTests
         Assert.True(snapshot.Truncated);
         Assert.Empty(snapshot.DeletedWaybillNos);
     }
+
+    [Fact]
+    public void A_tombstone_after_an_upsert_on_one_page_wins()
+    {
+        // The page is ordered by change_seq, so this is "the server upserted it, then deleted
+        // it". The caller applies the two lists in separate loops — every deletion, then every
+        // merge — so a key sitting in both ran DELETE W and then INSERT W and left W present
+        // locally while the server had removed it. The cursor has already moved past the
+        // tombstone by then, so nothing ever corrects it.
+        var (rows, deleted) = DataHubClient.ProjectChangeItems(new[]
+        {
+            Upsert("886000000010", 100),
+            Tombstone("886000000010", 500)
+        });
+
+        Assert.Empty(rows);
+        Assert.Equal(new[] { "886000000010" }, deleted);
+    }
+
+    [Fact]
+    public void An_upsert_after_a_tombstone_on_one_page_wins()
+    {
+        // The mirror case, which the two-loop order happened to get right. Collapsing to the
+        // last operation has to keep it right rather than trade one direction for the other.
+        var (rows, deleted) = DataHubClient.ProjectChangeItems(new[]
+        {
+            Tombstone("886000000011", 100),
+            Upsert("886000000011", 500)
+        });
+
+        Assert.Empty(deleted);
+        Assert.Equal(
+            new[] { "886000000011" },
+            rows.Select(row => row.Value<string>("waybill_no")).ToArray());
+    }
+
+    [Fact]
+    public void The_last_operation_for_a_key_on_the_page_is_the_one_that_survives()
+    {
+        // Not "a deletion anywhere on the page wins" — the rule is positional, so a waybill
+        // deleted and then re-created inside one page ends up present, and a second key is
+        // carried alongside untouched.
+        var (rows, deleted) = DataHubClient.ProjectChangeItems(new[]
+        {
+            Upsert("886000000012", 10),
+            Tombstone("886000000012", 11),
+            Upsert("886000000012", 12),
+            Tombstone("886000000013", 13)
+        });
+
+        Assert.Equal(
+            new[] { "886000000012" },
+            rows.Select(row => row.Value<string>("waybill_no")).ToArray());
+        Assert.Equal(new[] { "886000000013" }, deleted);
+    }
+
+    [Fact]
+    public void Grouping_uses_the_normalized_key_so_case_cannot_split_a_pair()
+    {
+        // fs_waybills stores the key trimmed and upper-cased, and the deletion path normalizes
+        // the same way. Grouping on the raw entityKey instead would read these as two different
+        // waybills and drop the pair back into the delete-then-upsert order that resurrects it.
+        var (rows, deleted) = DataHubClient.ProjectChangeItems(new[]
+        {
+            Upsert("886abc000014", 100),
+            Tombstone("  886ABC000014  ", 500)
+        });
+
+        Assert.Empty(rows);
+        Assert.Equal(new[] { "886ABC000014" }, deleted);
+    }
+
+    [Fact]
+    public void An_unreadable_last_upsert_does_not_cancel_an_earlier_tombstone()
+    {
+        // ToWaybillRow returns null for a body it cannot read, so this upsert produces nothing
+        // to merge. Letting an operation that writes no row cancel the tombstone would leave
+        // the waybill in local SQLite with the server's deletion already behind the cursor —
+        // the permanent failure. A dropped upsert is the recoverable one: the next change to
+        // that waybill, or a resync, brings it back.
+        var unreadable = Upsert("886000000015", 500);
+        unreadable["body"] = new JObject();
+
+        var (rows, deleted) = DataHubClient.ProjectChangeItems(new[]
+        {
+            Tombstone("886000000015", 100),
+            unreadable
+        });
+
+        Assert.Empty(rows);
+        Assert.Equal(new[] { "886000000015" }, deleted);
+    }
 }
