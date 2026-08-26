@@ -1,0 +1,41 @@
+name: verify
+
+# The same four gates AGENTS.md and CLAUDE.md require before a push — build, tests,
+# secret scan, structure — run by a machine instead of on the honour system. eng/harness
+# stays the single definition of what "verified" means; this workflow only calls it, so
+# CI and a local run can never drift apart.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # Windows is not a preference. src/AutoJMS targets net8.0-windows/win-x64 and
+    # AutoJMS.slnx builds it, so the harness cannot run to completion anywhere else.
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both are needed in the same run: the desktop app and its tests are net8.0,
+      # the DataHub API and its tests are net10.0.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Run verification harness
+        run: powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1

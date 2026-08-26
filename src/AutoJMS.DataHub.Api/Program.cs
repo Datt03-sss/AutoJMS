@@ -41,6 +41,7 @@ builder.Services.AddSingleton<IngestPipeline>();
 builder.Services.AddSingleton<IDoorbellPublisher, SignalRDoorbellPublisher>();
 builder.Services.AddSingleton<ChangeRepository>();
 builder.Services.AddSingleton<ManifestStore>();
+builder.Services.AddSingleton<IManifestRootProbe, FileSystemManifestRootProbe>();
 builder.Services.AddSingleton<RetentionRepository>();
 builder.Services.AddHostedService<RetentionHostedService>();
 builder.Services.AddHealthChecks()
@@ -164,7 +165,13 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     ResultStatusCodes = new Dictionary<HealthStatus, int>
     {
         [HealthStatus.Healthy] = StatusCodes.Status200OK,
-        [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
+        // Degraded is "serving correctly, with a gap an operator should know about": a
+        // closed publish path, an unwritable manifest volume, an ignored proxy CIDR. None
+        // of those spoils a single read or enrollment, so 503 would be a self-inflicted
+        // outage — and Compose gates the caddy service on this endpoint, which means a
+        // fresh `up` would never bring the site online at all. The status string in the
+        // body still says Degraded, and the check's description reaches the logs.
+        [HealthStatus.Degraded] = StatusCodes.Status200OK,
         [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
     },
     ResponseWriter = async (context, report) =>

@@ -67,6 +67,36 @@ public sealed class DataHubRuntimeOptions
     /// </summary>
     public const string DefaultManifestRoot = "/manifests";
 
+    /// <summary>
+    /// The identity variables that decide which tokens this host will accept. Every one of
+    /// them has a built-in default below, so "is it empty" is a question that can never be
+    /// answered no — the only observable fact is whether the operator set it or inherited
+    /// the default, which is what <see cref="DefaultedIdentityVariables"/> records.
+    /// </summary>
+    public static readonly string[] IdentityVariableNames =
+    [
+        "DATAHUB_DEVICE_TOKEN_ISSUER",
+        "DATAHUB_DEVICE_TOKEN_AUDIENCE",
+        "DATAHUB_LICENSE_ASSERTION_ISSUER",
+        "DATAHUB_LICENSE_ASSERTION_AUDIENCE"
+    ];
+
+    /// <summary>
+    /// Which of <see cref="IdentityVariableNames"/> fell back to their defaults. Populated by
+    /// <see cref="FromConfiguration"/> only; a hand-built instance reports nothing defaulted.
+    /// </summary>
+    public IReadOnlyList<string> DefaultedIdentityVariables { get; set; } = [];
+
+    /// <summary>
+    /// The configured proxy CIDR entries that do not parse, and are therefore silently
+    /// dropped from the trust list at startup. Empty when the list is sound.
+    /// </summary>
+    public static IReadOnlyList<string> MalformedTrustedProxyNetworks(string? configured)
+        => (configured ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(entry => !System.Net.IPNetwork.TryParse(entry, out _))
+            .ToArray();
+
     public bool HasValidChannel => string.Equals(Channel, AllowedStagingChannel, StringComparison.Ordinal)
         || string.Equals(Channel, AllowedProductionChannel, StringComparison.Ordinal);
 
@@ -96,6 +126,13 @@ public sealed class DataHubRuntimeOptions
             TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks),
             PublicHost = NormalizePublicHost(configuration["DATAHUB_PUBLIC_HOST"])
         };
+
+        // Recorded here and nowhere else: this is the only place that can still see the
+        // difference between "the operator chose autojms-license" and "nobody set it".
+        // FirstNonEmpty has collapsed the two by the time anything else reads the value.
+        options.DefaultedIdentityVariables = IdentityVariableNames
+            .Where(name => string.IsNullOrWhiteSpace(configuration[name]))
+            .ToArray();
 
         return options;
     }

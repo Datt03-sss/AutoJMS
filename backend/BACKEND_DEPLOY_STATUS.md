@@ -45,6 +45,14 @@ Date: 2026-08-23 · Revised: **2026-08-26**
 - `smoke-test.sh` passes against staging, including the five negative cases.
 - Operational scripts deployed to `/opt/autojms-datahub/bin/`: `dc.sh`, `apply-migrations.sh`,
   `run-sql.sh`, `smoke-test.sh`, `_datahub-common.sh`.
+- **Manifest write path exists and is reachable.** `PUT /api/v1/admin/manifests/{**objectPath}` is
+  mapped at `src/AutoJMS.DataHub.Api/Endpoints/ManifestEndpoints.cs:34` and documented at
+  `backend/datahub/openapi/datahub-v1.yaml:476`. `/configs/*` is served by Kestrel through the
+  `Caddyfile` catch-all `reverse_proxy api:8080`, not by a static-file handler — no static handler is
+  needed or wanted. Seed manifests were published and their ETags verified on 26-08.
+- **VPS hardening applied**, per the operator's deploy report of 26-08: UFW limited to 22/80/443,
+  SSH key-only, `fail2ban`, `unattended-upgrades`, NTP. Applied and reported by the VPS operator;
+  not independently re-verified from this repo.
 - Render server source has a runnable Node project:
   - `backend/render-license-server/package.json`
   - `backend/render-license-server/package-lock.json`
@@ -87,13 +95,14 @@ cd /opt/autojms-datahub
 
 ## Not Completed
 
-- **Manifest write path.** `release/build-release.ps1 -Upload` calls
-  `PUT {base}/api/v1/admin/manifests/{objectPath}`, but that route does not exist in
-  `src/AutoJMS.DataHub.Api`, is absent from `backend/datahub/openapi/datahub-v1.yaml`, and the
-  `Caddyfile` has no static-file handler. `-Upload` currently returns 404; the public JSON must
-  be published by hand until the endpoint lands.
-- **VPS hardening.** fail2ban, unattended-upgrades, and disabling SSH password auth are written
-  up in `backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md` but have not been applied.
+- **Backup that has never been restored.** The operator's 26-08 report records a `backup-postgres.ps1`
+  dry run that produced a dump file. That is not the gate: §12.3 of the deploy plan (item H3) asks for a
+  **restore** into a scratch database with a measured RPO/RTO. No scheduled backup is committed either
+  (H1), and there is no off-VPS encrypted copy (H2). Until a restore has actually run, treat the backup
+  as absent.
+- **No recorded rollback digest.** The running image was built on the VPS as `autojms-datahub-api:local`,
+  so there is no registry digest to roll back to and `start-stack.ps1` was bypassed — Cổng 3 of the
+  checklist is not met. A redeploy currently has no previous-known-good reference.
 - **Missing endpoints.** No `notes` / `checks` / `tasks` routes, so those FullStackForm panels
   remain local-only.
 - **`DeviceIdentity.Role`** is carried through enrollment but never enforced.

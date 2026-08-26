@@ -515,10 +515,15 @@ thứ: hàng `sites`, hàng `site_fetch_leases`, hàng `site_change_counters`.
 ### 10.2 Xác nhận
 
 ```bash
-cd ~/AutoJMS/backend/datahub && docker compose --env-file .env.staging exec -T postgres sh -ec 'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "SELECT s.site_id, s.site_code, s.seats, l.leader_term, c.change_seq, c.pruned_through_seq FROM sites s JOIN site_fetch_leases l USING (site_id) JOIN site_change_counters c USING (site_id);"'
+cd ~/AutoJMS/backend/datahub && docker compose --env-file .env.staging exec -T postgres sh -ec 'exec psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "SELECT s.id AS site_id, s.site_code, l.leader_term, c.change_seq, c.pruned_through_seq FROM sites s JOIN site_fetch_leases l ON l.site_id = s.id JOIN site_change_counters c ON c.site_id = s.id;"'
 ```
 
 Phải thấy đúng 1 hàng cho mỗi site, `change_seq = 0`, `pruned_through_seq = 0`.
+
+> Không có cột `seats` ở đây, và cũng không nên tìm: `seats` chỉ sống trong JWT assertion
+> (`LicenseAssertionIdentity.Seats`) do license server phát, DataHub không lưu nó xuống DB.
+> Khoá chính của `sites` cũng tên là `id` chứ không phải `site_id`, nên `JOIN ... USING (site_id)`
+> sẽ lỗi — phải viết `ON l.site_id = s.id` như trên.
 
 ---
 
