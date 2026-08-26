@@ -60,6 +60,16 @@ public sealed class DeviceAuthenticationMiddleware(RequestDelegate next)
             return;
         }
 
+        // Rejected here rather than per-endpoint because /hubs/site has no route handler
+        // to ask: the hub only checks that an identity exists, so a token carrying a role
+        // this build does not recognise would otherwise still join the site group and
+        // receive every doorbell.
+        if (!DeviceRoles.IsKnown(validation.Identity.Role))
+        {
+            await ApiProblemWriter.WriteAsync(context, StatusCodes.Status403Forbidden, ApiProblemCodes.Forbidden, "The device token carries a role this deployment does not recognise.");
+            return;
+        }
+
         context.Items[DeviceAuthenticationContext.ItemKey] = validation.Identity;
         // Derived here because this is the only place holding the raw token, and only
         // the digest travels onward. DeviceStatusMiddleware matches it against the

@@ -35,12 +35,13 @@ public enum DataHubLeaseOutcome
 /// </summary>
 public sealed class DataHubChangePage
 {
-    public DataHubChangePage(List<JObject> rows, long nextAfter, bool hasMore, bool resynced)
+    public DataHubChangePage(List<JObject> rows, long nextAfter, bool hasMore, bool resynced, bool truncated = false)
     {
         Rows = rows ?? new List<JObject>();
         NextAfter = nextAfter;
         HasMore = hasMore;
         Resynced = resynced;
+        Truncated = truncated;
     }
 
     public List<JObject> Rows { get; }
@@ -53,6 +54,16 @@ public sealed class DataHubChangePage
 
     /// <summary>The cursor was older than the retained range, so <see cref="Rows"/> is a full snapshot.</summary>
     public bool Resynced { get; }
+
+    /// <summary>
+    /// The snapshot behind a <see cref="Resynced"/> page hit the server's row cap, so
+    /// <see cref="Rows"/> is only part of the site's projection. Carried on the page rather
+    /// than announced from inside <see cref="DataHubClient"/> because that class is static
+    /// and holds no reference to a form; the sync service owns the UI channel and can put
+    /// this in front of the operator, who is otherwise looking at a grid that is quietly
+    /// missing its older waybills. Always false on a delta page — only a snapshot truncates.
+    /// </summary>
+    public bool Truncated { get; }
 }
 
 /// <summary>
@@ -93,6 +104,8 @@ public static class DataHubClient
     private static volatile Action _realtimeCallback;
 
     private static int _auxiliaryWarningLogged;
+    private static int _snapshotTruncationLogged;
+    private static int _siteIdMalformedLogged;
 
     /// <summary>The only entity type the change feed publishes today.</summary>
     private const string WaybillProjectionEntity = "waybill_projection";
@@ -172,6 +185,9 @@ public static class DataHubClient
             _siteId = FirstNonEmpty(siteId, Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_SITE_ID")) ?? string.Empty;
         }
         lock (LeaseLock) _leaderTerm = 0;
+        // A new site value deserves a fresh verdict: if it is malformed too, TryGetSiteId must
+        // be free to say so rather than stay silent because an earlier value already failed.
+        System.Threading.Interlocked.Exchange(ref _siteIdMalformedLogged, 0);
         // Any live hub connection was authorized with the previous token and site, so it is
         // dropped here; the next sync cycle re-subscribes with what we were just given.
         UnsubscribeSiteChanges();
@@ -780,6 +796,11 @@ public static class DataHubClient
             using var response = await Http.SendAsync(request).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return new List<WaybillDbModel>();
             var json = JObject.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+            // Checked here too, not only in ReadSnapshotRowsAsync: this is the path behind
+            // GetActiveWaybillsAsync and the tracking due-list, so a silent truncation here
+            // means those callers work from a short list and believe it is the whole site.
+            if (json.Value<bool?>("truncated") == true)
+                WarnSnapshotTruncated(Math.Clamp(limit, 1, SnapshotPageLimit));
             return json["items"] is not JArray items
                 ? new List<WaybillDbModel>()
                 : items.OfType<JObject>().Select(ToWaybill).Where(row => row != null).ToList();
@@ -803,8 +824,8 @@ public static class DataHubClient
         {
             // The cursor is older than the retained change range, so the delta no longer exists.
             // A snapshot is the only way back to a consistent view.
-            var (rows, snapshotSeq) = await ReadSnapshotRowsAsync(siteCode).ConfigureAwait(false);
-            return new DataHubChangePage(rows, snapshotSeq > 0 ? snapshotSeq : afterSeq, false, true);
+            var (rows, snapshotSeq, truncated) = await ReadSnapshotRowsAsync(siteCode).ConfigureAwait(false);
+            return new DataHubChangePage(rows, snapshotSeq > 0 ? snapshotSeq : afterSeq, false, true, truncated);
         }
 
         var mapped = new List<JObject>(page.Items.Count);
@@ -859,10 +880,10 @@ public static class DataHubClient
         }
     }
 
-    private static async Task<(List<JObject> Rows, long SnapshotSeq)> ReadSnapshotRowsAsync(string siteCode)
+    private static async Task<(List<JObject> Rows, long SnapshotSeq, bool Truncated)> ReadSnapshotRowsAsync(string siteCode)
     {
         var rows = new List<JObject>();
-        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token)) return (rows, 0);
+        if (!TryGetSiteId(siteCode, out var siteId) || !TryGetConfig(out var baseUrl, out var token)) return (rows, 0, false);
 
         // Always ask for an explicit limit. Omitting it left the server on its own default and
         // gave no way to tell a complete snapshot from a truncated one.
@@ -874,7 +895,7 @@ public static class DataHubClient
             if (!response.IsSuccessStatusCode)
             {
                 AppLogger.Warning("DataHub snapshot read -> " + (int)response.StatusCode);
-                return (rows, 0);
+                return (rows, 0, false);
             }
 
             var json = JObject.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
@@ -889,20 +910,32 @@ public static class DataHubClient
             // A truncated snapshot is the one failure here that looks like success: the rows that
             // did arrive are correct and the delta resumes cleanly, so the tail of the projection
             // is simply missing locally with nothing else to show it.
-            if (json.Value<bool?>("truncated") == true)
-            {
-                AppLogger.Warning("DataHub snapshot was TRUNCATED at " + SnapshotPageLimit.ToString(CultureInfo.InvariantCulture)
-                    + " rows; the local projection is incomplete for this site. Raise the server's snapshot cap or reduce retention.");
-            }
+            bool truncated = json.Value<bool?>("truncated") == true;
+            if (truncated) WarnSnapshotTruncated(SnapshotPageLimit);
             // snapshot_seq is the change_seq the snapshot was taken at, so resuming the delta
             // from it neither replays nor skips.
-            return (rows, json.Value<long?>("snapshot_seq") ?? 0);
+            return (rows, json.Value<long?>("snapshot_seq") ?? 0, truncated);
         }
         catch (Exception ex)
         {
             AppLogger.Warning("DataHub snapshot read failed: " + ex.Message);
-            return (rows, 0);
+            return (rows, 0, false);
         }
+    }
+
+    /// <summary>
+    /// Records a snapshot the server had to cut short. Latched, because the condition is
+    /// standing rather than momentary: the rows past the cap stay missing until they change
+    /// again, so an unlatched warning repeats on every read for the life of the process and
+    /// buries the rest of the log. The operator-facing half of this travels separately, on
+    /// <see cref="DataHubChangePage.Truncated"/>.
+    /// </summary>
+    private static void WarnSnapshotTruncated(int limit)
+    {
+        if (System.Threading.Interlocked.Exchange(ref _snapshotTruncationLogged, 1) != 0) return;
+        AppLogger.Warning("DataHub snapshot was TRUNCATED at " + limit.ToString(CultureInfo.InvariantCulture)
+            + " rows; this site's remaining waybills are absent locally until they change again. "
+            + "Raise the server's snapshot cap or shorten change retention.");
     }
 
     /// <summary>
@@ -1045,14 +1078,50 @@ public static class DataHubClient
     /// </summary>
     private static bool TryGetSiteId(string siteCode, out Guid siteId)
     {
+        string configured;
         lock (ConfigLock)
         {
             if (Guid.TryParse(_siteId, out siteId)) return true;
+            configured = _siteId;
         }
         siteId = Guid.Empty;
-        AppLogger.Debug("DataHub call skipped: no site GUID configured (site code=" +
-            (string.IsNullOrWhiteSpace(siteCode) ? "<none>" : siteCode) + ").");
+
+        // Two different situations that used to log identically. Nothing configured is the
+        // normal state on a BASE-tier machine, and this method runs several times per sync
+        // cycle, so it stays at Debug — promoting it would fill those logs with a non-event.
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            AppLogger.Debug("DataHub call skipped: no site GUID configured (site code=" +
+                (string.IsNullOrWhiteSpace(siteCode) ? "<none>" : siteCode) + ").");
+            return false;
+        }
+
+        // A value that is present but not a GUID is config drift: enrollment succeeded and
+        // then something wrote the wrong field, so every DataHub call silently no-ops on a
+        // machine whose licence says it should be syncing. Latched for the same reason the
+        // Debug line is not — the value cannot change without a Configure call, which resets
+        // the latch, so one Error per bad configuration is exactly one report of one fault.
+        if (System.Threading.Interlocked.Exchange(ref _siteIdMalformedLogged, 1) == 0)
+        {
+            AppLogger.Error("DataHub site id is configured but is not a GUID: \"" + MaskConfigValue(configured)
+                + "\" (length=" + configured.Length.ToString(CultureInfo.InvariantCulture)
+                + ", site code=" + (string.IsNullOrWhiteSpace(siteCode) ? "<none>" : siteCode)
+                + "). Every DataHub call is being skipped until this is corrected — re-enroll the device.");
+        }
         return false;
+    }
+
+    /// <summary>
+    /// first2…last2 of a configuration value. Enough for a technician to recognise which
+    /// value was written into the field — the point of the log — without reproducing a
+    /// site identifier into a file that gets attached to support tickets.
+    /// </summary>
+    private static string MaskConfigValue(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "<empty>";
+        return value.Length <= 4
+            ? new string('*', value.Length)
+            : value.Substring(0, 2) + "…" + value.Substring(value.Length - 2);
     }
 
     private static bool TryGetConfig(out string baseUrl, out string token)

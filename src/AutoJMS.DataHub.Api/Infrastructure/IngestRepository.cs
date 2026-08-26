@@ -42,15 +42,17 @@ public sealed class IngestRepository(
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        // Server-side deadlines, which the read paths already set. Npgsql's
-        // CommandTimeout only sends a cancel request from this process: if the API is
-        // SIGKILLed mid-transaction the cancel never arrives, and Postgres keeps the
-        // FOR UPDATE locks on site_change_counters and every touched projection row
-        // until TCP keepalive notices — minutes during which every ingest for the site
-        // queues behind a dead transaction. lock_timeout also makes a competing ingest
-        // fail fast instead of blocking for the full statement budget.
+        // lock_timeout is the ingest-specific half: a competing ingest fails fast instead
+        // of blocking for the whole statement budget. statement_timeout now arrives with
+        // the connection (PostgresDataSource.BuildConnectionString) and is restated here
+        // only so the transaction's budget is readable where the locks are taken.
+        //
+        // It used to read 60s, which could never fire — Npgsql's default CommandTimeout is
+        // 30s, so the client abandoned the statement first and the server kept both the
+        // query and its FOR UPDATE rows on site_change_counters. Matching the connection
+        // default puts the cancellation back on the server, where it releases the locks.
         await using (var deadlines = new NpgsqlCommand(
-            "SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '60s';",
+            "SET LOCAL lock_timeout = '5s'; SET LOCAL statement_timeout = '30s';",
             connection,
             transaction))
         {

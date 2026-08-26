@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -310,11 +311,12 @@ eQIDAQAB
                         !string.IsNullOrWhiteSpace(datahubAssertion) &&
                         !string.IsNullOrWhiteSpace(datahubSiteCode))
                     {
-                        var enrollment = await EnrollDataHubDeviceAsync(
+                        var enrollResult = await EnrollDataHubDeviceAsync(
                             datahubBaseUrl, datahubAssertion, datahubSiteCode, BuildDeviceName(hwid), ct);
 
-                        if (enrollment != null)
+                        if (enrollResult.Succeeded)
                         {
+                            var enrollment = enrollResult.Enrollment;
                             datahubDeviceToken = enrollment.DeviceToken;
                             // The enroll response is authoritative for the site GUID: the license
                             // record's siteId is often just the middle code, which Guid.TryParse
@@ -322,6 +324,20 @@ eQIDAQAB
                             datahubSiteId = enrollment.SiteId;
                             datahubSiteCode = enrollment.SiteCode;
                             deviceTokenExpiresAt = enrollment.ExpiresAt;
+                        }
+                        else
+                        {
+                            // Activation still succeeds and the app runs local-only. But a rejected
+                            // licence and an exhausted seat pool both need a person, so they must
+                            // not sit at Warning among the faults that clear themselves.
+                            string reason = "DataHub enrollment failed at activation: "
+                                + DescribeDataHubEnrollFailure()
+                                + $" (site={datahubSiteCode}). Cloud sync stays off until this is resolved.";
+                            if (enrollResult.Failure is DataHubEnrollFailure.LicenseRejected
+                                or DataHubEnrollFailure.SeatLimitReached)
+                                AppLogger.Error(reason);
+                            else
+                                AppLogger.Warning(reason);
                         }
                     }
 
@@ -420,13 +436,67 @@ eQIDAQAB
             public DateTimeOffset ExpiresAt { get; set; }
         }
 
+        /// <summary>
+        /// Why an enrollment attempt failed, in terms someone can act on. The API answers with
+        /// problem+json carrying a machine-readable <c>code</c>, and collapsing every one of
+        /// them into "enroll failed" hid the difference between re-activating the licence,
+        /// freeing a device seat, and looking at whether the VPS is up.
+        /// </summary>
+        internal enum DataHubEnrollFailure
+        {
+            None,
+
+            /// <summary>401 ASSERTION_INVALID or 403 CHANNEL_MISMATCH — the licence proof was refused.</summary>
+            LicenseRejected,
+
+            /// <summary>409 SEAT_LIMIT_REACHED — the site has no free device seat.</summary>
+            SeatLimitReached,
+
+            /// <summary>404, 5xx or a transport fault — the VPS did not answer, or does not know this site.</summary>
+            HubUnreachable,
+
+            /// <summary>Render would not issue a fresh assertion, so there was nothing to trade.</summary>
+            AssertionUnavailable,
+
+            /// <summary>A refusal with no specific advice attached to it.</summary>
+            Rejected
+        }
+
+        private sealed class DataHubEnrollResult
+        {
+            public DataHubEnrollment Enrollment { get; init; }
+            public DataHubEnrollFailure Failure { get; init; }
+            public bool Succeeded => Enrollment != null;
+        }
+
+        /// <summary>Result of a device-token renewal attempt.</summary>
+        public enum DataHubRenewOutcome
+        {
+            /// <summary>Not due yet, or DataHub is not configured on this machine.</summary>
+            NotNeeded,
+
+            Renewed,
+
+            /// <summary>Renewal was attempted and failed; the current token will expire.</summary>
+            Failed
+        }
+
         private static readonly object DataHubEnrollLock = new object();
         private static string _datahubBaseUrl = string.Empty;
         private static string _datahubSiteCode = string.Empty;
         private static DateTimeOffset _datahubTokenExpiresAt = DateTimeOffset.MinValue;
+        private static DataHubEnrollFailure _datahubLastFailure = DataHubEnrollFailure.None;
 
         /// <summary>Re-enroll this long before the device token actually dies.</summary>
         private static readonly TimeSpan DeviceTokenRenewLead = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        /// Attempts per enrollment, with 1 s then 2 s between them. Three is deliberate:
+        /// enrollment runs on the activation path, so the budget is bounded by how long someone
+        /// will watch a splash screen, and a fourth attempt buys nothing the heartbeat two
+        /// minutes later does not also buy.
+        /// </summary>
+        private const int EnrollMaxAttempts = 3;
 
         /// <summary>
         /// A stable per-machine name. Enrollment is keyed on (site_id, name): a stable name
@@ -449,73 +519,142 @@ eQIDAQAB
         }
 
         /// <summary>
-        /// Trades a signed license assertion for a DataHub device token. Returns null on any
-        /// failure: enrollment must never turn a valid license into a failed activation — the
-        /// app simply stays local-only until the next attempt.
+        /// Trades a signed license assertion for a DataHub device token, retrying the failures
+        /// that are worth retrying. Never throws for a refusal: enrollment must not turn a valid
+        /// license into a failed activation — the app stays local-only until the next attempt —
+        /// but the result now says <em>why</em>, so the caller can tell a VPS that is briefly
+        /// down from a site that has run out of device seats.
         /// </summary>
-        private static async Task<DataHubEnrollment> EnrollDataHubDeviceAsync(
+        private static async Task<DataHubEnrollResult> EnrollDataHubDeviceAsync(
             string baseUrl, string assertion, string siteCode, string deviceName, CancellationToken ct)
         {
             string endpoint = baseUrl.TrimEnd('/') + "/api/v1/devices/enroll";
+            string json = JsonSerializer.Serialize(new { siteCode = siteCode, deviceName = deviceName, role = "operator" });
+            var failure = DataHubEnrollFailure.HubUnreachable;
+
+            for (int attempt = 1; attempt <= EnrollMaxAttempts; attempt++)
+            {
+                bool retryable = false;
+                try
+                {
+                    // Rebuilt each attempt: an HttpRequestMessage cannot be sent twice.
+                    using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", assertion);
+                    req.Content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    using var res = await Http.SendAsync(req, ct);
+                    string body = await res.Content.ReadAsStringAsync(ct);
+
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        string code = ReadProblemCode(body);
+                        failure = ClassifyEnrollFailure(res.StatusCode, code);
+                        retryable = IsRetryableEnrollStatus(res.StatusCode);
+                        AppLogger.Warning($"DataHub enroll attempt {attempt}/{EnrollMaxAttempts} failed " +
+                                          $"status={(int)res.StatusCode} code={code} cause={failure} site={siteCode}");
+                    }
+                    else
+                    {
+                        var enrollment = ParseEnrollment(body, siteCode);
+                        if (enrollment != null)
+                        {
+                            RememberDataHubEnrollment(baseUrl, enrollment.SiteCode, enrollment.ExpiresAt);
+                            AppLogger.Info($"DataHub enrolled device={deviceName} site={enrollment.SiteCode} " +
+                                           $"token={TokenRedactor.MaskToken(enrollment.DeviceToken)} expiresAt={enrollment.ExpiresAt:u}");
+                            return new DataHubEnrollResult { Enrollment = enrollment };
+                        }
+
+                        // A 200 with no token is the server contradicting itself, which is as
+                        // likely to be a truncated response as a real refusal — worth one more ask.
+                        failure = DataHubEnrollFailure.Rejected;
+                        retryable = true;
+                        AppLogger.Warning($"DataHub enroll attempt {attempt}/{EnrollMaxAttempts} returned no device token.");
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    // No status at all: the VPS is unreachable, DNS is failing, or the 30 s client
+                    // timeout elapsed — the last of which lands here as TaskCanceledException and
+                    // is emphatically worth another try, which is why the filter above tests the
+                    // token rather than the exception type.
+                    failure = DataHubEnrollFailure.HubUnreachable;
+                    retryable = true;
+                    AppLogger.Warning($"DataHub enroll attempt {attempt}/{EnrollMaxAttempts} error: " + ex.Message);
+                }
+
+                if (!retryable || attempt == EnrollMaxAttempts) break;
+                // 1 s, then 2 s. Doubling from one second keeps three attempts inside three
+                // seconds of the activation path rather than making it a visible stall.
+                await Task.Delay(TimeSpan.FromSeconds(1 << (attempt - 1)), ct);
+            }
+
+            RememberDataHubEnrollFailure(failure);
+            return new DataHubEnrollResult { Failure = failure };
+        }
+
+        /// <summary>
+        /// Only transport faults and server-side stalls are retried. 401/403/404/409 are
+        /// decisions, not glitches: the same assertion, site and seat count produce the same
+        /// answer a second later, so retrying them would spend the whole backoff budget to reach
+        /// the identical refusal with activation three seconds slower.
+        /// </summary>
+        private static bool IsRetryableEnrollStatus(HttpStatusCode status)
+            => (int)status >= 500
+                || status == HttpStatusCode.RequestTimeout
+                || status == HttpStatusCode.TooManyRequests;
+
+        private static string ReadProblemCode(string body)
+        {
             try
             {
-                var payload = new { siteCode = siteCode, deviceName = deviceName, role = "operator" };
-
-                using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", assertion);
-                req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-                using var res = await Http.SendAsync(req, ct);
-                string body = await res.Content.ReadAsStringAsync(ct);
-
-                if (!res.IsSuccessStatusCode)
-                {
-                    // The API answers with problem+json carrying a machine-readable `code`;
-                    // surfacing it is the difference between "seat limit" and "wrong channel".
-                    string code = "UNKNOWN";
-                    try
-                    {
-                        using var problem = JsonDocument.Parse(body);
-                        if (problem.RootElement.TryGetProperty("code", out var codeProp))
-                            code = codeProp.GetString() ?? "UNKNOWN";
-                    }
-                    catch { /* not problem+json */ }
-
-                    AppLogger.Warning($"DataHub enroll failed status={(int)res.StatusCode} code={code} site={siteCode}");
-                    return null;
-                }
-
-                using var doc = JsonDocument.Parse(body);
-                var root = doc.RootElement;
-
-                string deviceToken = root.TryGetProperty("deviceToken", out var tokenProp) ? tokenProp.GetString() : null;
-                if (string.IsNullOrWhiteSpace(deviceToken))
-                {
-                    AppLogger.Warning("DataHub enroll returned no device token.");
-                    return null;
-                }
-
-                var enrollment = new DataHubEnrollment
-                {
-                    DeviceToken = deviceToken,
-                    SiteId = root.TryGetProperty("siteId", out var siteIdProp) ? siteIdProp.GetString() : null,
-                    SiteCode = root.TryGetProperty("siteCode", out var siteCodeProp) ? siteCodeProp.GetString() : siteCode,
-                    ExpiresAt = root.TryGetProperty("expiresAt", out var expProp) && expProp.TryGetDateTimeOffset(out var exp)
-                        ? exp
-                        : DateTimeOffset.UtcNow.AddHours(24)
-                };
-
-                RememberDataHubEnrollment(baseUrl, enrollment.SiteCode, enrollment.ExpiresAt);
-                AppLogger.Info($"DataHub enrolled device={deviceName} site={enrollment.SiteCode} " +
-                               $"token={TokenRedactor.MaskToken(deviceToken)} expiresAt={enrollment.ExpiresAt:u}");
-                return enrollment;
+                using var problem = JsonDocument.Parse(body);
+                return problem.RootElement.TryGetProperty("code", out var codeProp)
+                    ? codeProp.GetString() ?? "UNKNOWN"
+                    : "UNKNOWN";
             }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
+            catch { return "UNKNOWN"; }   // not problem+json
+        }
+
+        /// <summary>
+        /// The problem code decides, and the status is only the fallback — a refusal can arrive
+        /// without problem+json at all (a reverse-proxy 503 page, for instance), and in that
+        /// case the status is the only thing left to read.
+        /// </summary>
+        private static DataHubEnrollFailure ClassifyEnrollFailure(HttpStatusCode status, string code)
+        {
+            if (string.Equals(code, "ASSERTION_INVALID", StringComparison.Ordinal)
+                || string.Equals(code, "CHANNEL_MISMATCH", StringComparison.Ordinal))
+                return DataHubEnrollFailure.LicenseRejected;
+            if (string.Equals(code, "SEAT_LIMIT_REACHED", StringComparison.Ordinal))
+                return DataHubEnrollFailure.SeatLimitReached;
+
+            return status switch
             {
-                AppLogger.Warning("DataHub enroll error: " + ex.Message);
-                return null;
-            }
+                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => DataHubEnrollFailure.LicenseRejected,
+                HttpStatusCode.Conflict => DataHubEnrollFailure.SeatLimitReached,
+                HttpStatusCode.NotFound => DataHubEnrollFailure.HubUnreachable,
+                _ => (int)status >= 500 ? DataHubEnrollFailure.HubUnreachable : DataHubEnrollFailure.Rejected
+            };
+        }
+
+        private static DataHubEnrollment ParseEnrollment(string body, string requestedSiteCode)
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            string deviceToken = root.TryGetProperty("deviceToken", out var tokenProp) ? tokenProp.GetString() : null;
+            if (string.IsNullOrWhiteSpace(deviceToken)) return null;
+
+            return new DataHubEnrollment
+            {
+                DeviceToken = deviceToken,
+                SiteId = root.TryGetProperty("siteId", out var siteIdProp) ? siteIdProp.GetString() : null,
+                SiteCode = root.TryGetProperty("siteCode", out var siteCodeProp) ? siteCodeProp.GetString() : requestedSiteCode,
+                ExpiresAt = root.TryGetProperty("expiresAt", out var expProp) && expProp.TryGetDateTimeOffset(out var exp)
+                    ? exp
+                    : DateTimeOffset.UtcNow.AddHours(24)
+            };
         }
 
         private static void RememberDataHubEnrollment(string baseUrl, string siteCode, DateTimeOffset expiresAt)
@@ -525,7 +664,33 @@ eQIDAQAB
                 _datahubBaseUrl = baseUrl ?? string.Empty;
                 _datahubSiteCode = siteCode ?? string.Empty;
                 _datahubTokenExpiresAt = expiresAt;
+                _datahubLastFailure = DataHubEnrollFailure.None;
             }
+        }
+
+        private static void RememberDataHubEnrollFailure(DataHubEnrollFailure failure)
+        {
+            lock (DataHubEnrollLock) _datahubLastFailure = failure;
+        }
+
+        /// <summary>
+        /// The last enrollment failure phrased for whoever is reading the status bar. It lives
+        /// here rather than at each call site so the activation path and the heartbeat renewal
+        /// describe the same fault with the same words.
+        /// </summary>
+        public static string DescribeDataHubEnrollFailure()
+        {
+            DataHubEnrollFailure failure;
+            lock (DataHubEnrollLock) failure = _datahubLastFailure;
+            return failure switch
+            {
+                DataHubEnrollFailure.LicenseRejected => "giấy phép bị từ chối (assertion/kênh không hợp lệ) — cần kích hoạt lại",
+                DataHubEnrollFailure.SeatLimitReached => "bưu cục đã hết chỗ thiết bị — cần thu hồi một máy cũ",
+                DataHubEnrollFailure.HubUnreachable => "không liên lạc được máy chủ DataHub",
+                DataHubEnrollFailure.AssertionUnavailable => "không lấy được chứng thực giấy phép từ máy chủ license",
+                DataHubEnrollFailure.Rejected => "máy chủ DataHub từ chối đăng ký thiết bị",
+                _ => "chưa rõ nguyên nhân"
+            };
         }
 
         /// <summary>
@@ -580,8 +745,13 @@ eQIDAQAB
         /// it returns immediately unless the token is inside the renew window. Called from the
         /// heartbeat loop because a station can stay open for days on a 24h device token, and a
         /// silently expired token turns every sync into a 401 with no visible symptom.
+        ///
+        /// The outcome distinguishes "nothing to do" from "tried and failed". It used to return
+        /// false for both, so a machine whose renewal was failing every two minutes was
+        /// indistinguishable from one whose token was simply still fresh — which is precisely
+        /// the state the operator needs to be told about, since the sync dies at expiry.
         /// </summary>
-        public static async Task<bool> RenewDataHubDeviceTokenIfNeededAsync(string hwid, CancellationToken ct)
+        public static async Task<DataHubRenewOutcome> RenewDataHubDeviceTokenIfNeededAsync(string hwid, CancellationToken ct)
         {
             string baseUrl, siteCode;
             DateTimeOffset expiresAt;
@@ -592,12 +762,18 @@ eQIDAQAB
                 expiresAt = _datahubTokenExpiresAt;
             }
 
-            if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(siteCode)) return false;
-            if (expiresAt == DateTimeOffset.MinValue) return false;
-            if (DateTimeOffset.UtcNow < expiresAt - DeviceTokenRenewLead) return false;
+            if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(siteCode)) return DataHubRenewOutcome.NotNeeded;
+            if (expiresAt == DateTimeOffset.MinValue) return DataHubRenewOutcome.NotNeeded;
+            if (DateTimeOffset.UtcNow < expiresAt - DeviceTokenRenewLead) return DataHubRenewOutcome.NotNeeded;
 
+            // Past this point the token is inside its renew window, so every remaining exit is
+            // either a renewal or a failure worth reporting.
             string assertion = await FetchDataHubAssertionAsync(ct);
-            if (string.IsNullOrWhiteSpace(assertion)) return false;
+            if (string.IsNullOrWhiteSpace(assertion))
+            {
+                RememberDataHubEnrollFailure(DataHubEnrollFailure.AssertionUnavailable);
+                return DataHubRenewOutcome.Failed;
+            }
 
             lock (DataHubEnrollLock)
             {
@@ -605,14 +781,14 @@ eQIDAQAB
                 siteCode = _datahubSiteCode;
             }
 
-            var enrollment = await EnrollDataHubDeviceAsync(baseUrl, assertion, siteCode, BuildDeviceName(hwid), ct);
-            if (enrollment == null) return false;
+            var enrollResult = await EnrollDataHubDeviceAsync(baseUrl, assertion, siteCode, BuildDeviceName(hwid), ct);
+            if (!enrollResult.Succeeded) return DataHubRenewOutcome.Failed;
 
             // Configure tears down the realtime subscription, so the next sync cycle reconnects
             // the hub with the new token instead of retrying forever on a dead one.
-            DataHubClient.Configure(baseUrl, enrollment.DeviceToken, enrollment.SiteId);
+            DataHubClient.Configure(baseUrl, enrollResult.Enrollment.DeviceToken, enrollResult.Enrollment.SiteId);
             AppLogger.Info("DataHub device token renewed.");
-            return true;
+            return DataHubRenewOutcome.Renewed;
         }
 
         public static async Task<HeartbeatResult> SendHeartbeatOnceAsync(
@@ -703,6 +879,7 @@ eQIDAQAB
             private readonly Action<string> _onWarning;
             private readonly TimeSpan _interval = TimeSpan.FromMinutes(2);
             private int _fatalRetryCount = 0;
+            private bool _datahubRenewalWarned;
 
             public HeartbeatSupervisor(string licenseKey, string deviceId, string initialToken, Action<string> onTokenUpdate, Action<string> onWarning)
             {
@@ -711,6 +888,39 @@ eQIDAQAB
                 _currentToken = initialToken;
                 _onTokenUpdate = onTokenUpdate;
                 _onWarning = onWarning;
+            }
+
+            /// <summary>
+            /// Turns a renewal outcome into one report per fault. Latched, because the heartbeat
+            /// retries every two minutes for as long as the token is inside its renew window: an
+            /// unlatched message would repaint the status bar with the same warning thirty times
+            /// an hour and fill the log with it. Re-armed on the renewal that finally succeeds,
+            /// so a fault that comes back is announced again.
+            /// </summary>
+            private void ReportDataHubRenewal(DataHubRenewOutcome outcome)
+            {
+                if (outcome == DataHubRenewOutcome.Failed)
+                {
+                    if (_datahubRenewalWarned) return;
+                    _datahubRenewalWarned = true;
+
+                    // Error, not Warning: the device token is already inside its renew window, so
+                    // this is not a transient blip — cloud sync stops for good at expiry unless
+                    // somebody acts, and the app gives no other sign of it.
+                    string cause = LicenseApiService.DescribeDataHubEnrollFailure();
+                    AppLogger.Error("DataHub device token renewal FAILED (" + cause +
+                        "). Cloud sync will stop when the current token expires; the site needs a re-activation.");
+                    _onWarning?.Invoke("Không gia hạn được kết nối DataHub (" + cause +
+                        "). Dữ liệu vẫn lưu local, nhưng sẽ ngừng đồng bộ đám mây.");
+                    return;
+                }
+
+                if (outcome == DataHubRenewOutcome.Renewed && _datahubRenewalWarned)
+                {
+                    _datahubRenewalWarned = false;
+                    AppLogger.Info("DataHub device token renewal recovered.");
+                    _onWarning?.Invoke("Đã gia hạn kết nối DataHub — đồng bộ đám mây hoạt động lại.");
+                }
             }
 
             public async Task StartAsync(CancellationToken ct = default)
@@ -769,12 +979,14 @@ eQIDAQAB
                             // token — exactly what the assertion endpoint asks for.
                             try
                             {
-                                await LicenseApiService.RenewDataHubDeviceTokenIfNeededAsync(_deviceId, ct);
+                                ReportDataHubRenewal(
+                                    await LicenseApiService.RenewDataHubDeviceTokenIfNeededAsync(_deviceId, ct));
                             }
                             catch (OperationCanceledException) { throw; }
                             catch (Exception ex)
                             {
-                                AppLogger.Warning("DataHub token renewal skipped: " + ex.Message);
+                                AppLogger.Error("DataHub token renewal threw: " + ex.Message);
+                                ReportDataHubRenewal(DataHubRenewOutcome.Failed);
                             }
                             break;
 

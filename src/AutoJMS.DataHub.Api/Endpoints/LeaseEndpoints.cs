@@ -25,9 +25,7 @@ public static class LeaseEndpoints
         var identity = context.GetDeviceIdentity();
         var authorization = Authorize(identity, siteId, options.Channel);
         if (!authorization.Allowed)
-            return Problem(authorization.ProblemCode!, authorization.ProblemCode == ApiProblemCodes.ChannelMismatch
-                ? "The device channel does not match this deployment."
-                : "The requested site is not assigned to this device.");
+            return Problem(authorization.ProblemCode!, DenialDetail(authorization.ProblemCode!));
         var result = await repository.AcquireAsync(siteId, identity!.DeviceId, context.RequestAborted);
         return ToResult(result);
     }
@@ -68,10 +66,19 @@ public static class LeaseEndpoints
         return ToResult(await repository.ReleaseAsync(siteId, identity!.DeviceId, request.LeaderTerm, context.RequestAborted));
     }
 
+    private static string DenialDetail(string problemCode) => problemCode switch
+    {
+        ApiProblemCodes.ChannelMismatch => "The device channel does not match this deployment.",
+        ApiProblemCodes.Forbidden => "The device role may not take the site bulk-fetch lease.",
+        _ => "The requested site is not assigned to this device."
+    };
+
+    // The lease decides who may bulk-fetch, so acquiring or releasing it is a write even
+    // though the body carries no rows.
     private static TenantAuthorizationResult Authorize(DeviceIdentity? identity, Guid siteId, string channel)
         => identity is null
             ? TenantAuthorizationResult.Failure(ApiProblemCodes.Unauthorized)
-            : TenantAuthorizationEvaluator.Evaluate(identity, siteId, channel);
+            : TenantAuthorizationEvaluator.Evaluate(identity, siteId, channel, DeviceCapability.WriteSiteData);
 
     private static IResult ToResult(LeaseOperationResult operation)
     {

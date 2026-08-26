@@ -38,13 +38,14 @@ public static class IngestEndpoints
         var identity = context.GetDeviceIdentity();
         if (identity is null)
             return Problem(StatusCodes.Status401Unauthorized, ApiProblemCodes.Unauthorized, "A device bearer token is required.");
-        var authorization = TenantAuthorizationEvaluator.Evaluate(identity, siteId, options.Channel);
+        var authorization = TenantAuthorizationEvaluator.Evaluate(identity, siteId, options.Channel, DeviceCapability.WriteSiteData);
         if (!authorization.Allowed)
-            return Problem(authorization.ProblemCode == ApiProblemCodes.ChannelMismatch
-                ? StatusCodes.Status403Forbidden
-                : StatusCodes.Status403Forbidden,
+            return Problem(
+                StatusCodes.Status403Forbidden,
                 authorization.ProblemCode!,
-                "The device is not authorized for this site or deployment.");
+                authorization.ProblemCode == ApiProblemCodes.Forbidden
+                    ? "The device role may not write observations for this site."
+                    : "The device is not authorized for this site or deployment.");
 
         var idempotencyKey = context.Request.Headers["Idempotency-Key"].ToString().Trim();
         if (idempotencyKey.Length is < 8 or > 128)

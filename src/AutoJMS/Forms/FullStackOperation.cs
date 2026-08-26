@@ -92,6 +92,16 @@ namespace AutoJMS
         private string _lastDataHash = string.Empty;
         private ToolTip _tooltip;
         private bool _isRealtimeStarted = false;
+
+        /// <summary>
+        /// Latch for the read half of the runtime — loading local SQLite into the views and
+        /// starting DataHub sync. Separate from <see cref="_isRealtimeStarted"/> because the
+        /// two halves are gated on different credentials: reading needs only the ULTRA
+        /// entitlement, while fetching from JMS needs the JMS auth token. They used to share
+        /// one latch, which meant a licensed machine with a valid device token but no JMS
+        /// login opened this window on an empty grid, with local rows sitting unread on disk.
+        /// </summary>
+        private bool _isLocalRuntimeStarted = false;
         private readonly FullStackDashboardService _fullStackDashboardService = new();
         private readonly FullStackWorkflowService _fullStackWorkflowService = new();
         private readonly FullStackExportService _fullStackExportService = new();
@@ -184,11 +194,46 @@ namespace AutoJMS
                 _pendingThoiHieuRows = null;
             }
 
-            AppLogger.Info("FullStackOperation loaded (IDLE) — waiting for auth token");
+            // Reading does not wait for the JMS token. The licence already said this machine
+            // may operate FullStack, and everything below reads local SQLite plus DataHub —
+            // neither of which JMS issues credentials for.
+            await StartLocalRuntimeAsync();
+
+            AppLogger.Info("FullStackOperation loaded (READ-ONLY) — waiting for auth token to enable JMS fetch");
 
             // If token was already set before form created, start ACTIVE now
             if (AuthStateService.Instance.IsAuthenticated)
                 _ = StartRealtimeRuntimeAsync();
+        }
+
+        /// <summary>
+        /// The read half: local rows into the views, plus the DataHub sync loop that keeps
+        /// them current from other machines at the site. Gated on the ULTRA entitlement only,
+        /// because nothing here talks to JMS — the projection comes from SQLite and the
+        /// device token, and blocking it on a JMS login was showing operators an empty grid
+        /// while the data they wanted sat in the local database.
+        ///
+        /// Idempotent: <see cref="StartRealtimeRuntimeAsync"/> calls it too, for the path
+        /// where the token arrives before this form finishes loading.
+        /// </summary>
+        private async Task StartLocalRuntimeAsync()
+        {
+            if (!TierRuntimePolicy.Current.EnableFullStackOperation)
+            {
+                AppLogger.Warning(
+                    "[FullStack] Chặn StartLocalRuntimeAsync: tier=" +
+                    $"{TierRuntimePolicy.Current.Tier} không có entitlement FullStackOperation.");
+                return;
+            }
+
+            if (_isLocalRuntimeStarted) return;
+            _isLocalRuntimeStarted = true;
+
+            await LoadDataAndRefreshViewsAsync();
+
+            // Hybrid local-first + DataHub sync (docs/hybrid-datahub-sync-plan.md):
+            // background outbox flush + delta-pull + realtime doorbell. No-op when disabled.
+            StartCloudSync();
         }
 
         private async Task StartRealtimeRuntimeAsync()
@@ -210,6 +255,10 @@ namespace AutoJMS
             AppLogger.Info("FullStackOperation activating — token acquired");
             SetFullStackStatus("AuthToken sẵn sàng - local-first SQLite");
 
+            // Covers the token-before-Load ordering; a no-op on the usual path where Load
+            // already ran it. What follows is only the JMS-fetching half.
+            await StartLocalRuntimeAsync();
+
             _autoRefreshTimer = new System.Windows.Forms.Timer();
             // Auto-sync cadence follows the "Cập nhật sau" dropdown (default 30 phút) and runs the
             // same sync as the manual button (silent — no modal popups).
@@ -221,12 +270,6 @@ namespace AutoJMS
             _leaderTierTimer = new System.Windows.Forms.Timer { Interval = LeaderHeadProbeMs };
             _leaderTierTimer.Tick += async (s, ev) => await LeaderTierTickAsync();
             _leaderTierTimer.Start();
-
-            await LoadDataAndRefreshViewsAsync();
-
-            // Hybrid local-first + DataHub sync (docs/hybrid-datahub-sync-plan.md):
-            // background outbox flush + delta-pull + realtime doorbell. No-op when disabled.
-            StartCloudSync();
         }
 
         private void StartCloudSync()
@@ -507,9 +550,22 @@ namespace AutoJMS
                 var ct = _cts.Token;
                 if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
                 {
-                    SetFullStackStatus("Đang chờ đăng nhập / authToken");
-                    if (!silent)
-                        MessageBox.Show("Đang chờ đăng nhập JMS / authToken. Vui lòng đăng nhập JMS trước khi đồng bộ tồn kho.", "FullStack local-first", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // No JMS token means this machine cannot fetch from JMS, so it must not
+                    // take the lease either — a leader that cannot pull starves the whole
+                    // site. The follower path is still open to it: PullAllAsync reads what
+                    // another machine already published, using the DataHub device token.
+                    if (!DataHubSyncService.IsEnabled)
+                    {
+                        SetFullStackStatus("Đang chờ đăng nhập / authToken");
+                        if (!silent)
+                            MessageBox.Show("Đang chờ đăng nhập JMS / authToken. Vui lòng đăng nhập JMS trước khi đồng bộ tồn kho.", "FullStack local-first", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    SetFullStackStatus("Chưa đăng nhập JMS — lấy dữ liệu chia sẻ từ cloud...");
+                    int cloudMerged = await DataHubSyncService.Instance.PullAllAsync(ct);
+                    await LoadDataAndRefreshViewsAsync();
+                    SetFullStackStatus($"Đồng bộ từ cloud xong ({cloudMerged:N0} thay đổi) — đăng nhập JMS để kéo dữ liệu mới");
                     return;
                 }
 

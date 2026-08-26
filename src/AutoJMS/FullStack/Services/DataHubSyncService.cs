@@ -38,6 +38,15 @@ namespace AutoJMS.FullStack.Services
         private int _consecutiveFailures;
         private string _clientId;
         private int _pendingOutboxCount;
+
+        /// <summary>
+        /// The last snapshot came back cut short at the server's row cap, so the local
+        /// projection is missing this site's older waybills. Held as state rather than
+        /// announced where it is detected: RunCycleSafeAsync raises its own status a few
+        /// milliseconds later and would overwrite the warning before anyone read it.
+        /// Cleared by the next snapshot that arrives complete.
+        /// </summary>
+        private volatile bool _snapshotTruncated;
         /// <summary>Cancelled by StopAsync so background cycles stop instead of running detached.</summary>
         private CancellationTokenSource _lifetimeCts;
         private int _auxiliaryOutboxWarned;
@@ -339,9 +348,14 @@ namespace AutoJMS.FullStack.Services
                 if (merged > 0)
                     RaiseDataMerged();
 
-                RaiseStatus(_pendingOutboxCount > 0
-                    ? $"Cloud sync: {_pendingOutboxCount} thao tác chờ đồng bộ"
-                    : $"Cloud sync OK{(_hasLease ? " (máy chủ lease)" : "")} — {DateTime.Now:HH:mm:ss}");
+                // Truncation outranks a pending outbox: a queued write is a delay the operator
+                // can wait out, whereas a truncated snapshot means the grid in front of them is
+                // missing rows right now and neither the grid nor "Cloud sync OK" would say so.
+                RaiseStatus(_snapshotTruncated
+                    ? "⚠ Cloud sync: dữ liệu đám mây bị CẮT BỚT — thiếu vận đơn cũ, liên hệ kỹ thuật"
+                    : _pendingOutboxCount > 0
+                        ? $"Cloud sync: {_pendingOutboxCount} thao tác chờ đồng bộ"
+                        : $"Cloud sync OK{(_hasLease ? " (máy chủ lease)" : "")} — {DateTime.Now:HH:mm:ss}");
 
                 if (flushed > 0 || merged > 0)
                     AppLogger.Info($"[HybridSync] cycle done flushed={flushed} merged={merged} lease={_hasLease}");
@@ -616,7 +630,12 @@ WHERE waybill_no IN (" + string.Join(",", names) + @");";
             var page = await DataHubClient.PullWaybillChangesAsync(site, afterSeq).ConfigureAwait(false);
             var rows = page.Rows;
             if (page.Resynced)
+            {
                 AppLogger.Warning($"[HybridSync] waybill cursor fell out of the retained range — resynced from snapshot rows={rows.Count}");
+                // Only a snapshot can truncate, and only a resync takes one, so this is both
+                // the set and the clear: a snapshot that arrives whole means the gap is gone.
+                _snapshotTruncated = page.Truncated;
+            }
 
             if (rows.Count == 0)
             {

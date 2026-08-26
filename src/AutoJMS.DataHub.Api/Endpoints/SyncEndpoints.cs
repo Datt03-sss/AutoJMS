@@ -89,7 +89,7 @@ public static class SyncEndpoints
     private static TenantAuthorizationResult Authorize(DeviceIdentity? identity, Guid siteId, string channel)
         => identity is null
             ? TenantAuthorizationResult.Failure(ApiProblemCodes.Unauthorized)
-            : TenantAuthorizationEvaluator.Evaluate(identity, siteId, channel);
+            : TenantAuthorizationEvaluator.Evaluate(identity, siteId, channel, DeviceCapability.ReadSiteData);
 
     private static IResult Problem(int status, string code, string detail)
         => ApiProblemWriter.Result(status, code, detail);

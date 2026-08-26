@@ -45,6 +45,22 @@ public sealed class DataHubRuntimeOptions
     public string ManifestRoot { get; set; } = DefaultManifestRoot;
 
     public int MaximumPoolSize { get; set; } = 20;
+
+    /// <summary>
+    /// Server-side <c>statement_timeout</c> for every pooled connection, in seconds.
+    ///
+    /// A query with no server deadline is not merely slow: the lease, enrollment and
+    /// device-touch paths all hold <c>FOR UPDATE</c> rows, so one stuck statement blocks
+    /// every other device at the site and can strand a leader term. Npgsql's
+    /// CommandTimeout cannot substitute — it only asks the server to cancel, and an API
+    /// process killed mid-statement never sends that request.
+    /// </summary>
+    public int DatabaseStatementTimeoutSeconds { get; set; } = DefaultStatementTimeoutSeconds;
+
+    public const int DefaultStatementTimeoutSeconds = 30;
+    public const int MinimumStatementTimeoutSeconds = 5;
+    public const int MaximumStatementTimeoutSeconds = 300;
+
     public TimeSpan DeviceTokenLifetime { get; set; } = TimeSpan.FromHours(24);
     public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(15);
     public int RetentionBatchSize { get; set; } = 1000;
@@ -120,6 +136,11 @@ public sealed class DataHubRuntimeOptions
             ManifestAdminToken = FirstNonEmpty(configuration["DATAHUB_ADMIN_TOKEN"]),
             ManifestRoot = FirstNonEmpty(configuration["DATAHUB_MANIFEST_ROOT"], DefaultManifestRoot),
             MaximumPoolSize = ParseBoundedInt(configuration["DATAHUB_DB_MAX_POOL_SIZE"], 20, 1, 100),
+            DatabaseStatementTimeoutSeconds = ParseBoundedInt(
+                configuration["DATAHUB_DB_STATEMENT_TIMEOUT_SECONDS"],
+                DefaultStatementTimeoutSeconds,
+                MinimumStatementTimeoutSeconds,
+                MaximumStatementTimeoutSeconds),
             DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
             RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),
             RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000),

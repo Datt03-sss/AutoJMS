@@ -1,3 +1,4 @@
+using System.Globalization;
 using AutoJMS.DataHub.Api.Configuration;
 using Npgsql;
 
@@ -18,13 +19,7 @@ public sealed class PostgresDataSource : IAsyncDisposable
 
         try
         {
-            var builder = new NpgsqlConnectionStringBuilder(options.ConnectionString)
-            {
-                MaxPoolSize = Math.Clamp(options.MaximumPoolSize, 1, 100),
-                MinPoolSize = 0,
-                ApplicationName = "AutoJMS.DataHub.Api"
-            };
-            _dataSource = NpgsqlDataSource.Create(builder.ConnectionString);
+            _dataSource = NpgsqlDataSource.Create(BuildConnectionString(options));
         }
         catch (ArgumentException)
         {
@@ -32,6 +27,52 @@ public sealed class PostgresDataSource : IAsyncDisposable
             // process should still expose liveness for orchestrator diagnostics.
             _dataSource = null;
         }
+    }
+
+    /// <summary>
+    /// Applies the pool limits and the server-side deadlines every connection must carry.
+    ///
+    /// The deadlines are PostgreSQL <em>startup</em> options rather than a per-transaction
+    /// <c>SET LOCAL</c>, which is what makes them impossible to forget: a repository that
+    /// never issues a SET still gets a bounded statement, and <c>DISCARD ALL</c> on pool
+    /// return resets to these values instead of clearing them. Repositories with a
+    /// narrower need — ingest's <c>lock_timeout</c> — still layer SET LOCAL on top.
+    /// </summary>
+    public static string BuildConnectionString(DataHubRuntimeOptions options)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(options.ConnectionString)
+        {
+            MaxPoolSize = Math.Clamp(options.MaximumPoolSize, 1, 100),
+            MinPoolSize = 0,
+            ApplicationName = "AutoJMS.DataHub.Api"
+        };
+
+        var seconds = Math.Clamp(
+            options.DatabaseStatementTimeoutSeconds,
+            DataHubRuntimeOptions.MinimumStatementTimeoutSeconds,
+            DataHubRuntimeOptions.MaximumStatementTimeoutSeconds);
+
+        // idle_in_transaction_session_timeout covers the failure statement_timeout cannot:
+        // a transaction that finished its statements and then lost its client keeps every
+        // FOR UPDATE row locked until TCP notices. Twice the statement budget, because a
+        // transaction legitimately runs several statements back to back.
+        var deadlines = string.Create(
+            CultureInfo.InvariantCulture,
+            $"-c statement_timeout={seconds}s -c idle_in_transaction_session_timeout={seconds * 2}s");
+
+        // Operator settings go last on purpose: PostgreSQL applies -c options in order, so
+        // a deployment that needs a different budget overrides these without a code change.
+        builder.Options = string.IsNullOrWhiteSpace(builder.Options)
+            ? deadlines
+            : deadlines + " " + builder.Options;
+
+        // Deliberately above the server deadline. Equal values race, and whoever wins
+        // decides how the failure looks; with the server first, a runaway query always
+        // ends as PostgreSQL 57014 with the backend already gone, rather than Npgsql
+        // walking away from a statement that keeps running and keeps its locks.
+        builder.CommandTimeout = seconds + 5;
+
+        return builder.ConnectionString;
     }
 
     public bool IsConfigured => _dataSource is not null;
