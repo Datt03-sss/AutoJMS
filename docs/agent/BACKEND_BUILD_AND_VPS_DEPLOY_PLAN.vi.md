@@ -477,19 +477,25 @@ PASSED**, và B13 đã được cho phép hoặc đã được ghi nhận là ho
 (build 0 warning/0 error, verify ALL GATES PASSED, B13 đã được chủ sở hữu cho phép và đã áp
 trên VPS).
 
-> ⚠️ **Hai việc còn nợ do chính Chặng B sinh ra — đọc trước khi coi chặng này là đóng.**
+> ✅ **Hai việc còn nợ do chính Chặng B sinh ra — đã đóng cả hai (26/08/2026).**
 >
-> 1. **`backend/backend-schema-dump.sql` nay đã cũ.** Dump ở B9 lấy từ một DB áp **001–005**;
->    migration `006` đã áp trên VPS sau đó, nên file thiếu `revoked_device_credentials` và 4
->    index mới. Header của file tự yêu cầu cập nhật dòng "Reflects" mỗi khi có migration mới,
->    nên đây là mâu thuẫn với chính nó, không phải chuyện thẩm mỹ. Sinh lại bằng `pg_dump -s`
->    trên VPS (việc của Antigravity — VPS Ops).
-> 2. **SQL mới của B12 chưa từng chạy trên PostgreSQL thật.** Máy dev không có `psql` và không
->    có Docker, và không có test integration nào chạm DB, nên hai câu lệnh mới
->    (`DeleteProjectionsAsync`, và bộ lọc `CASE`/tombstone của `DeleteChangesAsync`) chỉ được
->    kiểm bằng compile. Một lỗi cú pháp ở đây **không** làm sập API: `RetentionHostedService`
->    bắt mọi exception và log `LogWarning`, nên hậu quả là **retention âm thầm ngừng chạy**.
->    Phải `EXPLAIN` cả hai câu trên DB staging trước khi tin là chúng chạy.
+> 1. **`backend/backend-schema-dump.sql` đã cũ** (dump ở B9 lấy từ DB áp 001–005, thiếu
+>    `revoked_device_credentials` và 4 index của `006`, trong khi header của chính file yêu cầu
+>    cập nhật dòng "Reflects" mỗi khi có migration mới). → **Đã sinh lại cho 001..006** ở commit
+>    `7f4497f`.
+> 2. **SQL mới của B12 chưa từng chạy trên PostgreSQL thật** — rủi ro nghiêm trọng vì một lỗi cú
+>    pháp ở đây **không** làm sập API: `RetentionHostedService` bắt mọi exception và log
+>    `LogWarning`, nên hậu quả là **retention âm thầm ngừng chạy**. → **Đã đo
+>    `EXPLAIN (ANALYZE, BUFFERS)` cả 3 câu trên container PostgreSQL 16 Alpine của staging**:
+>
+>    | Câu lệnh | Buffers | Thời gian |
+>    |---|---|---|
+>    | Fast-exit probe (`retention_policies`) | `shared hit=1` | 0.062 ms — 0 hàng, **không chạm** `waybill_projections` |
+>    | `candidatesSql` (`DeleteProjectionsAsync`) | `shared hit=15` | 0.355 ms |
+>    | Bộ lọc `CASE` tombstone (`DeleteChangesAsync`) | `shared hit=3` | 0.233 ms |
+>
+>    Số liệu và bối cảnh hạ tầng: [backend/vps/VPS_STATUS_REPORT.md](../../backend/vps/VPS_STATUS_REPORT.md)
+>    (bản đã che — repo này PUBLIC; xem [rule 09](../../.agent/rules/09-cross-agent-collaboration.md)).
 
 ### Bật xoá projection của B12 (tombstone) — công thức cho operator
 
@@ -983,7 +989,8 @@ A  Chốt nguồn deploy license server        ⛔ chủ sở hữu       [CHẶ
 ▼
 B  Vá code trên máy dev (B0…B17)           agent               ✅ XONG 2026-08-26
 │  └─ ra: build 0 error + verify.ps1 ALL GATES PASSED — đã đạt; B13 đã được phép và đã áp
-│     (còn nợ: sinh lại backend-schema-dump.sql sau 006, EXPLAIN SQL mới của B12)
+│     (hai món nợ đã đóng: dump sinh lại cho 001..006 ở 7f4497f; 3 câu SQL của B12 đã EXPLAIN
+│      trên PostgreSQL staging — không còn hạng mục nào chờ)
 ▼
 C  VPS staging: mua, DNS, hardening        ⛔ + agent
 │  └─ ra: chỉ 22/80/443 mở, 5432 kín, clock synced

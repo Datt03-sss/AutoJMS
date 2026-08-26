@@ -90,3 +90,15 @@ service_accout*.json
 
 # Cursor IDE tooling — local to each machine, not for committing (like .codegraph/)
 .cursor/
+
+# VPS infrastructure state — this repo is PUBLIC.
+# The full status report names the host, its public IP, the operator account and the path
+# of its secrets file; committing it hands over a reconnaissance sheet. Antigravity writes
+# the full report to *.private.md and keeps the redacted backend/vps/VPS_STATUS_REPORT.md
+# (which IS committed) in sync. See .agent/rules/09-cross-agent-collaboration.md.
+*.private.md
+
+# Concrete forbidden strings for the secret-scan infra gate. Lives outside git on purpose:
+# a denylist of infrastructure identifiers that was itself committed would publish the very
+# values it exists to keep out. See eng/harness/check-secrets.ps1 part 4.
+eng/harness/forbidden-values.local.txt

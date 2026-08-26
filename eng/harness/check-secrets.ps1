@@ -20,7 +20,7 @@ Write-Host ''
 $issues = @()
 
 # ─── Part 1: Check .gitignore has required entries ───
-Write-Host '[1/3] Checking .gitignore...' -ForegroundColor Yellow
+Write-Host '[1/4] Checking .gitignore...' -ForegroundColor Yellow
 
 $gitignorePath = Join-Path $Root '.gitignore'
 if (-not (Test-Path $gitignorePath)) {
@@ -54,7 +54,7 @@ if ($issues.Count -eq 0) {
 Write-Host ''
 
 # ─── Part 2: Check git-tracked files for secret patterns ───
-Write-Host '[2/3] Scanning tracked files for secrets...' -ForegroundColor Yellow
+Write-Host '[2/4] Scanning tracked files for secrets...' -ForegroundColor Yellow
 
 # Get list of tracked files
 try {
@@ -80,7 +80,13 @@ $dangerousFiles = @(
     '.*\.pfx$',
     '.*\.pem$',
     '.*\.key$',
-    '.*\.sec$'
+    '.*\.sec$',
+    # Infrastructure state and the infra denylist itself. Both are .gitignore'd, so a match
+    # here means the ignore rule was bypassed (git add -f, or an entry removed). The full VPS
+    # report names the host, its operator account and the path of its secrets file; the
+    # denylist is a list of exactly those values. This repo is PUBLIC.
+    '.*\.private\.md$',
+    '.*forbidden-values\.local\.txt$'
 )
 
 foreach ($file in $trackedFiles) {
@@ -135,7 +141,7 @@ if (($issues | Where-Object { $_ -match 'TRACKED|POTENTIAL' }).Count -eq 0) {
 Write-Host ''
 
 # ─── Part 3: Check staged files (if in a git repo) ───
-Write-Host '[3/3] Checking staged files...' -ForegroundColor Yellow
+Write-Host '[3/4] Checking staged files...' -ForegroundColor Yellow
 try {
     Push-Location $Root
     $stagedFiles = & git diff --cached --name-only 2>&1
@@ -157,6 +163,97 @@ try {
     Write-Host '  WARNING: Could not check staged files.' -ForegroundColor Yellow
 } finally {
     Pop-Location
+}
+
+Write-Host ''
+
+# ─── Part 4: Infrastructure identifiers (denylist) ───
+#
+# Parts 2 and 3 look for credentials. This part looks for the OTHER leak: the VPS public IP,
+# its hostname, the operator account, the deploy and secrets paths. None of those match a
+# credential pattern, so before this existed a status report naming all of them passed the
+# gate with "Tracked files: OK (no secrets detected)" — silently, into a PUBLIC repo.
+#
+# Why a denylist of literal values and not a regex: a generic IPv4 pattern is unusable here.
+# `InternalBuild` versions like 1.26.6.0 are shaped exactly like an address and appear in ~28
+# tracked files, and the hardening keywords (NOPASSWD, PermitRootLogin, maxretry) already live
+# in bootstrap-vps.sh and the deploy guides, where they are a recipe rather than a disclosure.
+# Matching those would fail the gate on day one and teach everyone to ignore it.
+#
+# The list lives OUTSIDE git on purpose: a committed denylist of infrastructure identifiers
+# would publish the very values it exists to keep out. CI has no local file, so it reads the
+# same list from an environment variable fed by a repository secret.
+Write-Host '[4/4] Checking for infrastructure identifiers...' -ForegroundColor Yellow
+
+$forbiddenListPath = Join-Path $PSScriptRoot 'forbidden-values.local.txt'
+$forbiddenRaw = @()
+$forbiddenSource = $null
+if (Test-Path $forbiddenListPath) {
+    $forbiddenRaw = Get-Content $forbiddenListPath -ErrorAction SilentlyContinue
+    $forbiddenSource = 'forbidden-values.local.txt'
+} elseif ($env:AUTOJMS_FORBIDDEN_VALUES) {
+    $forbiddenRaw = $env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n;]+'
+    $forbiddenSource = 'AUTOJMS_FORBIDDEN_VALUES'
+}
+
+# Entry format: "<literal value>" or "<literal value> | <label>". The label is what gets
+# printed on a hit — the value itself is never echoed, or the failure message would leak it
+# into the CI log it was meant to protect.
+$forbidden = @()
+$entryIndex = 0
+foreach ($line in $forbiddenRaw) {
+    $trimmed = "$line".Trim()
+    if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+    $entryIndex++
+    $parts = $trimmed -split '\|', 2
+    $value = $parts[0].Trim()
+    if (-not $value) { continue }
+    $label = if ($parts.Count -gt 1 -and $parts[1].Trim()) { $parts[1].Trim() } else { "entry #$entryIndex" }
+    $forbidden += @{ Value = $value; Label = $label }
+}
+
+if ($forbidden.Count -eq 0) {
+    # Not a failure: a fresh clone has no list, and failing there would block every
+    # contributor. But it must be loud — a gate nobody configured is a gate that is off.
+    Write-Host '  NOTICE: no infra denylist configured; this check is INACTIVE.' -ForegroundColor Yellow
+    Write-Host "         Create $forbiddenListPath (git-ignored) or set AUTOJMS_FORBIDDEN_VALUES." -ForegroundColor Yellow
+} else {
+    $binaryExtensions = @(
+        '.png', '.jpg', '.jpeg', '.gif', '.ico', '.bmp', '.dll', '.exe', '.pdb', '.zip',
+        '.7z', '.gz', '.pdf', '.ttf', '.otf', '.woff', '.woff2', '.snk', '.nupkg', '.wav',
+        '.mp3', '.mp4', '.db', '.sqlite', '.bin', '.cur'
+    )
+
+    foreach ($file in $trackedFiles) {
+        $ext = [System.IO.Path]::GetExtension($file)
+        if ($ext -in $binaryExtensions) { continue }
+
+        $fullPath = Join-Path $Root $file
+        if (-not (Test-Path $fullPath)) { continue }
+
+        try {
+            $content = Get-Content $fullPath -Raw -ErrorAction SilentlyContinue
+            if (-not $content) { continue }
+
+            foreach ($entry in $forbidden) {
+                if ($content.IndexOf($entry.Value, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+                # Report the line so it can be fixed without hunting, but never the value.
+                $hit = Select-String -Path $fullPath -Pattern $entry.Value -SimpleMatch -List -ErrorAction SilentlyContinue
+                $where = if ($hit) { "${file}:$($hit.LineNumber)" } else { $file }
+                $issues += "INFRA LEAK ($($entry.Label)) in tracked file: $where"
+            }
+        } catch {
+            # Skip files that can't be read
+        }
+    }
+
+    if (($issues | Where-Object { $_ -match 'INFRA LEAK' }).Count -eq 0) {
+        Write-Host "  Infra identifiers: OK ($($forbidden.Count) value(s) checked from $forbiddenSource)" -ForegroundColor Green
+    } else {
+        foreach ($issue in ($issues | Where-Object { $_ -match 'INFRA LEAK' })) {
+            Write-Host "  $issue" -ForegroundColor Red
+        }
+    }
 }
 
 Write-Host ''

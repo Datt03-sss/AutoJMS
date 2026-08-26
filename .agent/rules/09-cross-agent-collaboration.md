@@ -47,6 +47,38 @@ Khi Antigravity cần Claude viết/sửa code, tạo prompt theo format:
 4. **Verification trước VPS deploy**: Claude push xong, Antigravity mới pull và deploy trên VPS.
 5. **Rollback path**: Prompt nên mô tả cách rollback nếu thay đổi gây lỗi.
 
+## Báo cáo hiện trạng VPS — quy ước hai file
+
+Antigravity là nguồn sự thật về hạ tầng VPS. Claude Code cần thông tin đó (migration nào đã áp,
+image nào đang chạy, SQL đã đo trên PostgreSQL thật chưa) nhưng **repo `Datt03-sss/AutoJMS` là
+PUBLIC**, nên báo cáo được tách làm hai:
+
+| File | Trạng thái git | Nội dung |
+|---|---|---|
+| `backend/vps/VPS_STATUS_REPORT.private.md` | **ngoài git** (`.gitignore`: `*.private.md`) | Bản đầy đủ: hostname, IP công khai, tài khoản vận hành, `sudo NOPASSWD`, container ID, đường dẫn file secrets, danh sách cổng mở, ngưỡng fail2ban |
+| `backend/vps/VPS_STATUS_REPORT.md` | **tracked, đã che** | Migration đã áp, số bảng/index, kết quả `EXPLAIN (ANALYZE, BUFFERS)`, smoke test, diễn tập restore, tag image, trạng thái hardening ở mức "khớp `bootstrap-vps.sh`" |
+
+**Trách nhiệm Antigravity** — sau mỗi task VPS, cập nhật **cả hai** file: chi tiết vào bản
+`.private.md`, rồi phản chiếu phần an toàn sang bản đã che. Không đưa giá trị định danh hạ tầng
+vào bản tracked.
+
+**Trách nhiệm Claude Code** — đọc bản đã che. Cần giá trị định danh cụ thể thì **hỏi Owner**;
+không suy đoán và không copy giá trị từ bản private vào bất kỳ file tracked nào.
+
+Lý do tách: từng mục riêng lẻ nghe vô hại, nhưng **tổ hợp** IP + tên tài khoản có `sudo NOPASSWD`
++ danh sách cổng mở + ngưỡng ban của fail2ban là bản đồ trinh sát hoàn chỉnh (bất kỳ RCE dưới
+tài khoản đó = root, và ngưỡng ban cho biết cần rải chậm bao nhiêu để không bị chặn). Luật gốc:
+[DEPLOY_EXECUTION_CHECKLIST.vi.md §6](../../backend/datahub/deploy/DEPLOY_EXECUTION_CHECKLIST.vi.md).
+
+**Gate tự động** — `eng/harness/check-secrets.ps1` phần 4 quét file tracked theo một denylist
+literal (IP, hostname) đọc từ `eng/harness/forbidden-values.local.txt` (ngoài git) hoặc biến môi
+trường `AUTOJMS_FORBIDDEN_VALUES` trên CI. Trước khi có phần 4, một báo cáo tracked ghi đủ IP +
+tài khoản + `sudo NOPASSWD` vẫn **pass im lặng** với dòng `Tracked files: OK`. Gate báo lỗi kèm
+nhãn và `file:dòng`, **không in ra giá trị** — nếu in thì chính log CI lại rò rỉ thứ nó bảo vệ.
+Denylist nằm ngoài git vì một danh sách định danh hạ tầng được commit sẽ công bố đúng những giá
+trị nó tồn tại để chặn. Cách thêm entry và các giá trị cố ý **không** đưa vào: xem header của
+`forbidden-values.local.txt`.
+
 ## Workflow Sequence
 
 ```
