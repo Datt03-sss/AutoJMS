@@ -101,4 +101,7 @@ service_accout*.json
 # Concrete forbidden strings for the secret-scan infra gate. Lives outside git on purpose:
 # a denylist of infrastructure identifiers that was itself committed would publish the very
 # values it exists to keep out. See eng/harness/check-secrets.ps1 part 4.
-eng/harness/forbidden-values.local.txt
+# Wildcard, not just .local.txt: CI must NOT materialise the denylist into a file at all (it
+# is injected as $env:AUTOJMS_FORBIDDEN_VALUES), but a variant name such as
+# forbidden-values.ci.txt is an easy accident and must not be commitable either.
+eng/harness/forbidden-values*.txt

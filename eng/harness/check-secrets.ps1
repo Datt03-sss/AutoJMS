@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Secret scan harness for AutoJMS.
 .DESCRIPTION
@@ -86,7 +86,9 @@ $dangerousFiles = @(
     # report names the host, its operator account and the path of its secrets file; the
     # denylist is a list of exactly those values. This repo is PUBLIC.
     '.*\.private\.md$',
-    '.*forbidden-values\.local\.txt$'
+    # Wildcard on purpose: CI injects the denylist as an environment variable and must never
+    # write it to disk, but a variant filename (forbidden-values.ci.txt) is an easy accident.
+    '.*forbidden-values.*\.txt$'
 )
 
 foreach ($file in $trackedFiles) {

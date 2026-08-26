@@ -1,0 +1,66 @@
+name: leak-check
+
+# Cổng chặn rò rỉ định danh hạ tầng, tách riêng khỏi workflow `verify`.
+#
+# Vì sao tách: trong verify.ps1 phần secret scan là STEP 3, nằm sau `dotnet --info`, restore,
+# build Release và 365 unit test trên runner Windows — một PR làm lộ IP VPS phải chờ 5–15 phút
+# mới biết. Job này chạy dưới 1 phút và gọi ĐÚNG script trong eng/harness, nên không sinh ra
+# định nghĩa thứ hai về "sạch" để hai bên lệch nhau. `verify` vẫn chạy đủ 4 cổng như trước.
+#
+# Repo Datt03-sss/AutoJMS là PUBLIC — xem .agent/rules/09-cross-agent-collaboration.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leak-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  leak-check:
+    # KHÔNG đổi sang ubuntu-latest: check-secrets.ps1 dựng gốc repo bằng
+    # Join-Path $PSScriptRoot '..\..' — trên Linux dấu '\' là ký tự tên file hợp lệ nên
+    # Resolve-Path sẽ fail chứ không phải chạy chậm hơn.
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Denylist tới được runner chưa? Nếu secret bị xoá, đổi tên hay để rỗng, phần 4 của
+      # check-secrets.ps1 sẽ in NOTICE rồi PASS — cổng tắt âm thầm, đúng lỗi mà nó sinh ra để
+      # chặn. Bước này biến trường hợp đó thành đỏ, và chỉ in SỐ LƯỢNG entry, không in giá trị.
+      #
+      # Bỏ qua với PR từ fork vì GitHub không cấp secret cho ngữ cảnh đó (siết ở đây sẽ làm mọi
+      # PR fork đỏ vì một lý do người gửi không sửa được). PR cùng repo vẫn có secret nên vẫn siết.
+      - name: Assert infra denylist reached the runner
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        env:
+          AUTOJMS_FORBIDDEN_VALUES: ${{ secrets.AUTOJMS_FORBIDDEN_VALUES }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AUTOJMS_FORBIDDEN_VALUES)) {
+            Write-Host '::error::Secret AUTOJMS_FORBIDDEN_VALUES rong hoac chua ton tai. Phan 4 cua check-secrets.ps1 se chay o che do INACTIVE (in NOTICE roi PASS). Tao lai tai Settings > Secrets and variables > Actions, noi dung giong eng/harness/forbidden-values.local.txt tren may Owner.'
+            exit 1
+          }
+          $entries = $env:AUTOJMS_FORBIDDEN_VALUES -split '[\r\n;]+' |
+            Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('#') }
+          Write-Host "Infra denylist reached the runner: $($entries.Count) entry(ies)."
+
+      - name: Run infra leak gate
+        env:
+          # Bơm qua env, KHÔNG nội suy ${{ }} vào thân script và KHÔNG ghi ra file tạm.
+          # Nội suy trực tiếp là bề mặt script-injection: secret chứa dấu " hoặc $( ) sẽ được
+          # PowerShell thực thi. Ghi ra file là để denylist nằm trên đĩa runner cho mọi step sau
+          # đọc được, và một tên file mới (vd forbidden-values.ci.txt) rất dễ lọt vào commit.
+          # check-secrets.ps1 đọc biến này khi không thấy eng/harness/forbidden-values.local.txt,
+          # tức luôn luôn trên runner vì file đó git-ignored.
+          AUTOJMS_FORBIDDEN_VALUES: ${{ secrets.AUTOJMS_FORBIDDEN_VALUES }}
+        run: powershell -ExecutionPolicy Bypass -File .\eng\harness\check-secrets.ps1

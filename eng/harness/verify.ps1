@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Full verification harness for AutoJMS.
 .DESCRIPTION

@@ -38,4 +38,17 @@ jobs:
             10.0.x
 
       - name: Run verification harness
+        env:
+          # Part 4 of check-secrets.ps1 (the infra denylist) reads this when
+          # eng/harness/forbidden-values.local.txt is absent — which is always the case on a
+          # runner, since that file is git-ignored on purpose. Without this line the step
+          # prints "NOTICE: no infra denylist configured; this check is INACTIVE" and passes:
+          # three of four gates enforced and the fourth quietly off.
+          #
+          # Injected as an environment variable, never interpolated into the run script and
+          # never written to a file: a "${{ secrets.* }}" expansion inside a shell string is a
+          # script-injection surface (a value containing a quote or $( ) is executed), and a
+          # temp file leaves the denylist on the runner disk for every later step to read.
+          # verify.ps1:85 launches check-secrets.ps1 as a child process, which inherits this.
+          AUTOJMS_FORBIDDEN_VALUES: ${{ secrets.AUTOJMS_FORBIDDEN_VALUES }}
         run: powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1

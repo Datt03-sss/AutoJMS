@@ -83,7 +83,45 @@ if (Test-Path $csprojPath) {
     }
 }
 
-# 5. Summary
+# 5. Verify harness script encoding (UTF-8 BOM when non-ASCII)
+#
+# Windows PowerShell 5.1 decodes a .ps1 that has no byte-order mark using the machine's ANSI
+# code page. A dev box with the "Use Unicode UTF-8 worldwide" option has ACP 65001, so a
+# BOM-less UTF-8 script parses there; a GitHub windows-latest runner has ACP 1252, where the
+# byte 0x94 inside box-drawing characters such as U+2500 / U+2501 decodes to U+201D - a curly
+# quote that PowerShell accepts as a string delimiter. String parsing then desynchronises and
+# the file fails to PARSE, before a single line of it runs.
+#
+# This is not cosmetic. verify.ps1 died exactly that way on every CI run from the day CI was
+# added until 2026-08-26: the log showed only "The string is missing the terminator", so none
+# of the four gates ever executed on a runner, while every local run reported ALL GATES PASSED.
+# A BOM makes the encoding explicit and independent of the code page. Keep it.
+#
+# Scope is eng/harness on purpose - these are the scripts CI executes. Other .ps1 in the repo
+# (release, eng/git, backend/datahub/scripts, tools/maintenance) carry the same latent risk but
+# run on the Owner machine, and one of them is a Protected File.
+$harnessDir = Join-Path $Root 'eng/harness'
+if (Test-Path $harnessDir -PathType Container) {
+    foreach ($script in (Get-ChildItem -Path $harnessDir -Filter '*.ps1' -File | Sort-Object Name)) {
+        $bytes = [System.IO.File]::ReadAllBytes($script.FullName)
+        $hasNonAscii = $false
+        foreach ($b in $bytes) {
+            if ($b -gt 127) { $hasNonAscii = $true; break }
+        }
+        if (-not $hasNonAscii) {
+            Write-Host "  Encoding '$($script.Name)': OK (pure ASCII)" -ForegroundColor Green
+            continue
+        }
+        $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+        if ($hasBom) {
+            Write-Host "  Encoding '$($script.Name)': OK (non-ASCII + UTF-8 BOM)" -ForegroundColor Green
+        } else {
+            $issues += "Harness script has non-ASCII characters but no UTF-8 BOM (will fail to PARSE on a runner whose ANSI code page is not UTF-8): eng/harness/$($script.Name)"
+        }
+    }
+}
+
+# 6. Summary
 Write-Host ''
 if ($issues.Count -gt 0) {
     Write-Host '========================================' -ForegroundColor Red
