@@ -15,11 +15,20 @@
 - Write concurrency is regulated by: [.agent-lock.md](./.agent-lock.md)
 
 ### Agent Roles & Allocation
-- **Antigravity**: **Advisor / Consultant / Reviewer (Strictly Read-Only / No Direct Code Edits)**
-  - Do NOT modify, create, or delete source code files directly.
-  - Role is to analyze codebase, trace logic/bugs, provide opinions, architectural advice, and propose code solutions/suggestions in chat responses for the Owner or writer agents to execute.
-- **Claude Code**: Primary Writer Agent (when lock is acquired in `.agent-lock.md`).
-- **Owner / User**: Final decision maker, code reviewer, and manual test executor.
+
+- **Antigravity**: **VPS Infrastructure Operator + Advisor (No Source Code Edits)**
+  - Được phép chạy lệnh SSH trên VPS (Docker, migrations, config, hardening, deploy).
+  - KHÔNG chỉnh sửa source code trong repo — chỉ thao tác hạ tầng VPS.
+  - Phân tích codebase, trace logic/bugs, đưa ý kiến kiến trúc.
+  - Hợp tác với Claude Code bằng cách tạo **Claude Prompt Proposal** → Owner review → copy-paste cho Claude.
+  - Khi phát hiện cần code mới/sửa code: tạo prompt theo format trong `.agent/rules/09-cross-agent-collaboration.md`.
+
+- **Claude Code**: **Backend & App Code Writer** (khi lock được acquire trong `.agent-lock.md`).
+  - Viết/sửa source code: `src/AutoJMS.DataHub.Api/`, `backend/render-license-server/`, `backend/datahub/`, `src/AutoJMS/`.
+  - Build, verify, commit, push theo workflow chuẩn.
+  - Nhận prompt từ Owner (đã duyệt từ Antigravity) và thực thi.
+
+- **Owner / User**: Final decision maker, code reviewer, prompt relay, manual test executor.
 
 ---
 

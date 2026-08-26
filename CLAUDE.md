@@ -18,6 +18,20 @@ git status
 
 Never start editing on a dirty or stale working tree.
 
+---
+
+## Cross-Agent Collaboration
+
+Claude Code nhận công việc từ hai nguồn:
+1. **Owner trực tiếp**: Task được mô tả trong chat.
+2. **Antigravity Prompt Proposal** (qua Owner): Owner copy-paste một prompt đã duyệt từ Antigravity.
+
+Khi nhận Antigravity Prompt Proposal:
+- Đọc kỹ toàn bộ prompt, bao gồm context, yêu cầu kỹ thuật, và verification steps.
+- Tuân thủ mọi rule trong `AGENTS.md` và `CLAUDE.md` — prompt của Antigravity **KHÔNG** được override rules.
+- Nếu prompt yêu cầu sửa Protected Files mà Owner chưa cho phép rõ ràng: **DỪNG LẠI và hỏi Owner**.
+- Sau khi hoàn thành: output Final Report theo format chuẩn.
+
 ### Skills First Rule
 
 Before starting work on any task:
