@@ -17,6 +17,10 @@ using System.Threading.RateLimiting;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(serverOptions => serverOptions.Limits.MaxRequestBodySize = 1024 * 1024);
 var runtimeOptions = DataHubRuntimeOptions.FromConfiguration(builder.Configuration, builder.Environment);
+// Before anything can serve a request: ApiProblemWriter is static because it is called
+// from middleware that runs outside any DI scope, so this is where its one piece of
+// configuration is installed. Blank host => relative /problems/... references.
+ApiProblemWriter.ConfigureProblemTypeBaseUri(runtimeOptions.PublicHost);
 
 builder.Services.AddSingleton(runtimeOptions);
 builder.Services.AddSingleton(TimeProvider.System);

@@ -1,0 +1,156 @@
+# Render blueprint for the AutoJMS license server.
+#
+# WHY THIS FILE IS AT THE REPOSITORY ROOT
+# ---------------------------------------
+# Render discovers a Blueprint only as `render.yaml` at the ROOT of the connected
+# repository. There is no setting for an alternate blueprint path. The copy that
+# used to live at `backend/render.yaml` was therefore never read by Render — it
+# described a deployment that could not happen. `rootDir` below is what makes this
+# a monorepo blueprint: Render clones the whole repo and then builds and runs
+# inside `backend/render-license-server/`.
+#
+# DEPLOY SOURCE — decided 2026-08-26 (owner decision L-1, option A1)
+# -----------------------------------------------------------------
+# The Render Web Service points at the monorepo `Datt03-sss/AutoJMS`, path
+# `backend/render-license-server/`. It no longer serves `Datt03-sss/AutoJMS-API`.
+# One source of truth: the code here has the DataHub assertion issuer, the `seats`
+# and `tokenVersion` fields, the day-16 expiry lifecycle, an authenticated
+# /api/logout, SIGTERM graceful shutdown, 123 tests — and no Supabase.
+#
+# Until the cutover in the Render dashboard is actually executed and verified
+# (runbook: docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md, Chặng A), a claim
+# of "fixed" in this repo is still a claim about the REPO, not about PRODUCTION.
+#
+# Every `sync: false` entry must be filled in through the Render dashboard. A
+# blank one is not a soft failure: with no JWT key pair the process exits on boot,
+# and with no DataHub assertion key device enrollment stays closed and the desktop
+# app runs offline-only.
+services:
+  - type: web
+    name: autojms-api
+    runtime: node
+    rootDir: backend/render-license-server
+    buildCommand: npm ci
+    startCommand: npm start
+    # Dependency-free and deliberately un-rate-limited (server.js:573), unlike
+    # /health/firebase which sits behind healthLimiter at 30/min. Render probes
+    # this often enough that pointing it at the Firebase variant would spend the
+    # limiter budget on the platform's own polling.
+    healthCheckPath: /health
+    autoDeploy: false
+    # NOT a capacity setting — a correctness one. The JTI replay cache
+    # (NodeCache, server.js:290) and every express-rate-limit store are
+    # in-memory and per-process. A second instance is a second, independent
+    # replay window and a second, independent rate-limit budget: scaling out
+    # multiplies the limits an attacker has to beat rather than the load the
+    # service can take. Fix the state first, scale second.
+    numInstances: 1
+    # Monorepo hygiene: without this, once autoDeploy is turned on, every commit
+    # to the WinForms app would redeploy the license server. rootDir scopes the
+    # build, not the deploy trigger.
+    buildFilter:
+      paths:
+        - backend/render-license-server/**
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Pinned so a platform-side default bump cannot change the runtime under a
+      # service that is only ever deployed manually. package.json requires >=20.
+      - key: NODE_VERSION
+        value: "22"
+      - key: FIREBASE_OPERATION_TIMEOUT_MS
+        value: "8000"
+      - key: FIREBASE_DATABASE_URL
+        value: https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
+      - key: DEFAULT_UPDATE_CHANNEL
+        value: stable
+
+      # ---- Secrets, set in the dashboard -----------------------------------
+      - key: JWT_PRIVATE_KEY
+        sync: false
+      - key: JWT_PUBLIC_KEY
+        sync: false
+      # One Firebase credential source is enough; the server also accepts
+      # FIREBASE_SERVICE_ACCOUNT_JSON, FIREBASE_SERVICE_ACCOUNT_FILE (a Secret
+      # File) and GOOGLE_APPLICATION_CREDENTIALS, in that order of preference.
+      - key: FIREBASE_SERVICE_ACCOUNT_BASE64
+        sync: false
+      - key: VALID_EXE_HASHES
+        sync: false
+
+      # ---- DataHub device enrollment ---------------------------------------
+      # `sync: false`, not a placeholder value. A blueprint that carries
+      # `https://datahub.example.com` does not merely document a gap — every
+      # blueprint sync WRITES it back over whatever real hostname the owner set
+      # in the dashboard, and the server hands that dead domain to every station
+      # inside the `datahub` block with a 200 and no error. The station then
+      # configures DataHubClient with a real device token pointed at a host that
+      # does not resolve. Leaving the value unset instead makes Render ask for it
+      # at blueprint apply time, and it differs per environment anyway (G10).
+      - key: DATAHUB_API_BASE_URL
+        sync: false
+      # The RSA PRIVATE half of the license-assertion pair. The VPS holds only the
+      # public half. Without this the server issues no assertion, every
+      # /api/v1/devices/enroll is refused, and ULTRA stations lose runtime policy,
+      # updates and sync — while verify-license still returns 200, so the failure
+      # is silent from the client's point of view.
+      - key: DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY
+        sync: false
+      # These MUST equal DATAHUB_LICENSE_ASSERTION_ISSUER / _AUDIENCE on the VPS.
+      # server.js falls back to the unsuffixed "autojms-license" /
+      # "autojms-datahub-enroll", which do NOT match
+      # backend/datahub/env.production.template — leaving them unset therefore
+      # fails validation on every enrollment. The values below are verified equal
+      # to that template as of 2026-08-26, which is what closes risk G3 for the
+      # production channel.
+      - key: DATAHUB_LICENSE_ASSERTION_ISSUER
+        value: autojms-license-production
+      - key: DATAHUB_LICENSE_ASSERTION_AUDIENCE
+        value: autojms-datahub-enroll-production
+      - key: DATAHUB_LICENSE_ASSERTION_TTL_SECONDS
+        value: "300"
+      # Must equal DATAHUB_CHANNEL on the VPS, or the assertion is rejected.
+      - key: DATAHUB_CHANNEL
+        value: production
+      - key: DATAHUB_DEFAULT_SEATS
+        value: "3"
+
+      # ---- Google Sheets token broker --------------------------------------
+      # Upload the service account as a Render Secret File and point this at the
+      # mount path. A Secret File often has no .json extension, which is why the
+      # server reads and parses it rather than require()-ing it.
+      - key: GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE
+        value: /etc/secrets/googleSheetsServiceAccount.json
+      - key: GOOGLE_SHEETS_GRANT_TIMEOUT_MS
+        value: "8000"
+
+      # ---- License lifecycle ------------------------------------------------
+      # A license is sold monthly but always expires at 00:00 Asia/Ho_Chi_Minh on
+      # the anchor day, so the whole fleet renews on one calendar date.
+      - key: LICENSE_BILLING_ANCHOR_DAY
+        value: "16"
+      - key: LICENSE_GRACE_DAYS
+        value: "7"
+      - key: LICENSE_OFFLINE_GRACE_HOURS
+        value: "72"
+      # Keep at 0 until every key's middleCode has been backfilled with a real
+      # site code. Turning it on early locks out the entire fleet.
+      - key: REQUIRE_UNIQUE_SITE_CODE
+        value: "0"
+
+# ---- A deliberate omission: `region` -----------------------------------------
+# Not set here, and that is a decision rather than an oversight.
+#
+# Render's default region is Oregon. The service's hot path is Firebase RTDB in
+# `asia-southeast1` (Singapore): verify-license alone does a license read, a
+# session write and a stale-session sweep, so the region gap is paid several
+# times on every app launch. Oregon→Singapore is roughly 170–200 ms round trip;
+# Singapore→Singapore is single-digit to low-tens of ms.
+#
+# It is omitted rather than set to `singapore` because a service's region CANNOT
+# be changed after creation. Option A1 re-points the EXISTING service, so its
+# region is already fixed and declaring a different one here would only produce a
+# conflict at apply time. If the owner ever recreates the service (option A3, or
+# a rebuild for any other reason), add `region: singapore` at that moment — it is
+# the single largest latency win available to this service and it is only
+# available on day one.

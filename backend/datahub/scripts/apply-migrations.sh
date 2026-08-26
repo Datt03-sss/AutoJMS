@@ -10,6 +10,12 @@
 # migration that succeeds without recording itself is treated as a failure
 # rather than silently re-running on the next deploy.
 #
+# A file named *_notx.sql, or containing a `-- no-transaction` line, is applied
+# WITHOUT --single-transaction so it can run CREATE INDEX CONCURRENTLY. Such a
+# file is not atomic and must be re-runnable as-is; see the long note above
+# Test-NoTransactionMigration in apply-migrations.ps1 for the full trade-off,
+# including the INVALID-index trap that IF NOT EXISTS does not cover.
+#
 # Only the container mode is implemented. Use apply-migrations.ps1 -DatabaseUrl
 # when a psql client is installed on the host; adding an untested host-psql path
 # here would be worse than not having it.
@@ -47,6 +53,16 @@ migration_recorded() {
         | tr -d '[:space:]'
 }
 
+# Mirrors Test-NoTransactionMigration in apply-migrations.ps1 — the two runners
+# must agree, or the same file becomes atomic or not depending on which host ran
+# the deploy. grep's non-match exit status is the function's result on purpose.
+migration_is_no_transaction() {
+    case "$1" in
+        *_notx) return 0 ;;
+    esac
+    grep -Eq '^[[:space:]]*--[[:space:]]*no-transaction([[:space:]]|$)' "$2"
+}
+
 applied_count=0
 skipped_count=0
 for file in $(ls -1 "$MIGRATION_DIR"/*.sql | sort); do
@@ -63,8 +79,15 @@ for file in $(ls -1 "$MIGRATION_DIR"/*.sql | sort); do
         continue
     fi
 
-    printf 'APPLY %s\n' "$version"
-    datahub::psql_file "$file" --set ON_ERROR_STOP=1 --single-transaction >/dev/null
+    if migration_is_no_transaction "$version" "$file"; then
+        printf 'APPLY %s (NO TRANSACTION)\n' "$version"
+        printf '      not atomic: a mid-file failure leaves earlier statements applied\n'
+        printf '      and the marker unwritten, so this file must be re-runnable as-is.\n'
+        datahub::psql_file "$file" --set ON_ERROR_STOP=1 >/dev/null
+    else
+        printf 'APPLY %s\n' "$version"
+        datahub::psql_file "$file" --set ON_ERROR_STOP=1 --single-transaction >/dev/null
+    fi
 
     if [ "$(migration_recorded "$version")" != "1" ]; then
         datahub::die "migration $version completed without recording its version marker."

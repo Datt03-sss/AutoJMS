@@ -1,93 +1,19 @@
-# Render blueprint for the AutoJMS license server.
+# MOVED — this file is not a Render blueprint any more.
 #
-# IMPORTANT: as of 2026-08-24 the live https://autojms-api.onrender.com service is
-# NOT deployed from this blueprint — it serves Datt03-sss/AutoJMS-API, which is a
-# different and older copy of server.js. Until that is resolved (owner decision
-# L-1), this file describes what a deployment FROM THIS REPO needs; it does not
-# describe what production currently has set.
+# The blueprint now lives at the repository root:  ../render.yaml
 #
-# Every `sync: false` entry must be filled in through the Render dashboard. A
-# blank one is not a soft failure: with no JWT key pair the process exits on boot,
-# and with no DataHub assertion key device enrollment stays closed and the desktop
-# app runs offline-only.
-services:
-  - type: web
-    name: autojms-api
-    runtime: node
-    rootDir: backend/render-license-server
-    buildCommand: npm ci
-    startCommand: npm start
-    healthCheckPath: /health
-    autoDeploy: false
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: FIREBASE_OPERATION_TIMEOUT_MS
-        value: "8000"
-      - key: FIREBASE_DATABASE_URL
-        value: https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app/
-      - key: DATAHUB_API_BASE_URL
-        value: https://datahub.example.com
-      - key: DEFAULT_UPDATE_CHANNEL
-        value: stable
-
-      # ---- Secrets, set in the dashboard -----------------------------------
-      - key: JWT_PRIVATE_KEY
-        sync: false
-      - key: JWT_PUBLIC_KEY
-        sync: false
-      # One Firebase credential source is enough; the server also accepts
-      # FIREBASE_SERVICE_ACCOUNT_JSON, FIREBASE_SERVICE_ACCOUNT_FILE (a Secret
-      # File) and GOOGLE_APPLICATION_CREDENTIALS, in that order of preference.
-      - key: FIREBASE_SERVICE_ACCOUNT_BASE64
-        sync: false
-      - key: VALID_EXE_HASHES
-        sync: false
-
-      # ---- DataHub device enrollment ---------------------------------------
-      # The RSA PRIVATE half of the license-assertion pair. The VPS holds only the
-      # public half. Without this the server issues no assertion, every
-      # /api/v1/devices/enroll is refused, and ULTRA stations lose runtime policy,
-      # updates and sync — while verify-license still returns 200, so the failure
-      # is silent from the client's point of view.
-      - key: DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY
-        sync: false
-      # These MUST equal DATAHUB_LICENSE_ASSERTION_ISSUER / _AUDIENCE on the VPS.
-      # server.js falls back to the unsuffixed "autojms-license" /
-      # "autojms-datahub-enroll", which do NOT match
-      # backend/datahub/env.production.template — leaving them unset therefore
-      # fails validation on every enrollment.
-      - key: DATAHUB_LICENSE_ASSERTION_ISSUER
-        value: autojms-license-production
-      - key: DATAHUB_LICENSE_ASSERTION_AUDIENCE
-        value: autojms-datahub-enroll-production
-      - key: DATAHUB_LICENSE_ASSERTION_TTL_SECONDS
-        value: "300"
-      # Must equal DATAHUB_CHANNEL on the VPS, or the assertion is rejected.
-      - key: DATAHUB_CHANNEL
-        value: production
-      - key: DATAHUB_DEFAULT_SEATS
-        value: "3"
-
-      # ---- Google Sheets token broker --------------------------------------
-      # Upload the service account as a Render Secret File and point this at the
-      # mount path. A Secret File often has no .json extension, which is why the
-      # server reads and parses it rather than require()-ing it.
-      - key: GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE
-        value: /etc/secrets/googleSheetsServiceAccount.json
-      - key: GOOGLE_SHEETS_GRANT_TIMEOUT_MS
-        value: "8000"
-
-      # ---- License lifecycle ------------------------------------------------
-      # A license is sold monthly but always expires at 00:00 Asia/Ho_Chi_Minh on
-      # the anchor day, so the whole fleet renews on one calendar date.
-      - key: LICENSE_BILLING_ANCHOR_DAY
-        value: "16"
-      - key: LICENSE_GRACE_DAYS
-        value: "7"
-      - key: LICENSE_OFFLINE_GRACE_HOURS
-        value: "72"
-      # Keep at 0 until every key's middleCode has been backfilled with a real
-      # site code. Turning it on early locks out the entire fleet.
-      - key: REQUIRE_UNIQUE_SITE_CODE
-        value: "0"
+# Render discovers a Blueprint only as `render.yaml` at the ROOT of the connected
+# repository; there is no setting for an alternate path. So for as long as the
+# blueprint sat here it was never read by Render, and the "the live service is not
+# deployed from this blueprint" note it carried was partly self-inflicted: even a
+# correctly configured Render service could not have found it.
+#
+# Kept as a signpost rather than removed, because the old path is referenced from
+# BACKEND_DEPLOY_STATUS.md and from earlier audit reports, and an empty 404 there
+# would send the next reader looking for a second, hidden blueprint.
+#
+# Everything that used to be here — rootDir, buildCommand, the env var inventory,
+# the issuer/audience pair that must match backend/datahub/env.production.template
+# — is in the root file, unchanged except for the fixes recorded in its header.
+#
+# Cutover runbook: docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md, Chặng A.

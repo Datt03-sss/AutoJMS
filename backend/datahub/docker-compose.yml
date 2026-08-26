@@ -31,6 +31,11 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:?set ASPNETCORE_ENVIRONMENT}
       DATAHUB_CHANNEL: ${DATAHUB_CHANNEL:?set DATAHUB_CHANNEL}
+      # Same value Caddy uses above. The API needs it only to build the absolute `type`
+      # URI of problem responses, which used to be a hardcoded example.com literal.
+      # Optional on purpose: unset, the API emits relative /problems/... references, so a
+      # missing value degrades the error body's cosmetics and nothing else.
+      DATAHUB_PUBLIC_HOST: ${DATAHUB_PUBLIC_HOST:-}
       DATAHUB_DB_MAX_POOL_SIZE: ${DATAHUB_DB_MAX_POOL_SIZE:-20}
       DATAHUB_RETENTION_INTERVAL_SECONDS: ${DATAHUB_RETENTION_INTERVAL_SECONDS:-900}
       DATAHUB_RETENTION_BATCH_SIZE: ${DATAHUB_RETENTION_BATCH_SIZE:-1000}

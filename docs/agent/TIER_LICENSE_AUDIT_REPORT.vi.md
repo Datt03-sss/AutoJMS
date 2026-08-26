@@ -13,7 +13,7 @@ Mọi câu trong báo cáo này đều ghi rõ nó nói về **repo** hay về *
 **không phải một**.
 
 Render đang phục vụ repo `Datt03-sss/AutoJMS-API` (HEAD `c6f05433`, `server.js` ≈ 895 dòng),
-**không phải** `backend/render-license-server/` trong monorepo này (hiện 1 531 dòng). Nghĩa là
+**không phải** `backend/render-license-server/` trong monorepo này (hiện 1 550 dòng). Nghĩa là
 mọi thứ báo cáo này mô tả về `server.js` là **đúng với repo, chưa chắc đúng với máy chủ khách
 hàng đang gọi**.
 
@@ -22,6 +22,18 @@ hàng đang gọi**.
 "đã vá" chỉ có giá trị với repo.
 
 **Chi tiết lệch — xem §3.2.**
+
+> **Cập nhật 2026-08-26 — L-1 đã chốt, nhưng cảnh báo trên VẪN CÒN HIỆU LỰC.**
+>
+> Owner đã quyết **A1**: trỏ Render Web Service về monorepo `AutoJMS`, thư mục
+> `backend/render-license-server`, blueprint `render.yaml`. Phía repo đã chuẩn bị xong (blueprint
+> phải nằm ở **gốc** repo — Render không đọc file ở thư mục con; xem
+> [`BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md`](BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md) §3.0).
+>
+> **Nhưng chốt không phải là thi hành.** Render vẫn đang phục vụ `AutoJMS-API` cho tới khi Owner
+> thực sự bấm 7 thao tác dashboard A1-a…A1-g (§3.4 của kế hoạch). Trong khoảng thời gian đó, mọi
+> câu "đã vá" trong báo cáo này vẫn **chỉ đúng với repo**. Chỉ xoá cảnh báo này sau khi
+> `POST /api/verify-license` trên production trả về khối `datahub` có `assertion`.
 
 ---
 
@@ -285,7 +297,7 @@ lý ở §1.4 đang che giấu việc DataHub chưa hoạt động ở productio
 
 | Mã | Rủi ro | Vị trí | Vì sao chưa vá |
 |---|---|---|---|
-| **L-1** | Không rõ Render trỏ repo nào | hạ tầng | **Chờ Owner.** Chặn mọi kết luận khác. |
+| **L-1** | ~~Không rõ Render trỏ repo nào~~ | hạ tầng | ✅ **Owner đã chốt A1 (2026-08-26)**: trỏ về monorepo, blueprint `render.yaml` ở gốc repo. Repo đã sẵn sàng; **còn lại là 7 thao tác dashboard** (kế hoạch §3.4). Cho tới lúc đó production vẫn là `AutoJMS-API`. |
 | **C1** | Client không cảnh báo trước hạn | `LicenseApiService.cs` | **Protected File** — cần Owner cho phép. |
 | **H-2** | Cache policy dùng chung một path cho mọi tier | `VpsRuntimePolicyService` | Đã có chốt chặn đọc (dòng 140-145), nhưng vẫn nên tách path. |
 | — | Heartbeat 5xx bị phân loại `Fatal` | `LicenseApiService.cs:659` | **Protected File.** Không nhất quán với verify (coi 5xx là `Transient`). 5 lần Fatal liên tiếp chỉ ghi log, app **không** đóng. |
@@ -453,7 +465,9 @@ hành vi, nhưng làm sai lệch chẩn đoán đúng lúc cần chẩn đoán n
 
 ## 7. Việc cần Owner quyết
 
-1. **L-1 — Render đang trỏ repo nào?** Chặn mọi kết luận khác (§0, §3.2).
+1. ~~**L-1 — Render đang trỏ repo nào?**~~ ✅ **Đã chốt A1 (2026-08-26).** Việc còn lại không
+   phải quyết định mà là **thi hành**: 7 thao tác dashboard Render (kế hoạch §3.4), trong đó có
+   điền `DATAHUB_API_BASE_URL` thật (G10) và xác nhận `Instances = 1`.
 2. **Danh sách site code thật** để backfill `middleCode` cho các key còn `"0000"`.
 3. **Lật `modulePolicy.autoUpdate`?** (§5.1)
 4. **Sửa nghịch lý safe-default ULTRA?** (§5.2)

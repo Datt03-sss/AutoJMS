@@ -24,6 +24,17 @@ public sealed class DataHubRuntimeOptions
     public bool AllowStagingTestIssuer { get; set; }
 
     /// <summary>
+    /// The public hostname this deployment answers on, e.g. <c>datahub-stg.jmsauto.online</c>.
+    /// Used only to build the absolute <c>type</c> URI of RFC 7807 problem responses.
+    ///
+    /// Read from DATAHUB_PUBLIC_HOST, the same variable Caddy already uses for its site
+    /// address, so there is exactly one place where "what host are we" is written down.
+    /// Compose previously passed it to the caddy service only; it now reaches the api
+    /// service too. Never used for routing or trust decisions — only for a display string.
+    /// </summary>
+    public string PublicHost { get; set; } = "";
+
+    /// <summary>
     /// Operator token for PUT /api/v1/admin/manifests/**, published by
     /// release/build-release.ps1 as DATAHUB_ADMIN_TOKEN. Empty means administrative
     /// publishing is closed, not open.
@@ -82,11 +93,59 @@ public sealed class DataHubRuntimeOptions
             DeviceTokenLifetime = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS"], 86400, 300, 2592000)),
             RetentionInterval = TimeSpan.FromSeconds(ParseBoundedInt(configuration["DATAHUB_RETENTION_INTERVAL_SECONDS"], 900, 60, 86400)),
             RetentionBatchSize = ParseBoundedInt(configuration["DATAHUB_RETENTION_BATCH_SIZE"], 1000, 100, 5000),
-            TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks)
+            TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks),
+            PublicHost = NormalizePublicHost(configuration["DATAHUB_PUBLIC_HOST"])
         };
 
         return options;
     }
+
+    /// <summary>
+    /// Strips a scheme/path if someone pasted a whole URL, and discards the RFC 2606
+    /// reserved names.
+    ///
+    /// The reserved-name filter is the point of this method. Both env templates ship
+    /// <c>DATAHUB_PUBLIC_HOST=datahub.example.com</c> as a fill-me-in marker, so a host
+    /// that never got edited would otherwise put a domain nobody owns into the
+    /// <c>type</c> field of every error response — which is precisely the bug being
+    /// fixed, just relocated from a C# literal into a config file. An empty result makes
+    /// the writer emit a relative <c>/problems/...</c> reference instead, which RFC 7807
+    /// §3.1 allows and which resolves against whatever host the client actually reached.
+    /// </summary>
+    private static string NormalizePublicHost(string? value)
+    {
+        var host = (value ?? "").Trim();
+        if (host.Length == 0) return "";
+
+        // Only a literal scheme prefix is stripped. Uri.TryCreate is deliberately not
+        // used: it reads "example.com:8080" as scheme "example.com" and hands back an
+        // empty Host, turning a mildly wrong value into a silently empty one.
+        foreach (var scheme in new[] { "https://", "http://" })
+        {
+            if (host.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
+            {
+                host = host[scheme.Length..];
+                break;
+            }
+        }
+
+        host = host.Split('/')[0].Trim().TrimEnd('.').ToLowerInvariant();
+        if (host.Length == 0) return "";
+
+        foreach (var reserved in ReservedHostSuffixes)
+        {
+            if (host == reserved.TrimStart('.') || host.EndsWith(reserved, StringComparison.Ordinal))
+                return "";
+        }
+
+        return host;
+    }
+
+    private static readonly string[] ReservedHostSuffixes =
+    [
+        ".example", ".example.com", ".example.net", ".example.org",
+        ".invalid", ".test", ".localhost"
+    ];
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? "";

@@ -59,7 +59,15 @@ function Invoke-Psql {
     )
 
     if (-not $useCompose) {
-        & $psql.Source $DatabaseUrl @Arguments
+        # --file, not stdin. $InputFile was accepted and then ignored on this branch,
+        # so `-DatabaseUrl` mode handed psql no file and no --command: psql falls back
+        # to reading the console, meaning the host-psql path never actually applied a
+        # migration. Only the container branch below was ever exercised.
+        if ([string]::IsNullOrWhiteSpace($InputFile)) {
+            & $psql.Source $DatabaseUrl @Arguments
+        } else {
+            & $psql.Source $DatabaseUrl @Arguments '--file' $InputFile
+        }
     } else {
         $dockerArguments = Get-ComposePsqlArguments $Arguments
         if ([string]::IsNullOrWhiteSpace($InputFile)) {
@@ -91,6 +99,37 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 "@)
 
+# Postgres refuses CREATE INDEX CONCURRENTLY (and ALTER TYPE ... ADD VALUE, and
+# DROP INDEX CONCURRENTLY) inside a transaction block, while every file here was
+# applied with --single-transaction. That made the two retention indexes the deploy
+# plan calls for unwritable: building them non-concurrently takes an ACCESS EXCLUSIVE
+# lock on a hot table for the duration of the build.
+#
+# Two opt-outs, checked in this order:
+#   * filename suffix `_notx`, e.g. 006_dashboard_changes_time_index_notx.sql
+#   * a line `-- no-transaction` anywhere in the file
+# The suffix is visible in a directory listing; the marker is visible in review.
+#
+# The cost is real and is why this is opt-in per file: without a transaction a
+# failure part-way leaves the earlier statements applied and the version marker
+# unwritten, so the runner throws and the next run starts the file again from the
+# top. Such a file MUST be idempotent statement by statement (IF NOT EXISTS on
+# every object). One trap that idempotency alone does not cover: a failed CREATE
+# INDEX CONCURRENTLY leaves an INVALID index behind, and IF NOT EXISTS then sees a
+# name that exists and skips it forever. Recovering means dropping it by hand —
+#   SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
+#   DROP INDEX CONCURRENTLY <name>;
+# — before re-running.
+function Test-NoTransactionMigration {
+    param([string]$Version, [string]$Path)
+
+    if ($Version -match '_notx$') { return $true }
+    # (\s|$), not \b: .NET puts a word boundary before a hyphen, so \b would accept
+    # `-- no-transaction-not-really` while the POSIX ERE in the bash runner rejects
+    # it — the same file would then be atomic or not depending on the deploy host.
+    return ((Get-Content -LiteralPath $Path -Raw) -match '(?m)^\s*--\s*no-transaction(\s|$)')
+}
+
 $migrationFiles = Get-ChildItem -LiteralPath $migrationRoot -Filter '*.sql' -File |
     Where-Object { $_.Name -match '^\d+_[^/\\]+\.sql$' } |
     Sort-Object Name
@@ -107,8 +146,15 @@ foreach ($migration in $migrationFiles) {
         continue
     }
 
-    Write-Host "APPLY $version" -ForegroundColor Cyan
-    Invoke-Psql @('--set', 'ON_ERROR_STOP=1', '--single-transaction') $migration.FullName
+    if (Test-NoTransactionMigration $version $migration.FullName) {
+        Write-Host "APPLY $version (NO TRANSACTION)" -ForegroundColor Yellow
+        Write-Host '      not atomic: a mid-file failure leaves earlier statements applied' -ForegroundColor DarkYellow
+        Write-Host '      and the marker unwritten, so this file must be re-runnable as-is.' -ForegroundColor DarkYellow
+        Invoke-Psql @('--set', 'ON_ERROR_STOP=1') $migration.FullName
+    } else {
+        Write-Host "APPLY $version" -ForegroundColor Cyan
+        Invoke-Psql @('--set', 'ON_ERROR_STOP=1', '--single-transaction') $migration.FullName
+    }
 
     $recorded = (Invoke-PsqlQuery "SELECT 1 FROM schema_migrations WHERE version = '$escapedVersion';" | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or $recorded -ne '1') {

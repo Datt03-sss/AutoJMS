@@ -1,6 +1,32 @@
 # AutoJMS Backend Deploy Status
 
-Date: 2026-08-23
+Date: 2026-08-23 · Revised: **2026-08-26**
+
+> ## Deploy source decision — L-1 resolved 2026-08-26: **option A1**
+>
+> The Render Web Service is to be pointed at the **monorepo** `Datt03-sss/AutoJMS`, building and
+> running from `backend/render-license-server`, driven by the blueprint at **`render.yaml` in the
+> repository root**.
+>
+> **The blueprint moved, and the location is the whole point.** Render discovers a Blueprint only
+> as `render.yaml` at the ROOT of the connected repository — there is no setting for an alternate
+> path. The `backend/render.yaml` listed further down this file was therefore *never read by
+> Render*; it described a deployment that could not happen. That file is now a pointer stub. Use
+> [`../render.yaml`](../render.yaml).
+>
+> **Not yet executed.** Until the owner performs the seven dashboard steps A1-a…A1-g in
+> [`docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md`](../docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md)
+> §3.4, Render production still serves `Datt03-sss/AutoJMS-API` (`server.js` ≈895 lines), which
+> cannot issue a DataHub assertion at all. Anything below describing the license server describes
+> the **repo**, not production.
+>
+> Two blueprint values worth knowing about before applying it:
+> - `numInstances: 1` is a **correctness** constraint, not a capacity one. The JTI replay cache
+>   (`server.js:290`) and every rate-limit store are per-process; a second instance is a second
+>   replay window and a second rate-limit budget.
+> - `DATAHUB_API_BASE_URL` is now `sync: false`. It used to be an inline
+>   `https://datahub.example.com`, which meant every blueprint sync **overwrote** whatever real
+>   hostname was set in the dashboard — a recurring fault, not a one-off omission.
 
 ## Completed
 
@@ -23,7 +49,8 @@ Date: 2026-08-23
   - `backend/render-license-server/package.json`
   - `backend/render-license-server/package-lock.json`
   - `backend/render-license-server/env.template`
-  - `backend/render.yaml`
+  - ~~`backend/render.yaml`~~ → **`render.yaml` at the repository root** (see the L-1 box above;
+    `backend/render.yaml` is now a pointer stub and was never readable by Render)
 - Render server supports:
   - `.env` loading for local development.
   - Firebase Admin credential from JSON env, base64 env, credential path, or local fallback file.

@@ -1,6 +1,22 @@
 # Kế hoạch xây dựng backend AutoJMS và triển khai từng bước lên VPS
 
-Ngày lập: 2026-08-25 · Nhánh: `main` · Trạng thái: **kế hoạch, chưa triển khai**
+Ngày lập: 2026-08-25 · Sửa lần 2: **2026-08-26** · Nhánh: `main` · Trạng thái: **Chặng A đã chốt
+và đã chuẩn bị xong phía repo; chưa cutover trên dashboard Render**
+
+**Có gì mới ở bản 2026-08-26** — chủ sở hữu đã chốt **L-1 = A1**: trỏ Render Web Service về
+monorepo `AutoJMS`, thư mục `backend/render-license-server`, blueprint `render.yaml`. Đó là
+mục chặn số một của cả kế hoạch, nên bản này viết lại Phần 3 thành **runbook thi hành** thay
+vì bảng lựa chọn, và cập nhật mọi mục đã lệch:
+
+| Mục | Trước | Nay |
+|---|---|---|
+| G1 / L-1 | ⛔ chờ chủ sở hữu chọn | ✅ **đã chốt A1** — xem Phần 3 |
+| Blueprint | `backend/render.yaml` | **`render.yaml` ở gốc repo** — Render *không đọc* file ở thư mục con (Phần 3.0) |
+| G8 / B1 | `ApiProblemDetails.cs:33` hardcode | ✅ **đã vá** — đọc `DATAHUB_PUBLIC_HOST` |
+| G12 / B16 | health check không kiểm schema | ✅ **đã có sẵn từ trước** — `PostgresDataSource.CanConnectAsync` |
+| S4 / B4 | treo 90 s, "cần xin phép `Program.cs`" | ✅ **đã vá không cần đụng `Program.cs`** — ngân sách 8 s trong `VpsRuntimePolicyService` |
+| B13 `CONCURRENTLY` | runner ép `--single-transaction` cho mọi file | ✅ **runner đã nhận `*_notx.sql`** — đường số 2 trong ô cảnh báo nay khả dụng |
+| License server | 115 test / 9 file · `server.js` 1.250 dòng | **123 test / 10 file · `server.js` 1.550 dòng**; graceful shutdown đã có (`8291ced`) |
 
 ---
 
@@ -174,28 +190,29 @@ trống**. Bảng dưới gom theo khả năng chặn go-live.
 | TLS | Caddy 2.10-alpine, ACME HTTP-01 tự xin + tự gia hạn, `admin off`, cert nằm ở volume `caddy_data` |
 | SignalR | Caddyfile đã proxy `/hubs/site` với `flush_interval -1` và timeout đọc/ghi 1 h |
 | Hardening | `bootstrap-vps.sh` idempotent: unattended-upgrades, check `libseccomp2 ≥ 2.5.1` (bắt buộc cho clone3 của .NET 10), UFW default-deny + mở 22/80/443, fail2ban (`bantime 1h`, `maxretry 5`, backend systemd), Docker từ repo chính thức, PowerShell 7 |
-| Migration | 5 file forward-only 001–005 + `apply-migrations.{ps1,sh}` idempotent, mỗi file `--single-transaction` + `ON_ERROR_STOP=1`, đọc lại version marker và ném lỗi nếu không ghi được |
+| Migration | 5 file forward-only 001–005 + `apply-migrations.{ps1,sh}` idempotent, mỗi file `--single-transaction` + `ON_ERROR_STOP=1`, đọc lại version marker và ném lỗi nếu không ghi được. **Từ 2026-08-26**: file `*_notx.sql` hoặc có dòng `-- no-transaction` được áp **ngoài** transaction, mở đường cho `CREATE INDEX CONCURRENTLY` (xem ô cảnh báo ở B13) |
 | Ops script | `start-stack.ps1` (ép `@sha256`, `--no-build`, so digest sau pull), `provision-site.ps1`, `backup-postgres.ps1`, `restore-postgres.ps1`, `publish-manifests.{ps1,sh}`, `smoke-test.sh` (10 bước + 5 case âm), `deployment-static-smoke.ps1` (20+ check tĩnh) |
 | Mặt phẳng điều khiển | `PUT /api/v1/admin/manifests/{**objectPath}` **đã có** (xem 0.2), `ManifestStore` giới hạn 1 MiB, ETag = SHA-256 hex |
 | Xác thực assertion | `RsaLicenseAssertionValidator` hoàn chỉnh (`v1rs256`, RSA ≥ 2048, PKCS#1 v1.5 / SHA-256, từ chối khoá private) |
-| License server | 115 test / 9 file, `license-expiry.js` theo mốc ngày 16, `render.yaml` blueprint đầy đủ, `firebase-credentials.js` nhận 5 nguồn credential |
+| License server | **123 test / 10 file**, `license-expiry.js` theo mốc ngày 16, blueprint đầy đủ ở **`render.yaml` gốc repo** (xem 3.0), `firebase-credentials.js` nhận 5 nguồn credential, graceful shutdown (`8291ced`) |
+| Health check schema | `PostgresDataSource.CanConnectAsync` **đã** kiểm ≥12 bảng lõi + `EXISTS` cả 5 marker migration (`001_core`…`005_change_retention_floor`) + có dòng trong `jms_event_policies` và `retention_policies` — G12/B16 **đã xong từ trước**, không phải việc còn lại |
 
 ### 2.2 Chặn go-live — phải xong trước khi mở cho khách
 
 | # | Khoảng trống | Vì sao chặn | Ai làm |
 |---|---|---|---|
-| **G1** | Chưa chốt **nguồn deploy** của license server (mục L-1) | Render production đang chạy repo `AutoJMS-API` (HEAD `c6f05433`, `server.js` 895 dòng), **không** phải `backend/render-license-server/` (1.250 dòng). Bản đang chạy **thiếu** `issueDataHubAssertion`, khối `datahub` trong response, `seats`, `tokenVersion` — nghĩa là **không phát được assertion**, nghĩa là **không enroll được**, nghĩa là toàn bộ VPS vô dụng | ⛔ chủ sở hữu |
+| ~~**G1**~~ ✅ | ~~Chưa chốt **nguồn deploy** của license server (mục L-1)~~ **ĐÃ CHỐT 2026-08-26: A1** | Render production đang chạy repo `AutoJMS-API` (HEAD `c6f05433`, `server.js` 895 dòng), **không** phải `backend/render-license-server/` (**1.550** dòng). Bản đang chạy **thiếu** `issueDataHubAssertion`, khối `datahub` trong response, `seats`, `tokenVersion` — nghĩa là **không phát được assertion**, nghĩa là **không enroll được**, nghĩa là toàn bộ VPS vô dụng. Blueprint đã sẵn sàng ở `render.yaml` gốc repo; **còn lại là 7 thao tác dashboard ⛔ (bảng A1-a…A1-g, mục 3.4)** | ⛔ chủ sở hữu (thi hành) |
 | **G2** | `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (hoặc `_PATH`) chưa có trên VPS | API nạp `UnavailableLicenseAssertionValidator`; `POST /devices/enroll` trả **503** fail-closed | ⛔ chủ sở hữu sinh cặp khoá |
-| **G3** | `_ISSUER`/`_AUDIENCE` phải **khớp từng ký tự** giữa hai host | Default trong code license server là `autojms-license` / `autojms-datahub-enroll`; template production của VPS đòi `autojms-license-production` / `autojms-datahub-enroll-production`. Lệch ⇒ assertion ký đúng vẫn bị từ chối `LICENSE_ASSERTION_INVALID`, trạm chỉ báo "enroll thất bại" | agent (tài liệu) + ⛔ chủ sở hữu (đặt biến) |
+| **G3** ⚠️ | `_ISSUER`/`_AUDIENCE` phải **khớp từng ký tự** giữa hai host | Default trong code license server là `autojms-license` / `autojms-datahub-enroll`; template production của VPS đòi `autojms-license-production` / `autojms-datahub-enroll-production`. Lệch ⇒ assertion ký đúng vẫn bị từ chối `LICENSE_ASSERTION_INVALID`, trạm chỉ báo "enroll thất bại". **A1 khép mục này cho kênh production**: blueprint gốc và `env.production.template` đã khớp từng ký tự (3.4 mục 3). Rủi ro còn lại là **áp blueprint hụt** rồi rơi về default không hậu tố | agent (đã đối chiếu) + ⛔ chủ sở hữu (áp blueprint) |
 | **G4** | Seed mặt phẳng điều khiển chưa publish | Fetch policy đi 6 đường, thất bại hết ⇒ `RuntimePolicyDocument.SafeDefault("BASE")`. Máy ULTRA **chạy như BASE**, log chỉ ghi `[Policy] source=safe-default tier=BASE`, **không có error nào** | agent chạy script sau khi có `DATAHUB_ADMIN_TOKEN` |
 | **G5** | `DATAHUB_ADMIN_TOKEN` không có ⇒ health check vẫn báo **Healthy**, chỉ kèm một dòng ghi chú text | Mọi `PUT` manifest trả 503 ⇒ cả fleet **âm thầm** không bao giờ nhận policy hay bản cập nhật | agent (sửa health check) |
 | **G6** | Không có backup theo lịch | Guide §12.2 chỉ *ghi* dòng crontab; repo **không** có `cron.d`, không systemd timer, không crontab file. VPS mới ⇒ **không có backup nào** | agent (thêm file) |
 | **G7** | Chưa diễn tập restore | `restore-postgres.ps1` có, nhưng chưa ai chạy thật. Backup chưa restore được là backup chưa tồn tại | agent + ⛔ xác nhận |
-| **G8** | `ApiProblemDetails.cs:33` hardcode `https://datahub.example.com/problems/...` | Domain giả rò ra mọi response lỗi; và vì hai VPS có hai domain nên giá trị này **phải là cấu hình**, không phải hằng | agent |
+| ~~**G8**~~ ✅ | ~~`ApiProblemDetails.cs:32` hardcode `https://datahub.example.com/problems/...`~~ **ĐÃ VÁ 2026-08-26** | Domain giả rò ra mọi response lỗi; và vì hai VPS có hai domain nên giá trị này **phải là cấu hình**, không phải hằng. Nay đọc `DATAHUB_PUBLIC_HOST`; bỏ trống hoặc trỏ tên RFC 2606 ⇒ phát URI **tương đối** `/problems/...` (RFC 7807 §3.1 cho phép, và nó tự phân giải về đúng host mà client vừa gọi) | ✅ agent |
 | **G9** | Guide §10.2 dùng câu verify `s.seats` — **cột này không tồn tại** trong bất kỳ migration nào | Operator làm đúng vẫn thấy `column s.seats does not exist` và tưởng deploy sai. `seats` chỉ sống trong JWT assertion (`LicenseAssertionIdentity.Seats`), không lưu DB | agent |
-| **G10** | `DATAHUB_API_BASE_URL` trên license server vẫn là placeholder `https://datahub.example.com` | Kể cả sau khi A và G2 xong: license server trả URL này cho client trong khối `datahub`, **không báo lỗi**. `DataHubClient` được `Configure` với token thật rồi gọi một domain không resolve ⇒ mọi request timeout. Trạm không biết mình đang gọi sai chỗ | ⛔ chủ sở hữu |
+| **G10** | `DATAHUB_API_BASE_URL` trên license server vẫn là placeholder `https://datahub.example.com` | Kể cả sau khi A và G2 xong: license server trả URL này cho client trong khối `datahub`, **không báo lỗi**. `DataHubClient` được `Configure` với token thật rồi gọi một domain không resolve ⇒ mọi request timeout. Trạm không biết mình đang gọi sai chỗ. **Nửa repo đã vá**: blueprint gốc đổi biến này sang `sync: false`, nên nó thôi **ghi đè** giá trị dashboard mỗi lần sync — đó mới là lý do lỗi này tái phát chứ không phải một lần quên (3.2) | ⛔ chủ sở hữu (điền ở bước A1-b) |
 | **G11** | `siteId` khi provision trên VPS **phải trùng đúng GUID** mà license server gửi trong khối `datahub` | Lệch GUID ⇒ `POST /sites/{siteId}/lease/acquire` trả **404**. `DataHubClient` coi 404 là **Unreachable**, *không* phải Denied — nên trạm **vẫn tự coi mình có thể là leader** và tiếp tục gọi `/jms/ingest` (cũng 404). Mọi write thất bại, không có thông báo | ⛔ (chốt danh sách GUID) + agent |
-| **G12** | Health check **không** kiểm schema — stack báo Healthy với DB **rỗng** | `PostgresHealthCheck` chỉ gọi `CanConnectAsync`; `RuntimeConfigurationHealthCheck` **không** đọc `schema_migrations`, `jms_event_policies` hay `retention_policies`. Bỏ bước migration ⇒ `/health/ready` **200**, Caddy route traffic, rồi từng endpoint thật gãy ở tầng SQL. **Không có lưới an toàn nào** cho bước tay quan trọng nhất | agent (thêm sub-check) |
+| ~~**G12**~~ ✅ | ~~Health check **không** kiểm schema — stack báo Healthy với DB **rỗng**~~ **MỤC NÀY ĐÃ SAI KHI VIẾT** | Kiểm chứng lại 2026-08-26 tại [`src/AutoJMS.DataHub.Api/Infrastructure/PostgresDataSource.cs`](../../src/AutoJMS.DataHub.Api/Infrastructure/PostgresDataSource.cs): `CanConnectAsync` **không** chỉ mở kết nối — nó chạy một câu SQL đếm ≥12 bảng lõi, `EXISTS` cả 5 marker `schema_migrations`, và `EXISTS` dòng trong `jms_event_policies` + `retention_policies`. Lưới an toàn cho bước migration thủ công **đã có**. B16 do đó là **việc không tồn tại** | ✅ không phải làm |
 
 ### 2.3 Rủi ro thầm lặng — không chặn boot, nhưng gây "chạy mà sai"
 
@@ -207,7 +224,7 @@ ngừng chảy.** Đây là nhóm đắt nhất khi bỏ qua.
 | S1 | Tab FullStack trống | enroll thất bại ⇒ `HasCredentials=false` ⇒ mọi đường DataHub thành no-op. **Không phân biệt được** với `siteId` sai hay VPS chết. Và **không có retry/backoff** — DataHub tắt cả session |
 | S2 | Máy ULTRA thiếu FullStack, thiếu background sync | Policy 404 cả 6 đường ⇒ `SafeDefault('BASE')`. Triệu chứng **y hệt** license BASE |
 | S3 | Sync ngừng ~24 h sau khi bật máy | Gia hạn device token thất bại ⇒ giữ token cũ đã hết hạn ⇒ 401 mọi call. Không có thông báo |
-| S4 | App treo tới 90 giây lúc khởi động | Fetch runtime policy **đồng bộ** (`.GetAwaiter().GetResult()`) qua 6 URL **tuần tự**, mỗi URL timeout 15 s. VPS "còn sống nhưng chậm" là trường hợp xấu nhất |
+| ~~S4~~ ✅ | ~~App treo tới 90 giây lúc khởi động~~ **ĐÃ VÁ 2026-08-26** | Fetch runtime policy đi 6 URL **tuần tự** (`VpsRuntimePolicyService.cs:95-103`), mỗi URL timeout 15 s (`Updates/VpsManifestService.cs:29`), và lời gọi bọc ngoài chạy **đồng bộ trên luồng UI** bằng `.GetAwaiter().GetResult()` — chỗ đó là [`Program.cs:356-359`](../../src/AutoJMS/Program.cs), **không** phải trong `VpsRuntimePolicyService` như báo cáo rủi ro ghi. Phân biệt này quyết định ai vá được: `Program.cs` là **Protected File**, còn `VpsRuntimePolicyService.cs` thì không — nên đặt **ngân sách tổng 8 s** vào chính service là vá được **mà không cần xin phép** (chi tiết B4) |
 | S5 | Thiếu vận đơn cũ, không có cảnh báo | `snapshot truncated=true` chỉ log warning, UI không báo |
 | S6 | Site code `214A02` không sync | `TryGetSiteId()` cần GUID; site code không phải GUID ⇒ thất bại ở mức **Debug** |
 | S7 | Trạm ngoại tuyến vẫn thấy vận đơn đã bị xoá, mãi mãi | `dashboard_changes` đã có `CHECK` cho `operation='delete'` nhưng **không job nào phát tombstone**. Hard-delete ⇒ client offline không bao giờ biết |
@@ -245,14 +262,18 @@ ngừng chảy.** Đây là nhóm đắt nhất khi bỏ qua.
   tự động, không audit truy cập.
 - **Không có quan trắc uptime**: không probe ngoài, không Prometheus (`/metrics` không tồn tại),
   không alert. Guide §14.5 chỉ đề nghị "xem lịch mỗi tuần".
-- **License server**: không graceful shutdown (`server.close()` chưa bao giờ được gọi), không
+- **License server**: ~~không graceful shutdown~~ (**đã có từ `8291ced`**), không
   structured logging, JTI replay cache là `NodeCache` **in-memory** (restart là xoá ⇒ access
   token phát trước đó **replay được** ở `/api/heartbeat` trong phần còn lại của 60 phút; hai
   instance cũng vậy), rate limiter dùng store in-memory (hai instance hoặc rolling restart là
-  vượt được budget). `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` là **env-var-only**, thấy được qua
-  `docker inspect` và `/proc` — **không có** biến thể `_PRIVATE_KEY_FILE`.
+  vượt được budget). **Đây chính là lý do blueprint ghim `numInstances: 1`** (3.1) — ràng buộc
+  đúng đắn, không phải trần dung lượng. `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` là
+  **env-var-only**, thấy được qua `docker inspect` và `/proc` — **không có** biến thể
+  `_PRIVATE_KEY_FILE`.
 - **`DATAHUB_API_BASE_URL` mặc định là placeholder `https://datahub.example.com`** và được trả
-  về cho client **không báo lỗi** nếu sai.
+  về cho client **không báo lỗi** nếu sai. Blueprint nay để `sync: false` nên **thôi ghi đè**
+  giá trị thật ở mỗi lần sync (3.2); phần "code vẫn nhận placeholder mà không kêu" thì **chưa
+  vá** — xem đề xuất Opt-3 ở Phần 18.
 - **Lệch phiên bản dependency**: repo ghim `express ^4.19.2` / `firebase-admin ^12.7.0`; bản đang
   chạy dùng `^5.2.1` / `^13.8.0`.
 - **HTTP surface**: không có `/api/version` hay build-ID; không `X-Request-Id` trên response
@@ -269,43 +290,115 @@ ngừng chảy.** Đây là nhóm đắt nhất khi bỏ qua.
 
 ---
 
-## Phần 3 — Chặng A: chốt nguồn deploy license server ⛔
+## Phần 3 — Chặng A: cutover license server sang monorepo (A1) ⛔
 
-**Đây là chặng đầu tiên và không có đường vòng.** Ba quyết định hạ tầng ngày 2026-08-25
-**không** giải quyết mục này.
+**Đã chốt ngày 2026-08-26**: **A1** — trỏ Render Web Service về monorepo `AutoJMS`, thư mục
+`backend/render-license-server`, dùng blueprint `render.yaml`. Mục L-1 khép lại. A2 (duy trì
+song song hai bản) và A3 (service mới chạy song song) **không** chọn; lý do và điều kiện lật
+lại ghi ở 3.5.
 
 **Điều kiện vào**: không có.
 
-**Việc làm** — chủ sở hữu chọn **một** trong ba, rồi ghi lựa chọn vào
-`backend/BACKEND_DEPLOY_STATUS.md`:
+### 3.0 Phát hiện quyết định: blueprint **phải** nằm ở gốc repo
 
-| Lựa chọn | Nội dung | Đánh giá |
+Render tìm Blueprint **chỉ** ở `render.yaml` tại **gốc** repository đã kết nối. Không có tuỳ
+chọn nào để trỏ sang đường dẫn khác. Bản `backend/render.yaml` vốn có trong repo vì vậy
+**chưa bao giờ được Render đọc** — nó mô tả một cách triển khai không thể xảy ra.
+
+Đây không phải chi tiết vụn. Nó có nghĩa: câu "A1 = dùng `backend/render.yaml` làm blueprint"
+ở bản kế hoạch trước là **một chỉ dẫn không thi hành được**. Nội dung file phần lớn đã đúng
+(nó đã có `rootDir: backend/render-license-server`), nhưng vị trí thì sai, nên A1 sẽ lặng lẽ
+biến thành "deploy bằng cấu hình gõ tay trên dashboard" — đúng thứ mà A1 sinh ra để loại bỏ.
+
+Đã xử lý trong repo (2026-08-26):
+
+- **[`render.yaml`](../../render.yaml) ở gốc** — blueprint thật, `rootDir:
+  backend/render-license-server`.
+- **[`backend/render.yaml`](../../backend/render.yaml)** — rút thành stub chỉ có comment trỏ
+  sang file gốc. Không xoá: `BACKEND_DEPLOY_STATUS.md` và vài báo cáo audit còn dẫn đường dẫn
+  này, một file rỗng nghĩa "đã dời" đọc rõ hơn một đường dẫn 404.
+
+### 3.1 Blueprint gốc khác `backend/render.yaml` cũ ở những gì
+
+| Khoá | Trước | Nay | Vì sao |
+|---|---|---|---|
+| Vị trí file | `backend/render.yaml` | **gốc repo** | Render chỉ đọc ở gốc (3.0) |
+| `numInstances` | không đặt | **`1`** | `jtiCache = NodeCache({stdTTL:3600})` (`server.js:290`) và mọi store của `express-rate-limit` đều **in-process**. Instance thứ hai là **cửa sổ chống replay thứ hai** và **budget rate-limit thứ hai**, không phải khả năng chịu tải. Đây là ràng buộc **đúng đắn**, không phải ràng buộc dung lượng |
+| `buildFilter` | không có | `paths: [backend/render-license-server/**]` | `rootDir` giới hạn *chỗ build*, **không** giới hạn *cái gì kích hoạt deploy*. Thiếu nó, khi bật `autoDeploy` thì mỗi commit WinForms cũng redeploy license server |
+| `NODE_VERSION` | không đặt | `"22"` | `package.json` chỉ đòi `>=20`; không ghim là để Render tự chọn, tức bản Node có thể đổi dưới chân mình giữa hai lần deploy |
+| `DATAHUB_API_BASE_URL` | inline `https://datahub.example.com` | **`sync: false`** | Xem 3.2 — đây là phần quan trọng nhất của bảng |
+| `healthCheckPath` | `/health` | `/health` (giữ) | `/health` không phụ thuộc dependency và **không** qua rate limiter (`server.js:573`), khác `/health/firebase` (nằm sau `healthLimiter`, 30/phút). Để Render poll `/health/firebase` là tự ăn budget của chính mình |
+
+### 3.2 `sync: false` cho `DATAHUB_API_BASE_URL` — vá G10 tận gốc
+
+Bản cũ ghi thẳng `DATAHUB_API_BASE_URL: https://datahub.example.com` vào blueprint. Điều đó
+**không chỉ** là "chưa điền giá trị thật": mỗi lần sync blueprint, Render **ghi đè** giá trị
+placeholder này lên đúng cái hostname thật mà chủ sở hữu đã đặt trên dashboard. Nghĩa là G10
+không phải một lần quên — nó là một lỗi **tái phát theo mỗi lần deploy**.
+
+`sync: false` khiến Render **hỏi** giá trị khi apply blueprint và **thôi đè** lên giá trị đã
+có. Đó cũng là cách mô tả đúng bản chất biến này: nó **khác nhau giữa staging và production**,
+nên không có giá trị nào trong repo là đúng cho cả hai.
+
+Agent **không** điền hostname thật vào file — đó là giá trị vận hành, và điền sẵn một giá trị
+sai lại đưa chính lỗi này quay về.
+
+### 3.3 Vùng (region) — cửa sổ chỉ mở đúng một lần
+
+Blueprint **cố ý không** đặt `region`. Lý do phải nói rõ vì nó bất đối xứng:
+
+- Render mặc định **Oregon**. Đường nóng của license server là Firebase RTDB ở
+  **`asia-southeast1`** (xem `FIREBASE_DATABASE_URL`). Chỉ riêng `verify-license` đã có **một
+  lần đọc license, một lần ghi session và một lượt quét dọn session cũ** — nên khoảng cách đó
+  bị trả **nhiều lần cho mỗi lần mở app** (Oregon→Singapore ≈170–200 ms RTT, so với vài
+  mili-giây đến vài chục nếu cùng vùng).
+- **Region của một service không đổi được sau khi tạo.** Nên với A1 — *trỏ lại service đang
+  có* — thêm `region: singapore` vào blueprint là vô nghĩa: service đã tồn tại, khoá region
+  đã đóng. Đặt nó vào file chỉ tạo ảo giác đã tối ưu.
+- Muốn ở gần Firebase thì phải **tạo service mới** ở Singapore, tức là quay về A3. Đó là một
+  đánh đổi độc lập với A1, và đã ghi ở mục 9 của Phần 15 để chủ sở hữu quyết riêng.
+
+### 3.4 Runbook thi hành
+
+**Phần agent đã làm xong trong repo** (không cần chủ sở hữu):
+
+1. ✅ `render.yaml` ở gốc, `rootDir: backend/render-license-server`, `numInstances: 1`,
+   `buildFilter`, `NODE_VERSION`, `healthCheckPath: /health`, `autoDeploy: false`.
+2. ✅ `backend/render.yaml` thành stub trỏ đường.
+3. ✅ Đối chiếu G3: [`backend/datahub/env.production.template`](../../backend/datahub/env.production.template)
+   ghi `DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license-production`,
+   `_AUDIENCE=autojms-datahub-enroll-production`, `DATAHUB_CHANNEL=production` — **khớp từng ký
+   tự** với blueprint. Nghĩa là A1 tự nó khép G3 cho kênh production. (Cẩn thận: default trong
+   `server.js` là `autojms-license` / `autojms-datahub-enroll` **không có hậu tố** — hai giá
+   trị đó **không** khớp VPS. Chúng chỉ an toàn khi blueprint được áp thật.)
+4. ✅ 123 test / 10 file xanh sau khi đổi blueprint.
+
+**Phần ⛔ chỉ chủ sở hữu làm được, trên dashboard Render** — agent không có và không được có
+quyền đăng nhập, đặt secret hay bấm nút deploy:
+
+| # | Thao tác | Ghi chú |
 |---|---|---|
-| **A1** (khuyến nghị) | Trỏ Render service về monorepo `AutoJMS`, dùng `backend/render.yaml` làm blueprint | Một nguồn sự thật duy nhất. Repo đã có 115 test, đã có `issueDataHubAssertion`, đã bỏ Supabase. Rủi ro: cần đặt lại toàn bộ env trên Render và **kiểm phá vỡ tương thích với client cũ** trước khi bật |
-| **A2** | Port các thay đổi từ `backend/render-license-server/` sang repo `AutoJMS-API`, tiếp tục deploy repo đó | Ít động vào Render, nhưng **duy trì vĩnh viễn hai bản** 895 vs 1.250 dòng. Mọi báo cáo "đã vá" tiếp tục nhập nhằng repo/production |
-| **A3** | Dựng service Render **mới** từ monorepo, chạy song song, cutover bằng đổi `LICENSE_API_BASE_URL` phía client | An toàn nhất, đắt nhất. Chỉ nên chọn nếu có nhiều máy khách đang chạy và không thể chịu downtime |
-
-**Việc kèm theo, bắt buộc với cả ba lựa chọn:**
-
-1. ⛔ **Thu hồi Supabase anon key** đang bị bản production phát cho mọi client (mục L-3).
-   Bản đang chạy vẫn có `DEFAULT_SUPABASE_PROJECT_REF` và trao anon key cho từng client.
-2. ⛔ **Ghim Render về 1 instance.** JTI replay cache và rate limiter đều in-memory; hai
-   instance là hai lỗ hổng, không phải khả năng chịu tải.
-3. Đối chiếu `express` / `firebase-admin` giữa repo và bản đang chạy, chốt một phiên bản.
-4. `render.yaml` đã đặt sẵn `DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license-production` và
-   `_AUDIENCE=autojms-datahub-enroll-production` **inline** — đúng. Nếu chọn A2/A3 mà không
-   dùng blueprint này thì **phải đặt tay hai biến đó**, vì default trong code là giá trị
-   **không** khớp VPS (xem G3).
-5. ⛔ **Đặt `DATAHUB_API_BASE_URL` thành hostname VPS thật** (G10). Default là placeholder
-   `https://datahub.example.com` và license server **trả nó cho client không kèm lỗi nào**. Kết
-   quả: `DataHubClient` được cấu hình với token thật rồi gọi một domain không resolve — trạm
-   không có cách nào biết mình đang gọi sai chỗ. Giá trị phải **khớp domain đã cấp TLS trong
-   Caddy**, và **khác nhau giữa staging và production** (đó là lý do license server staging và
-   production không thể là cùng một service nếu bạn muốn cả hai chạy song song).
+| A1-a | Trỏ Web Service đang chạy sang repo `Datt03-sss/AutoJMS`, nhánh `main` | Sau bước này Render sẽ thấy `render.yaml` ở gốc |
+| A1-b | Apply blueprint; khi Render hỏi, điền các biến `sync: false` | 6 biến: `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `FIREBASE_SERVICE_ACCOUNT_BASE64`, `VALID_EXE_HASHES`, `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, **`DATAHUB_API_BASE_URL`** |
+| A1-c | Upload lại secret file `googleSheetsServiceAccount.json` vào `/etc/secrets/` | Secret file **không** đi theo blueprint |
+| A1-d | Xác nhận `Instances = 1` sau khi apply | Xem 3.1 |
+| A1-e | **Thu hồi Supabase anon key** mà bản production cũ đang phát cho mọi client (L-3) | Bản cũ còn `DEFAULT_SUPABASE_PROJECT_REF`. Cutover **không** thu hồi giúp: key đã phát ra rồi |
+| A1-f | Chốt một phiên bản `express` / `firebase-admin` | Repo ghim `^4.19.2`/`^12.7.0`; bản đang chạy dùng `^5.2.1`/`^13.8.0`. A1 sẽ **hạ** major của express — phải chủ ý, không phải tình cờ |
+| A1-g | Giữ `autoDeploy: false` cho tới khi qua Chặng F | Xem ô cảnh báo thứ tự cuối Phần 3 |
 
 **Điều kiện ra**: `GET <license-url>/health` trả 200; `POST /api/verify-license` với một
-license ULTRA thật trả response **có khối `datahub`** chứa `assertion` và `apiBaseUrl`. Chưa đạt
-điều này thì **không sang Chặng B** — mọi thứ dưới đây phụ thuộc vào assertion.
+license ULTRA thật trả response **có khối `datahub`** chứa `assertion` và `apiBaseUrl`, và
+`apiBaseUrl` **không** còn là `datahub.example.com`. Chưa đạt điều này thì **không sang Chặng
+B** — mọi thứ dưới đây phụ thuộc vào assertion.
+
+### 3.5 Khi nào phải lật lại quyết định
+
+A1 hạ major `express` (4 → 5) và thay toàn bộ bề mặt `server.js` 895 → 1.550 dòng trong **một
+lần deploy**, trên chính service mà máy khách đang gọi. Nếu bước A1-b phát hiện có nhiều trạm
+đang chạy production thật và không chịu được một cửa sổ lỗi, thì đường lùi đúng là **A3**:
+dựng service Render mới từ cùng blueprint này (khi đó **được** đặt `region: singapore` —
+xem 3.3), chạy song song, cutover bằng `LICENSE_API_BASE_URL` phía client. Blueprint ở gốc
+repo dùng lại được nguyên vẹn cho A3; chỉ có thao tác dashboard là khác.
 
 > **Một mâu thuẫn thứ tự cần xử lý tường minh.** Chặng A xong trước khi VPS tồn tại, nên
 > `apiBaseUrl` lúc đó trỏ tới một host chưa dựng. Điều đó **không sao** với điều kiện ra ở trên
@@ -325,10 +418,10 @@ Làm trên máy dev, không cần VPS. Mỗi việc kết thúc bằng `verify.p
 | # | Việc | File | Ghi chú |
 |---|---|---|---|
 | **B0** | Cập nhật `BACKEND_DEPLOY_STATUS.md`: đánh dấu manifest endpoint **đã có**, ghi rõ box `dev.jmsauto.online` sẽ nghỉ hay thành staging | `backend/BACKEND_DEPLOY_STATUS.md` | Xem 0.2 |
-| **B1** | Đưa base URI của problem type thành **cấu hình**, mặc định suy ra từ `DATAHUB_PUBLIC_HOST` | `src/AutoJMS.DataHub.Api/.../ApiProblemDetails.cs:33` | Hai VPS = hai domain, nên không thể là hằng số (G8) |
+| ~~**B1**~~ ✅ | ~~Đưa base URI của problem type thành **cấu hình**~~ **XONG 2026-08-26** | `Infrastructure/ApiProblemDetails.cs:32` + `Configuration/DataHubRuntimeOptions.cs` + `src/AutoJMS.DataHub.Api/Program.cs:23` + `docker-compose.yml` | Hai VPS = hai domain, nên không thể là hằng số (G8). **Ba chi tiết đáng ghi**: (a) `ApiProblemWriter` để **static** chứ không DI, vì `WriteAsync` được gọi từ middleware và 24 chỗ endpoint, một số chạy trước khi có DI scope; (b) `NormalizePublicHost` **loại tên RFC 2606** (`.example.com`, `.invalid`, `.test`, `.localhost`) — thiếu chốt này thì lỗi chỉ **dời chỗ** từ hằng C# sang file config, vì cả hai template đều ship sẵn `DATAHUB_PUBLIC_HOST=datahub.example.com`; (c) **compose trước đây chỉ truyền biến này cho service `caddy`**, không cho `api` — không thêm dòng pass-through thì cả thay đổi này vô tác dụng |
 | **B2** | Sửa câu verify ở guide §10.2: bỏ `s.seats` | `backend/datahub/deploy/VPS_DEPLOY_GUIDE.vi.md` | `seats` chỉ có trong JWT, không có trong DB (G9) |
 | **B3** | Health check phải **Degraded/Unhealthy** khi thiếu `DATAHUB_ADMIN_TOKEN`, và phải kiểm cả 4 biến issuer/audience + `DATAHUB_TRUSTED_PROXY_NETWORKS` + `DATAHUB_MANIFEST_ROOT` có ghi được thật | `src/AutoJMS.DataHub.Api/Health/RuntimeConfigurationHealthCheck.cs` | Vá G5, S9, S10, S11 cùng lúc — đây là việc có tỉ lệ lợi/chi phí cao nhất trong cả kế hoạch |
-| **B4** | Đặt **ngân sách tổng** cho fetch runtime policy (ví dụ 8 s cho cả 6 đường) và chuyển sang bất đồng bộ nếu được | phía client, vùng `VpsRuntimePolicyService` | Vá S4 (treo tới 90 s). Nếu chạm `Program.cs` ⇒ **cần xin phép** (Protected) |
+| ~~**B4**~~ ✅ | ~~Đặt **ngân sách tổng** cho fetch runtime policy~~ **XONG 2026-08-26 — ngân sách 8 s** | `src/AutoJMS/Policies/VpsRuntimePolicyService.cs` | Vá S4. **Không cần đụng `Program.cs`**: ngân sách nằm trong service (linked CTS bọc **chỉ** vòng dò mạng — cache và safe-default cố ý nằm ngoài, huỷ chúng theo đồng hồ mạng là biến sự cố mạng thành sự cố khởi động). **Vì sao 8 s chứ không phải 3–5 s như báo cáo rủi ro đề xuất**: hạ trần là **nhường** thêm ca cho fallback, mà đáy fallback là `SafeDefault("BASE")` — nó tắt FullStack, background sync, inventory sync, database tracking cho cả license ULTRA hợp lệ, **không ghi một dòng error nào**. Hạ quá tay là đổi "app treo 90 s" (dễ thấy) lấy "khách ULTRA thỉnh thoảng mất tính năng" (đắt hơn nhiều). VPS khoẻ trả manifest dưới 1 s nên 8 s vẫn đủ cho trọn 6 đường. **Chỉ hạ tiếp sau khi `SafeDefault` thôi hạ cấp tier.** Kèm theo: phải tự kiểm `IsCancellationRequested` trong vòng lặp vì `FetchStringAsync` nuốt **mọi** exception kể cả `OperationCanceledException` rồi trả `null`, nên token huỷ không nổi lên được — thiếu chốt đó thì log của "hết ngân sách" trông **y hệt** "cả 6 đường đều 404" |
 | **B5** | Enroll thất bại: retry có backoff + **hiện lỗi cho người dùng**, tách rõ "sai siteId" / "hết seat" / "VPS không phản hồi" | phía client, vùng `DataHubClient` + enroll | Vá S1, S8 |
 | **B6** | Gia hạn device token thất bại: nâng mức log lên Error và báo UI | phía client | Vá S3 |
 | **B7** | `snapshot truncated=true` ⇒ báo UI, không chỉ log | phía client | Vá S5 |
@@ -338,26 +431,47 @@ Làm trên máy dev, không cần VPS. Mỗi việc kết thúc bằng `verify.p
 | **B11** | Tách điều kiện READ khỏi điều kiện FETCH: "License DataHub hợp lệ ⇒ được ĐỌC", không phụ thuộc token JMS | `FullStackOperation.cs` ~dòng 122 | Mục §8 của `datahub-deployment-options.md` |
 | **B12** | Job night-purge phát **tombstone** (`operation='delete'`) trước khi hard-delete; retention tombstone ≥ cửa sổ offline dài nhất (đề xuất 30–90 ngày) | API | Vá S7 |
 | **B13** ⚠️ | Migration `006`: bảng `jti_cache`/revocation + index `dashboard_changes(site_id, change_at)` + index `waybill_scan_events(site_id, event_occurred_at)` + index phục vụ retention `audit_logs` | `backend/datahub/migrations/006_*.sql` | **Migration là Protected File — cần chủ sở hữu cho phép riêng cho việc này.** Xem cảnh báo `CONCURRENTLY` ngay dưới bảng |
-| **B16** | Thêm sub-check schema cho `/health/ready`: `schema_migrations` có đủ marker, `jms_event_policies` và `retention_policies` có ≥ 1 dòng | `Health/` | Vá G12 — hiện **không có lưới an toàn nào** cho bước migration thủ công |
+| ~~**B16**~~ ❌ | ~~Thêm sub-check schema cho `/health/ready`~~ **VIỆC KHÔNG TỒN TẠI** | — | `PostgresDataSource.CanConnectAsync` đã làm đúng việc này từ trước (xem G12). Giữ dòng này để không ai "vá" lại lần nữa |
 | **B17** | Ép server-side `DeviceIdentity.Role` (hiện enroll ghi `'operator'` nhưng **không endpoint nào kiểm**) | API | RBAC hiện là vỏ không có ruột. Không chặn go-live vì chỉ có một role, nhưng phải vá trước khi thêm role thứ hai |
 | **B14** | `statement_timeout` cho `IngestPipeline`, `LeaseRepository`, `EnrollmentRepository`, `DeviceRepository` | API | Một query treo ở lease là fencing sai |
 | **B15** | License server: graceful shutdown (`server.close()` khi SIGTERM/SIGINT) + structured logging + `/api/version` | `backend/render-license-server/server.js` | Không có graceful shutdown ⇒ mỗi lần deploy là cắt request đang bay |
 
-> ⚠️ **Cảnh báo về `CREATE INDEX CONCURRENTLY` trong B13.** Cách đúng để thêm index vào bảng
-> đang chạy production là `CONCURRENTLY` (không lock bảng). Nhưng `CONCURRENTLY` **không chạy
-> được trong transaction block**, còn `apply-migrations.{ps1:111,sh:67}` áp **mọi** file bằng
-> `--single-transaction`. Nghĩa là một migration `006` viết bằng `CONCURRENTLY` sẽ **thất bại**
-> dưới runner hiện tại với lỗi *"CREATE INDEX CONCURRENTLY cannot run inside a transaction
-> block"*. Ba đường đi, chọn khi xin phép:
-> 1. Tách `006` thành hai file: DDL trong transaction, phần `CONCURRENTLY` chạy tay ngoài runner
->    (ghi rõ trong guide).
-> 2. Cho runner nhận một quy ước tên file (ví dụ `006_..._notx.sql`) để bỏ `--single-transaction`
->    cho riêng file đó — **nhưng** khi đó mất tính nguyên tử, file phải tự idempotent hoàn toàn.
-> 3. Chấp nhận index thường (có lock) vì hai VPS đều mới, bảng còn nhỏ — **đây là lựa chọn hợp
->    lý nhất nếu B13 làm trước khi có dữ liệu thật**, và cũng là lý do nên làm B13 **sớm**.
+> ✅ **`CREATE INDEX CONCURRENTLY` trong B13 — đã mở đường (2026-08-26).** Cách đúng để thêm
+> index vào bảng đang chạy production là `CONCURRENTLY` (không lock bảng), nhưng `CONCURRENTLY`
+> **không chạy được trong transaction block**, còn `apply-migrations.{ps1,sh}` áp **mọi** file
+> bằng `--single-transaction` — nên một migration `006` viết bằng `CONCURRENTLY` sẽ thất bại với
+> *"CREATE INDEX CONCURRENTLY cannot run inside a transaction block"*.
+>
+> **Đã thi hành đường số 2**: cả hai runner nay nhận hai cách khai báo opt-out —
+> tên file kết thúc `_notx` (ví dụ `006_dashboard_changes_time_index_notx.sql`), **hoặc** một
+> dòng `-- no-transaction` trong file. Hậu tố thấy được khi `ls`; dòng marker thấy được khi
+> review. Hai runner dùng **cùng một quy tắc**, đã kiểm chéo bằng fixture để một file không thể
+> nguyên tử ở host này mà không nguyên tử ở host kia.
+>
+> **Cái giá — đọc trước khi dùng.** Bỏ transaction là bỏ tính nguyên tử: hỏng giữa chừng thì các
+> câu lệnh trước đó **đã áp**, còn version marker **chưa ghi**, nên runner ném lỗi và lần chạy
+> sau bắt đầu lại từ đầu file. File `_notx` vì vậy **bắt buộc** idempotent theo từng câu lệnh
+> (`IF NOT EXISTS` ở mọi đối tượng). Có một bẫy mà riêng idempotent **không** cứu được: một
+> `CREATE INDEX CONCURRENTLY` thất bại để lại **index INVALID**, và `IF NOT EXISTS` sau đó thấy
+> tên đã tồn tại nên **bỏ qua vĩnh viễn**. Gỡ bằng tay trước khi chạy lại:
+> `SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;` rồi `DROP INDEX CONCURRENTLY <tên>;`
+>
+> **Vẫn nên cân nhắc đường số 3** (index thường, chấp nhận lock) nếu B13 làm **trước khi có dữ
+> liệu thật**: hai VPS đều mới, bảng còn nhỏ, lock vài chục mili-giây là không đáng kể — và như
+> vậy giữ được tính nguyên tử. Đường số 2 tồn tại cho lần thêm index **thứ hai**, khi bảng đã
+> lớn. Đó cũng là lý do nên làm B13 **sớm**.
+>
+> Ngoài ra, trong lúc sửa runner phát hiện một lỗi độc lập: `Invoke-Psql` trong
+> `apply-migrations.ps1` **nhận tham số `$InputFile` rồi bỏ qua nó** ở nhánh không dùng compose,
+> nên chế độ `-DatabaseUrl` giao cho psql **không file, không `--command`** — psql rơi về đọc
+> stdin. Nhánh host-psql do đó **chưa bao giờ áp được một migration nào**; chỉ nhánh container
+> từng chạy thật. Đã vá bằng `--file`.
 
-**Thứ tự khuyến nghị**: B0 → B3 → **B16** → B1 → B2 → B9 → B10 → (B4…B8 nhóm client) → B11 →
-B12 → B14 → B15 → B17 → B13 (chờ phép).
+**Thứ tự khuyến nghị** (cập nhật 2026-08-26 — B1, B4, B16 đã ra khỏi hàng đợi):
+**B3** → B2 → B0 → B9 → B10 → (B5…B8 nhóm client) → B11 → B12 → B14 → B15 → B17 → B13 (chờ phép).
+
+**B3 nay là việc đứng đầu và là việc lợi/chi phí cao nhất còn lại của cả Chặng B** — một mình
+nó vá G5, S9, S10, S11.
 
 **Điều kiện ra**: `dotnet build AutoJMS.slnx -c Release` 0 error, `verify.ps1` **ALL GATES
 PASSED**, và B13 đã được cho phép hoặc đã được ghi nhận là hoãn có ý thức.
@@ -492,9 +606,15 @@ không phải một lần sửa `.env`.
 
 Hai nhóm này là nguồn của kiểu lỗi "đặt biến rồi mà không tác dụng".
 
-**Chỉ template đọc, .NET không đọc**: `DATAHUB_PUBLIC_HOST` (Caddy), `TLS_CONTACT_EMAIL`
-(ACME), `DATAHUB_API_IMAGE` (Compose), `POSTGRES_DB`/`_USER`/`_PASSWORD` (API **chỉ** thấy
-`ConnectionStrings__DataHub`).
+**Chỉ template đọc, .NET không đọc**: `TLS_CONTACT_EMAIL` (ACME), `DATAHUB_API_IMAGE`
+(Compose), `POSTGRES_DB`/`_USER`/`_PASSWORD` (API **chỉ** thấy `ConnectionStrings__DataHub`).
+
+> ⚠️ **`DATAHUB_PUBLIC_HOST` đã rời khỏi danh sách trên từ 2026-08-26.** Trước đây nó chỉ đến
+> service `caddy`; nay compose truyền **cả** cho service `api`, và .NET đọc nó qua
+> `DataHubRuntimeOptions.PublicHost` để dựng `type` URI của response lỗi (B1). Hệ quả thực tế:
+> đổi giá trị này nay **cần restart service `api`**, không chỉ reload Caddy. Nó vẫn **không**
+> tham gia bất kỳ quyết định routing hay tin cậy nào — chỉ là chuỗi hiển thị. Bỏ trống hoàn
+> toàn hợp lệ: API phát URI tương đối `/problems/...`.
 
 **Chỉ code đọc, không có trong template nào**: `DataHub:Channel` (fallback ở
 `DataHubRuntimeOptions.cs:67`) và `ConnectionStrings:DataHub` — **dạng dấu hai chấm; trong env
@@ -856,7 +976,7 @@ khi VPS tương ứng đã qua Chặng F — xem hộp cảnh báo cuối Chặn
 
 | # | Việc | Chặn chặng nào |
 |---|---|---|
-| 1 | **L-1**: chọn A1/A2/A3 cho nguồn deploy license server | A — chặn tất cả |
+| ~~1~~ ✅ | ~~**L-1**: chọn A1/A2/A3~~ **ĐÃ CHỐT A1 ngày 2026-08-26.** Còn lại là **thi hành**: 7 thao tác dashboard A1-a…A1-g (mục 3.4) | A — chặn tất cả |
 | 2 | Sinh 2 cặp khoá RSA assertion (staging + production), đặt private ở Render, public ở VPS | D |
 | 3 | **Thu hồi Supabase anon key** đang bị bản production phát cho mọi client (L-3) | song song, càng sớm càng tốt |
 | 4 | Ghim Render về **1 instance** (JTI cache + rate limiter đều in-memory) | A |
@@ -864,7 +984,9 @@ khi VPS tương ứng đã qua Chặng F — xem hộp cảnh báo cuối Chặn
 | 6 | Xử lý box `dev.jmsauto.online`: dùng lại làm staging hay cho nghỉ | C0 |
 | 7 | **Cho phép sửa migration** (B13: `jti_cache` + 3 index) — migration là Protected File | B13 |
 | 8 | Cho phép sửa `LicenseApiService.cs` (Protected) để trạm cảnh báo **trước** khi license hết hạn (C1/C6), và để `heartbeat` 5xx không còn là lỗi chí tử (`heartbeat-5xx-fatal`, `LicenseApiService.cs:659`) | song song |
-| 9 | Cho phép sửa `Program.cs` nếu B4 (ngân sách fetch policy) cần chạm tới | B4 |
+| ~~9~~ ✅ | ~~Cho phép sửa `Program.cs` cho B4~~ **KHÔNG CẦN NỮA** — ngân sách 8 s đặt trọn trong `VpsRuntimePolicyService.cs` (không Protected). `Program.cs:356-359` giữ nguyên | — |
+| 9b | **Sửa `SafeDefault` để nó thôi hạ cấp tier** (`VpsRuntimePolicyService.cs:86` + `RuntimePolicyDocument.cs:88-98`): hiện một license ULTRA hợp lệ rơi vào fallback sẽ chạy như BASE, **không một dòng error**. Nay cấp thiết hơn vì nó **chặn việc hạ tiếp ngân sách fetch xuống 3–5 s** (xem B4) | S2, B4 giai đoạn 2 |
+| 9c | **Region của Render**: service hiện ở Oregon, Firebase RTDB ở `asia-southeast1` — mỗi `verify-license` trả giá RTT xuyên Thái Bình Dương vài lần. **Region không đổi được sau khi tạo service**, nên muốn sửa phải dựng service mới (= A3). Quyết định riêng, độc lập với A1 (mục 3.3) | — |
 | 10 | Danh sách **cặp `(siteId GUID, site_code)`** thật để provision, khớp với bản ghi Firebase; và backfill `middleCode` (không được để `"0000"`) | E — G11 |
 | 10b | Đặt `DATAHUB_API_BASE_URL` = hostname VPS thật cho từng môi trường (G10) | A, J |
 | 11 | `VALID_EXE_HASHES` đang rỗng (J-3/H-1) | song song |
@@ -883,9 +1005,10 @@ Bảng này để tra khi lỗi có dạng "đã đặt biến mà không tác d
 | `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | ✅ | cặp RS256 cho token phiên |
 | `FIREBASE_SERVICE_ACCOUNT_BASE64` (hoặc `_JSON`, `_FILE`, `GOOGLE_APPLICATION_CREDENTIALS`, fallback `./serviceAccountKey.json`) | ✅ | `firebase-credentials.js` nhận 5 nguồn, ưu tiên inline trước file |
 | `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` | ✅ | **chỉ ở đây, không bao giờ lên VPS.** Env-var-only ⇒ thấy được qua `docker inspect`/`/proc`; **không có** biến thể `_FILE` |
-| `DATAHUB_LICENSE_ASSERTION_ISSUER` | ✖ | **phải đặt tay**; default `autojms-license` **không khớp VPS** |
-| `DATAHUB_LICENSE_ASSERTION_AUDIENCE` | ✖ | **phải đặt tay**; default `autojms-datahub-enroll` **không khớp VPS** |
-| `DATAHUB_API_BASE_URL` | ✖ | default là placeholder `https://datahub.example.com`, **trả cho client không báo lỗi nếu sai** |
+| `DATAHUB_LICENSE_ASSERTION_ISSUER` | ✖ | blueprint gốc đặt **inline** `autojms-license-production`; default trong code là `autojms-license` — **không khớp VPS** |
+| `DATAHUB_LICENSE_ASSERTION_AUDIENCE` | ✖ | blueprint gốc đặt **inline** `autojms-datahub-enroll-production`; default trong code là `autojms-datahub-enroll` — **không khớp VPS** |
+| `DATAHUB_API_BASE_URL` | ✖ | **`sync: false`** trong blueprint gốc ⇒ Render hỏi khi apply và **thôi ghi đè** giá trị dashboard. Trước đây blueprint ghi đè bằng placeholder `https://datahub.example.com` ở **mỗi** lần sync. Code vẫn **trả cho client không báo lỗi nếu sai** (3.2) |
+| `NODE_VERSION` | ✖ | `"22"` — ghim trong blueprint; `package.json` chỉ đòi `>=20` |
 | `DATAHUB_CHANNEL` | ✖ | `production` / `staging` |
 | `LICENSE_BILLING_ANCHOR_DAY` | ✖ | `16` |
 | `LICENSE_GRACE_DAYS` | ✖ | `7` |
@@ -894,7 +1017,15 @@ Bảng này để tra khi lỗi có dạng "đã đặt biến mà không tác d
 
 Rate limiter hiện có: `limiter` 20/phút (verify-license, logout), `heartbeatLimiter` 120/phút,
 `googleSheetsGrantLimiter` 60/phút, `datahubAssertionLimiter` 60/phút, `healthLimiter` 30/phút.
-`jtiCache = NodeCache({ stdTTL: 3600 })`. Tất cả **in-memory** ⇒ **1 instance**.
+`jtiCache = NodeCache({ stdTTL: 3600 })` (`server.js:290`). Tất cả **in-memory** ⇒ **1 instance**,
+đã ghim bằng `numInstances: 1` trong blueprint.
+
+`healthCheckPath` của Render trỏ `/health` (`server.js:573`) — **không** phụ thuộc dependency và
+**không** nằm sau limiter nào. Đừng đổi sang `/health/firebase`: đường đó nằm sau
+`healthLimiter` 30/phút, để nền tảng poll vào đó là tự ăn budget của chính mình.
+
+Secret file `googleSheetsServiceAccount.json` (`/etc/secrets/`) **không** đi theo blueprint —
+phải upload lại bằng tay sau khi đổi repo (bước A1-c).
 
 ### 16.2 VPS (mỗi VPS một bản riêng)
 
@@ -914,7 +1045,7 @@ Rate limiter hiện có: `limiter` 20/phút (verify-license, logout), `heartbeat
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | ✖ | .NET — `true` **chỉ** staging |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | ✅ | .NET — chỉ staging, ≥ 32 ký tự |
 | `ASPNETCORE_ENVIRONMENT` | ✖ | .NET |
-| `DATAHUB_PUBLIC_HOST` | ✖ | **Caddy** — .NET không đọc |
+| `DATAHUB_PUBLIC_HOST` | ✖ | **Caddy + .NET** (từ 2026-08-26) — .NET dùng nó **chỉ** để dựng `type` URI của response lỗi. Đổi giá trị ⇒ phải restart service `api`, không chỉ reload Caddy. Bỏ trống hoặc để tên RFC 2606 ⇒ URI tương đối, hợp lệ (D4) |
 | `TLS_CONTACT_EMAIL` | ✖ | **ACME** — .NET không đọc |
 | `DATAHUB_API_IMAGE` | ✖ | **Compose** — phải là `@sha256:` |
 | `POSTGRES_DB` / `_USER` / `_PASSWORD` | ✅ | **Compose/Postgres** — .NET **chỉ** thấy `ConnectionStrings__DataHub` |
@@ -937,7 +1068,70 @@ Chuỗi middleware DataHub (thứ tự có ý nghĩa): `UseExceptionHandler` →
 6. **Không commit** `.env`, service account key, `*.pfx`, `*.pem`, hay bất kỳ file token/khoá.
    Log phải che token dạng `first4...last4`.
 7. **Tab `ABOUT` luôn là tab cuối** trong bộ tab UI.
-8. Trước khi L-1 (Chặng A) xong, mọi kết luận **"đã vá"** trong
-   [`FULLSTACK_BACKEND_RISK_REVIEW.md`](FULLSTACK_BACKEND_RISK_REVIEW.md) chỉ đúng với **repo**,
-   **không** đúng với **production**. Mọi báo cáo trạng thái license server phải nói rõ đang nói
-   về repo hay về production.
+8. **Chốt L-1 không phải là thi hành L-1.** Chừng nào 7 thao tác dashboard A1-a…A1-g (mục 3.4)
+   chưa chạy xong, mọi kết luận **"đã vá"** — trong
+   [`FULLSTACK_BACKEND_RISK_REVIEW.md`](FULLSTACK_BACKEND_RISK_REVIEW.md), trong tài liệu này,
+   hay trong bất kỳ báo cáo nào — vẫn chỉ đúng với **repo**, **không** đúng với **production**.
+   Render production vẫn đang chạy repo `AutoJMS-API` cho tới lúc bước A1-a thực sự được bấm.
+   Mọi báo cáo trạng thái license server phải nói rõ đang nói về repo hay về production.
+
+   Hệ quả cụ thể của quy tắc này ở bản 2026-08-26: `render.yaml` ở gốc repo là **điều kiện cần**
+   để A1 thi hành được, **không** phải bằng chứng A1 đã thi hành.
+
+---
+
+## Phần 18 — Sáu gói tối ưu từ báo cáo rủi ro: đã kiểm chứng lại từng cái
+
+Báo cáo `backend_vps_deploy_risk_and_optimization_report.md` (do Antigravity soạn, vai trò
+Advisor) đề xuất 6 gói. **Mọi khẳng định trong đó đã được đọc lại từ file thật trước khi hành
+động** — quy tắc này tồn tại vì gói S4 dưới đây chỉ đúng một nửa, và nửa sai lại là nửa quyết
+định ai được phép vá.
+
+| Gói | Khẳng định của báo cáo | Kiểm chứng | Xử lý |
+|---|---|---|---|
+| **Opt-1** | Thiếu script deploy tổng ⇒ viết `deploy-datahub.ps1` | ✅ đúng | **Hoãn có ý thức** — xem dưới |
+| **Opt-2** | Runner ép `--single-transaction` nên `CONCURRENTLY` không viết được (`apply-migrations.ps1:111`, `.sh:67`) | ✅ **đúng từng dòng** | ✅ **Đã làm** — `*_notx.sql` + `-- no-transaction` |
+| **Opt-3** | `ApiProblemDetails.cs:32` hardcode `datahub.example.com` | ✅ đúng (kế hoạch cũ ghi `:33`, lệch 1 dòng) | ✅ **Đã làm** (B1) |
+| **Opt-4** | Không có backup theo lịch ⇒ systemd timer + đồng bộ rclone ra ngoài | ✅ đúng | **Hoãn có ý thức** |
+| **Opt-5** | Không có `rollback-stack.ps1` | ✅ đúng | **Hoãn có ý thức** |
+| **Opt-6** | `DATAHUB_TRUSTED_PROXY_NETWORKS` mặc định quá rộng | ✅ đúng (đã là S10/D3) | **Giá trị vận hành** — chủ sở hữu đặt theo từng host |
+
+### 18.1 Một khẳng định sai, và vì sao nó quan trọng
+
+Báo cáo viết `VpsRuntimePolicyService` "duyệt tuần tự 6 đường link bằng
+`.GetAwaiter().GetResult()`". Đọc file: service **hoàn toàn `async`/`await`**; lời gọi chặn nằm
+ở [`src/AutoJMS/Program.cs:356-359`](../../src/AutoJMS/Program.cs). **Số học 6 × 15 = 90 giây
+thì đúng**, chỉ vị trí là sai.
+
+Sai lệch này không vô hại: nếu tin theo báo cáo, kết luận sẽ là "phải xin phép sửa Protected
+File `Program.cs`" và mục B4 tiếp tục nằm chờ. Đọc file thật cho ra kết luận ngược — ngân sách
+đặt được **trọn vẹn** trong `VpsRuntimePolicyService.cs` (không Protected), nên B4 vá được ngay.
+**Một khoảng trống đã tự mở ra chỉ nhờ việc kiểm lại nguồn.**
+
+### 18.2 Vì sao Opt-1, Opt-4, Opt-5 hoãn chứ không làm
+
+Cả ba đều là script **vận hành trên VPS**, mà theo quyết định số 2 của Phần 0 thì **VPS chưa tồn
+tại**. Viết bây giờ là sinh ra mã không ai chạy được, không ai test được, và — nguy hiểm hơn —
+mã **trông như đã sẵn sàng**. Một `rollback-stack.ps1` chưa từng chạy thật còn tệ hơn không có
+script rollback, vì nó được tin vào đúng lúc căng thẳng nhất.
+
+Riêng **Opt-5 còn thiếu tiền đề kỹ thuật**: rollback cần biết digest **trước đó** là gì, nhưng
+`start-stack.ps1:43` chỉ **in** digest ra console, không ghi xuống file nào. Không có
+`deployed-digests.log` thì `rollback-stack.ps1` không có gì để lùi về. Thứ tự đúng là: (a)
+`start-stack.ps1` ghi lại digest mỗi lần deploy → (b) mới viết script rollback. Làm ngược lại
+là viết vỏ rỗng.
+
+**Điều kiện để mở khoá cả ba**: VPS staging đã lên và đã qua Chặng E. Khi đó chúng thuộc Chặng H
+(Opt-4) và Chặng 13/Rollback (Opt-1, Opt-5), và **chạy thật được ngay trong lần viết đầu tiên** —
+đó mới là lúc chúng có giá trị.
+
+### 18.3 Ba việc phát sinh trong lúc kiểm chứng, không có trong báo cáo
+
+1. **Blueprint chưa bao giờ được Render đọc** (`backend/render.yaml` không nằm ở gốc) — mục 3.0.
+   Đây là phát hiện đắt nhất của vòng này: nó biến A1 từ "một chỉ thị" thành "một chỉ thị thi
+   hành được".
+2. **`DATAHUB_API_BASE_URL` bị blueprint ghi đè lại mỗi lần sync**, chứ không chỉ "chưa điền" —
+   mục 3.2. G10 vì thế là lỗi **tái phát**, không phải lỗi một lần.
+3. **`Invoke-Psql` bỏ qua `$InputFile` ở nhánh `-DatabaseUrl`** nên chế độ host-psql của
+   `apply-migrations.ps1` chưa từng áp được migration nào — xem ô cảnh báo ở B13. Lỗi này chỉ lộ
+   ra vì phải đọc kỹ hàm đó để thêm `_notx`.
