@@ -66,14 +66,46 @@ service.
 
 | Route | Auth | Rate limit |
 |---|---|---|
-| `GET /health` | none | unmetered |
+| `GET /health` | none | global only |
 | `GET /health/firebase` | none | 30/min/IP |
 | `GET /health/firebase/licenses` | none | 30/min/IP |
-| `POST /api/verify-license` | none (license key + hwid) | 20/min/IP |
+| `POST /api/verify-license` | none (license key + hwid) | 60/min/IP |
 | `POST /api/heartbeat` | access token | 120/min/IP |
 | `POST /api/google-sheets/grant` | access token | 60/min/IP |
 | `POST /api/datahub/license-assertion` | access token | 60/min/IP |
-| `POST /api/logout` | access token | 20/min/IP |
+| `POST /api/logout` | access token | 60/min/IP |
+
+Every number above is **per IP**, and a NAT'd office shares one egress address:
+ten stations behind one router are one caller to this limiter. verify-license is
+60 rather than 20 for that reason — a launch is `verify-license` plus a Sheets
+grant plus an assertion, so a morning where a whole office opens the app at once
+was landing near a limit set for a single machine.
+
+### The global flood guard
+
+Above every route sits one limiter with no exemptions, registered **after**
+`cors()` and **before** `express.json()`. That order is the whole point: a
+per-route limiter is registered on its route, which puts it after the body
+parser, so an unauthenticated caller could make this process allocate and parse
+a 512 kB body on every request and only then be told it was over its limit. On
+Render's free tier — 512 MB of RAM, one instance, no autoscale — the memory was
+already spent by the time the check ran. `rate-limit.test.js` proves the
+ordering by sending an unparseable body: under the limit it answers 400 (the
+parser ran), over the limit 429 (it never reached the parser).
+
+| Variable | Default | Floor |
+|---|---|---|
+| `GLOBAL_RATE_LIMIT_PER_MINUTE` | 600 | 120 |
+
+600 is above the sum of every per-route cap (60 + 120 + 30 + 60 + 60 = 330), so
+this can never become the binding limit for legitimate traffic — if it starts
+refusing, the caller is not a station. The floor is 120 because that is
+`heartbeatLimiter`'s own cap: below it, the global limiter would start refusing
+heartbeats a route policy allows, and a global 429 also answers `/health`, which
+Render polls — an instance answering 429 there is marked unhealthy and
+restarted, i.e. a flood guard that takes down the service it defends. An
+unparseable value falls back to 600, **not** to the floor: a typo in a Render
+variable was never an instruction to tighten anything.
 
 `GET /health` touches no database: Render polls it every few seconds, and a
 read here would multiply Firebase cost by the platform's own health interval.
@@ -223,11 +255,52 @@ with no `sid` answers 200 without authentication and writes nothing: there is
 nothing to authorise, and the client calls this on a shutdown path where a 401
 would surface as a spurious error dialog.
 
+## Session reaping
+
+Logout is the only clean exit, and it removes exactly the one session it holds a
+token for. verify-license removes the previous session for the **same** device.
+Nothing removed anything else — so a session that ended any other way (crash,
+power cut, laptop closed, station reimaged onto a new hwid) stayed in
+`/sessions` forever. Those rows are what every login scans and what makes a
+seats count read high.
+
+verify-license now also deletes this licence's orphans while it is already
+holding the answer: same query, same multi-path update, no background timer and
+no extra read. A login with nothing to revoke but something to reap spends the
+one write the flow would otherwise have skipped.
+
+**Stale is derived, not chosen.** `lastPing` is written by exactly one route,
+`/api/heartbeat`, and that route both requires an unexpired access token and
+mints a fresh one. So a session silent for longer than one token TTL cannot have
+heartbeated within the lifetime of any token it could still hold — its next
+heartbeat is a 401 whatever this code does. The threshold is **2 × TTL = 120
+minutes**, one full TTL of slack for clock skew.
+
+That margin matters because deleting a row is not a soft action: the heartbeat
+answers a missing session with 401 `action: "kill"` and the station shuts itself
+down. A reaper that is merely approximately right ends a working shift. Hence
+the rules `session-reaper.test.js` pins, all of which are about what survives:
+
+- A row inside the threshold survives, even by one second.
+- A row whose age **cannot be established** survives. `Number(null)` and
+  `Number("")` are both `0` — 1 January 1970, maximally stale — so reading an
+  absent field through `Number()` would delete the row it could not date. Only a
+  finite positive number counts as a timestamp.
+- `createdAt` stands in when `lastPing` is absent, which is the
+  crashed-before-first-heartbeat case; a fresh `lastPing` overrides an ancient
+  `createdAt`, so the longest-running stations are not the first reaped.
+- The query is scoped by `licenseKey`, so one customer's login never touches
+  another's rows. That scope is the blast radius, and it is pinned.
+
+`revokedCount` and `reapedCount` are logged apart on purpose: repeated revokes
+mean a station is re-verifying instead of resuming, repeated reaps mean stations
+are dying without logging out. One merged number would hide both.
+
 ## Tests
 
     npm test
 
-`node --test "test/**/*.test.js"` — 115 tests across 9 files, no network and no
+`node --test "test/**/*.test.js"` — 164 tests across 16 files, no network and no
 Firebase project. `test/helpers/harness.js` boots the real `server.js`
 in-process by injecting fakes into `require.cache` before requiring it;
 `server.js` guards its `listen` with `require.main === module`, so production
@@ -242,8 +315,13 @@ Two things about the suite that are easy to break:
   "enrollment is closed" test pass for the wrong reason.
 - **Files are split by rate-limiter budget.** `node --test` runs each *file* in
   its own process, so each file gets its own limiter budget. That is why
-  verify-license is two files. Split a file rather than raising a production
-  limit for the tests' benefit.
+  verify-license is two files, and why `rate-limit.test.js` is on its own — its
+  last test deliberately exhausts the global budget. Split a file rather than
+  raising a production limit for the tests' benefit.
+- **`activeSession()` is dated live, not fixed.** It used to seed a hard-coded
+  November 2023 `lastPing`, which the reaper correctly reads as long dead — a
+  fixture named "active" describing a corpse. Any new fixture that stands for a
+  running station has to carry timestamps relative to `Date.now()`.
 
 The fake Firebase records reads, writes and removals, because the assertions
 that matter most are absences: no database read happened, no Google token was

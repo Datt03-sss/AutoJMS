@@ -17,9 +17,15 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
         limit = Math.Clamp(limit, 1, 500);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
-        await using (var timeout = new NpgsqlCommand("SET LOCAL statement_timeout = '30s';", connection, transaction))
-            await timeout.ExecuteNonQueryAsync(cancellationToken);
 
+        // No SET LOCAL statement_timeout here. PostgresDataSource.BuildConnectionString
+        // applies it as a PostgreSQL startup option on every connection, so this
+        // transaction is already bounded — and the hard-coded '30s' it used to send
+        // OVERRODE whatever the operator set in DATAHUB_DB_STATEMENT_TIMEOUT_SECONDS,
+        // in the one direction that matters: a deployment that lowered the budget to
+        // protect a small VPS silently got 30 seconds anyway. Ingest still layers a
+        // SET LOCAL, because it also needs lock_timeout, which no connection string
+        // startup option sets.
         var watermark = await ReadWatermarkAsync(connection, transaction, siteId, cancellationToken);
         if (watermark is null)
         {
@@ -81,9 +87,10 @@ public sealed class ChangeRepository(PostgresDataSource dataSource)
         maxRows = Math.Clamp(maxRows, 1, MaximumSnapshotRows);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
-        await using var timeout = new NpgsqlCommand("SET LOCAL statement_timeout = '30s';", connection, transaction);
-        await timeout.ExecuteNonQueryAsync(cancellationToken);
 
+        // Same reason as ReadChangesAsync: the deadline is a connection startup option,
+        // and a snapshot is exactly the query an operator would want to give MORE time
+        // than the default, not a fixed 30 seconds.
         const string counterSql = "SELECT change_seq FROM site_change_counters WHERE site_id = @site_id;";
         await using var counterCommand = new NpgsqlCommand(counterSql, connection, transaction);
         counterCommand.Parameters.AddWithValue("site_id", siteId);

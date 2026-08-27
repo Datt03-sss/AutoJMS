@@ -6,7 +6,7 @@
 // silent feature loss there. The input guards live in
 // verify-license-guards.test.js.
 //
-// Why two files: the route is rate limited to 20 requests/minute per IP, and
+// Why two files: the route is rate limited per IP (60 requests/minute), and
 // `node --test` runs each FILE in its own process, so each file gets its own
 // budget. Splitting is cheaper than raising a production limit for tests.
 

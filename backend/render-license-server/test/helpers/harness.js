@@ -183,6 +183,10 @@ async function startServer(options = {}) {
         SOURCE_VERSION: undefined,
         COMMIT_SHA: undefined,
         SHUTDOWN_TIMEOUT_MS: undefined,
+        // The flood-guard override. Listed for the usual reason and one extra: it is
+        // the only limiter that runs before the body parser, so a value leaked in
+        // from another test would show up as unexplained 429s anywhere in the suite.
+        GLOBAL_RATE_LIMIT_PER_MINUTE: undefined,
         ...(options.env || {})
     };
 
@@ -298,16 +302,27 @@ function activeLicense(overrides = {}) {
     };
 }
 
-/** An active session matching the token signToken() produces by default. */
+/**
+ * An active session matching the token signToken() produces by default.
+ *
+ * The timestamps are LIVE, not the fixed 1_700_000_000_000 (November 2023) they
+ * used to be. verify-license now reaps sessions whose last contact is older than
+ * twice the access-token TTL, and a fixture called "active" carrying a three-year-old
+ * lastPing described a session that was, by that rule, long dead — so every test
+ * seeding one would have been testing the reaper by accident. Tests that need a
+ * specific age pass it explicitly.
+ */
 function activeSession(overrides = {}) {
+    const now = Date.now();
+
     return {
         licenseKey: FIXTURE.licenseKey,
         hwid: FIXTURE.hwid,
         tier: "ULTRA",
         middleCode: FIXTURE.siteCode,
         status: "active",
-        createdAt: 1_700_000_000_000,
-        lastPing: 1_700_000_000_000,
+        createdAt: now,
+        lastPing: now,
         ...overrides
     };
 }

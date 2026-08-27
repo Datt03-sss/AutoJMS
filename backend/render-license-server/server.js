@@ -97,6 +97,19 @@ const CONFIG = {
         String(process.env.REQUIRE_UNIQUE_SITE_CODE || "").trim() === "1"
 };
 
+/**
+ * Reads a numeric environment override, with a floor and a default.
+ *
+ * `Math.max(floor, Number(raw || fallback))` is the obvious form and it is wrong:
+ * Number("abc") is NaN, Math.max(120, NaN) is NaN, and neither a rate limiter nor a
+ * setTimeout falls back to its default when handed NaN — they do something
+ * undefined. A typo in a Render environment variable has to land on the default.
+ */
+function numericEnv(raw, fallback, floor) {
+    const parsed = Number(raw);
+    return Math.max(floor, Number.isFinite(parsed) && String(raw).trim() !== "" ? parsed : fallback);
+}
+
 /** middleCode values that are not a real tenant identity. */
 const PLACEHOLDER_SITE_CODES = new Set(["", "0000", "00000", "0", "DEFAULT", "NONE", "TBD"]);
 
@@ -283,11 +296,47 @@ app.use(helmet());
 // cross-origin with whatever cookies it had. Preflight still gets a 204 so a
 // misconfigured caller sees a CORS error rather than a hang.
 app.use(cors({ origin: false }));
+
+// A flood guard, and the reason it sits ABOVE express.json rather than beside the
+// other limiters: every per-route limiter below runs AFTER the body parser, so an
+// unauthenticated caller could make this process allocate and parse a 512 kB JSON
+// body on every request and only then be told it was over its limit. On Render's
+// free tier — 512 MB of RAM, one instance — the check ran too late to protect the
+// thing it was protecting.
+//
+// The cap is set strictly ABOVE the sum of every per-route cap (60 + 120 + 30 + 60
+// + 60 = 330), so it can never be the binding limit for legitimate traffic; the
+// per-route limiters stay the actual policy. This one only bounds how much parsing
+// a single IP can buy.
+//
+// Setting it too low is worse than not having it at all: Render polls /health from
+// its own infrastructure, and a global 429 there marks the instance unhealthy and
+// restarts it — a limiter that DoSes the service it defends. Hence the generous
+// default, the operator override, and a floor of 120, which is heartbeatLimiter's
+// own cap: below that this limiter would silently start overriding a per-route
+// policy instead of backstopping it.
+const GLOBAL_RATE_LIMIT_PER_MINUTE = numericEnv(process.env.GLOBAL_RATE_LIMIT_PER_MINUTE, 600, 120);
+
+const globalLimiter = rateLimit({
+    windowMs: 60_000,
+    max: GLOBAL_RATE_LIMIT_PER_MINUTE
+});
+
+// After cors() on purpose: cors({ origin: false }) answers a preflight with 204 and
+// ends it, so an OPTIONS request does not spend the caller's budget.
+app.use(globalLimiter);
 app.use(express.json({ limit: "512kb" }));
 
+// verify-license and logout. 60, not 20: the key is the caller's IP, and a NAT'd
+// office shares one egress address, so the whole shift start counts as one client.
+// Twenty stations powering on together is 20 verifies plus retries in the same
+// minute — the old cap turned an ordinary morning into 429s for whoever booted
+// last, and a station refused here does not start. 60 keeps roughly 3× headroom
+// over that burst while still being far too low to sustain a key-guessing loop
+// (the guard against which is the 403, not the rate).
 const limiter = rateLimit({
     windowMs: 60_000,
-    max: 20
+    max: 60
 });
 
 const heartbeatLimiter = rateLimit({
@@ -444,6 +493,47 @@ function getClientIp(req) {
     );
 }
 
+// Named rather than inlined because a second piece of logic now depends on it: the
+// stale-session threshold below is DERIVED from this number, not chosen next to it.
+// Change the TTL and the reaper follows; leave them independent and the reaper
+// eventually starts deleting sessions that can still heartbeat.
+const ACCESS_TOKEN_TTL_MINUTES = 60;
+const ACCESS_TOKEN_TTL_MS = ACCESS_TOKEN_TTL_MINUTES * 60_000;
+
+/**
+ * How old a session's last contact must be before verify-license removes it.
+ *
+ * This is a proof, not a policy preference. lastPing is written by exactly one
+ * route — /api/heartbeat — and that route both requires an unexpired access token
+ * AND mints a fresh one on success. So a session whose lastPing is older than the
+ * token TTL cannot have completed a heartbeat inside the lifetime of any token it
+ * could still be holding: whatever token that station has is expired, its next
+ * heartbeat gets 401 `action: "kill"`, and it must re-run verify-license, which
+ * creates a NEW session row. The old row can never be used again.
+ *
+ * That distinction matters because deleting a session is not a soft action: a
+ * missing row makes heartbeat answer 401 "Phiên làm việc đã bị Admin thu hồi" and
+ * the client shuts itself down. Reaping a session that is merely quiet would kick a
+ * working station out of a running shift. Hence 2× the TTL rather than 1×: one full
+ * token lifetime of slack absorbs clock skew and a long retry storm, and costs
+ * nothing but keeping a dead row one extra hour.
+ */
+const STALE_SESSION_MS = ACCESS_TOKEN_TTL_MS * 2;
+
+/**
+ * A session timestamp, or null when the field cannot be trusted as one.
+ *
+ * Deliberately stricter than Number(): Number(null) and Number("") are both 0,
+ * which as an epoch is 1 January 1970 — the most stale value there is. A field that
+ * is missing, blank, or hand-edited to a string in the Firebase console would
+ * therefore have read as maximally old and got the row deleted, which is the exact
+ * outcome the "unknown age is not evidence of death" rule exists to prevent. Only a
+ * positive, finite number that was stored AS a number counts.
+ */
+function sessionTimestamp(value) {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 function signAccessToken({ licenseKey, hwid, sessionId, tier }) {
     return jwt.sign(
         {
@@ -456,7 +546,7 @@ function signAccessToken({ licenseKey, hwid, sessionId, tier }) {
         CONFIG.PRIVATE,
         {
             algorithm: "RS256",
-            expiresIn: "60m",
+            expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m`,
             issuer: CONFIG.ISSUER,
             audience: CONFIG.AUDIENCE,
             keyid: "accessKey"
@@ -945,7 +1035,8 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             });
         }
 
-        // Clear old sessions of same license + same device
+        // Clear old sessions of same license + same device, and reap this license's
+        // orphans while we are already holding the answer.
         const sessionsRef = admin.database().ref("sessions");
         const sessionsReadStarted = Date.now();
         const sessionsSnap = await withTimeout(
@@ -959,12 +1050,45 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         logEvent("info", "verify_license.firebase_read", { requestId, step: "sessions", elapsedMs: Date.now() - sessionsReadStarted });
 
         const updates = {};
+        let revokedCount = 0;
+        let reapedCount = 0;
+        const reapNow = Date.now();
 
         sessionsSnap.forEach(child => {
-            const session = child.val();
+            const session = child.val() || {};
 
             if (session.hwid === hwid) {
                 updates[child.key] = null;
+                revokedCount += 1;
+                return;
+            }
+
+            // ---- Orphan reaping -----------------------------------------------
+            // Nothing else deletes a session row. /api/logout removes the one it is
+            // given a token for, and the branch above removes the previous row for
+            // the SAME device — so every session that ended any other way (crash,
+            // power cut, laptop closed, station reimaged with a new hwid) stays in
+            // /sessions forever. Those rows are what
+            // orderByChild("licenseKey").equalTo(...) has to scan on every login,
+            // and they are also what makes a `seats` count read high: the concurrent
+            // seat cap is not enforced yet, but when it is, it would be counting
+            // ghosts and locking a customer out of licences they paid for.
+            //
+            // Piggy-backed on purpose: the query above and the multi-path update
+            // below already exist in this flow, so reaping adds no read at all and no
+            // background timer to a single-instance free-tier process. The only case
+            // that costs anything is a login with nothing to revoke but something to
+            // reap, which spends the one update the flow was going to skip.
+            //
+            // lastPing ?? createdAt — a row too new to have pinged is judged by when
+            // it was created. If NEITHER is a usable timestamp the row's age cannot
+            // be established, and an unknown age is not evidence of death: skip it.
+            // Deleting a row we cannot date would mean guessing with a 401 kill.
+            const lastContact = sessionTimestamp(session.lastPing) ?? sessionTimestamp(session.createdAt);
+
+            if (lastContact !== null && reapNow - lastContact > STALE_SESSION_MS) {
+                updates[child.key] = null;
+                reapedCount += 1;
             }
         });
 
@@ -977,10 +1101,14 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             );
             // How many rows the re-verify displaced. A station that reports several
             // here on every start is re-verifying instead of resuming its session.
+            // reapedCount is the other half: rows belonging to OTHER devices on this
+            // licence that could no longer be used by anyone. A number that stays
+            // high on every login means stations are dying without logging out.
             logEvent("info", "session.revoked_previous", {
                 requestId,
                 license: maskedLicenseKey,
-                revokedCount: Object.keys(updates).length,
+                revokedCount,
+                reapedCount,
                 elapsedMs: Date.now() - sessionsUpdateStarted
             });
         }
@@ -1664,7 +1792,11 @@ app.post("/api/logout", limiter, async (req, res) => {
 //
 // The budget stays well under Render's SIGKILL so the process always gets to log
 // its own last line instead of vanishing.
-const SHUTDOWN_TIMEOUT_MS = Math.max(1000, Number(process.env.SHUTDOWN_TIMEOUT_MS || 10_000));
+// numericEnv, not Math.max(1000, Number(...)): the old form clamped 0 but not a
+// typo. SHUTDOWN_TIMEOUT_MS=1O000 (letter O) parsed to NaN, setTimeout(fn, NaN)
+// fires on the next tick, and the force-exit that exists to give in-flight writes
+// ten seconds would have killed them immediately instead.
+const SHUTDOWN_TIMEOUT_MS = numericEnv(process.env.SHUTDOWN_TIMEOUT_MS, 10_000, 1000);
 
 function createShutdownHandler({ server, timeoutMs = SHUTDOWN_TIMEOUT_MS, exit = code => process.exit(code) }) {
     let closing = false;
@@ -1750,3 +1882,11 @@ module.exports.createShutdownHandler = createShutdownHandler;
 // The resolved budget, so the clamp is assertable: SHUTDOWN_TIMEOUT_MS=0 would
 // otherwise mean "force-exit immediately", turning the safeguard into its opposite.
 module.exports.shutdownTimeoutMs = SHUTDOWN_TIMEOUT_MS;
+// Same reason: GLOBAL_RATE_LIMIT_PER_MINUTE=1 would make the flood guard the
+// binding limit for every legitimate caller, including Render's health poll.
+module.exports.globalRateLimitPerMinute = GLOBAL_RATE_LIMIT_PER_MINUTE;
+// Exported so the derivation is testable, not just the value: the reaper is only
+// safe while this stays at least one access-token lifetime, because deleting a
+// session tells the station holding it to shut down.
+module.exports.accessTokenTtlMs = ACCESS_TOKEN_TTL_MS;
+module.exports.staleSessionMs = STALE_SESSION_MS;
