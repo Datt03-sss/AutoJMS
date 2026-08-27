@@ -1,18 +1,25 @@
 ╔══════════════════════════════════════════════════════════╗
 ║  AUTOJMS LICENSE DATA SCHEMA — v2                      ║
 ║  Maintain across: Firebase → server.js → C# Client     ║
-║  Last reviewed: 2026-08-24                             ║
+║  Last reviewed: 2026-08-27                             ║
 ╚══════════════════════════════════════════════════════════╝
 
   Đọc kèm: docs/agent/CONFIG_SCHEMA_V2_PROPOSAL.md (bản spec đầy đủ)
   Template dán được: backend/firebase/config-key.example.json
   (config-key.json thật bị .gitignore theo luật *-key.json — chỉ nằm ở máy owner)
 
-  ⚠ CẢNH BÁO TRIỂN KHAI
-  Render production hiện chạy repo Datt03-sss/AutoJMS-API, KHÔNG phải
-  backend/render-license-server/ trong repo này. Mọi field v2 dưới đây chỉ có
-  hiệu lực sau khi hai bản server được hợp nhất. Xem section L trong
-  docs/agent/FULLSTACK_BACKEND_RISK_REVIEW.md.
+  ✔ TRIỂN KHAI — đã hợp nhất (2026-08-27)
+  Render service autojms-api chạy CHÍNH repo này: render.yaml khai
+  `runtime: docker` + `rootDir: backend/render-license-server`. Cảnh báo cũ
+  ("Render chạy repo Datt03-sss/AutoJMS-API riêng") KHÔNG còn đúng — mọi field
+  v2 dưới đây đã có hiệu lực trên production.
+
+  ⚠ TEMPLATE CỐ TÌNH FAIL-CLOSED
+  config-key.example.json ship `expiresAt` ở 2020 và `middleCode: "TBD"` (một
+  trong PLACEHOLDER_SITE_CODES), nên dán nguyên bản lẻ ra thì key hết hạn ngay
+  (403 LICENSE_EXPIRED) và không phát được DataHub assertion. Phải thay
+  middleCode / siteCodes / createdAt / expiresAt trước khi dùng. Cả hai tính chất
+  này được khoá bằng test: backend/render-license-server/test/license-template.test.js
 
 
 ┌─────────────────────────────────────────────────────────┐
@@ -20,33 +27,38 @@
 │    Path: /Licenses/{licenseKey}/                        │
 │    All fields at ROOT level (no "cfg" wrapper)          │
 └─────────────────────────────────────────────────────────┘
+Format key: XXXX-MIDDLECODE/SITECODE-XXXX
+eg: A8MV-HN01-MMTB
+
+Đây là bản mô tả CÓ chú thích. Bản dán được (JSON nghiêm ngặt, không comment) là
+config-key.example.json — console Firebase từ chối JSON có comment, nên mọi lời
+nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc khối này).
 
 {
-  "schemaVersion":      2,
+  "schemaVersion":      2,                           // ⚠ server KHÔNG đọc field này; chỉ để người đọc biết đời schema
 
   // ---- Vòng đời / lifecycle -------------------------------------------
-  "status":             "active",                    // "active" là giá trị DUY NHẤT mở được app
+  "status":             "active",                    // so sánh NGHIÊM NGẶT ở server.js: "Active" hay "active " => 401
   "tier":               "ULTRA",                     // "BASE" | "ULTRA" — allowlist, sai chính tả => 403
-  "createdAt":          "2026-08-24T01:22:00+07:00", // ISO-8601 + offset (chấp nhận cả "DD-MM-YYYY HH:mm" cũ)
-  "expiresAt":          "2026-10-16T00:00:00+07:00", // luôn là 00:00 ngày 16 — xem mục 5
-  "activatedAt":        null,                        // SERVER ghi khi bind HWID lần đầu (ISO)
-  "graceDays":          7,                           // sau expiresAt vẫn chạy, client cảnh báo
-  "offlineGraceHours":  72,                          // client được chạy offline bao lâu
+  "createdAt":          "2019-12-01T00:00:00+07:00", // ISO-8601 + offset (chấp nhận cả "DD-MM-YYYY HH:mm" cũ)
+  "expiresAt":          "2020-01-16T00:00:00+07:00", // luôn là 00:00 ngày 16 — xem mục 5 và bẫy A dưới đây
+  "graceDays":          7,                           // server vẫn cho verify sau expiresAt; app KHÔNG cảnh báo — bẫy B
+  "offlineGraceHours":  72,                          // server đọc và trả về, nhưng CLIENT ĐANG BỎ QUA — xem mục 3
 
   // ---- Danh tính site / tenant -----------------------------------------
-  "middleCode":         "HCM001",                    // ⚠ CHÍNH LÀ site-code của DataHub. PHẢI duy nhất.
-  "siteCodes":          ["HCM001"],                  // tuỳ chọn — khách nhiều chi nhánh
+  "middleCode":         "TBD",                       // ⚠ CHÍNH LÀ site-code của DataHub. PHẢI duy nhất. Xem bẫy C
+  "siteCodes":          ["TBD"],                     // tuỳ chọn — khách nhiều chi nhánh. Xem bẫy D
   "siteId":             "",                          // GUID do DataHub trả về sau enroll (legacy)
-  "seats":              3,                           // số máy tối đa (DataHub cấp lease)
+  "seats":              3,                           // số máy tối đa (DataHub cấp lease); server kẹp trong 1..500
 
   // ---- Ràng buộc máy / build -------------------------------------------
   "hwid":               "",                          // rỗng = chưa activate; SERVER tự ghi lần đầu
-  "skipHashCheck":      true,                        // false = kiểm tra exe hash theo VALID_EXE_HASHES
-  "tokenVersion":       1,                           // tăng lên để vô hiệu hoá assertion đã phát
+  "skipHashCheck":      true,                        // ⚠ false BẬT 3 lớp kiểm tra ở CLIENT — xem bẫy E
+  "tokenVersion":       1,                           // tăng lên để vô hiệu hoá assertion đã phát; kẹp trong 1..1e6
 
   // ---- Cấu hình vận hành -----------------------------------------------
-  "dataSpreadsheetId":  "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
-  "updateChannel":      "stable",                    // "stable" | "beta"
+  "dataSpreadsheetId":  "",                          // rỗng = KHÔNG ghi đè giá trị client đang có (Pick())
+  "updateChannel":      "stable",                    // ⚠ KHÔNG có allowlist — "Stable" hay "beta " đi thẳng tới client
   "modulePolicy": {
     "autoUpdate":         false,
     "silentUpdate":       true,
@@ -59,16 +71,62 @@
     "contact":          "",
     "orderId":          "",
     "issuedBy":         "owner",
-    "notes":            ""
+    "notes":            "",
+    "template":         { ... }                       // chỉ có trong file mẫu; XOÁ khi tạo key thật
   }
 }
 
+  Field SERVER tự ghi vào bản ghi — đừng đặt tay:
+    - hwid        server bind lần verify đầu (khi field đang rỗng)
+    - activatedAt server ghi cùng lúc bind hwid. Server KHÔNG BAO GIỜ đọc lại nó,
+                  nên không cần khai trong template. Trên RTDB `null` = XOÁ key,
+                  tức là "activatedAt": null và bỏ trắng là một.
+
   Field vắng mặt = hành vi v1:
-    - expiresAt vắng  → key vĩnh viễn (không hết hạn). Đây là lý do fleet cũ
+    - expiresAt vắng  → key VĨNH VIỄN (không hết hạn). Đây là lý do fleet cũ
                         vẫn chạy sau khi bật lifecycle.
     - graceDays vắng  → dùng LICENSE_GRACE_DAYS (mặc định 7)
     - seats vắng      → DATAHUB_DEFAULT_SEATS (mặc định 3)
     - modulePolicy vắng → server điền autoUpdate/silentUpdate/applyOnNextStartup = true
+                        ⚠ ngược hẳn template (autoUpdate: false). Luôn khai đủ
+                        modulePolicy, đừng dựa vào mặc định.
+
+  ─── 5 cái bẫy đã kiểm chứng trên server hiện tại ───────────────────────
+
+  A. expiresAt SAI CÚ PHÁP = VĨNH VIỄN, không phải lỗi.
+     parseInstant() trả null cho giá trị không đọc được, và null không phân biệt
+     được với "vắng mặt" → evaluateLicense cho `allowed: true` vô thời hạn. Dấu
+     hiệu duy nhất là log `license.expires_at_unparseable`. Một lỗi gõ = key
+     miễn phí trọn đời.
+     Kèm theo: "2026-10-16" trần bị Date.parse đọc là 00:00 **UTC** = 07:00 giờ VN,
+     lệch 7 tiếng so với mốc. Luôn ghi đủ offset `+07:00`, hoặc dùng dạng cũ
+     `16-10-2026` (được đọc theo giờ VN).
+
+  B. graceDays: null → cổng dùng 7 nhưng BÁO VỀ CLIENT LÀ 0.
+     evaluateLicense chặn null và lấy mặc định 7; còn response builder dùng
+     `Number.isFinite(Number(data.graceDays))`, và Number(null) === 0 là hữu hạn.
+     Hai tầng lệch nhau. Quy tắc: thiếu field thì BỎ HẲN, không ghi null.
+
+  C. middleCode placeholder = KHÔNG enroll được, chứ không phải enroll tự do.
+     PLACEHOLDER_SITE_CODES = { "", "0000", "00000", "0", "DEFAULT", "NONE", "TBD" }.
+     resolveLicenseSiteCodes() LOẠI các giá trị này; danh sách rỗng làm
+     issueDataHubAssertion() trả null → DataHub từ chối enroll. Trước đây
+     `filter(Boolean)` cho "0000" đi qua, dồn nhiều khách vào MỘT tenant DataHub
+     và họ đọc được dữ liệu của nhau. Đây là lý do template dùng "TBD".
+     Việc đăng nhập vẫn được phép trừ khi REQUIRE_UNIQUE_SITE_CODE=1 (đang tắt).
+
+  D. siteCodes: [] TẮT enroll dù middleCode hợp lệ.
+     Chuỗi fallback là `Array.isArray(siteCodes) ? siteCodes : [siteCode, siteId, middleCode]`
+     — hễ siteCodes là mảng thì nó THẮNG, kể cả mảng rỗng. Không cần khách nhiều
+     chi nhánh thì bỏ hẳn field, đừng để mảng rỗng.
+
+  E. skipHashCheck: false có 3 tác dụng, và tác dụng nguy hiểm nằm ở CLIENT.
+     - Server: chỉ chặn khi VALID_EXE_HASHES khác rỗng (hiện đang rỗng ⇒ vô hại).
+     - Client: Program.cs bật IntegrityService (đối chiếu DLL với hash-manifest),
+       VpsModuleProvider.VerifyHash (chặn nạp module DLL sai hash), và
+       SmallUpdateService KHÔNG còn bỏ qua kiểm tra chữ ký.
+     Nói cách khác `false` không phải "siết bảo mật miễn phí" — nó có thể chặn nạp
+     module hoặc chặn small-update. Muốn đổi thì phải test kèm manifest thật.
 
 
 ┌─────────────────────────────────────────────────────────┐
@@ -79,50 +137,58 @@
   "payload":      "eyJhbGciOiJSUzI1NiIs...",      // JWT RS256, client verify bằng public key nhúng sẵn
   "sid":          "0463903a-4baf-4807-b688-...",  // session ID
   "tier":         "ULTRA",                        // giữ ở root cho client cũ
-  "middleCode":   "HCM001",
+  "middleCode":   "HN01",
   "skipHashCheck": true,
   "modulePolicy": { "autoUpdate": false, "silentUpdate": true, "applyOnNextStartup": true },
 
   "license": {
     "status":            "active",
     "tier":              "ULTRA",
-    "middleCode":        "HCM001",
-    "siteCode":          "HCM001",                     // = middleCode, đã upper-case
+    "middleCode":        "HN01",
+    "siteCode":          "HN01",                       // = middleCode, đã upper-case
     "skipHashCheck":     true,
     "modulePolicy":      { ... },
     "effectiveStatus":   "active",                     // "active" | "grace" | "expired"
     "expiresAt":         "2026-10-16T00:00:00+07:00",  // null nếu key v1
     "graceUntil":        "2026-10-23T00:00:00+07:00",  // null nếu key v1
     "daysRemaining":     53,                           // null nếu key v1
-    "graceDays":         7,
+    "graceDays":         7,                            // ⚠ báo 0 nếu bản ghi ghi null — bẫy B mục 1
     "offlineGraceHours": 72,
     "billingAnchorDay":  16,
     "seats":             3
   },
 
   "cfg": {
-    "dataSpreadsheetId": "1EOuwlnynaMdYrFyR8ymeX6V-vO-...",
+    "dataSpreadsheetId": "1AbCdEfGhIjKlMnOpQrStUv...",  // "" nếu bản ghi để trống
     "updateChannel":     "stable"
   },
 
   "datahub": {
     "apiBaseUrl":         "https://datahub.example.com",
-    "siteId":             "HCM001",
-    "siteCode":           "HCM001",
-    "licenseAssertion":   "eyJhbGciOiJSUzI1NiIs...",   // JWT ngắn hạn để enroll device
+    "siteId":             "HN01",
+    "siteCode":           "HN01",
+    "licenseAssertion":   "v1rs256.<b64url payload>.<b64url sig>",  // KHÔNG phải JWT — xem dưới
     "assertionExpiresAt": 1789491600,
     "manifests":          { ... }                       // xem mục 4
   }
 }
 
-  Mã lỗi (HTTP → error):
+  licenseAssertion — định dạng dây thật:
+    "v1rs256." + base64url(payload) + "." + base64url(RSASSA-PKCS1-v1_5 SHA-256)
+    Payload là JSON PascalCase, đúng 8 claim khớp LicenseAssertionPayload.cs:
+    Channel, SiteCodes, ExpiresAt, DataHubUrl, Seats, TokenVersion, Issuer, Audience.
+    ⚠ System.Text.Json phân biệt hoa/thường: camelCase => payload rỗng => VPS trả 401.
+    Khi không phát được (site code placeholder), server trả licenseAssertion: ""
+    và assertionExpiresAt: 0 — KHÔNG phải null, và HTTP vẫn là 200.
+
+  Mã lỗi (HTTP → error), theo đúng thứ tự cổng trong verify-license:
     404 LICENSE_NOT_FOUND           key không tồn tại
-    401 LICENSE_INACTIVE            status != "active"
-    401 HWID_MISMATCH               key đã bind máy khác
+    401 LICENSE_INACTIVE            status !== "active" (so sánh nghiêm ngặt)
     403 LICENSE_EXPIRED             quá expiresAt + graceDays  (kèm expiresAt/graceUntil)
     403 LICENSE_TIER_INVALID        tier không thuộc {BASE, ULTRA}
     403 LICENSE_SITE_CODE_INVALID   middleCode là placeholder (chỉ khi REQUIRE_UNIQUE_SITE_CODE=1)
-    403 HASH_INVALID                exe hash không khớp VALID_EXE_HASHES
+    403 HASH_INVALID                exe hash không khớp VALID_EXE_HASHES (chỉ khi biến này khác rỗng)
+    401 HWID_MISMATCH               key đã bind máy khác
     503 FIREBASE_TIMEOUT            Firebase quá FIREBASE_OPERATION_TIMEOUT_MS
 
 
@@ -138,8 +204,22 @@
   root.datahub.licenseAssertion→ result.DataHubLicenseAssertion
   root.datahub.manifests       → result.DataHubManifests
 
-  Chưa đọc (cần C1 trong CONFIG_SCHEMA_V2_PROPOSAL.md):
-  root.license.expiresAt / effectiveStatus / graceUntil / daysRemaining / seats
+  ⚠ Thứ tự đọc cấu hình: client tìm `cfg.datahub.*` TRƯỚC, rồi mới `datahub.*` ở
+    root. Server chỉ phát ở root, nên nhánh fallback mới là nhánh đang chạy thật.
+    Client cũng dò `integrity.skipHashCheck` / `integrity.mode`,
+    `datahub.deviceToken`, `datahub.releases` — response hiện KHÔNG có các field
+    này, client tự dùng mặc định.
+
+  Chưa đọc (cần C1 trong CONFIG_SCHEMA_V2_PROPOSAL.md) — TOÀN BỘ khối lifecycle:
+  root.license.expiresAt / effectiveStatus / graceUntil / daysRemaining /
+  graceDays / offlineGraceHours / billingAnchorDay / seats
+
+  Hệ quả cần biết khi đặt giá trị per-key:
+    - offlineGraceHours trên bản ghi KHÔNG có tác dụng gì với app. Server đọc và
+      chuyển tiếp đúng, nhưng LicenseApiService.cs không parse field này. Đặt 72
+      hay 8760 đều như nhau cho tới khi C1 được làm.
+    - Hạn dùng hiện chỉ được thi hành ở SERVER (403 lúc verify-license). App
+      không tự đếm ngày, không tự cảnh báo sắp hết hạn.
 
   Tier chỉ được cập nhật khi verify-license chạy lại, tức là khi KHỞI ĐỘNG LẠI
   app (quyết định của owner 2026-08-24). Heartbeat không nâng/hạ tier.
@@ -157,9 +237,11 @@
   manifest/feature-policy.json
   manifest/google-sheets-policy.json
   manifest/print-policy.json
+  manifest/fullstack-policy.json
+  manifest/debug-capture-policy.json
   configs/public-config.json
   configs/runtime-policy.json                   -- thẩm quyền capability theo tier
-  selector-updates/selector-update-manifest.json
+  selector-updates/selector-update-manifest.json  -- SmallUpdateService đọc chính file này
 
   tier-definitions.json — shape thật (khớp TierDefinitions.cs):
   {
@@ -194,6 +276,7 @@
       2026-08-18           2026-10-16           59
       2026-08-24           2026-10-16           53
       2026-12-20           2027-02-16           58
+      2019-12-01           2020-01-16           46   ← cặp sentinel trong file mẫu
 
   Cách sinh giá trị:
       node -e "console.log(require('./license-expiry').computeExpiry('2026-08-24').expiresAt)"

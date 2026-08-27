@@ -4,14 +4,13 @@
   "status": "active",
   "tier": "ULTRA",
 
-  "createdAt": "2026-08-24T01:22:00+07:00",
-  "expiresAt": "2026-10-16T00:00:00+07:00",
-  "activatedAt": null,
+  "createdAt": "2019-12-01T00:00:00+07:00",
+  "expiresAt": "2020-01-16T00:00:00+07:00",
   "graceDays": 7,
   "offlineGraceHours": 72,
 
-  "middleCode": "HCM001",
-  "siteCodes": ["HCM001"],
+  "middleCode": "TBD",
+  "siteCodes": ["TBD"],
   "siteId": "",
   "seats": 3,
 
@@ -33,6 +32,14 @@
     "contact": "",
     "orderId": "",
     "issuedBy": "owner",
-    "notes": ""
+    "notes": "",
+    "template": {
+      "warning": "Bản mẫu — CHƯA dùng được. Hai giá trị mặc định CỐ TÌNH fail-closed: expiresAt nằm ở 2020 nên key hết hạn ngay (403 LICENSE_EXPIRED), và middleCode \"TBD\" thuộc PLACEHOLDER_SITE_CODES của server nên không phát DataHub assertion. Dán nguyên bản lẻ ra thì app không mở được — đúng ý là vậy, thay vì mở được bằng danh tính của khách khác.",
+      "replaceBeforeUse": ["middleCode", "siteCodes", "createdAt", "expiresAt"],
+      "generateExpiresAt": "cd backend/render-license-server && node -e \"console.log(require('./license-expiry').computeExpiry('YYYY-MM-DD').expiresAt)\"",
+      "neverWriteNull": "RTDB coi null là XOÁ key, nên \"field: null\" không khác gì bỏ trống. Riêng graceDays: null còn bị báo về client thành 0 trong khi cổng hết hạn vẫn dùng 7 — thiếu field thì bỏ hẳn, đừng ghi null.",
+      "schema": "backend/firebase/license-key-schema.txt",
+      "deleteThisObject": true
+    }
   }
 }

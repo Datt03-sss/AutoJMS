@@ -185,7 +185,9 @@ Invalidate a session.
 
 ## Firebase Realtime Database
 
-**Location**: `infra/firebase/config-key.json`
+**Location**: `backend/firebase/config-key.example.json` (bản mẫu tracked; bản thật
+`backend/firebase/config-key.json` bị `.gitignore` theo luật `*-key.json` và chỉ nằm
+ở máy owner). Schema có chú thích: `backend/firebase/license-key-schema.txt`.
 **Database URL**: https://keyauthjms-default-rtdb.asia-southeast1.firebasedatabase.app
 
 ### Database Schema

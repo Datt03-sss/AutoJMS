@@ -868,7 +868,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
 
         // ---- Module policy --------------------------------------------------
         // NOTE (owner decision pending): this fallback grants autoUpdate by
-        // absence, while the v2 template in backend/firebase/config-key.json ships
+        // absence, while the v2 template in backend/firebase/config-key.example.json ships
         // autoUpdate:false. A record missing modulePolicy therefore self-updates,
         // which is the opposite of what whoever wrote the template intended.
         // Flipping the default would freeze updates on every v1 record still in the
