@@ -29,15 +29,46 @@
 # database: only three of the six `sync: false` entries are hard boot gates -
 # JWT_PRIVATE_KEY + JWT_PUBLIC_KEY (server.js:53 exits 1) and the Firebase service
 # account (server.js:252 exits 1). The other three fail SILENTLY while the service
-# still answers 200:
-#   * DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY unset -> console.warn only
-#     (server.js:177), enrollment stays closed.
-#   * VALID_EXE_HASHES empty -> the whole hash check is skipped (server.js:895)
-#     with no log line at all.
-#   * DATAHUB_API_BASE_URL unset -> falls back to https://datahub.example.com
-#     (server.js:70) and is still handed to clients.
-# The only proof of a complete cutover is POST /api/verify-license with a real key
-# returning a `datahub` block containing an `assertion`.
+# still answers 200, and each had to be confirmed separately.
+#
+# RS256 ASSERTION PATH — reported configured 2026-08-27 (VPS operator)
+# --------------------------------------------------------------------
+# DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY (RSA 2048 PKCS#8) and
+# DATAHUB_API_BASE_URL=https://dev.jmsauto.online were injected on Render, the VPS
+# was given the matching PUBLIC half, and DATAHUB_ALLOW_STAGING_TEST_ISSUER was set
+# to false so RsaLicenseAssertionValidator is the validator in use. An assertion
+# minted with that private key was accepted at POST /api/v1/devices/enroll with 201
+# Created.
+#
+# Read precisely, that proves the KEY PAIR and the VPS-side claim checks agree. It
+# is not the same as proving this service emits an assertion:
+#   * The disappearance of `[datahub] ... enrollment stays closed` proves only that
+#     formatKey(env) is non-empty (server.js:168-178). formatKey strips wrapping
+#     quotes and un-escapes \n (server.js:58-61) - it does not parse the key. A
+#     malformed key first fails at crypto.sign (server.js:236), i.e. on a real
+#     request, not at boot.
+#   * Even with a valid key, buildDataHubAssertion returns null and the response
+#     carries NO `datahub` block when the license has no usable site code
+#     (server.js:215-216) - placeholders like "0000" are dropped on purpose. That
+#     path is silent at 200 as well.
+#   * VALID_EXE_HASHES is still unconfirmed. Empty means the whole hash check is
+#     skipped (server.js:895) with no log line at all - the anti-tamper gate turns
+#     itself off quietly.
+# So the only proof of a complete cutover remains POST /api/verify-license with a
+# real key returning a `datahub` block containing an `assertion`.
+#
+# !! BLUEPRINT vs LIVE CONFLICT — READ BEFORE APPLYING !!
+# The live service now runs the STAGING triple: DATAHUB_CHANNEL=staging,
+# ISSUER=autojms-license-staging, AUDIENCE=autojms-datahub-enroll-staging. The three
+# matching entries in the envVars list below are literal `value:` entries carrying
+# the PRODUCTION strings. A blueprint sync overwrites literals, which is the exact
+# fault already documented for DATAHUB_API_BASE_URL further down. server.js:170-172
+# reads all three straight from env into the assertion payload, and the VPS compares
+# them with ORDINAL equality - issuer/audience at
+# src/AutoJMS.DataHub.Api/Auth/LicenseAssertionPayload.cs:36-38 and channel at :49-50.
+# Applying this file unchanged therefore turns the 201 above into
+# LICENSE_ASSERTION_INVALID on every enrollment. Either flip the VPS to the
+# production triple first, or change these three to `sync: false` before applying.
 services:
   - type: web
     name: autojms-api
@@ -140,6 +171,8 @@ services:
       # configures DataHubClient with a real device token pointed at a host that
       # does not resolve. Leaving the value unset instead makes Render ask for it
       # at blueprint apply time, and it differs per environment anyway (G10).
+      # Set on the live service to https://dev.jmsauto.online as of 2026-08-27;
+      # `sync: false` is what keeps this file from overwriting it.
       - key: DATAHUB_API_BASE_URL
         sync: false
       # The RSA PRIVATE half of the license-assertion pair. The VPS holds only the
@@ -147,6 +180,10 @@ services:
       # /api/v1/devices/enroll is refused, and ULTRA stations lose runtime policy,
       # updates and sync — while verify-license still returns 200, so the failure
       # is silent from the client's point of view.
+      # Injected on the live service 2026-08-27 (RSA 2048 PKCS#8); the startup
+      # warning at server.js:177 is gone and an assertion signed with this key was
+      # accepted by the VPS with 201. See the RS256 block in the file header for what
+      # that does and does not prove.
       - key: DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY
         sync: false
       # These MUST equal DATAHUB_LICENSE_ASSERTION_ISSUER / _AUDIENCE on the VPS.
@@ -156,13 +193,25 @@ services:
       # fails validation on every enrollment. The values below are verified equal
       # to that template as of 2026-08-26, which is what closes risk G3 for the
       # production channel.
+      #
+      # STALE AS OF 2026-08-27, AND NOT SAFE TO APPLY. The live service and the VPS
+      # were both moved to the STAGING triple to prove the RS256 handshake, and that
+      # handshake now returns 201. These two literals are the PRODUCTION strings, so
+      # a blueprint sync writes them over the working staging pair and every
+      # enrollment starts failing LICENSE_ASSERTION_INVALID — the comparison is
+      # ordinal, at LicenseAssertionPayload.cs:36-38. They are deliberately left as
+      # literals rather than switched to `sync: false` here: which channel
+      # production should settle on is an owner decision, not a cleanup. Decide the
+      # channel first, then either update these values or make them `sync: false`.
       - key: DATAHUB_LICENSE_ASSERTION_ISSUER
         value: autojms-license-production
       - key: DATAHUB_LICENSE_ASSERTION_AUDIENCE
         value: autojms-datahub-enroll-production
       - key: DATAHUB_LICENSE_ASSERTION_TTL_SECONDS
         value: "300"
-      # Must equal DATAHUB_CHANNEL on the VPS, or the assertion is rejected.
+      # Must equal DATAHUB_CHANNEL on the VPS, or the assertion is rejected
+      # (LicenseAssertionPayload.cs:49-50 -> CHANNEL_MISMATCH). Same staleness as the
+      # issuer/audience pair above: the live service is on `staging` as of 2026-08-27.
       - key: DATAHUB_CHANNEL
         value: production
       - key: DATAHUB_DEFAULT_SEATS

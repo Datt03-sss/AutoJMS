@@ -1,6 +1,6 @@
 # AutoJMS Backend Deploy Status
 
-Date: 2026-08-23 · Revised: **2026-08-26**
+Date: 2026-08-23 · Revised: **2026-08-27**
 
 > ## Deploy source decision — L-1 resolved 2026-08-26: **option A1**
 >
@@ -14,19 +14,55 @@ Date: 2026-08-23 · Revised: **2026-08-26**
 > Render*; it described a deployment that could not happen. That file is now a pointer stub. Use
 > [`../render.yaml`](../render.yaml).
 >
-> **Not yet executed.** Until the owner performs the seven dashboard steps A1-a…A1-g in
-> [`docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md`](../docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md)
-> §3.4, Render production still serves `Datt03-sss/AutoJMS-API` (`server.js` ≈895 lines), which
-> cannot issue a DataHub assertion at all. Anything below describing the license server describes
-> the **repo**, not production.
+> **Executed 2026-08-27.** `GET /api/version` on production returns commit `94769b17fec1` — a
+> commit that exists only in this monorepo (it added `backend/render-license-server/Dockerfile`) —
+> and `node: v22.23.2`, matching the `node:22-alpine` base image. Production serves this directory
+> now, on Render's **Docker** runtime, and the root `render.yaml` was aligned to that runtime in
+> `12f8b68`. Anything below describing the license server describes production again, not just the
+> repo. Step A1-b (apply the blueprint) is still open, and see the conflict warning below before
+> doing it.
 >
-> Two blueprint values worth knowing about before applying it:
+> Three blueprint values worth knowing about before applying it:
 > - `numInstances: 1` is a **correctness** constraint, not a capacity one. The JTI replay cache
 >   (`server.js:290`) and every rate-limit store are per-process; a second instance is a second
 >   replay window and a second rate-limit budget.
 > - `DATAHUB_API_BASE_URL` is now `sync: false`. It used to be an inline
 >   `https://datahub.example.com`, which meant every blueprint sync **overwrote** whatever real
->   hostname was set in the dashboard — a recurring fault, not a one-off omission.
+>   hostname was set in the dashboard — a recurring fault, not a one-off omission. That is what
+>   protects the live `https://dev.jmsauto.online` value from being clobbered.
+> - **`DATAHUB_CHANNEL`, `DATAHUB_LICENSE_ASSERTION_ISSUER` and `_AUDIENCE` are NOT protected that
+>   way.** They are literal `value:` entries carrying the `production` strings, while the live
+>   service and the VPS are both on `staging`. Applying the blueprint as committed overwrites the
+>   working pair and breaks enrollment — see the RS256 section below.
+
+> ## RS256 assertion path — configured 2026-08-27 (reported by the VPS operator)
+>
+> `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` (RSA 2048 PKCS#8) and
+> `DATAHUB_API_BASE_URL=https://dev.jmsauto.online` were injected on Render; the VPS was given the
+> matching **public** half and `DATAHUB_ALLOW_STAGING_TEST_ISSUER=false`, so
+> `RsaLicenseAssertionValidator` is the validator in use rather than the staging HMAC. An assertion
+> minted with that private key was accepted at `POST /api/v1/devices/enroll` with **201 Created**,
+> returning a DeviceId and DeviceToken. The startup warning `[datahub] … enrollment stays closed`
+> is gone.
+>
+> **What that proves, stated precisely:** the key pair and the VPS-side claim checks agree, on the
+> **staging** channel. It is not yet proof that this service emits an assertion:
+>
+> - The warning disappearing proves only that `formatKey(env)` is non-empty (`server.js:168-178`).
+>   `formatKey` strips wrapping quotes and un-escapes `\n` (`server.js:58-61`); it does not parse
+>   the key. A malformed key first fails inside `crypto.sign` (`server.js:236`) — on a request, not
+>   at boot.
+> - Even with a valid key, `buildDataHubAssertion` returns `null` and the response carries **no**
+>   `datahub` block when the license has no usable site code (`server.js:215-216`); placeholders
+>   such as `"0000"` are dropped deliberately. Silent, at HTTP 200.
+> - `VALID_EXE_HASHES` remains unconfirmed. Empty means the entire hash check is skipped
+>   (`server.js:895`) with no log line — the anti-tamper gate switches itself off quietly.
+>
+> The outstanding gate is therefore step 4 of the Final Acceptance Test below: `POST
+> /api/verify-license` with a real key must return a `datahub` block containing an `assertion`.
+> `backend/datahub/scripts/smoke-test.sh` does **not** cover this — it mints its own HMAC-SHA256
+> staging assertion via `DATAHUB_ALLOW_STAGING_TEST_ISSUER`, so its pass rate says nothing about
+> the RS256 path.
 
 ## Completed
 
@@ -34,15 +70,25 @@ Date: 2026-08-23 · Revised: **2026-08-26**
   `postgres` on Ubuntu 24.04. Public host `https://dev.jmsauto.online`, TLS issued by
   Let's Encrypt through Caddy.
 - `GET /health/live` and `GET /health/ready` return 200 through Caddy.
-- All five forward-only migrations applied and recorded in `schema_migrations`:
+- All six forward-only migrations applied and recorded in `schema_migrations`:
   - `001_core.sql`
   - `002_seed_policies.sql`
   - `003_seed_retention.sql`
   - `004_projection_slot_payloads.sql`
   - `005_change_retention_floor.sql`
+  - `006_revocation_and_retention_indexes.sql`
 - Twelve tables exist; `create_datahub_site(...)` is the only SQL function in `public`.
 - PostgreSQL is not published to the host; only ports 22/80/443 are open.
-- `smoke-test.sh` passes against staging, including the five negative cases.
+- `smoke-test.sh` passed against staging, including the five negative cases — **but it cannot pass
+  any more, by design, and that is not a regression to fix.** Step 2 mints its own assertion with
+  the `v1.` HMAC prefix (`backend/datahub/scripts/smoke-test.sh:125`). Setting
+  `DATAHUB_ALLOW_STAGING_TEST_ISSUER=false` on 2026-08-27 made the registration in
+  `IdentityServiceCollectionExtensions.cs:14-25` an if/**else-if**: exactly one validator is live,
+  and it is now `RsaLicenseAssertionValidator`, which rejects any prefix other than `v1rs256`
+  (`RsaLicenseAssertionValidator.cs:53` → `LICENSE_ASSERTION_MALFORMED`). So step 3 fails and every
+  later step that needs the device token fails with it. **Do not flip the flag back to make the
+  smoke test green** — that would de-register the RSA validator and reopen the staging HMAC path.
+  The script needs an RS256 mode, or the suite needs to be driven by a real assertion.
 - Operational scripts deployed to `/opt/autojms-datahub/bin/`: `dc.sh`, `apply-migrations.sh`,
   `run-sql.sh`, `smoke-test.sh`, `_datahub-common.sh`.
 - **Manifest write path exists and is reachable.** `PUT /api/v1/admin/manifests/{**objectPath}` is
@@ -106,12 +152,19 @@ cd /opt/autojms-datahub
 - **Missing endpoints.** No `notes` / `checks` / `tasks` routes, so those FullStackForm panels
   remain local-only.
 - **`DeviceIdentity.Role`** is carried through enrollment but never enforced.
-- Render production deployment cannot be completed from this local machine because these
-  credentials are not present: `RENDER_API_KEY`, Render service ID,
-  `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, and the Firebase
-  Admin service account credential. The CLI itself is no longer missing — it is installed
-  repo-local and pinned at v2.24.0 (`tools/render-cli/`) — but it is unauthenticated, and it
-  cannot perform any of A1-a…A1-g; those stay dashboard operations.
+- **`VALID_EXE_HASHES` is still unconfirmed on Render**, and its failure mode is silence: empty
+  means `server.js:895` skips the whole executable-hash check without logging. Treat the anti-tamper
+  gate as off until the value is seen in the dashboard.
+- **The end-to-end RS256 path is not yet proven from the client's side.** The VPS half returns 201
+  (see the RS256 box above), but nobody has yet run `POST /api/verify-license` with a real license
+  key and confirmed a `datahub.licenseAssertion` in the response.
+- Render deployment work still cannot be driven from this local machine: `RENDER_API_KEY`, the
+  Render service ID, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`,
+  `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY` and the Firebase Admin service account credential are
+  all absent here — deliberately, since this repo is public. They are set **on Render**; the
+  deployment itself is done. The CLI is no longer missing either: it is installed repo-local and
+  pinned at v2.24.0 (`tools/render-cli/`). It is unauthenticated, and it cannot perform any of
+  A1-a…A1-g; those stay dashboard operations.
 
 ## Required Render Environment
 
@@ -126,11 +179,16 @@ FIREBASE_SERVICE_ACCOUNT_BASE64=<base64 Firebase Admin service account JSON>
 # or GOOGLE_APPLICATION_CREDENTIALS=<secret file path>
 DATAHUB_API_BASE_URL=https://dev.jmsauto.online
 DATAHUB_MANIFEST_BASE_URL=https://dev.jmsauto.online
-DATAHUB_CHANNEL=production
 DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY=<RS256 private key PEM>
-DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license
-DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll
 DATAHUB_LICENSE_ASSERTION_TTL_SECONDS=300
+# The channel triple. All three are compared with ORDINAL equality against the VPS
+# (LicenseAssertionPayload.cs:36-38 for issuer/audience, :49-50 for channel), and the issuer and
+# audience are channel-SUFFIXED — the unsuffixed "autojms-license" / "autojms-datahub-enroll" that
+# server.js falls back to match no environment template and fail every enrollment. Live values as
+# of 2026-08-27 are the staging set below; switch all three together, never one at a time.
+DATAHUB_CHANNEL=staging
+DATAHUB_LICENSE_ASSERTION_ISSUER=autojms-license-staging
+DATAHUB_LICENSE_ASSERTION_AUDIENCE=autojms-datahub-enroll-staging
 DATAHUB_DEFAULT_SEATS=3
 FIREBASE_OPERATION_TIMEOUT_MS=8000
 DEFAULT_UPDATE_CHANNEL=stable
@@ -157,7 +215,10 @@ After deploying Render:
    - `datahub.licenseAssertion`
    - `datahub.manifests`
 5. The client exchanges that assertion at `POST https://dev.jmsauto.online/api/v1/devices/enroll`
-   and receives a `deviceToken` plus a `siteId`.
+   and receives a `deviceToken` plus a `siteId`. — **The server half of this step passed on
+   2026-08-27** with a hand-minted assertion (201 Created). What is still untested is the same call
+   fed by step 4's response rather than by a hand-minted token, which is the only version that
+   exercises `buildDataHubAssertion`.
 6. Launch the built `AutoJMS.exe` and log in with a controlled license.
 7. Confirm BASE has no background inventory/database sync.
 8. Confirm ULTRA can open `FullStackOperationForm`, read `/api/v1/sites/{siteId}/changes`, and
