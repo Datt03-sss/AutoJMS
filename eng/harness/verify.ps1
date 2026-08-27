@@ -16,7 +16,7 @@ $HarnessDir = $PSScriptRoot
 
 Write-Host '╔══════════════════════════════════════════╗' -ForegroundColor Cyan
 Write-Host '║     AutoJMS Verification Harness          ║' -ForegroundColor Cyan
-Write-Host '║     Build → Test → Secrets → Structure     ║' -ForegroundColor Cyan
+Write-Host '║  Build → Test → Node → Secrets → Structure ║' -ForegroundColor Cyan
 Write-Host '╚══════════════════════════════════════════╝' -ForegroundColor Cyan
 Write-Host ''
 Write-Host "Project root: $Root" -ForegroundColor Gray
@@ -64,15 +64,47 @@ Write-Host ''
 & powershell -ExecutionPolicy Bypass -File (Join-Path $HarnessDir 'test.ps1')
 $testExit = $LASTEXITCODE
 
+# 2 is test.ps1's "no test projects found" signal, kept distinct from 0 so a run
+# where every test executed and passed is not reported as an empty one.
 if ($testExit -eq 0) {
-    $results['Tests'] = 'PASS (or WARNING: no tests)'
+    $results['Tests'] = 'PASS'
     Write-Host ''
-    Write-Host '  ⚠️  Tests: PASS (no test projects found)' -ForegroundColor Yellow
+    Write-Host '  ✅ Tests: PASS' -ForegroundColor Green
+} elseif ($testExit -eq 2) {
+    $results['Tests'] = 'WARNING: no test projects found'
+    Write-Host ''
+    Write-Host '  ⚠️  Tests: WARNING (no test projects found)' -ForegroundColor Yellow
 } else {
     $results['Tests'] = 'FAIL'
     $overallExit = 1
     Write-Host ''
     Write-Host '  ❌ Tests: FAIL' -ForegroundColor Red
+}
+Write-Host ''
+
+# ─── Step 2b: Node Tests (license server) ───
+# The Render license server is the other half of the backend and was outside every
+# gate until now: not built by build.ps1 (it is not a .csproj) and not run by
+# test.ps1 (it has no Microsoft.NET.Test.Sdk). Its suite therefore ran only when
+# someone remembered to, which for a component that mints licence tokens is the
+# weakest place to rely on memory.
+Write-Host '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' -ForegroundColor White
+Write-Host '  STEP 2b: NODE TESTS (license server)' -ForegroundColor White
+Write-Host '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━' -ForegroundColor White
+Write-Host ''
+
+& powershell -ExecutionPolicy Bypass -File (Join-Path $HarnessDir 'test-node.ps1')
+$nodeExit = $LASTEXITCODE
+
+if ($nodeExit -eq 0) {
+    $results['NodeTests'] = 'PASS'
+    Write-Host ''
+    Write-Host '  ✅ Node Tests: PASS' -ForegroundColor Green
+} else {
+    $results['NodeTests'] = 'FAIL'
+    $overallExit = 1
+    Write-Host ''
+    Write-Host '  ❌ Node Tests: FAIL' -ForegroundColor Red
 }
 Write-Host ''
 
@@ -123,7 +155,7 @@ Write-Host '╔═════════════════════�
 Write-Host '║           VERIFICATION SUMMARY            ║' -ForegroundColor Cyan
 Write-Host '╚══════════════════════════════════════════╝' -ForegroundColor Cyan
 Write-Host ''
-foreach ($key in @('Build', 'Tests', 'Secrets', 'Structure')) {
+foreach ($key in @('Build', 'Tests', 'NodeTests', 'Secrets', 'Structure')) {
     $val = $results[$key]
     $color = if ($val -match 'FAIL') { 'Red' } elseif ($val -match 'WARNING') { 'Yellow' } else { 'Green' }
     Write-Host "  $key : $val" -ForegroundColor $color

@@ -32,8 +32,11 @@ if ($testProjects.Count -eq 0) {
     Write-Host '  Future test projects should be placed in the tests/ directory.' -ForegroundColor Yellow
     Write-Host ''
     Write-Host 'Test harness completed with WARNING (no tests to run).' -ForegroundColor Yellow
-    # Exit 0 — no tests is a warning, not a failure
-    exit 0
+    # Exit 2, not 0 — no tests is a warning, not a failure, but the caller has to be
+    # able to tell the two apart. verify.ps1 used to receive 0 for both and printed
+    # "PASS (no test projects found)" even when every test had run and passed, which
+    # is a gate reporting less confidence than it earned.
+    exit 2
 }
 
 Write-Host "Found $($testProjects.Count) test project(s):" -ForegroundColor Green

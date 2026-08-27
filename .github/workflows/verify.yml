@@ -1,9 +1,11 @@
 name: verify
 
-# The same four gates AGENTS.md and CLAUDE.md require before a push — build, tests,
-# secret scan, structure — run by a machine instead of on the honour system. eng/harness
-# stays the single definition of what "verified" means; this workflow only calls it, so
-# CI and a local run can never drift apart.
+# The same gates AGENTS.md and CLAUDE.md require before a push — build, tests, node
+# tests, secret scan, structure — run by a machine instead of on the honour system.
+# eng/harness stays the single definition of what "verified" means; this workflow only
+# calls it, so CI and a local run can never drift apart. That invariant is why the
+# license server's Node suite is a harness step (eng/harness/test-node.ps1) and not a
+# second job here: a job would make the runner stricter than a local run.
 
 on:
   push:
@@ -37,18 +39,27 @@ jobs:
             8.0.x
             10.0.x
 
+      # 22 to match the node:22-alpine base image in
+      # backend/render-license-server/Dockerfile. Testing the license server on a
+      # different major than Render actually runs it on would leave the gate green while
+      # production used an untested runtime. No `cache:` key — npm ci runs from
+      # test-node.ps1 only when node_modules is absent, and the runner starts clean.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Run verification harness
         env:
           # Part 4 of check-secrets.ps1 (the infra denylist) reads this when
           # eng/harness/forbidden-values.local.txt is absent — which is always the case on a
           # runner, since that file is git-ignored on purpose. Without this line the step
           # prints "NOTICE: no infra denylist configured; this check is INACTIVE" and passes:
-          # three of four gates enforced and the fourth quietly off.
+          # every other gate enforced and this one quietly off.
           #
           # Injected as an environment variable, never interpolated into the run script and
           # never written to a file: a "${{ secrets.* }}" expansion inside a shell string is a
           # script-injection surface (a value containing a quote or $( ) is executed), and a
           # temp file leaves the denylist on the runner disk for every later step to read.
-          # verify.ps1:85 launches check-secrets.ps1 as a child process, which inherits this.
+          # verify.ps1 launches check-secrets.ps1 as a child process, which inherits this.
           AUTOJMS_FORBIDDEN_VALUES: ${{ secrets.AUTOJMS_FORBIDDEN_VALUES }}
         run: powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1

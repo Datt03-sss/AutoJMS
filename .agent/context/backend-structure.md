@@ -230,6 +230,33 @@ sessions/
     lastPing: <timestamp>
 ```
 
+### Security Rules
+
+**File**: `backend/firebase/database.rules.json` (tracked, strict JSON, không comment).
+Pinned bởi `backend/render-license-server/test/database-rules.test.js`.
+
+```json
+{ "rules": { ".read": false, ".write": false, "sessions": { ".indexOn": "licenseKey" } } }
+```
+
+Hai điều file này khẳng định:
+
+- **Không client nào đọc/ghi được.** App desktop **không bao giờ** nói chuyện trực tiếp
+  với RTDB (không có `databaseURL` nào trong `src/AutoJMS/`) — mọi truy cập đi qua
+  license server bằng Admin SDK, mà Admin SDK **bỏ qua rules**. "Chặn hết" vì thế là
+  policy đầy đủ, không phải một giới hạn. Rules **cascade xuống**: một node con cho
+  `true` sẽ override gốc cho cả subtree, nên test đi cây thay vì đọc hai dòng đầu.
+- **`/sessions` có index trên đúng child mà server query.** `server.js:952` chạy
+  `ref("sessions").orderByChild("licenseKey")` **mỗi lần verify-license**; không có
+  `.indexOn` thì Firebase tải cả node `sessions` về rồi filter trong process — đúng, im
+  lặng, và chậm dần theo mỗi khách mới. Test khớp giá trị index với chính chuỗi
+  `orderByChild(...)` trong `server.js`, nên đổi query mà quên index sẽ fail ở đó.
+
+> ⚠️ **Việc của Owner, không phải của agent**: file này **không tự** deploy. Rules đang
+> chạy là bản cuối được bấm trong Firebase Console. Owner phải dán nội dung file vào
+> **Console → Realtime Database → Rules → Publish** (hoặc `firebase deploy --only database`)
+> để nó có hiệu lực. Trước khi dán, rules trong repo và rules đang chạy có thể khác nhau.
+
 ## DataHub API
 
 **Base URL**: `https://dev.jmsauto.online` (Caddy → `api:8080` on the compose network)
