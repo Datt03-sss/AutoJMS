@@ -89,6 +89,60 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Every number below is derived from `mem_limit: 2g` on this service, so they are
+    # ONE setting in five lines: raising shared_buffers without raising mem_limit gets
+    # the container OOM-killed, and raising mem_limit without these leaves the extra
+    # memory unused. Change them together or not at all. They are deliberately not
+    # ${VARIABLE}s for the same reason — an .env that can move one of them
+    # independently is an .env that can put the cluster past its own limit.
+    #
+    # Applying these restarts the container: `shared_buffers` is a postmaster-start
+    # parameter, not reloadable. Plan it as brief downtime.
+    #
+    # max_connections is left at its default 100 on purpose. Lowering it to match the
+    # API pool would bound work_mem's worst case on paper, but it would hard-code a
+    # ceiling that DATAHUB_DB_MAX_POOL_SIZE can be raised past from .env alone — the
+    # API would then exhaust the server it was configured to fit inside.
+    command:
+      - postgres
+      # 25% of mem_limit, the standard starting point. The default is 128MB, which on
+      # a 2GB container leaves ~1.8GB doing nothing for the database it was reserved
+      # for. This does NOT need shm_size raised: since 9.3 the main shared memory
+      # segment is mmap'd anonymous shared memory, not POSIX /dev/shm. shm_size: 256m
+      # below serves dynamic shared memory for parallel workers, which is a separate
+      # and much smaller budget.
+      - -c
+      - shared_buffers=512MB
+      # What the planner believes is cached, shared_buffers plus OS page cache. The
+      # default is 4GB — on a 2GB container that is a planner told it has twice the
+      # cache the machine can hold, which biases it toward index scans that then miss.
+      - -c
+      - effective_cache_size=1536MB
+      # Per sort/hash NODE per connection, not per connection — a query with three
+      # such nodes takes three of these. The worst case is bounded by the only client:
+      # ConnectionStrings__DataHub above caps the API pool at DATAHUB_DB_MAX_POOL_SIZE
+      # (20), so ~20 concurrent queries, not max_connections. The default 4MB spills
+      # the change-feed and snapshot sorts to disk on a VPS whose disk is the slowest
+      # thing it owns.
+      - -c
+      - work_mem=16MB
+      # CREATE INDEX / REINDEX / manual VACUUM, run one at a time in a migration
+      # window. autovacuum_work_mem is pinned separately BECAUSE it defaults to this
+      # value: left alone, 128MB here silently becomes 3 x 128MB of background
+      # autovacuum (autovacuum_max_workers = 3) competing with live queries for the
+      # same 2GB.
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - autovacuum_work_mem=64MB
+      # These two assume SSD/NVMe-backed storage, which is the one assumption here
+      # that is about the host rather than about mem_limit. random_page_cost=4.0 is a
+      # spinning-disk number: it makes the planner prefer a sequential scan over the
+      # indexes migration 006 exists to provide. On spinning disk, revert both.
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}

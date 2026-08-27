@@ -194,6 +194,23 @@ The PowerShell counterparts (`apply-migrations.ps1`, `backup-postgres.ps1`,
 `restore-postgres.ps1`, `provision-site.ps1`, `start-stack.ps1`) exist for hosts that have
 PowerShell; the `.sh` scripts exist because the VPS does not.
 
+The `postgres` service now carries a `command:` block of server settings sized to its
+`mem_limit: 2g` (`shared_buffers=512MB`, `work_mem=16MB`, and the rest — the compose file
+explains each). `shared_buffers` is a postmaster-start parameter, so picking them up needs a
+container restart, not a reload:
+
+```bash
+./bin/dc.sh --env-file .env.production up -d postgres
+```
+
+The API reconnects on its own — its pool has `MinPoolSize = 0` and `restart: unless-stopped`
+covers the rest — but the gap is a few seconds of 503s, so do it in a quiet window. Treat the
+memory values as one setting: they are all derived from `mem_limit`, and raising
+`shared_buffers` without raising `mem_limit` gets the container OOM-killed. The two planner
+costs (`random_page_cost`, `effective_io_concurrency`) are the only entries that assume
+something about the host rather than the limit — they assume SSD, and belong reverted to the
+PostgreSQL defaults on spinning disk.
+
 Device tokens are never handed out by an operator. A station calls
 `POST /api/v1/devices/enroll` with a short-lived RS256 license assertion minted by the Render
 server, and the API returns a device token scoped to one site. The admin token
@@ -265,6 +282,7 @@ Forward-only SQL files in `backend/datahub/migrations/`, applied in filename ord
 003_seed_retention.sql
 004_projection_slot_payloads.sql
 005_change_retention_floor.sql
+006_revocation_and_retention_indexes.sql
 ```
 
 Each file records its own row in `schema_migrations` inside its own transaction, so a partially
@@ -286,6 +304,7 @@ Tables created:
 | `audit_logs` | Enrollment/lease/admin audit trail. |
 | `jms_event_policies` | Per-site JMS event handling policy. |
 | `retention_policies` | Retention windows for the event log and change feed. |
+| `revoked_device_credentials` | Revoked device credential hashes (schema only — no code reads it yet). |
 | `schema_migrations` | Applied migration markers. |
 
 `001_core.sql` also creates `create_datahub_site(...)`. It is a provisioning helper called by
@@ -307,6 +326,29 @@ Or from Windows against a known connection string:
 ```
 
 Both run each file with `ON_ERROR_STOP=1` inside `--single-transaction`.
+
+> ⚠️ **Migrations before the image, always.** `/health/ready` asserts that **every**
+> migration listed above has been applied — `PostgresDataSource.RequiredMigrations`
+> holds the list, and `SchemaContractTests` keeps it equal to the files on disk. So an
+> API image rolled onto a database that is behind on migrations never reports ready,
+> `docker-compose.yml` gates Caddy on `service_healthy`, and the site stays down until
+> the migrations run. That order is deliberate — the alternative is an API serving 500s
+> from a missing table — but it means `apply-migrations.sh` is a **precondition** of
+> `dc.sh up -d`, not a follow-up step.
+>
+> This bites once, on the first deploy after 2026-08-27: readiness previously stopped
+> checking at `005`, so a host that has `001`–`005` and not `006` is reporting ready
+> today and will stop the moment the new image starts. Confirm before rolling:
+>
+> ```bash
+> ./bin/run-sql.sh --env-file .env.production /dev/stdin <<'SQL'
+> select version from schema_migrations order by version;
+> SQL
+> ```
+>
+> If `006_revocation_and_retention_indexes` is absent, apply migrations first. The file
+> is idempotent (`IF NOT EXISTS` throughout), so running it on a host that already has
+> it is a no-op.
 
 Verify schema. `run-sql.sh` takes a **file**, not an inline string; it accepts `/dev/stdin`, so
 a heredoc works without creating a temp file:

@@ -90,15 +90,51 @@ public sealed class LeaseRepository(PostgresDataSource dataSource)
             return LeaseOperationResult.Failure(ApiProblemCodes.LeaderFenced, "The supplied lease term is stale or expired.", current with { Role = "follower" });
         }
 
+        // How long the leader was silent before this renew, measured before the UPDATE
+        // below overwrites last_seen_at. A normal renew lands at RenewIntervalSeconds.
+        var silence = current.LastSeenAt is null ? (TimeSpan?)null : now - current.LastSeenAt.Value;
+
         var updated = await UpdateLeaseAsync(connection, transaction, siteId, deviceId, term, now.Add(LeaseDuration), now, cancellationToken);
-        await AuditRepository.AppendAsync(
-            connection,
-            transaction,
-            siteId,
-            $"device:{deviceId:D}",
-            "lease.renew",
-            new { deviceId, leaderTerm = term, leaseExpiresAt = updated.LeaseExpiresAt },
-            cancellationToken);
+
+        // A routine renew is no longer audited. The guard above already proved
+        // current.LeaderTerm == term, so every row this used to write for a given term
+        // was identical apart from leaseExpiresAt — and at RenewIntervalSeconds = 30
+        // that is 2 rows per minute per site, ~2,880 a day, in a table the retention
+        // job then has to scan across every site to prune.
+        //
+        // Nothing is lost that another record does not already hold: who leads and for
+        // which term is written by lease.acquire and lease.release, and current
+        // liveness is site_fetch_leases.last_seen_at, which UpdateLeaseAsync still
+        // stamps on every renew. A silence long enough to matter — past the lease
+        // duration — costs the leader the lease, and the takeover writes
+        // lease.acquire.
+        //
+        // What the deleted rows did carry is the one gap that leaves no other trace: a
+        // leader that missed renews but came back before the lease expired, so no
+        // takeover happened and last_seen_at has since been overwritten. That is worth
+        // a row, so it still gets one — and only it. A null last_seen_at is treated as
+        // a gap: a lease with a matching leader always has one, so its absence is a
+        // state this code did not write and should not silently pass over.
+        var missedARenew = silence is null || silence.Value.TotalSeconds > current.RenewIntervalSeconds * 2;
+        if (missedARenew)
+        {
+            await AuditRepository.AppendAsync(
+                connection,
+                transaction,
+                siteId,
+                $"device:{deviceId:D}",
+                "lease.renew_after_gap",
+                new
+                {
+                    deviceId,
+                    leaderTerm = term,
+                    leaseExpiresAt = updated.LeaseExpiresAt,
+                    silentSeconds = silence?.TotalSeconds,
+                    expectedIntervalSeconds = current.RenewIntervalSeconds
+                },
+                cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return LeaseOperationResult.Success(updated with { Role = "leader" });
     }
