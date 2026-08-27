@@ -19,6 +19,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -53,6 +54,29 @@ const verify = () =>
     harness.post("/api/verify-license", {
         body: { licenseKey: FIXTURE.licenseKey, hwid: FIXTURE.hwid }
     });
+
+/** Reads the signed SiteCodes the way RsaLicenseAssertionValidator on the VPS does. */
+const signedSiteCodes = assertion => {
+    const [prefix, encodedPayload, signature] = String(assertion).split(".");
+    assert.equal(prefix, "v1rs256");
+    assert.ok(
+        crypto.verify(
+            "sha256",
+            Buffer.from(encodedPayload, "utf8"),
+            { key: harness.datahubPublicKey, padding: crypto.constants.RSA_PKCS1_PADDING },
+            Buffer.from(signature, "base64url")
+        ),
+        "signature must verify with the public key the VPS holds"
+    );
+    return JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")).SiteCodes;
+};
+
+/** A live record built from the template, with the station code filled in as an owner would. */
+const liveRecord = (middleCode, extra = {}) => {
+    const record = { ...template(), middleCode, siteCodes: [middleCode], expiresAt: liveExpiry(), ...extra };
+    delete record.meta.template;
+    return record;
+};
 
 test("the template is strict JSON with no byte-order mark", () => {
     // A BOM is invisible in an editor and breaks JSON.parse here, in jq, and in
@@ -117,4 +141,68 @@ test("with both placeholders replaced, every value in the template reaches the c
         silentUpdate: true,
         applyOnNextStartup: true
     });
+});
+
+// ---- middleCode ≡ siteCode ----------------------------------------------
+// One station identifier, two names: middleCode is what the WinForms app calls
+// it, siteCode is what DataHub and PostgreSQL call it. The template asks the
+// owner to write that one value into two fields, so the tests below pin the
+// consequence — every name the response uses for it carries the same value, and
+// the signed scope agrees with the field the client actually sends to enroll.
+//
+// This is not cosmetic. EnrollmentEndpoints.cs compares
+// request.SiteCode.Trim().ToUpperInvariant() against the signed SiteCodes with an
+// ORDINAL comparer, so the two sides match only while every layer normalises the
+// same way. Nothing above this file would fail if one of them stopped.
+
+test("one station code, every name: the value the owner types reaches all of them", async () => {
+    harness.db.reset(seedWith(liveRecord(FIXTURE.siteCode)));
+
+    const body = (await verify()).body;
+
+    // App-facing name, DataHub-facing name, and the signed scope: one value.
+    assert.equal(body.middleCode, FIXTURE.siteCode);
+    assert.equal(body.license.middleCode, FIXTURE.siteCode);
+    assert.equal(body.license.siteCode, FIXTURE.siteCode);
+    assert.equal(body.datahub.siteCode, FIXTURE.siteCode);
+    assert.deepEqual(signedSiteCodes(body.datahub.licenseAssertion), [FIXTURE.siteCode]);
+});
+
+test("a lower-case middleCode is upper-cased on both sides of the enrollment match", async () => {
+    const typed = FIXTURE.siteCode.toLowerCase();
+    assert.notEqual(typed, FIXTURE.siteCode, "fixture must have letters for this test to mean anything");
+
+    harness.db.reset(seedWith(liveRecord(typed)));
+
+    const body = (await verify()).body;
+
+    // The client sends datahub.siteCode (or middleCode) upper-cased; the VPS looks
+    // it up in the signed list with an ordinal comparer. Both of the values this
+    // server controls must therefore already be upper-cased — a record typed in
+    // lower case still enrolls, and stays in the same tenant as before.
+    assert.equal(body.datahub.siteCode, FIXTURE.siteCode);
+    assert.deepEqual(signedSiteCodes(body.datahub.licenseAssertion), [FIXTURE.siteCode]);
+    assert.equal(body.middleCode, typed, "middleCode is echoed verbatim; the client normalises it");
+});
+
+test("siteCodes may be omitted — middleCode alone is a complete site declaration", async () => {
+    // The middleCode → siteCode fallback is by design, not a patch for old records:
+    // the two fields hold the same value, so a key that declares only middleCode is
+    // fully specified. Deleting this branch would strand every single-branch key.
+    const record = liveRecord(FIXTURE.siteCode);
+    delete record.siteCodes;
+
+    harness.db.reset(seedWith(record));
+
+    const withFallback = (await verify()).body;
+    assert.equal(withFallback.datahub.siteCode, FIXTURE.siteCode);
+    assert.deepEqual(signedSiteCodes(withFallback.datahub.licenseAssertion), [FIXTURE.siteCode]);
+
+    // An EMPTY array is the opposite claim — "this licence covers no site" — and it
+    // wins over the fallback. Absent and empty must not behave alike.
+    harness.db.reset(seedWith(liveRecord(FIXTURE.siteCode, { siteCodes: [] })));
+
+    const withEmptyList = (await verify()).body;
+    assert.equal(withEmptyList.datahub.licenseAssertion, "");
+    assert.equal(withEmptyList.datahub.assertionExpiresAt, 0);
 });

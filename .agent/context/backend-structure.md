@@ -118,7 +118,7 @@ Verify a license key and issue a JWT session token.
   "license": {
     "status": "active",
     "tier": "ULTRA",
-    "middleCode": "0000",
+    "middleCode": "HN01",
     "skipHashCheck": true,
     "modulePolicy": {
       "autoUpdate": false,
@@ -132,7 +132,7 @@ Verify a license key and issue a JWT session token.
   },
   "datahub": {
     "baseUrl": "https://dev.jmsauto.online",
-    "siteCode": "214A02",
+    "siteCode": "HN01",
     "licenseAssertion": "v1rs256....",
     "assertionExpiresAt": 1755900000,
     "manifests": {
@@ -146,6 +146,15 @@ Verify a license key and issue a JWT session token.
 
 `licenseAssertion` lives ~300 s and is valid for `POST /api/v1/devices/enroll` and nothing else.
 `siteCode` — not `siteId` — is what enrollment matches on.
+
+`middleCode` and `siteCode` are two names for **one** station identifier, which is why the
+example above repeats the same value: `middleCode` is the app-facing name (WinForms business
+logic, `AppConfig.ActionSiteCode`), `siteCode` is the DataHub-facing name (multi-tenant
+partition key in PostgreSQL, and the scope signed into the assertion). The
+`middleCode` → `siteCode` fallback in `resolveLicenseSiteCodes` and in
+`LicenseApiService.cs:305-306` is therefore by design, not compatibility debt. `siteId` is a
+different thing: the GUID DataHub returns from enrollment. Full chain and the four
+normalisation sites it depends on: [license-key-schema.txt](../../backend/firebase/license-key-schema.txt) §0.
 
 #### POST /api/heartbeat
 

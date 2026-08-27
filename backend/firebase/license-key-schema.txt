@@ -23,6 +23,80 @@
 
 
 ┌─────────────────────────────────────────────────────────┐
+│ 0. middleCode ≡ siteCode — MỘT giá trị, HAI ngữ cảnh     │
+│    Đọc mục này TRƯỚC khi tạo key hay sửa fallback        │
+└─────────────────────────────────────────────────────────┘
+
+  Với mỗi trạm/khách, `middleCode` và `siteCode` là CÙNG MỘT mã định danh
+  (VD: 214A02, HN01, HCM03). Hai tên chỉ phản ánh hai ranh giới ngữ cảnh:
+
+    middleCode  — phía APP (WinForms). Danh tính bưu cục trên UI và trong nghiệp
+                  vụ nội bộ: quét vận đơn, in ấn, log phiên.
+                  Nơi lưu: AppConfig.Current.ActionSiteCode + UserSettings.MiddleCode.
+    siteCode    — phía DATAHUB (API + PostgreSQL). Khoá phân vùng multi-tenant:
+                  sites, waybill_projections, leases, changes; đồng thời là phạm
+                  vi được KÝ trong assertion RS256 (claim SiteCodes).
+
+  ⚠ `siteId` KHÔNG phải tên gọi thứ ba. Đó là GUID do DataHub trả về trong
+    response của /devices/enroll. Bản ghi license nên để `siteId: ""`; nếu bỏ
+    trắng, server điền tạm bằng middleCode và client LOẠI giá trị đó vì
+    Guid.TryParse thất bại (DataHubClient.cs:201), rồi lấy GUID thật từ enroll
+    (LicenseApiService.cs:322-325). Đừng đặt tay mã trạm vào siteId.
+
+  Luồng khép kín — mỗi bước ghi kèm file:dòng để đối chiếu khi sửa:
+
+    1. Firebase   /Licenses/{key}/middleCode   (+ siteCodes nếu nhiều chi nhánh)
+    2. server.js  resolveLicenseSiteCodes(data, middleCode)            :186
+                  siteCodes nếu là mảng, ngược lại [siteCode, siteId, middleCode]
+                  → claim SiteCodes của assertion RS256
+                  → response: root.middleCode, license.siteCode, datahub.siteCode
+    3. Client     LicenseApiService.cs:305-306
+                  datahubSiteCode = datahub.siteCode; RỖNG thì lấy
+                  middleCode.Trim().ToUpperInvariant()
+    4. Client     POST /api/v1/devices/enroll { SiteCode = datahubSiteCode }  :315
+    5. VPS        EnrollmentEndpoints.cs:86-87  — điểm thi hành duy nhất
+                  siteCode = request.SiteCode.Trim().ToUpperInvariant();
+                  if (!validation.Identity.SiteCodes.Contains(siteCode))
+                      → 403 SITE_NOT_LICENSED
+    6. Client     Program.cs:342 SiteContextProvider.ApplyLicenseMiddleCode(result.MiddleCode)
+                  → AppConfig.ActionSiteCode + UserSettings.MiddleCode
+                  → DataHubClient.ResolveSiteCode() :1265 dùng lại ĐÚNG giá trị đó
+
+  Vì sao "khớp 100%": bước 5 so sánh ORDINAL (HashSet<string>, StringComparer.Ordinal)
+  nên nó chỉ đúng khi CẢ BỐN điểm chuẩn hoá làm y hệt nhau — trim + upper-case:
+      server.js  normalizeSiteCode()                          :369
+      server.js  resolveLicenseSiteCodes() .trim().toUpperCase() :203
+      LicenseAssertionPayload.cs NormalizeSiteCode()           :64
+      EnrollmentEndpoints.cs request.SiteCode                  :86
+  Đổi một trong bốn chỗ này là làm đứt enroll cho mọi key ghi chữ thường. Ba tính
+  chất trên đã được khoá bằng test trong license-template.test.js:
+    "one station code, every name: the value the owner types reaches all of them"
+    "a lower-case middleCode is upper-cased on both sides of the enrollment match"
+    "siteCodes may be omitted — middleCode alone is a complete site declaration"
+  ⚠ Lưu ý phạm vi: root.middleCode được server dội lại NGUYÊN VĂN (chưa upper-case);
+  chỉ datahub.siteCode và claim SiteCodes là đã chuẩn hoá. Phần upper-case của
+  middleCode do client làm (SiteContextProvider.NormalizeCode).
+
+  Hai hệ quả khi bảo trì:
+
+    • TƯƠNG THÍCH NGƯỢC — mọi nhánh fallback middleCode → siteCode (bước 2 và
+      bước 3) là CHỦ Ý, phản ánh đúng bản chất "một giá trị". Đó không phải bản
+      vá tạm và KHÔNG được gỡ để "làm sạch". Key chỉ khai middleCode vẫn phải
+      enroll được.
+    • NHẤT QUÁN — khi tạo mẫu key, viết tài liệu hay thêm test, luôn ghi rõ hai
+      tên này là hai mặt của cùng một định danh trạm (app-facing vs db-facing).
+      Trong Firebase phải điền CÙNG MỘT giá trị vào middleCode và siteCodes[].
+
+  ⚠ Bất đối xứng đã biết, chưa sửa (ghi lại để khỏi kết luận sai khi debug):
+    - `datahub.siteId` trong response KHÔNG được upper-case, còn `datahub.siteCode`
+      thì có. Vô hại vì client đòi GUID ở chỗ đó (xem ghi chú siteId ở trên).
+    - DataHubSyncService.ResolveSiteCode() (client) chỉ coi "0000" là placeholder,
+      trong khi server có 7 giá trị (bẫy C). Chưa ảnh hưởng thực tế — key
+      placeholder không có assertion nên không enroll được — nhưng đây đúng là
+      kiểu lệch mà mục này tồn tại để chặn.
+
+
+┌─────────────────────────────────────────────────────────┐
 │ 1. FIREBASE (Realtime DB)                               │
 │    Path: /Licenses/{licenseKey}/                        │
 │    All fields at ROOT level (no "cfg" wrapper)          │
@@ -46,9 +120,9 @@ nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc k
   "offlineGraceHours":  72,                          // server đọc và trả về, nhưng CLIENT ĐANG BỎ QUA — xem mục 3
 
   // ---- Danh tính site / tenant -----------------------------------------
-  "middleCode":         "TBD",                       // ⚠ CHÍNH LÀ site-code của DataHub. PHẢI duy nhất. Xem bẫy C
-  "siteCodes":          ["TBD"],                     // tuỳ chọn — khách nhiều chi nhánh. Xem bẫy D
-  "siteId":             "",                          // GUID do DataHub trả về sau enroll (legacy)
+  "middleCode":         "TBD",                       // ⚠ CHÍNH LÀ siteCode của DataHub — mục 0. PHẢI duy nhất. Xem bẫy C
+  "siteCodes":          ["TBD"],                     // CÙNG giá trị với middleCode; nhiều phần tử = khách nhiều chi nhánh. Xem bẫy D
+  "siteId":             "",                          // GUID do DataHub trả về sau enroll — KHÔNG phải mã trạm, xem mục 0
   "seats":              3,                           // số máy tối đa (DataHub cấp lease); server kẹp trong 1..500
 
   // ---- Ràng buộc máy / build -------------------------------------------
@@ -119,6 +193,9 @@ nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc k
      Chuỗi fallback là `Array.isArray(siteCodes) ? siteCodes : [siteCode, siteId, middleCode]`
      — hễ siteCodes là mảng thì nó THẮNG, kể cả mảng rỗng. Không cần khách nhiều
      chi nhánh thì bỏ hẳn field, đừng để mảng rỗng.
+     Đúng theo mục 0: bỏ hẳn siteCodes là hợp lệ và middleCode sẽ được dùng làm
+     siteCode; chỉ mảng RỖNG mới là lỗi, vì nó nói "không có site nào" thay vì
+     "chưa khai".
 
   E. skipHashCheck: false có 3 tác dụng, và tác dụng nguy hiểm nằm ở CLIENT.
      - Server: chỉ chặn khi VALID_EXE_HASHES khác rỗng (hiện đang rỗng ⇒ vô hại).
@@ -145,7 +222,7 @@ nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc k
     "status":            "active",
     "tier":              "ULTRA",
     "middleCode":        "HN01",
-    "siteCode":          "HN01",                       // = middleCode, đã upper-case
+    "siteCode":          "HN01",                       // = middleCode, đã upper-case — mục 0
     "skipHashCheck":     true,
     "modulePolicy":      { ... },
     "effectiveStatus":   "active",                     // "active" | "grace" | "expired"
@@ -165,8 +242,8 @@ nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc k
 
   "datahub": {
     "apiBaseUrl":         "https://datahub.example.com",
-    "siteId":             "HN01",
-    "siteCode":           "HN01",
+    "siteId":             "HN01",                       // ⚠ chỉ là bản dội lại của bản ghi (chưa upper-case); client BỎ vì không phải GUID
+    "siteCode":           "HN01",                       // giá trị client gửi lên /devices/enroll — mục 0
     "licenseAssertion":   "v1rs256.<b64url payload>.<b64url sig>",  // KHÔNG phải JWT — xem dưới
     "assertionExpiresAt": 1789491600,
     "manifests":          { ... }                       // xem mục 4
@@ -197,6 +274,10 @@ nhắc trong file mẫu phải nằm trong khối `meta` (server không đọc k
 └─────────────────────────────────────────────────────────┘
 
   root.tier                    → result.Tier              (thẩm quyền tier DUY NHẤT)
+  root.middleCode              → result.MiddleCode        (fallback: license.middleCode) :202-210
+                                 → SiteContextProvider.ApplyLicenseMiddleCode, và là
+                                   fallback cho DataHubSiteCode — mục 0
+  root.datahub.siteCode        → result.DataHubSiteCode   (rỗng thì lấy middleCode) :305-306
   root.skipHashCheck           → result.SkipHashCheck
   root.modulePolicy            → result.AutoUpdate / SilentUpdate / ApplyOnNextStartup
   root.cfg.dataSpreadsheetId   → AppConfig.Current.DataSpreadsheetId

@@ -36,6 +36,7 @@
     "template": {
       "warning": "Bản mẫu — CHƯA dùng được. Hai giá trị mặc định CỐ TÌNH fail-closed: expiresAt nằm ở 2020 nên key hết hạn ngay (403 LICENSE_EXPIRED), và middleCode \"TBD\" thuộc PLACEHOLDER_SITE_CODES của server nên không phát DataHub assertion. Dán nguyên bản lẻ ra thì app không mở được — đúng ý là vậy, thay vì mở được bằng danh tính của khách khác.",
       "replaceBeforeUse": ["middleCode", "siteCodes", "createdAt", "expiresAt"],
+      "siteCodeIdentity": "middleCode và siteCode là HAI TÊN của CÙNG MỘT mã định danh trạm (VD 214A02, HN01): middleCode là tên phía app (WinForms — nghiệp vụ, in ấn, log), siteCode là tên phía DataHub (phân vùng multi-tenant trong PostgreSQL + phạm vi ký trong assertion RS256). Vì vậy PHẢI điền CÙNG MỘT giá trị vào middleCode và siteCodes[0]; chỉ thêm phần tử thứ hai khi khách thật sự có nhiều chi nhánh. siteId KHÔNG phải tên thứ ba — đó là GUID do DataHub trả về sau enroll, cứ để rỗng.",
       "generateExpiresAt": "cd backend/render-license-server && node -e \"console.log(require('./license-expiry').computeExpiry('YYYY-MM-DD').expiresAt)\"",
       "neverWriteNull": "RTDB coi null là XOÁ key, nên \"field: null\" không khác gì bỏ trống. Riêng graceDays: null còn bị báo về client thành 0 trong khi cổng hết hạn vẫn dùng 7 — thiếu field thì bỏ hẳn, đừng ghi null.",
       "schema": "backend/firebase/license-key-schema.txt",
