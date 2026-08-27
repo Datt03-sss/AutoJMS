@@ -57,18 +57,27 @@
 # So the only proof of a complete cutover remains POST /api/verify-license with a
 # real key returning a `datahub` block containing an `assertion`.
 #
-# !! BLUEPRINT vs LIVE CONFLICT — READ BEFORE APPLYING !!
-# The live service now runs the STAGING triple: DATAHUB_CHANNEL=staging,
-# ISSUER=autojms-license-staging, AUDIENCE=autojms-datahub-enroll-staging. The three
-# matching entries in the envVars list below are literal `value:` entries carrying
-# the PRODUCTION strings. A blueprint sync overwrites literals, which is the exact
-# fault already documented for DATAHUB_API_BASE_URL further down. server.js:170-172
-# reads all three straight from env into the assertion payload, and the VPS compares
-# them with ORDINAL equality - issuer/audience at
-# src/AutoJMS.DataHub.Api/Auth/LicenseAssertionPayload.cs:36-38 and channel at :49-50.
-# Applying this file unchanged therefore turns the 201 above into
-# LICENSE_ASSERTION_INVALID on every enrollment. Either flip the VPS to the
-# production triple first, or change these three to `sync: false` before applying.
+# !! BLUEPRINT vs LIVE CONFLICT — RESOLVED 2026-08-27 !!
+# The live service runs the STAGING triple: DATAHUB_CHANNEL=staging,
+# ISSUER=autojms-license-staging, AUDIENCE=autojms-datahub-enroll-staging. Until
+# 2026-08-27 the three matching entries in the envVars list below were literal
+# `value:` entries carrying the PRODUCTION strings, and a blueprint sync overwrites
+# literals — the exact fault already documented for DATAHUB_API_BASE_URL further
+# down. server.js:170-172 reads all three straight from env into the assertion
+# payload, and the VPS compares them with ORDINAL equality - issuer/audience at
+# src/AutoJMS.DataHub.Api/Auth/LicenseAssertionPayload.cs:36-38 and channel at
+# :49-50 - so applying this file unchanged turned the 201 above into
+# LICENSE_ASSERTION_INVALID on every enrollment.
+#
+# Owner decision: all three are now `sync: false`. This file deliberately no longer
+# states which channel any environment is on, because that is the one thing it
+# cannot know — staging and production hold different triples and only the dashboard
+# knows which service is which. Applying this blueprint is now safe for both.
+#
+# The trade is that an UNSET triple does not fail loudly: server.js falls back to the
+# unsuffixed "autojms-license" / "autojms-datahub-enroll", which match neither
+# channel, and verify-license still answers 200 while every enrollment fails
+# validation. So set all three together, from the same channel, on every new service.
 services:
   - type: web
     name: autojms-api
@@ -186,34 +195,34 @@ services:
       # that does and does not prove.
       - key: DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY
         sync: false
-      # These MUST equal DATAHUB_LICENSE_ASSERTION_ISSUER / _AUDIENCE on the VPS.
-      # server.js falls back to the unsuffixed "autojms-license" /
-      # "autojms-datahub-enroll", which do NOT match
-      # backend/datahub/env.production.template — leaving them unset therefore
-      # fails validation on every enrollment. The values below are verified equal
-      # to that template as of 2026-08-26, which is what closes risk G3 for the
-      # production channel.
+      # ---- DataHub assertion identity — per environment, never a literal ----
+      # These three MUST equal DATAHUB_LICENSE_ASSERTION_ISSUER / _AUDIENCE /
+      # DATAHUB_CHANNEL on the VPS. server.js:170-172 copies them straight into the
+      # assertion payload; the VPS compares issuer and audience with ORDINAL equality
+      # (LicenseAssertionPayload.cs:36-38) and the channel the same way (:49-50 ->
+      # CHANNEL_MISMATCH). One character of drift refuses every enrollment.
       #
-      # STALE AS OF 2026-08-27, AND NOT SAFE TO APPLY. The live service and the VPS
-      # were both moved to the STAGING triple to prove the RS256 handshake, and that
-      # handshake now returns 201. These two literals are the PRODUCTION strings, so
-      # a blueprint sync writes them over the working staging pair and every
-      # enrollment starts failing LICENSE_ASSERTION_INVALID — the comparison is
-      # ordinal, at LicenseAssertionPayload.cs:36-38. They are deliberately left as
-      # literals rather than switched to `sync: false` here: which channel
-      # production should settle on is an owner decision, not a cleanup. Decide the
-      # channel first, then either update these values or make them `sync: false`.
+      # Marked `sync: false` so a blueprint apply does NOT overwrite the
+      # environment-specific values (staging vs production) with hardcoded literals.
+      # They were literals until 2026-08-27 — the PRODUCTION triple, while the live
+      # service ran the STAGING one — so a sync would have written the production
+      # strings over a working staging pair. See the header block for the full story.
+      #
+      # `sync: false` costs a prompt at first apply and gains the guarantee that this
+      # file can never silently re-channel a live service. Set all three at once: a
+      # mixed triple (staging issuer, production channel) is rejected exactly like a
+      # wrong one, and an unset pair falls back to the unsuffixed defaults, which
+      # match neither channel.
       - key: DATAHUB_LICENSE_ASSERTION_ISSUER
-        value: autojms-license-production
+        sync: false
       - key: DATAHUB_LICENSE_ASSERTION_AUDIENCE
-        value: autojms-datahub-enroll-production
+        sync: false
+      - key: DATAHUB_CHANNEL
+        sync: false
+      # Not part of the triple: a TTL is not compared against anything on the VPS,
+      # so it stays a literal and stays identical across environments.
       - key: DATAHUB_LICENSE_ASSERTION_TTL_SECONDS
         value: "300"
-      # Must equal DATAHUB_CHANNEL on the VPS, or the assertion is rejected
-      # (LicenseAssertionPayload.cs:49-50 -> CHANNEL_MISMATCH). Same staleness as the
-      # issuer/audience pair above: the live service is on `staging` as of 2026-08-27.
-      - key: DATAHUB_CHANNEL
-        value: production
       - key: DATAHUB_DEFAULT_SEATS
         value: "3"
 

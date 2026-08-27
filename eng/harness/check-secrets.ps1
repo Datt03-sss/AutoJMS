@@ -2,9 +2,12 @@
 .SYNOPSIS
     Secret scan harness for AutoJMS.
 .DESCRIPTION
-    Scans git-tracked files for common secret patterns.
+    Scans git-tracked, staged, and untracked-but-not-ignored files for common secret
+    patterns and for the infrastructure denylist.
     Verifies .gitignore has required entries.
-    Does NOT scan untracked files (those are .gitignore'd).
+    Files that git actually ignores are out of scope on purpose: `git add .` cannot
+    stage them, so they are not one command away from a PUBLIC repository. Untracked
+    files that are NOT ignored are exactly that, which is why part 5 exists.
 #>
 [CmdletBinding()]
 param()
@@ -20,7 +23,7 @@ Write-Host ''
 $issues = @()
 
 # ─── Part 1: Check .gitignore has required entries ───
-Write-Host '[1/4] Checking .gitignore...' -ForegroundColor Yellow
+Write-Host '[1/5] Checking .gitignore...' -ForegroundColor Yellow
 
 $gitignorePath = Join-Path $Root '.gitignore'
 if (-not (Test-Path $gitignorePath)) {
@@ -54,7 +57,7 @@ if ($issues.Count -eq 0) {
 Write-Host ''
 
 # ─── Part 2: Check git-tracked files for secret patterns ───
-Write-Host '[2/4] Scanning tracked files for secrets...' -ForegroundColor Yellow
+Write-Host '[2/5] Scanning tracked files for secrets...' -ForegroundColor Yellow
 
 # Get list of tracked files.
 #
@@ -144,6 +147,16 @@ $secretPatterns = @(
 
 $sourceExtensions = @('.cs', '.json', '.xml', '.config', '.yaml', '.yml', '.js', '.ts', '.ps1', '.md')
 
+# Defined here rather than inside part 4, which is where it used to live and where it is still
+# used. Part 4 only assigned it on the branch that HAS a denylist, so on a machine with no
+# denylist configured it stayed $null — and `-in $null` matches nothing, so part 5 below would
+# have read every binary in the tree as text instead of skipping it.
+$binaryExtensions = @(
+    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.bmp', '.dll', '.exe', '.pdb', '.zip',
+    '.7z', '.gz', '.pdf', '.ttf', '.otf', '.woff', '.woff2', '.snk', '.nupkg', '.wav',
+    '.mp3', '.mp4', '.db', '.sqlite', '.bin', '.cur'
+)
+
 foreach ($file in $trackedFiles) {
     $ext = [System.IO.Path]::GetExtension($file)
     if ($ext -notin $sourceExtensions) { continue }
@@ -178,7 +191,7 @@ if (($issues | Where-Object { $_ -match 'TRACKED|POTENTIAL' }).Count -eq 0) {
 Write-Host ''
 
 # ─── Part 3: Check staged files (if in a git repo) ───
-Write-Host '[3/4] Checking staged files...' -ForegroundColor Yellow
+Write-Host '[3/5] Checking staged files...' -ForegroundColor Yellow
 try {
     Push-Location $Root
     # Same reason as part 2: a staged path with non-ASCII characters would otherwise arrive
@@ -222,7 +235,7 @@ Write-Host ''
 # The list lives OUTSIDE git on purpose: a committed denylist of infrastructure identifiers
 # would publish the very values it exists to keep out. CI has no local file, so it reads the
 # same list from an environment variable fed by a repository secret.
-Write-Host '[4/4] Checking for infrastructure identifiers...' -ForegroundColor Yellow
+Write-Host '[4/5] Checking for infrastructure identifiers...' -ForegroundColor Yellow
 
 $forbiddenListPath = Join-Path $PSScriptRoot 'forbidden-values.local.txt'
 $forbiddenLines = @()
@@ -282,12 +295,6 @@ if ($forbidden.Count -eq 0) {
     Write-Host '  NOTICE: no infra denylist configured; this check is INACTIVE.' -ForegroundColor Yellow
     Write-Host "         Create $forbiddenListPath (git-ignored) or set AUTOJMS_FORBIDDEN_VALUES." -ForegroundColor Yellow
 } else {
-    $binaryExtensions = @(
-        '.png', '.jpg', '.jpeg', '.gif', '.ico', '.bmp', '.dll', '.exe', '.pdb', '.zip',
-        '.7z', '.gz', '.pdf', '.ttf', '.otf', '.woff', '.woff2', '.snk', '.nupkg', '.wav',
-        '.mp3', '.mp4', '.db', '.sqlite', '.bin', '.cur'
-    )
-
     foreach ($file in $trackedFiles) {
         $ext = [System.IO.Path]::GetExtension($file)
         if ($ext -in $binaryExtensions) { continue }
@@ -319,6 +326,122 @@ if ($forbidden.Count -eq 0) {
         }
     }
 }
+
+Write-Host ''
+
+# ─── Part 5: Untracked files that are not ignored ───
+#
+# Parts 2 and 3 scan TRACKED and STAGED files only. On 2026-08-27
+# backend/render-license-server/AutoJMS-API.env sat in this PUBLIC repo holding
+# JWT_PRIVATE_KEY and API_SIGNATURE_SECRET — untracked and, at that point, unignored — and
+# this gate still printed "Secret scan completed successfully". CI was green too.
+#
+# Files git actually IGNORES are deliberately out of scope: `git add .` skips them, so they
+# are not one command from being published, and scanning them would fail the gate on the
+# Owner's own .env files forever.
+#
+# `git ls-files --others --exclude-standard`, not `git status --porcelain`: status COLLAPSES a
+# wholly untracked directory into a single `?? dir/` line, so a directory holding fifty files
+# — one of them a private key — arrives as one entry that names no file. ls-files expands it.
+# -z because a NUL-separated list is never quoted or octal-escaped whatever core.quotepath is,
+# the same failure that killed part 2 on a CI runner.
+Write-Host '[5/5] Scanning untracked files...' -ForegroundColor Yellow
+
+# Collected in a local list and appended at the very end. $issues cannot be used directly:
+# the OK-message filters in parts 2 and 4 match on 'TRACKED' and 'INFRA LEAK', and both
+# appear as substrings of the messages below ("UNTRACKED ..." contains "TRACKED"), which
+# would retroactively turn those two green lines red.
+$untrackedIssues = @()
+$untrackedFiles = @()
+$untrackedEnumerated = $false
+try {
+    Push-Location $Root
+    $rawUntracked = & git ls-files --others --exclude-standard -z 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $untrackedEnumerated = $true
+        # Windows PowerShell hands a NUL-separated stream back as one string; splitting on
+        # the NUL recovers the list. The trailing CR/LF trim covers the last element.
+        $untrackedFiles = @((($rawUntracked | Out-String) -split [char]0) |
+            ForEach-Object { "$_".Trim([char]13, [char]10) } |
+            Where-Object { $_.Trim() })
+    }
+} catch {
+    # Handled below by $untrackedEnumerated.
+} finally {
+    Pop-Location
+}
+
+if (-not $untrackedEnumerated) {
+    # Not a failure, for the same reason part 2 falls back instead of dying: this script must
+    # still run outside a git checkout. But it must never look like a pass, so no OK line is
+    # printed on this path.
+    Write-Host '  WARNING: git ls-files --others failed; untracked files were NOT scanned.' -ForegroundColor Yellow
+} else {
+    $maxContentBytes = 2MB
+    $skippedLarge = @()
+    $invalidPathChars = [System.IO.Path]::GetInvalidPathChars()
+
+    foreach ($file in $untrackedFiles) {
+        if ($file.IndexOfAny($invalidPathChars) -ge 0) {
+            Write-Host "  WARNING: skipping unscannable untracked path: $file" -ForegroundColor Yellow
+            continue
+        }
+
+        foreach ($pattern in $dangerousFiles) {
+            if ($file -match $pattern) {
+                $untrackedIssues += "UNTRACKED SECRET FILE (not ignored, one 'git add .' from being published): $file"
+            }
+        }
+
+        $fullPath = Join-Path $Root $file
+        if (-not (Test-Path -LiteralPath $fullPath)) { continue }
+        $ext = [System.IO.Path]::GetExtension($file)
+        if ($ext -in $binaryExtensions) { continue }
+        $info = Get-Item -LiteralPath $fullPath -ErrorAction SilentlyContinue
+        if (-not $info -or $info.Length -eq 0) { continue }
+        if ($info.Length -gt $maxContentBytes) { $skippedLarge += $file; continue }
+
+        try {
+            $content = Get-Content -LiteralPath $fullPath -Raw -ErrorAction SilentlyContinue
+            if (-not $content) { continue }
+
+            # No $sourceExtensions gate here, unlike part 2. For a file nobody has decided to
+            # commit yet, a miss is a published secret and a false positive is a local
+            # annoyance — and the file that started this was a .env, an extension part 2's
+            # allow-list does not contain.
+            foreach ($sp in $secretPatterns) {
+                if ($content -match $sp.Pattern) {
+                    $untrackedIssues += "POTENTIAL SECRET ($($sp.Name)) in untracked file: $file"
+                }
+            }
+
+            foreach ($entry in $forbidden) {
+                if ($content.IndexOf($entry.Value, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+                # Line number, never the value — same rule as part 4.
+                $hit = Select-String -LiteralPath $fullPath -Pattern $entry.Value -SimpleMatch -List -ErrorAction SilentlyContinue
+                $where = if ($hit) { "${file}:$($hit.LineNumber)" } else { $file }
+                $untrackedIssues += "INFRA LEAK ($($entry.Label)) in untracked file: $where"
+            }
+        } catch {
+            # Skip files that can't be read
+        }
+    }
+
+    foreach ($skipped in $skippedLarge) {
+        Write-Host "  NOTICE: content not scanned (over $($maxContentBytes / 1MB) MB): $skipped" -ForegroundColor Yellow
+    }
+
+    if ($untrackedIssues.Count -eq 0) {
+        $denylistNote = if ($forbidden.Count -gt 0) { "$($forbidden.Count) denylist value(s) applied" } else { 'denylist INACTIVE' }
+        Write-Host "  Untracked files: OK ($($untrackedFiles.Count) file(s) scanned, $denylistNote)" -ForegroundColor Green
+    } else {
+        foreach ($issue in $untrackedIssues) {
+            Write-Host "  $issue" -ForegroundColor Red
+        }
+    }
+}
+
+$issues += $untrackedIssues
 
 Write-Host ''
 
