@@ -17,27 +17,76 @@
 # and `tokenVersion` fields, the day-16 expiry lifecycle, an authenticated
 # /api/logout, SIGTERM graceful shutdown, 123 tests — and no Supabase.
 #
-# Until the cutover in the Render dashboard is actually executed and verified
-# (runbook: docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md, Chặng A), a claim
-# of "fixed" in this repo is still a claim about the REPO, not about PRODUCTION.
+# CUTOVER EXECUTED — verified 2026-08-27
+# ---------------------------------------
+# `GET /api/version` on production returns commit 94769b17fec1, a commit that
+# exists only in this monorepo (it is the one that added the Dockerfile below), and
+# `node: v22.23.2`, which matches the `node:22-alpine` base image. Production is
+# therefore genuinely serving this directory now, on Render's Docker runtime.
 #
-# Every `sync: false` entry must be filled in through the Render dashboard. A
-# blank one is not a soft failure: with no JWT key pair the process exits on boot,
-# and with no DataHub assertion key device enrollment stays closed and the desktop
-# app runs offline-only.
+# What that does NOT prove, because /health is a static literal that touches
+# nothing (server.js:618) and /api/version has a test asserting it never reads the
+# database: only three of the six `sync: false` entries are hard boot gates -
+# JWT_PRIVATE_KEY + JWT_PUBLIC_KEY (server.js:53 exits 1) and the Firebase service
+# account (server.js:252 exits 1). The other three fail SILENTLY while the service
+# still answers 200:
+#   * DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY unset -> console.warn only
+#     (server.js:177), enrollment stays closed.
+#   * VALID_EXE_HASHES empty -> the whole hash check is skipped (server.js:895)
+#     with no log line at all.
+#   * DATAHUB_API_BASE_URL unset -> falls back to https://datahub.example.com
+#     (server.js:70) and is still handed to clients.
+# The only proof of a complete cutover is POST /api/verify-license with a real key
+# returning a `datahub` block containing an `assertion`.
 services:
   - type: web
     name: autojms-api
-    runtime: node
+    # Docker, not the native Node runtime: the existing Free-tier service in
+    # Singapore was already set to Docker, and reusing it is what avoids the credit
+    # card that a newly created Blueprint service demands. The Dockerfile owns the
+    # build and the start command, so buildCommand/startCommand are gone - they are
+    # not merely redundant under this runtime, they are invalid.
+    runtime: docker
     rootDir: backend/render-license-server
-    buildCommand: npm ci
-    startCommand: npm start
-    # Dependency-free and deliberately un-rate-limited (server.js:573), unlike
-    # /health/firebase which sits behind healthLimiter at 30/min. Render probes
-    # this often enough that pointing it at the Firebase variant would spend the
-    # limiter budget on the platform's own polling.
+    # WARNING - Render's own documentation contradicts itself on these two fields:
+    #   * /docs/blueprint-spec says dockerfilePath and dockerContext are "relative
+    #     to the repo root".
+    #   * /docs/monorepo-support says that when a root directory is set you must
+    #     "update values for the following fields as needed to be relative to the
+    #     new root directory: buildCommand, startCommand, preDeployCommand,
+    #     dockerfilePath, dockerContext, staticPublishPath".
+    # The values below follow the monorepo page, because it is the one that
+    # addresses this exact combination, and because the alternative reading makes
+    # `dockerContext: .` mean the repo root - which would break `COPY package*.json
+    # ./` (there is no package.json at the repo root) and ship the entire WinForms
+    # app as build context.
+    #
+    # BEFORE APPLYING THIS BLUEPRINT: read the service's "Dockerfile Path" field in
+    # the dashboard and make these two lines agree with it. The service is LIVE; a
+    # wrong path here turns a blueprint sync into an outage. The live build does not
+    # settle the question on its own - it is consistent with either reading.
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Omitting `plan` is documented as "Render uses `starter` for a new service.
+    # Render retains the current instance type for an existing service." Retaining
+    # is fine today, but `starter` is a PAID plan, and avoiding a credit card is the
+    # entire reason this service is being reused instead of recreated. Stating
+    # `free` means a future recreate cannot silently land on a paid instance type.
+    plan: free
+    # Dependency-free and deliberately un-rate-limited (server.js:618), unlike
+    # /api/version which sits behind healthLimiter. Render probes this often enough
+    # that pointing it at a rate-limited variant would spend the limiter budget on
+    # the platform's own polling.
     healthCheckPath: /health
-    autoDeploy: false
+    # `true` records what the live service actually does: the Docker deploy of
+    # commit 94769b1 was triggered by the push, not by hand. This SUPERSEDES item
+    # A1-g of docs/agent/BACKEND_BUILD_AND_VPS_DEPLOY_PLAN.vi.md, which asked for
+    # `false` until Chặng F - that item is no longer the state of the world, and a
+    # blueprint that lied about it would be worse than one that disagrees with a
+    # plan. What makes `true` tolerable is the buildFilter below: only commits that
+    # touch backend/render-license-server/** can reach production. Without that
+    # filter, `true` would mean every WinForms commit redeploys the license server.
+    autoDeploy: true
     # NOT a capacity setting — a correctness one. The JTI replay cache
     # (NodeCache, server.js:290) and every express-rate-limit store are
     # in-memory and per-process. A second instance is a second, independent
@@ -45,17 +94,21 @@ services:
     # multiplies the limits an attacker has to beat rather than the load the
     # service can take. Fix the state first, scale second.
     numInstances: 1
-    # Monorepo hygiene: without this, once autoDeploy is turned on, every commit
-    # to the WinForms app would redeploy the license server. rootDir scopes the
-    # build, not the deploy trigger.
+    # Monorepo hygiene, and now load-bearing rather than precautionary: autoDeploy
+    # is on, so this filter is the only thing stopping a WinForms commit from
+    # redeploying the license server. rootDir scopes the build, not the deploy
+    # trigger. Paths are written from the REPO ROOT, not from rootDir - a filter of
+    # `**` here would match nothing.
     buildFilter:
       paths:
         - backend/render-license-server/**
     envVars:
       - key: NODE_ENV
         value: production
-      # Pinned so a platform-side default bump cannot change the runtime under a
-      # service that is only ever deployed manually. package.json requires >=20.
+      # INERT under the Docker runtime - NODE_VERSION only steers Render's native
+      # Node build. The real pin is now `FROM node:22-alpine` in the Dockerfile
+      # (production reports v22.23.2). Kept so that a revert to the native runtime
+      # does not silently lose the pin; package.json requires >=20.
       - key: NODE_VERSION
         value: "22"
       - key: FIREBASE_OPERATION_TIMEOUT_MS
