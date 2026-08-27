@@ -17,8 +17,24 @@ npm-debug.log
 # under /etc/secrets at run time, so no key file belongs in the build context either.
 # See the Secret Policy in CLAUDE.md. env.template is deliberately NOT excluded: it holds
 # names only, no values.
+#
+# `.env` / `.env.*` only match names beginning with `.env`, which is how AutoJMS-API.env came to
+# sit in this exact folder — inside the build context — matched by nothing. `*.env` / `*.env.*`
+# close that name shape.
+#
+# The `**/` duplicates are NOT redundant here, and this is where .dockerignore differs from
+# .gitignore: a gitignore pattern without a slash applies at every directory level, but a
+# .dockerignore pattern is matched against the whole path relative to the context root, so plain
+# `*.env` catches ONLY a top-level file. `**` is Docker's own extension for "any number of
+# directories, including zero". Both forms are kept so a key dropped in test/ or lib/ is excluded
+# too. The same root-only caveat applies to the service_account*/googleSheets* lines below; they
+# are left as-is because nothing writes those into a subfolder today.
 .env
 .env.*
+*.env
+*.env.*
+**/*.env
+**/*.env.*
 service_account*.json
 service_accout*.json
 googleSheetsServiceAccount*.json

@@ -26,6 +26,21 @@ BrowserData/
 # Environment
 .env
 .env.*
+# `.env` and `.env.*` only cover names that START with `.env` — `.env.*` matches `.env.production`
+# but NOT `AutoJMS-API.env`. A real secrets file (JWT_PRIVATE_KEY, API_SIGNATURE_SECRET) was
+# sitting untracked and unignored at backend/render-license-server/AutoJMS-API.env, one `git add .`
+# away from this PUBLIC repo, and eng/harness/check-secrets.ps1 could not catch it: step 2 scans
+# TRACKED files and step 3 scans STAGED files, so an untracked file is scanned by neither and the
+# gate reported PASS with the key on disk. These two patterns close the name shape, not the gate.
+#
+# Both match at ANY depth: a gitignore pattern with no slash in it applies to every directory
+# level below, so one rule here covers backend/, src/ and any future folder.
+#
+# `*.env.*` also matches `.env.example` — that is fine only because the `!.env.example` /
+# `!.env.staging.example` / `!.env.production.example` negations live BELOW this block and the
+# last matching pattern wins. Never move those negations above this line.
+*.env
+*.env.*
 appsettings.*.json
 
 # Firebase/DataHub keys - NEVER COMMIT
