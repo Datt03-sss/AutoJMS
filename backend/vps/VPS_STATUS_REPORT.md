@@ -107,6 +107,17 @@ retention **âm thầm ngừng chạy** chứ không làm sập API.
 
 ---
 
+## 7. Phối hợp giữa các agent
+
+1. **Claude Code** đọc file này để nắm hạ tầng backend, migration đã áp và kết quả kiểm chứng.
+   Cần giá trị định danh cụ thể (IP, tài khoản, đường dẫn) thì **hỏi Owner** — chúng không nằm
+   trong git.
+2. **Antigravity** cập nhật `*.private.md` **và** file này sau mỗi task VPS. Không đưa giá trị
+   định danh vào file này.
+3. Chi tiết quy ước: [.agent/rules/09-cross-agent-collaboration.md](../../.agent/rules/09-cross-agent-collaboration.md).
+
+---
+
 ## 8. Sự kiện: hồi quy HTTPS 07/09/2026 và khôi phục
 
 | Hạng mục | Nội dung |
@@ -123,14 +134,3 @@ retention **âm thầm ngừng chạy** chứ không làm sập API.
 | **Gate 3.4** | ✅ PASS — `subject=CN=dev.jmsauto.online`, `subjectAltName=DNS:dev.jmsauto.online` |
 | **Gate 3.1** | ✅ PASS — cổng 5432 vẫn không tiếp cận được từ internet sau restart |
 | **Gate 3.6** | ✅ PASS — `postgres` container chỉ bind `5432/tcp` nội bộ |
-
----
-
-## 7. Phối hợp giữa các agent
-
-1. **Claude Code** đọc file này để nắm hạ tầng backend, migration đã áp và kết quả kiểm chứng.
-   Cần giá trị định danh cụ thể (IP, tài khoản, đường dẫn) thì **hỏi Owner** — chúng không nằm
-   trong git.
-2. **Antigravity** cập nhật `*.private.md` **và** file này sau mỗi task VPS. Không đưa giá trị
-   định danh vào file này.
-3. Chi tiết quy ước: [.agent/rules/09-cross-agent-collaboration.md](../../.agent/rules/09-cross-agent-collaboration.md).
