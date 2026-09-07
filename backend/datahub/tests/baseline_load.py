@@ -11,6 +11,11 @@ Rate limits this must stay under (IngressRateLimitMiddleware.cs):
   IP bucket     600 permits / 1 min fixed window  -> keep total under 10 req/s
   device bucket 240 permits / 1 min, per device   -> spread across devices
   enrollment     10 permits / 1 min, per IP       -> enroll once, paced, reuse
+
+In bulk mode the lease has to be renewed while the load runs: LeaseRepository sets
+LeaseDurationSeconds = 120, which a 120 s run reaches exactly. Renewal traffic is
+overhead, not load -- it is counted in lease_renewals / lease_renew_failures and is
+deliberately kept out of sent / sustained_rps.
 """
 import argparse, json, random, statistics, string, sys, threading, time, urllib.error, urllib.request
 
@@ -56,6 +61,46 @@ def acquire_lease(base, site_id, token):
         raise SystemExit(f"lease acquire failed for {site_id}: HTTP {status} {body}")
     return json.loads(body)["leaderTerm"]
 
+def renew_lease(base, site_id, token, term):
+    """Extend one lease by LeaseDurationSeconds without changing its term.
+    LeaseRepository.RenewAsync keeps leader_term and sets lease_expires_at = now + 120s,
+    so renewing every RenewIntervalSeconds holds the lease for the whole run. This is
+    the contract the desktop client follows -- see the DataHubClient.cs header comment
+    on POST /lease/renew: "body { leaderTerm }; the term does NOT change"."""
+    status, body, _ = call(base, "POST", f"/api/v1/sites/{site_id}/lease/renew",
+                           token=token, body={"leaderTerm": term})
+    return status, body
+
+# LeaseRepository.RenewIntervalSeconds. One renew per device per 30s is ~4 requests per
+# device per run: 40 requests against the 600/min IP bucket and 2/min against the
+# 240/min device bucket, i.e. negligible next to the load itself.
+RENEW_INTERVAL_SECONDS = 30
+
+def renew_leases_until(base, devices, deadline, counters, lock, stop):
+    """Daemon loop: renew every lease every RENEW_INTERVAL_SECONDS until the run's
+    deadline. A failed renewal is a real finding (the lease was lost or fenced), so it
+    is counted and printed, never swallowed."""
+    next_at = time.time() + RENEW_INTERVAL_SECONDS
+    while True:
+        wait = min(next_at, deadline) - time.time()
+        if wait > 0 and stop.wait(wait):
+            return
+        if time.time() >= deadline or stop.is_set():
+            return
+        next_at += RENEW_INTERVAL_SECONDS
+        for dev in devices:
+            if dev["term"] is None:
+                continue
+            status, body = renew_lease(base, dev["site_id"], dev["token"], dev["term"])
+            with lock:
+                if status == 200:
+                    counters["lease_renewals"] += 1
+                else:
+                    counters["lease_renew_failures"] += 1
+                    if counters["lease_renew_failures"] <= 3:
+                        print(f"lease renew failed for {dev['site_id']}: HTTP {status} {body[:200]}",
+                              file=sys.stderr)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--base", required=True)
@@ -75,10 +120,20 @@ def main():
     devices = []
     for i, (code, assertion) in enumerate(zip(site_codes, assertions)):
         token, site_id = enroll(args.base, code, assertion, i)
-        term = acquire_lease(args.base, site_id, token) if args.mode == "bulk" else None
-        devices.append({"site_id": site_id, "token": token, "term": term})
+        devices.append({"site_id": site_id, "token": token, "term": None})
         time.sleep(7)                       # stay inside the 10/min enrollment window
-    print(f"prepared {len(devices)} devices", file=sys.stderr)
+    print(f"enrolled {len(devices)} devices", file=sys.stderr)
+
+    # Leases are taken only AFTER every device is enrolled. Acquiring inside the loop
+    # above burned up to ~70s of the 120s lease on the enrollment pacing sleeps, so the
+    # earliest sites' leases expired part-way through a 120s run and the load collected
+    # 409 leader_fenced. Acquire late, then renew on a timer: every lease starts fresh.
+    # interactive mode takes no lease at all and leaves every term None, so nothing
+    # below this line runs for it.
+    if args.mode == "bulk":
+        for dev in devices:
+            dev["term"] = acquire_lease(args.base, dev["site_id"], dev["token"])
+        print(f"acquired {len(devices)} leases", file=sys.stderr)
 
     endpoint = "jms/ingest" if args.mode == "bulk" else "jms/observations"
     scan_date = time.strftime("%Y-%m-%d", time.gmtime())
@@ -89,7 +144,9 @@ def main():
     interval = args.concurrency / args.target_rps if args.target_rps > 0 else 0
     lock = threading.Lock()
     latencies, counts = [], {"sent": 0, "ok": 0, "http_429": 0, "http_409": 0, "other_errors": 0}
-    deadline = time.time() + args.duration_seconds
+    # Kept in their own dict, not in counts, so renewal overhead can never leak into
+    # sent or sustained_rps.
+    lease_counts = {"lease_renewals": 0, "lease_renew_failures": 0}
 
     def worker(slot):
         alphabet = string.ascii_uppercase + string.digits
@@ -126,11 +183,22 @@ def main():
                 time.sleep(slack)
 
     started = time.time()
+    deadline = started + args.duration_seconds
+    stop = threading.Event()
+    renewer = None
+    if args.mode == "bulk":
+        renewer = threading.Thread(target=renew_leases_until,
+                                   args=(args.base, devices, deadline, lease_counts, lock, stop),
+                                   daemon=True)
+        renewer.start()
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(args.concurrency)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+    stop.set()
+    if renewer is not None:
+        renewer.join(timeout=35)
     elapsed = time.time() - started
 
     def pct(values, q):
@@ -140,6 +208,7 @@ def main():
         "mode": args.mode, "concurrency": args.concurrency, "devices": len(devices),
         "duration_seconds": round(elapsed, 1), **counts,
         "sustained_rps": round(counts["sent"] / elapsed, 1),
+        **lease_counts,
         "client_latency_p50_ms": pct(latencies, 50),
         "client_latency_p95_ms": pct(latencies, 95),
         "client_latency_p99_ms": pct(latencies, 99),
