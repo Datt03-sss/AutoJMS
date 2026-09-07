@@ -121,6 +121,11 @@ service_accout*.json
 # forbidden-values.ci.txt is an easy accident and must not be commitable either.
 eng/harness/forbidden-values*.txt
 
+# Sổ tiến độ của superpowers:subagent-driven-development. Đây là bộ nhớ làm việc của agent
+# điều phối (task nào xong, commit nào, phát hiện nhỏ nào còn treo), không phải tài liệu dự án.
+# Nó ghi lại cả kết quả thăm dò hạ tầng nên không thuộc về một repo PUBLIC.
+.superpowers/
+
 # Render CLI binary — tải về bằng tools/render-cli/install-render-cli.ps1, không commit.
 # 8.7 MB nhị phân theo nền tảng (windows/amd64) không thuộc về một repo PUBLIC, và commit nó
 # biến repo thành nơi phân phối lại binary của nhà cung cấp. Script cài ĐƯỢC commit và ghim

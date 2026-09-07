@@ -4,7 +4,7 @@
 
 **Goal:** Đưa các gate P0 G1/G3/G4/G5/G6/G7/G8 từ trạng thái "PASS trên giấy" về trạng thái có bằng chứng thật đo được, để Owner ký OD-1/OD-2/OD-6 trên dữ liệu thật thay vì trên 2 dòng smoke-test.
 
-**Architecture:** Không đụng một dòng code ứng dụng. Ba nhánh công việc chạy song song được: (A) khôi phục HTTPS + domain cho staging rồi chạy trọn 3.3/3.4 và đường ký RS256; (B) reset staging sạch rồi chạy lại backup/restore/smoke bằng **đúng script có sẵn trong repo**, và đo baseline bằng **log của PostgreSQL** thay vì số ước lượng phía client; (C) lấy từ vựng scan thật cho OD-1 từ nguồn duy nhất đang thật sự chứa nó — `journey_history.db` trên máy trạm, **không phải** DataHub.
+**Architecture:** Không đụng một dòng code ứng dụng. Ba nhánh công việc chạy song song được: (A) khôi phục HTTPS + domain cho staging rồi chạy trọn 3.3/3.4 và đường ký RS256; (B) reset staging sạch rồi chạy lại backup/restore/smoke bằng **đúng script có sẵn trong repo**, và đo baseline bằng **log của PostgreSQL** thay vì số ước lượng phía client; (C) ~~lấy từ vựng scan thật cho OD-1 từ `journey_history.db` trên máy trạm~~ — **nhánh C đã huỷ ngày 08/09** khi Owner ký OD-A = A3: client store đang bị thiết kế cho biến mất, và DataHub không thể chứa scan event trước P4, nên trong P0 **không tồn tại nguồn nào** để ký OD-1.
 
 **Tech Stack:** PostgreSQL 16-alpine (Docker Compose), Caddy + ACME HTTP-01, .NET 10 minimal API, PowerShell 7 (`pwsh`) trên Ubuntu 24.04, SQLite/SQLCipher phía client, bash + python3 trên VPS.
 
@@ -49,7 +49,7 @@ Nghĩa là: client **không có đường dây nào** để đẩy scan event l�
 - [`JourneyHistoryDbInitializer.cs:47-59`](src/AutoJMS/FullStack/LocalDb/JourneyHistoryDbInitializer.cs#L47) — bảng `journey_history` có `scan_type_name` và `raw_json`
 - [`WaybillJourneyJsonParser.cs:186`](src/AutoJMS/FullStack/Services/WaybillJourneyJsonParser.cs#L186) — response JMS có trường `code`, được giữ nguyên trong `raw_json`
 
-⇒ Task 7 thay thế hoàn toàn "Việc 1" của Antigravity.
+⇒ Task 7 thay thế hoàn toàn "Việc 1" của Antigravity. *(Cập nhật 08/09: Owner ký OD-A = A3 — client store cũng đang bị thiết kế cho biến mất, nên Task 7 bị huỷ luôn và OD-1 hoãn sang sau P4. Xem "Quyết định đã ký".)*
 
 ### PH-2 — Câu hỏi G6 đã có sẵn câu trả lời trong repo
 
@@ -78,11 +78,37 @@ Antigravity đề xuất *"Bật `pg_stat_statements` để DB tự thống kê 
 
 Ba quyết định này chặn Task 6 và Task 7. Task 1→5 chạy được ngay, không cần chờ.
 
+> **ĐÃ KÝ 2026-09-08.** OD-A = **A3** · OD-B = **B1** · OD-C = **C1**. Chi tiết ngay dưới bảng.
+
 | Mã | Nội dung | Lựa chọn | Khuyến nghị |
 |---|---|---|---|
 | **OD-A** | Nguồn bằng chứng OD-1 (xem PH-1) | **A1.** Đọc `journey_history.db` trên máy trạm bằng `sqlcipher` CLI + khoá DPAPI (khoá hiện ra trên màn hình operator một lần).<br>**A2.** Đổi tên DB cũ, chạy app với `AUTOJMS_DB_ENCRYPTION=0` để tạo cache plaintext mới, thu thập ≥14 ngày rồi đọc bằng `sqlite3`.<br>**A3.** Hoãn OD-1 sang sau P4, P1 chạy với `jms_event_policies` rỗng. | **A1 nếu DB hiện đang plaintext** (Task 7 Step 1 sẽ biết); nếu đã mã hoá thì **A2**, vì A1 buộc phải xử lý khoá mã hoá trần. A3 là lối thoát cuối — nó đẩy rủi ro xoá nhầm dữ liệu sang P6. |
 | **OD-B** | Khôi phục HTTPS staging (xem PH-2) | **B1.** Trỏ lại `dev.jmsauto.online` + Caddy ACME như cấu hình 26/08.<br>**B2.** Ký waiver 3.3/3.4 cho staging. | **B1.** Hostname đã phân giải đúng VPS, cấu hình đã từng chạy — chi phí gần bằng 0. Waiver là trả tiền để mất bằng chứng. |
 | **OD-C** | Bộ đo tải cho G7/G8 | **C1.** Cho phép commit một harness đo tải vào `backend/datahub/tests/baseline_load.py`, được review như code thường.<br>**C2.** Đánh dấu G7/G8 là **NOT MEASURED**, hoãn sang P7. | **C1.** Baseline đo **sau** khi P1 đổi schema thì vô giá trị — không còn mốc để so. Nhưng đây là ngoại lệ với luật "không script mới" nên phải do Owner ký, không tự quyết. Nếu Owner chọn C2 thì bỏ Task 6, ghi thẳng `NOT MEASURED` vào báo cáo — **tuyệt đối không** ghi lại số cũ. |
+
+---
+
+## Quyết định đã ký — 2026-09-08
+
+**OD-A = A3 — hoãn OD-1 sang sau P4.** Owner không chọn A1 hay A2 mà bác bỏ tiền đề của cả hai:
+
+> *"Mục tiêu là loại bỏ lưu trữ dữ liệu trên máy client nên sẽ không tồn tại `journey_history.db`."*
+
+Hai bằng chứng độc lập cùng chỉ về A3:
+1. **Kiểm chứng trên máy trạm (08/09):** `C:\AutoJMS\` là bản cài Velopack thật, `AppData\` tồn tại nhưng **không có thư mục `FullStack\`**; tìm khắp C: và D: không ra file `journey_history.db` nào. Nhánh A1 không có đối tượng để đọc.
+2. **Định hướng kiến trúc của Owner:** file đó đang bị thiết kế cho biến mất, nên nhánh A2 (thu thập plaintext ≥14 ngày trên máy trạm) là đầu tư vào một kho dữ liệu sắp bị gỡ.
+
+Hệ quả bắt buộc phải ghi vào báo cáo Task 8:
+- **G1 = FAIL có chủ đích.** Không ai ký OD-1 trong P0. Không được ghi lại 2 dòng `98/110` do `smoke-test.sh` sinh ra như thể là từ vựng thật (đó chính là lỗi B1).
+- **Bỏ Task 7.** Không tạo `backend/datahub/tests/od1_scan_vocabulary_client.sql` — nó là trình đọc cho một DB sẽ không tồn tại, commit vào repo PUBLIC là commit code chết.
+- **P1 chạy với `jms_event_policies` rỗng.** Rủi ro dồn sang **P6**: không có danh sách terminal scan code đã ký thì không được phép bật purge projection. P6 phải coi đây là điều kiện chặn.
+- `backend/datahub/tests/od1_scan_vocabulary.sql` (đã commit ở `3b11163`) giữ nguyên — nó là công cụ OD-1 **duy nhất còn giá trị**, và chỉ chạy được sau khi P4 mở đường ghi `waybill_scan_events`.
+
+**OD-B = B1 — khôi phục HTTPS + domain.** Task 2 chạy. `--base https://dev.jmsauto.online` ở Task 4 và Task 6 giữ nguyên như đã viết.
+
+**OD-C = C1 — cho phép commit harness đo tải.** Task 6 chạy. `backend/datahub/tests/baseline_load.py` được commit vào repo và review như code thường; **không** tạo trên VPS rồi xoá. Đây là ngoại lệ duy nhất với luật "không viết script mới", do Owner ký đè.
+
+**Quyền thực thi:** Owner cho phép subagent tự trị chạy toàn bộ thao tác hạ tầng trên VPS, kể cả `docker compose down -v`, sửa `.env.staging` và restart stack.
 
 ---
 
@@ -92,8 +118,8 @@ Ba quyết định này chặn Task 6 và Task 7. Task 1→5 chạy được nga
 |---|---|---|
 | `backend/vps/VPS_STATUS_REPORT.private.md` | sửa (untracked, gitignored) | Nơi duy nhất chứa IP/định danh VPS |
 | `backend/vps/VPS_STATUS_REPORT.md` | sửa (tracked, đã redact) | Ghi nhận việc hạ cấp HTTPS và khôi phục |
-| `backend/datahub/tests/od1_scan_vocabulary_client.sql` | tạo mới | Bản sinh đôi SQLite của query OD-1, chỉ đọc, chạy trên `journey_history.db` |
-| `backend/datahub/tests/baseline_load.py` | tạo mới — **chỉ khi Owner ký OD-C = C1** | Harness đo tải duy trì, đa device, có pacing |
+| `backend/datahub/tests/od1_scan_vocabulary_client.sql` | **KHÔNG tạo** — OD-A = A3 | Đã huỷ: `journey_history.db` đang bị thiết kế cho biến mất, trình đọc nó là code chết |
+| `backend/datahub/tests/baseline_load.py` | tạo mới — OD-C = C1 **đã ký 08/09** | Harness đo tải duy trì, đa device, có pacing |
 | `docs/review/p0-report-2026-09-07.md` | tạo mới | Báo cáo P0 cuối cùng, verdict cơ học từng gate |
 | `backend/datahub/tests/od1_scan_vocabulary.sql` | **không đổi** | Đã commit ở `3b11163`; giữ nguyên cho lần chạy sau P4 |
 | `backend/datahub/docker-compose.yml` | **không đổi** | PH-3 loại bỏ lý do phải sửa file này |
@@ -431,7 +457,9 @@ Expected: log có dòng dạng `duration: 25x.xxx ms  statement: SELECT pg_sleep
 **Files:**
 - Create: `backend/datahub/tests/baseline_load.py`
 
-> **Task này chỉ chạy khi Owner ký OD-C = C1.** Nếu OD-C = C2: bỏ toàn bộ Task 6 **trừ Step 9** — vẫn phải chạy Step 9 để hoàn tác cấu hình log của Task 5, nếu không `log_min_duration_statement = 0` sẽ ghi log vô hạn và làm đầy đĩa. Sau đó sang Task 7 và ghi `G7/G8 = NOT MEASURED — hoãn sang P7 theo OD-C` vào báo cáo.
+> **OD-C = C1, Owner ký 08/09 — task này CHẠY, và `baseline_load.py` được commit vào repo để review như code thường** (không tạo trên VPS rồi xoá).
+>
+> ⚠️ **Step 9 là bắt buộc dù task kết thúc thế nào.** Nó hoàn tác cấu hình log mà Task 5 bật; nếu bỏ, `log_min_duration_statement = 0` sẽ ghi log vô hạn và làm đầy đĩa VPS. Nếu task hỏng giữa chừng, vẫn phải chạy Step 9 bằng tay trước khi báo cáo.
 
 **Interfaces:**
 - Consumes: DB sạch (Task 3), HTTPS (Task 2), log duration (Task 5).
@@ -706,7 +734,13 @@ Expected: `No such file or directory`.
 **Files:**
 - Create: `backend/datahub/tests/od1_scan_vocabulary_client.sql`
 
-> **Task này chỉ chạy sau khi Owner ký OD-A.** Nếu OD-A = A3, bỏ Task 7 và ghi `OD-1 = HOÃN SAU P4` vào báo cáo.
+> ## ⛔ TASK NÀY ĐÃ BỊ HUỶ — OD-A = A3, ký 2026-09-08
+>
+> **Không thực thi bất kỳ step nào bên dưới. Không tạo `od1_scan_vocabulary_client.sql`.**
+> Owner chốt rằng `journey_history.db` sẽ không tồn tại (mục tiêu bỏ lưu trữ dữ liệu ở máy client), và
+> kiểm chứng ngày 08/09 xác nhận máy trạm hiện không có file đó. Toàn bộ nội dung dưới đây giữ lại
+> làm hồ sơ vì sao P0 không ký được OD-1 — **đó là tài liệu, không phải việc cần làm.**
+> Task 8 ghi `OD-1 = HOÃN SAU P4`, `G1 = FAIL có chủ đích`, và cảnh báo P6 không được bật purge.
 
 **Interfaces:**
 - Consumes: `%UserDataDir%\FullStack\journey_history.db` trên máy trạm.
@@ -882,7 +916,7 @@ Mỗi gate ghi **verdict + bằng chứng + giới hạn của bằng chứng**.
 
 | Gate | Verdict | Bằng chứng | Giới hạn của bằng chứng |
 |---|---|---|---|
-| G1 OD-1 evidence | | Task 7 Step 5, `span_days`, số mã phân biệt | Lấy từ client store; DataHub không thể có dữ liệu này trước P4 |
+| G1 OD-1 evidence | **FAIL (có chủ đích)** | Không có. OD-A = A3 ký 08/09: client store đang bị thiết kế cho biến mất, DataHub không thể chứa scan event trước P4 | Không tồn tại nguồn nào có từ vựng scan thật ở thời điểm P0. **Không** dùng 2 dòng `98/110` của smoke-test làm bằng chứng |
 | G2 Preflight | PASS | Task 3 Step 5, 9/9 check | DB greenfield: chứng minh schema khớp, không chứng minh migration chạy được trên dữ liệu có sẵn |
 | G3 Backup | | Task 4 Step 2, tên + kích thước file | |
 | G4 Restore | | Task 4 Step 3, `real` time | |
@@ -897,8 +931,9 @@ Mỗi gate ghi **verdict + bằng chứng + giới hạn của bằng chứng**.
 
 ## Khuyến nghị ký
 - **OD-2** (horizon retention) và **OD-6** (mốc tính terminal retention): ký được — cả hai là quyết định chính sách, không phụ thuộc bằng chứng còn thiếu. OD-6 khuyến nghị Option B (`server observed time`) để terminal đến muộn không bị purge tức thì.
-- **OD-1**: chỉ ký khi Task 7 cho `span_days ≥ 14` và mục 0.3 cho ứng viên terminal có `pct_of_settled` rõ rệt.
-- **P1 vẫn 🔒 KHOÁ** cho tới khi cả ba chữ ký hoàn tất.
+- **OD-1**: **không ký được trong P0.** OD-A = A3. Hoãn tới sau P4, khi `waybill_scan_events` thật sự nhận được dữ liệu và `od1_scan_vocabulary.sql` chạy có nghĩa. Điều kiện ký khi đó vẫn là `span_days ≥ 14` và ứng viên terminal có `pct_of_settled` rõ rệt.
+- **Chuyển cảnh báo sang P6:** không có OD-1 đã ký thì **không được bật purge projection**. P1 chạy với `jms_event_policies` rỗng là chấp nhận được; P6 xoá dữ liệu dựa trên bảng rỗng thì không.
+- **P1 vẫn 🔒 KHOÁ** cho tới khi Owner ký OD-2 và OD-6 trên báo cáo này. OD-1 không còn là điều kiện mở P1 (nó chuyển thành điều kiện mở P6).
 ```
 
 - [ ] **Step 2: Quét bí mật trước khi commit**
@@ -927,9 +962,10 @@ cd "D:/v1.2605.2(new-test)" && git add docs/review/p0-report-2026-09-07.md && gi
 
 ## Thứ tự chạy
 
-- **Chạy ngay, không cần chờ Owner:** Task 1 → Task 2 → Task 3 → Task 4 → Task 5
-- **Chờ OD-C:** Task 6
-- **Chờ OD-A:** Task 7 (chạy song song được với Task 2→6, vì nó ở máy trạm, không đụng VPS)
-- **Cuối cùng:** Task 8
+Sau khi ký OD-A/OD-B/OD-C ngày 08/09, thứ tự là một chuỗi tuyến tính, không còn nhánh chờ:
 
-Task 7 nhánh A2 cần **≥ 14 ngày** thu thập dữ liệu — nếu Owner chọn nhánh đó thì đó là đường găng của toàn bộ P0. Nên chốt OD-A sớm nhất có thể.
+**Task 1 → Task 2 → Task 3 → Task 4 → Task 5 → Task 6 → Task 8.**
+
+- Task 2 phải xong trước Task 4 và Task 6: cả hai gọi `--base https://dev.jmsauto.online`, URL đó chỉ tồn tại sau khi Task 2 dựng lại TLS.
+- Task 5 (bật `log_min_duration_statement = 0`) phải nằm ngay trước Task 6, và **Step 9 của Task 6 tắt nó đi** — nếu Task 6 vì lý do gì đó không chạy tới Step 9, phải tắt bằng tay, nếu không log sẽ làm đầy đĩa.
+- **Task 7: BỎ.** OD-A = A3.
