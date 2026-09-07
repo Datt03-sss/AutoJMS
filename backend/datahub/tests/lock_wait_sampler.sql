@@ -1,0 +1,173 @@
+-- lock_wait_sampler.sql — 5 Hz pg_locks sampler for the P0 G7/G8 baseline, plus the
+-- positive control that proves it can see anything at all.
+--
+-- This file produced half of the published P0 lock numbers (task-6-report §12.6). It
+-- took THREE iterations to become an instrument instead of a decoration, and it lived
+-- only as a scratch file on a staging host that has since been wiped. It is committed
+-- here so the next person inherits the working version and the three traps, rather
+-- than re-deriving all of them.
+--
+-- What it measures: how many backends in this database are waiting on a lock right
+-- now, sampled every 200 ms. It complements the PostgreSQL log, which only records a
+-- wait once it exceeds deadlock_timeout — a 100 ms observation floor in the baseline
+-- runs. Waits shorter than that exist only here.
+--
+-- ============================================================================
+-- THREE DEFECTS FOUND IN THIS SAMPLER. ALL THREE PRODUCED THE IDENTICAL OUTPUT:
+--   samples_with_waiter = 0
+-- NONE OF THEM WAS SELF-REVEALING. Each looked exactly like a healthy, uncontended
+-- system, and two of them were believed for a full round of measurements.
+-- ============================================================================
+--
+-- DEFECT 1 — TIMING. The sampler is started before the load, so it must still be
+-- running while the load runs. In the first pass it was launched with a command that
+-- did not return when it appeared to, and the harness spends ~72 s enrolling devices
+-- before it emits a single request; the sampler had already exited when the load
+-- began. Overlap was 0 seconds. Its zeros described an idle system, truthfully, and
+-- were read as "no contention under load". Mitigation: launch the sampler in the
+-- SAME command as the load with a fixed delay, and afterwards check the first and
+-- last clock_timestamp() in the output against the load window. Do not assume overlap
+-- — compute it.
+--
+-- DEFECT 2 — PREDICATE. The original filter was:
+--     WHERE NOT l.granted AND l.relation = 'site_change_counters'::regclass
+-- Row-level contention does not appear as a lock on the relation. A backend blocked
+-- on a row already locked by another transaction waits on ShareLock on transactionid,
+-- and for that locktype pg_locks.relation IS NULL. NULL = <oid> is NULL, never true,
+-- so row-level contention was STRUCTURALLY invisible: 26 of the 27 waits the server
+-- log recorded in that window could not have matched the predicate under any load.
+-- Mitigation: do not filter by relation. Count every ungranted lock in this database
+-- and let the server log attribute it to an object.
+--
+-- DEFECT 3 — LOOP STRUCTURE. This one survived the fix for defect 2 and is the
+-- subtlest of the three. The sampler looped with generate_series and pg_sleep(0.2),
+-- carrying the two measurements as uncorrelated scalar subqueries in the target list.
+-- Because those subqueries do not reference the series, the planner hoists them into
+-- InitPlans, which are evaluated ONCE before the first row is emitted:
+--     Function Scan on generate_series
+--       InitPlan 1 (returns $0)  ->  Aggregate  ->  Hash Join ... pg_lock_status ...
+--       InitPlan 2 (returns $1)  ->  Aggregate  ->  Hash Join ... pg_lock_status ...
+-- clock_timestamp() and pg_sleep() are volatile and DO re-run per row, so the output
+-- had 700 rows with a plausibly advancing timestamp and the correct wall-clock span.
+-- It looked like 700 samples. It carried ONE, taken before the load started. The
+-- giveaway that nobody looked for: 700 rows of exactly 0|0 with no variance at all.
+--   A RELATED TRAP, avoided by the same fix: pg_stat_activity is cached per
+--   transaction (pgstat_read_current_status()), so ANY loop that stays inside one
+--   transaction — including a PL/pgSQL DO block, which is the obvious "fix" for the
+--   InitPlan problem — re-reads the same frozen snapshot and reproduces the identical
+--   symptom for a completely different reason.
+-- Mitigation: \watch. Each iteration is a separate statement in its own implicit
+-- transaction, which defeats both the InitPlan hoist and the stats cache.
+--
+-- ============================================================================
+-- MANDATORY: ANY future use of this sampler MUST run the positive control in
+-- section 2 alongside it. Three independent defects in one instrument all reported
+-- "no contention", and no amount of reading the SQL distinguished a quiet system
+-- from a blind one. A zero from this sampler means nothing unless a control run in
+-- comparable conditions returns non-zero. The control uses advisory locks only and
+-- touches no table data.
+-- ============================================================================
+--
+-- Requires psql 16+ for the named \watch parameters (postgres:16-alpine in
+-- docker-compose.yml). On psql 15 and older, use bare `\watch 0.2` and stop it by
+-- hand or with timeout(1) — the sampler query itself is unchanged.
+
+
+-- ============================================================================
+-- SECTION 1 — THE SAMPLER (this is what `psql -f` runs)
+-- ============================================================================
+-- 700 samples x 200 ms = 140 s, which covers a 120 s load run with margin at both
+-- ends. Run it against the same database the load is hitting:
+--
+--   docker compose --env-file <env> exec -T postgres \
+--     psql -U <db_user> -d <db_name> -At -F"|" -f - < lock_wait_sampler.sql \
+--     > /tmp/lockwait-<label>.log 2>&1
+--
+-- Aggregate afterwards (samples | samples_with_waiter | max observed):
+--
+--   awk -F'|' '{n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3} \
+--              END {print "samples="n, "samples_with_waiter="w+0, "max_wait_ms="m+0}' \
+--     /tmp/lockwait-<label>.log
+--
+-- Reading the columns honestly:
+--   waiting      number of backends in this database holding an UNGRANTED lock at the
+--                instant of the sample. Excludes this sampler's own backend.
+--   max_wait_ms  clock_timestamp() - query_start, i.e. the AGE OF THE STATEMENT, not
+--                the age of the wait. A statement can run for a while before it starts
+--                waiting, so this is an UPPER BOUND on wait time and will read higher
+--                than the server log's figure for the same event. That is consistent,
+--                not contradictory. A 0.0 means the sample caught a waiter in the
+--                instant its statement began.
+--
+-- statement_timeout is disabled because the session deliberately runs for 140 s.
+SET statement_timeout = 0;
+\pset title ''
+SELECT clock_timestamp() AS ts,
+       (SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+         WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS waiting,
+       (SELECT coalesce(max(EXTRACT(epoch FROM clock_timestamp() - a.query_start) * 1000), 0)
+          FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+         WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS max_wait_ms
+\watch i=0.2 c=700
+
+
+-- ============================================================================
+-- SECTION 2 — POSITIVE CONTROL (MANDATORY, run alongside section 1)
+-- ============================================================================
+-- Why this is a shell block and not more SQL in this file: a positive control needs
+-- real lock contention, which needs at least two CONCURRENT sessions plus the sampler
+-- as a third. One `psql -f` script is one session, so it cannot manufacture the
+-- condition it is meant to detect. Copy the block below, strip the leading `-- `, and
+-- fill in the three placeholders.
+--
+-- It is safe on a live database: pg_advisory_lock takes a lock in a namespace the
+-- application does not use, on an arbitrary key, and reads or writes NO table data.
+-- The holder releases after 9 s and both sessions exit.
+--
+-- Expected result, and the whole point: the corrected sampler reports a non-zero
+-- samples_with_waiter, and max_wait_ms climbs roughly linearly while the waiter is
+-- blocked. When this control was run against both versions under identical
+-- conditions, the original generate_series sampler saw 0 of 60 samples and the
+-- \watch sampler saw 35 of 60 — from the same contention, at the same moment.
+-- IF THE CONTROL RETURNS ZERO, THE SAMPLER IS BLIND AND EVERY ZERO IT PRODUCED IN
+-- THAT SESSION IS UNINTERPRETABLE. Fix the instrument before reporting anything.
+--
+-- ----------------------------------------------------------------------------
+-- PSQL='docker compose --env-file <env> exec -T postgres psql -U <db_user> -d <db_name>'
+-- KEY=918273645          # arbitrary; any bigint the application never uses
+--
+-- # session A — holds the advisory lock for 9 s
+-- $PSQL -At -c "SELECT pg_advisory_lock($KEY);" \
+--              -c "SELECT pg_sleep(9);" \
+--              -c "SELECT pg_advisory_unlock($KEY);" &
+--
+-- # session C — the sampler under test, 60 samples x 200 ms = 12 s, started now so it
+-- #             is already running when the waiter blocks. Fed on stdin, not with -c:
+-- #             \watch re-runs the previous query buffer, which a separate -c does not
+-- #             leave behind.
+-- $PSQL -At -F"|" -f - > /tmp/pc-sampler.log 2>&1 <<'SQL' &
+-- SET statement_timeout = 0;
+-- \pset title ''
+-- SELECT clock_timestamp() AS ts,
+--        (SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+--          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS waiting,
+--        (SELECT coalesce(max(EXTRACT(epoch FROM clock_timestamp() - a.query_start) * 1000), 0)
+--           FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+--          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS max_wait_ms
+-- \watch i=0.2 c=60
+-- SQL
+--
+-- # session B — asks for the same key ~2 s later and blocks until A releases
+-- sleep 2
+-- $PSQL -At -c "SELECT pg_advisory_lock($KEY);" -c "SELECT pg_advisory_unlock($KEY);"
+-- wait
+--
+-- awk -F'|' '{n++; if ($2+0 > 0) w++} END {print "samples="n, "samples_with_waiter="w+0}' \
+--   /tmp/pc-sampler.log
+-- # PASS: samples_with_waiter is clearly non-zero (~35 of 60 for a ~7 s block)
+-- # FAIL: 0 — the instrument is blind; do not report any lock conclusion from it
+-- ----------------------------------------------------------------------------
+--
+-- Housekeeping: /tmp/lockwait-*.log and /tmp/pc-sampler*.log are run artefacts. Copy
+-- the aggregated numbers into the report, then delete them; do not leave sampler
+-- output on a shared host.
