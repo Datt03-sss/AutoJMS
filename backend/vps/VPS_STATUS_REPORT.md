@@ -16,9 +16,9 @@
 
 | | |
 |---|---|
-| **Cập nhật lần cuối** | 26/08/2026 (UTC+7) |
+| **Cập nhật lần cuối** | 08/09/2026 (UTC+7) |
 | **Trạng thái** | ✅ Staging Operational (Healthy) |
-| **Người cập nhật** | Antigravity (VPS Infrastructure Operator) |
+| **Người cập nhật** | Claude Code (Task 2 — khôi phục HTTPS) |
 | **Bản đầy đủ** | `backend/vps/VPS_STATUS_REPORT.private.md` (ngoài git) |
 
 ---
@@ -104,6 +104,25 @@ retention **âm thầm ngừng chạy** chứ không làm sập API.
 - `dotnet build AutoJMS.slnx -c Release` → **0 Warning, 0 Error**
 - `dotnet test` → **365/365 PASS** (`AutoJMS.Tests` 186, `AutoJMS.DataHub.Api.Tests` 179)
 - `verify.ps1` → **OVERALL: ✅ ALL GATES PASSED**
+
+---
+
+## 8. Sự kiện: hồi quy HTTPS 07/09/2026 và khôi phục
+
+| Hạng mục | Nội dung |
+|---|---|
+| **Ngày xảy ra hồi quy** | 07/09/2026 — VPS bị dựng lại, mất toàn bộ cấu hình HTTPS từ bản 26/08 |
+| **Nguyên nhân gốc** | `.env.staging` trên VPS sau khi rebuild có `DATAHUB_PUBLIC_HOST=http://<IP>` — Caddy đọc giá trị đó làm site address và không thể xin chứng chỉ ACME cho địa chỉ IP |
+| **Hệ quả** | API chỉ phục vụ HTTP trần qua bare-IP; cổng 443 mở nhưng TLS không được kích hoạt; gates 3.3 và 3.4 fail |
+| **Khắc phục** | `DATAHUB_PUBLIC_HOST` đổi thành `dev.jmsauto.online` (hostname trần, không có scheme); `TLS_CONTACT_EMAIL` đặt thành địa chỉ hợp lệ; stack restart → Caddy hoàn tất HTTP-01 challenge |
+| **Ngày khôi phục** | 08/09/2026 (Task 2 — P0 remediation) |
+| **URL** | `https://dev.jmsauto.online` |
+| **Nhà cấp chứng chỉ** | Let's Encrypt (issuer: `C=US, O=Let's Encrypt, CN=YE1`) |
+| **Hết hạn chứng chỉ** | `Dec 6 16:20:37 2026 GMT` |
+| **Gate 3.3** | ✅ PASS — `curl` trả về `200 0` (`ssl_verify_result=0`) |
+| **Gate 3.4** | ✅ PASS — `subject=CN=dev.jmsauto.online`, `subjectAltName=DNS:dev.jmsauto.online` |
+| **Gate 3.1** | ✅ PASS — cổng 5432 vẫn không tiếp cận được từ internet sau restart |
+| **Gate 3.6** | ✅ PASS — `postgres` container chỉ bind `5432/tcp` nội bộ |
 
 ---
 
