@@ -25,6 +25,7 @@ secret gate's untracked-file pass still reads anything sitting in the tree.
 
 import argparse
 import json
+import os
 import re
 import statistics
 import sys
@@ -46,10 +47,10 @@ TS_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 
 
 def pct(values, q):
-    # Copied verbatim from baseline_load.py:306-307, where it is nested inside main() and so
-    # cannot be imported. It must stay identical: a different percentile method would make
-    # these numbers quietly incomparable with the published baselines in report section 5.
-    # If one changes, change both.
+    # Copied verbatim from the `pct` closure nested inside `main()` in baseline_load.py,
+    # where it cannot be imported. It must stay identical: a different percentile method
+    # would make these numbers quietly incomparable with the published baselines in report
+    # section 5. If one changes, change both.
     return round(statistics.quantiles(values, n=100)[q - 1], 1) if len(values) > 100 else None
 
 
@@ -68,11 +69,16 @@ def parse(lines):
         if not sql:
             continue
         pid = match.group("pid")
-        stamp = datetime.strptime(match.group("ts"), TS_FORMAT)
+        try:
+            stamp = datetime.strptime(match.group("ts"), TS_FORMAT)
+        except ValueError:
+            continue  # skip lines whose timestamp passes the regex but has impossible values
 
         if sql.startswith("BEGIN"):
-            # A second BEGIN without a COMMIT means the first transaction's end is not in
-            # this log; the later one wins and the earlier is counted as unclosed at the end.
+            # A second BEGIN on a PID that already has one open silently overwrites the
+            # earlier timestamp. The abandoned BEGIN is NOT individually counted anywhere;
+            # multiple unmatched BEGINs on the same PID still contribute only one entry
+            # to unclosed_transactions at the end.
             open_txn[pid] = stamp
         elif sql.startswith("COMMIT"):
             commits.append(float(match.group("ms")))
@@ -81,6 +87,8 @@ def parse(lines):
                 unpaired_commits += 1
             else:
                 transactions.append((stamp - began).total_seconds() * 1000.0)
+        elif sql.startswith("ROLLBACK"):
+            open_txn.pop(pid, None)  # close the transaction without recording a span
 
     return commits, transactions, unpaired_commits, len(open_txn)
 
@@ -104,18 +112,30 @@ def report(commits, transactions, unpaired_commits, unclosed):
             "transaction_* is the interval between a PID's BEGIN log line and its COMMIT log "
             "line; both timestamps mark statement COMPLETION, so the span excludes BEGIN's "
             "own duration and is a slight underestimate. Percentiles are None below 101 "
-            "samples, matching baseline_load.py. unpaired_commits and unclosed_transactions "
-            "count transactions straddling the ends of the log; a large value means the "
-            "capture window clipped the run and the percentiles cover a biased subset."
+            "samples, matching baseline_load.py. unpaired_commits counts COMMITs whose "
+            "matching BEGIN is not in this log window; unclosed_transactions counts BEGINs "
+            "whose COMMIT or ROLLBACK did not appear before the log ended."
         ),
     }
+
+
+def _check_no_match_warning(lines):
+    """Emit a warning to stderr if lines were present but none matched LINE_RE.
+
+    Stdout is not touched so the caller's JSON remains parseable.
+    """
+    if lines and not any(LINE_RE.match(line) for line in lines):
+        print(
+            "WARNING: the log contained lines but none matched the expected prefix "
+            "format '%m [%p] %a '. Check your postgresql.conf log_line_prefix.",
+            file=sys.stderr,
+        )
 
 
 class SelfTest(unittest.TestCase):
     FIXTURE = "fixtures/pg_log_sample.log"
 
     def fixture_lines(self):
-        import os
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)), *self.FIXTURE.split("/"))
         with open(path, encoding="utf-8") as handle:
             return handle.readlines()
@@ -141,6 +161,71 @@ class SelfTest(unittest.TestCase):
         self.assertEqual(4, len(commits))
         self.assertEqual(3, len(transactions))
 
+    def test_empty_app_name_lines_are_parsed_for_begin_and_commit(self):
+        # When %a is empty the prefix collapses to two consecutive spaces between ] and LOG:.
+        # Both a BEGIN/COMMIT pair (PID 8001) and a lone COMMIT (PID 8002, unpaired) on
+        # empty-%a lines must be recognised. If the regex is tightened to require a
+        # non-empty application_name token, all three lines miss: commit_samples drops to 0,
+        # transactions is empty, and unpaired drops to 0 -- all wrong.
+        lines = [
+            "2026-09-07 10:00:00.100 UTC [8001]  LOG:  duration: 0.030 ms  statement: BEGIN\n",
+            "2026-09-07 10:00:00.200 UTC [8001]  LOG:  duration: 1.500 ms  statement: COMMIT\n",
+            "2026-09-07 10:00:00.300 UTC [8002]  LOG:  duration: 2.000 ms  statement: COMMIT\n",
+        ]
+        commits, transactions, unpaired, unclosed = parse(lines)
+        self.assertEqual(2, len(commits))          # two COMMITs, both on empty-%a lines
+        self.assertEqual(1, len(transactions))     # one paired BEGIN/COMMIT span
+        self.assertAlmostEqual(100.0, transactions[0], places=1)  # 100 ms span
+        self.assertEqual(1, unpaired)              # PID 8002's COMMIT has no BEGIN
+        self.assertEqual(0, unclosed)
+
+    def test_report_full_output_matches_fixture_expectations(self):
+        # Exercises every wiring path in report(): commit source vs transaction source,
+        # max() vs min(), correct percentile quantile, unpaired vs unclosed counters, and
+        # the presence and content of the notes key. Six mis-wiring mutants that survive the
+        # empty-log test all fail here.
+        result = report(*parse(self.fixture_lines()))
+        self.assertEqual({
+            "commit_samples": 4,
+            "commit_p50_ms": None,
+            "commit_p95_ms": None,
+            "commit_p99_ms": None,
+            "commit_max_ms": 5.5,
+            "transaction_samples": 3,
+            "transaction_p50_ms": None,
+            "transaction_p95_ms": None,
+            "transaction_p99_ms": None,
+            "transaction_max_ms": 200.0,
+            "unpaired_commits": 1,
+            "unclosed_transactions": 1,
+            "notes": (
+                "commit_* is the duration PostgreSQL reports for the COMMIT statement itself. "
+                "transaction_* is the interval between a PID's BEGIN log line and its COMMIT log "
+                "line; both timestamps mark statement COMPLETION, so the span excludes BEGIN's "
+                "own duration and is a slight underestimate. Percentiles are None below 101 "
+                "samples, matching baseline_load.py. unpaired_commits counts COMMITs whose "
+                "matching BEGIN is not in this log window; unclosed_transactions counts BEGINs "
+                "whose COMMIT or ROLLBACK did not appear before the log ended."
+            ),
+        }, result)
+
+    def test_rollback_closes_transaction_without_recording_span(self):
+        # BEGIN then ROLLBACK must yield unclosed=0, not unclosed=1. The old behaviour
+        # conflated a rolled-back transaction with a capture-window clip.
+        lines = [
+            "2026-09-07 11:00:00.100 UTC [9001] TestApp LOG:  duration: 0.025 ms  statement: BEGIN\n",
+            "2026-09-07 11:00:00.200 UTC [9001] TestApp LOG:  duration: 0.850 ms  statement: ROLLBACK\n",
+            # Paired transaction on a different PID to confirm it is unaffected
+            "2026-09-07 11:00:00.300 UTC [9002] TestApp LOG:  duration: 0.020 ms  statement: BEGIN\n",
+            "2026-09-07 11:00:00.400 UTC [9002] TestApp LOG:  duration: 1.000 ms  statement: COMMIT\n",
+        ]
+        commits, transactions, unpaired, unclosed = parse(lines)
+        self.assertEqual([1.000], commits)          # ROLLBACK is not a COMMIT
+        self.assertEqual(1, len(transactions))      # only the 9002 BEGIN/COMMIT pair
+        self.assertAlmostEqual(100.0, transactions[0], places=1)
+        self.assertEqual(0, unpaired)
+        self.assertEqual(0, unclosed)               # ROLLBACK closed 9001's open transaction
+
     def test_percentiles_are_none_below_the_sample_floor(self):
         self.assertIsNone(pct([1.0, 2.0, 3.0], 95))
 
@@ -148,11 +233,70 @@ class SelfTest(unittest.TestCase):
         # Fixed expected values, not a re-derivation: asserting round(quantiles(...)[94], 1)
         # would compare this function against its own body and pass for any formula. 201
         # evenly spaced points under the exclusive method give p50 = 101.0 and p95 = 191.9.
-        # If baseline_load.py's pct ever stops producing these, the two have diverged and
-        # the numbers are no longer comparable with report section 5.
         values = [float(n) for n in range(1, 202)]
         self.assertEqual(101.0, pct(values, 50))
         self.assertEqual(191.9, pct(values, 95))
+        # Bidirectional check: verify this copy's pct body is identical to baseline_load.py's
+        # so the two stay in sync. Uses ast.unparse so whitespace differences don't matter.
+        # Skips gracefully when baseline_load.py is absent or Python < 3.9 (no ast.unparse).
+        import ast
+        import pathlib
+        baseline_path = pathlib.Path(__file__).parent / "baseline_load.py"
+        if not baseline_path.exists() or not hasattr(ast, "unparse"):
+            return
+        with open(baseline_path, encoding="utf-8") as fh:
+            baseline_tree = ast.parse(fh.read())
+        with open(__file__, encoding="utf-8") as fh:
+            this_tree = ast.parse(fh.read())
+
+        def _find_nested(tree, outer, inner):
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == outer:
+                    for child in ast.walk(node):
+                        if isinstance(child, ast.FunctionDef) and child.name == inner:
+                            return child
+            return None
+
+        def _find_top(tree, name):
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef) and node.name == name:
+                    return node
+            return None
+
+        baseline_pct = _find_nested(baseline_tree, "main", "pct")
+        this_pct = _find_top(this_tree, "pct")
+        if baseline_pct is None or this_pct is None:
+            return  # skip if either copy has moved
+        self.assertEqual(
+            ast.unparse(baseline_pct.body),
+            ast.unparse(this_pct.body),
+            "pct body diverged from baseline_load.py — update both copies together",
+        )
+
+    def test_no_match_emits_warning_to_stderr(self):
+        # A log with unrecognised lines emits a clear WARNING to stderr; stdout stays clean.
+        import io
+        lines = ["not a postgres log line\n", "also not a log line\n"]
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            _check_no_match_warning(lines)
+            output = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+        self.assertIn("WARNING", output)
+        self.assertIn("log_line_prefix", output)
+
+    def test_no_match_warning_silent_on_empty_input(self):
+        import io
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            _check_no_match_warning([])
+            output = sys.stderr.getvalue()
+        finally:
+            sys.stderr = old_stderr
+        self.assertEqual("", output)
 
     def test_report_is_json_serialisable_on_an_empty_log(self):
         payload = report([], [], 0, 0)
@@ -175,9 +319,15 @@ def main():
     if not args.log:
         parser.error("--log is required unless --self-test is given")
 
-    with open(args.log, encoding="utf-8", errors="replace") as handle:
-        commits, transactions, unpaired, unclosed = parse(handle)
+    try:
+        with open(args.log, encoding="utf-8", errors="replace") as handle:
+            lines = list(handle)
+    except FileNotFoundError:
+        print(f"error: log file not found: {args.log}", file=sys.stderr)
+        sys.exit(1)
 
+    commits, transactions, unpaired, unclosed = parse(lines)
+    _check_no_match_warning(lines)
     print(json.dumps(report(commits, transactions, unpaired, unclosed), indent=2))
 
 
