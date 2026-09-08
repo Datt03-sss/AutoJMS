@@ -50,6 +50,9 @@ public sealed class EnrollmentRepository(
         await using var siteReader = await siteCommand.ExecuteReaderAsync(cancellationToken);
         if (!await siteReader.ReadAsync(cancellationToken))
         {
+            // Npgsql allows one command in progress per connector, so the reader has to be closed
+            // before the rollback can issue its own command — same reason as the success path below.
+            await siteReader.DisposeAsync();
             await transaction.RollbackAsync(cancellationToken);
             return Failure(StatusCodes.Status404NotFound, ApiProblemCodes.NotFound, "The requested site has not been provisioned.");
         }
