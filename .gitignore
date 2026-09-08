@@ -77,6 +77,15 @@ firebase-adminsdk*.json
 *.dump
 *.sql.gz
 
+# Per-machine agent and release-verification scratch. Neither is source: `_verify/` holds
+# Velopack hash manifests and update XML written by release verification, and `.agents/`
+# holds CLI-installed skills plus orchestrator run scratch. Both were untracked AND
+# unignored, so a single `git add .` would have committed them to a PUBLIC repo. Same
+# failure mode as the dump rule above — the fix is keeping them out of the tree's index,
+# not hoping the secret gate catches them.
+_verify/
+.agents/
+
 # OS
 Thumbs.db
 .DS_Store
