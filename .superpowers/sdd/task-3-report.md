@@ -217,3 +217,151 @@ Notes text changed intentionally (Important 3 requires it). The parenthetical pi
 **4. Mutation transcript:** see Important 1 section above.
 
 **5. Harness:** `OVERALL: ✅ ALL GATES PASSED` (Build, Tests, NodeTests, Secrets, Structure).
+
+---
+
+## Fix wave 2
+
+Commit: `b7a49f2` — `fix(datahub): close 2 surviving mutants and 6 minor defects in pg_log_metrics`
+
+### Issues addressed
+
+**I-1 — two surviving mis-wiring mutants**
+
+Added `test_report_wiring_above_floor_catches_quantile_and_counter_swaps`. Uses 201 commit
+values and 151 transaction values (above the 100-sample percentile floor) so percentiles are
+real numbers: commit p95=191.9, p99=200.0 (pre-computed via `statistics.quantiles`); transaction
+p95=144.4, p99=150.5. Uses `unpaired_commits=2, unclosed_transactions=7` so a counter swap
+is visible. Both previously-surviving mutants now die: (a) commit_p95_ms fed the p99 quantile
+produces 200.0 instead of 191.9; (b) swapped counters produce {unpaired:7, unclosed:2} instead
+of {unpaired:2, unclosed:7}.
+
+Mutation proof (scratch copy at `C:\Temp\pg_scratch\`, deleted after run):
+
+Mutant (a) — `"commit_p95_ms": pct(commits, 99)`:
+```
+Ran 19 tests in 0.014s
+FAILED (failures=1, errors=5)
+```
+
+Mutant (b) — `"unpaired_commits": unclosed, "unclosed_transactions": unpaired_commits`:
+```
+Ran 19 tests in 0.051s
+FAILED (failures=1, errors=5)
+```
+
+**I-2 — false notes string**
+
+Extracted `_NOTES` module-level constant. Corrected `unclosed_transactions` description from
+"BEGINs whose COMMIT or ROLLBACK did not appear before the log ended" (wrong: counts events,
+not PIDs) to "distinct PIDs still holding an open BEGIN at log end (multiple unmatched BEGINs
+on one PID count as one unclosed entry)" (true: counts per-PID). Both `report()` and
+`test_report_full_output_matches_fixture_expectations` now reference `_NOTES` — no duplication.
+
+**I-3 — `main()` buffered the whole file**
+
+Added `_LineCounter` class that wraps any iterable and tallies `.total` and `.matched` as lines
+stream through `__iter__`. `main()` now passes `_LineCounter(handle)` to `parse()` — O(1) memory
+regardless of file size. `_check_no_match_warning` signature changed to `(total_lines,
+matched_lines)` — no second pass over the data. Added `test_streaming_warning_fires_on_prefix_mismatch`
+and `test_streaming_warning_silent_on_matching_log` to pin the counting behaviour.
+
+**M-1 — silent false-pass in AST drift test**
+
+When `_find_nested` or `_find_top` returns `None` (anchor moved), the test now calls
+`self.fail(...)` instead of returning silently. Comment updated to name all three conditions:
+(1) file absent, (2) Python < 3.9 — legitimate skips; (3) anchor moved — defect, caught by fail.
+
+**M-2 — warning misattributed cause**
+
+`_check_no_match_warning` now names both `log_line_prefix` AND `log_min_duration_statement` in
+the warning text. `test_no_match_emits_warning_to_stderr` asserts both are present.
+
+**M-3 — imports buried inside test methods**
+
+`import ast`, `import io`, `import pathlib` moved to module-level imports. (Prior wave fixed
+`import os`; this wave caught the four recurrences introduced in the same commit.)
+
+**M-4 — untested error paths**
+
+Added `test_impossible_timestamp_is_skipped`: line with month=13 passes LINE_RE but fails
+strptime; the following valid line still contributes to `commits`, proving the except clause
+is inside the per-line loop. Added `test_missing_log_file_exits_with_code_1`: patches sys.argv,
+calls main(), catches SystemExit and asserts code==1.
+
+**M-5 — directory input traceback**
+
+Added `os.path.isdir` guard in `main()` that prints a clean error and calls `sys.exit(1)`
+before attempting `open()`. Added `test_directory_input_exits_with_code_1`.
+
+**M-6 — ROLLBACK asymmetry undocumented**
+
+`parse()` docstring now documents the asymmetry: ROLLBACK on a PID with no open BEGIN is
+silently dropped and does not increment any counter, unlike COMMIT (which increments
+`unpaired_commits`). Added `test_rollback_on_pid_with_no_open_transaction_is_silently_dropped`
+to pin the behaviour.
+
+**Report correction**
+
+Corrected the false claim in Fix wave 1 Important 2: changed "All six mis-wiring mutants …
+now fail this test" to accurately state that four mutants failed while the wrong-quantile and
+swapped-counter mutants survived.
+
+### Verification
+
+**1. Self-test (19 tests, all pass):**
+```
+test_commit_durations_are_every_commit_and_only_commits ... ok
+test_directory_input_exits_with_code_1 ... ok
+test_empty_app_name_lines_are_parsed_for_begin_and_commit ... ok
+test_impossible_timestamp_is_skipped ... ok
+test_missing_log_file_exits_with_code_1 ... ok
+test_no_match_emits_warning_to_stderr ... ok
+test_no_match_warning_silent_on_empty_input ... ok
+test_non_statement_lines_are_ignored_without_crashing ... ok
+test_percentiles_are_none_below_the_sample_floor ... ok
+test_percentiles_match_the_baseline_formula_above_the_floor ... ok
+test_report_full_output_matches_fixture_expectations ... ok
+test_report_is_json_serialisable_on_an_empty_log ... ok
+test_report_wiring_above_floor_catches_quantile_and_counter_swaps ... ok
+test_rollback_closes_transaction_without_recording_span ... ok
+test_rollback_on_pid_with_no_open_transaction_is_silently_dropped ... ok
+test_streaming_warning_fires_on_prefix_mismatch ... ok
+test_streaming_warning_silent_on_matching_log ... ok
+test_transaction_spans_pair_begin_to_commit_per_pid ... ok
+test_transactions_straddling_the_log_edges_are_counted_not_guessed ... ok
+
+Ran 19 tests in 0.022s
+OK
+```
+
+**2. End-to-end fixture run — all six pinned numeric fields identical:**
+```json
+{
+  "commit_samples": 4,
+  "commit_p50_ms": null,
+  "commit_p95_ms": null,
+  "commit_p99_ms": null,
+  "commit_max_ms": 5.5,
+  "transaction_samples": 3,
+  "transaction_p50_ms": null,
+  "transaction_p95_ms": null,
+  "transaction_p99_ms": null,
+  "transaction_max_ms": 200.0,
+  "unpaired_commits": 1,
+  "unclosed_transactions": 1,
+  "notes": "... (updated per I-2; notes text changed by design)"
+}
+```
+
+**3. git diff --name-only:** `backend/datahub/tests/pg_log_metrics.py` and
+`.superpowers/sdd/task-3-report.md` (two files only).
+
+**4. Mutation proof:** see I-1 section above — both mutants now produce FAILED.
+
+**5. Harness:** `OVERALL: ✅ ALL GATES PASSED` (Build, Tests, NodeTests, Secrets, Structure).
+
+**6. Memory:** `main()` no longer calls `list(handle)`. The code path is
+`counter = _LineCounter(handle); parse(counter)` — `_LineCounter.__iter__` yields one line
+at a time, and Python's file iterator is already lazy, so peak resident memory is bounded by
+a single line's length regardless of file size.
