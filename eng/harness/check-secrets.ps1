@@ -145,7 +145,13 @@ $secretPatterns = @(
     @{ Name = 'Generic Secret Assignment'; Pattern = '(?i)(password|secret|apikey|api_key|access_token)\s*[=:]\s*["''][^"''\s]{8,}' }
 )
 
-$sourceExtensions = @('.cs', '.json', '.xml', '.config', '.yaml', '.yml', '.js', '.ts', '.ps1', '.md')
+# '.sql' is here because migrations are the most plausible place for someone to paste a real
+# connection string, and without it the `-notin $sourceExtensions` guard below skipped every
+# tracked .sql file — all six DataHub migrations included — in this pattern pass. Part 4 does
+# not compensate: it is INACTIVE
+# whenever no infra denylist is configured, which is the normal state on a fresh clone, so on
+# such a machine .sql had zero coverage from either pass.
+$sourceExtensions = @('.cs', '.json', '.xml', '.config', '.yaml', '.yml', '.js', '.ts', '.ps1', '.md', '.sql')
 
 # Defined here rather than inside part 4, which is where it used to live and where it is still
 # used. Part 4 only assigned it on the branch that HAS a denylist, so on a machine with no

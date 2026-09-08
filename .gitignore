@@ -68,6 +68,15 @@ firebase-adminsdk*.json
 *.backup
 *~
 
+# Database dumps. backup-postgres.ps1 takes an arbitrary -OutputDirectory, so one wrong path
+# plus `git add .` puts a full database dump in this PUBLIC repo — and a dump of production
+# carries every row, not a credential pattern, so eng/harness/check-secrets.ps1 would pass it.
+# `*.sql.gz` is the harder half: an archive cannot be usefully pattern-scanned at all (`.gz` is
+# in the gate's $binaryExtensions and is skipped by design), so keeping it OUT OF THE TREE is
+# the only control that works. A 34 KB dump was found inside a working tree during P0.
+*.dump
+*.sql.gz
+
 # OS
 Thumbs.db
 .DS_Store
