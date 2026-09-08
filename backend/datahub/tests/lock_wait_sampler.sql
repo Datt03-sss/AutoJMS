@@ -97,10 +97,13 @@
 --     /tmp/lockwait-<label>.log
 -- The NF>=3 guard skips lines that do not have three pipe-delimited fields: psql's
 -- command tag for SET statement_timeout=0 and any notices or errors merged via 2>&1
--- each land as a short line that increments n without the guard. This is why all three
--- published bulk runs report samples=701 against a 700-sample \watch run; the
--- samples_with_waiter and max_wait_ms columns are unaffected (short lines coerce their
--- empty fields to 0). A run with this corrected awk will report 700.
+-- each land as a short line that increments n without the guard. The three runs that
+-- published samples=701 are interactive-10, interactive-50, and the INVALID bulk-10 v1
+-- (http_409=309) -- all three from the generate_series iteration. The corrected \watch
+-- runs that produced the official bulk-10 and bulk-50 figures published exactly 700.
+-- So 701 never meant "701 samples were taken", and it is not a bulk-baseline number.
+-- samples_with_waiter and max_wait_ms are unaffected either way, because a short line
+-- coerces its empty fields to 0.
 --
 -- Reading the columns honestly:
 --   waiting      number of backends in this database holding an UNGRANTED lock at the
