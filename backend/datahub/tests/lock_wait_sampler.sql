@@ -2,10 +2,13 @@
 -- positive control that proves it can see anything at all.
 --
 -- This file produced the pg_locks half of the published P0 G7/G8 lock-wait baselines
--- for bulk-10 and bulk-50 only (measured 2026-09-07). The interactive-10 and
--- interactive-50 sampler figures came from the earlier iteration afflicted by defects 2
--- and 3 below; they are not reproducible by this corrected query, and for those two
--- runs the server log -- not the sampler -- is the trustworthy lock-wait evidence. It took
+-- for the runs the report calls `bulk-10 v2` and `bulk-50 v2`, and for those two only
+-- (measured 2026-09-07). Three earlier published runs -- interactive-10, interactive-50
+-- and `bulk-10 fenced` (the run with http_409=309, which is NOT the `bulk-10 v1` kept
+-- for comparison) -- came from the iteration afflicted by defects 2 and 3 below, and
+-- `bulk-10 v1` / `bulk-50 v1` from the iteration afflicted by defect 3. None of those
+-- five is reproducible by this corrected query, and for the two interactive runs the
+-- server log -- not the sampler -- is the trustworthy lock-wait evidence. It took
 -- THREE iterations to become an instrument instead of a decoration, and it lived only
 -- as a scratch file on a staging host that has since been wiped. It is committed here
 -- so the next person inherits the working version and the three traps, rather than
@@ -90,30 +93,59 @@
 --     psql -U <db_user> -d <db_name> -At -F"|" -f - < lock_wait_sampler.sql \
 --     > /tmp/lockwait-<label>.log 2>&1
 --
--- Aggregate afterwards (samples | samples_with_waiter | max observed):
+-- Aggregate afterwards (samples | samples_with_waiter | max statement age | max wait):
 --
---   awk -F'|' 'NF>=3 {n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3+0} \
---              END {print "samples="n+0, "samples_with_waiter="w+0, "max_wait_ms="m+0}' \
+--   awk -F'|' 'NF>=4 {n++; if ($2+0 > 0) w++; if ($3+0 > s) s=$3+0; if ($4+0 > m) m=$4+0} \
+--              END {print "samples="n+0, "samples_with_waiter="w+0, \
+--                         "max_stmt_age_ms="s+0, "max_wait_ms="m+0}' \
 --     /tmp/lockwait-<label>.log
--- The NF>=3 guard skips lines that do not have three pipe-delimited fields: psql's
--- command tag for SET statement_timeout=0 and any notices or errors merged via 2>&1
--- each land as a short line that increments n without the guard. The three runs that
--- published samples=701 are interactive-10, interactive-50, and the INVALID bulk-10 v1
--- (http_409=309) -- all three from the generate_series iteration. The corrected \watch
--- runs that produced the official bulk-10 and bulk-50 figures published exactly 700.
--- So 701 never meant "701 samples were taken", and it is not a bulk-baseline number.
--- samples_with_waiter and max_wait_ms are unaffected either way, because a short line
--- coerces its empty fields to 0.
+-- The NF>=4 guard skips lines that do not have four pipe-delimited fields. TWO
+-- INDEPENDENT sources produce such lines: psql's own command tag for the SET below, and
+-- anything on stderr that 2>&1 merges into the same file (notices, errors). Either one
+-- increments n without the guard; do not collapse them into one mechanism. It was NF>=3
+-- while the query had three columns -- a log from an older run needs the older guard.
+--
+-- Three published runs report samples=701 against a 700-iteration sampler: interactive-10,
+-- interactive-50, and `bulk-10 fenced` (http_409=309, the run the P0 report discards --
+-- NOT `bulk-10 v1`). All three are from the generate_series iteration and none used
+-- \watch, so 701 never meant "701 samples were taken". The two \watch runs (bulk-10 v2,
+-- bulk-50 v2) are published as 700 samples, but their aggregator output was never
+-- captured verbatim and the sampler file they ran from was deleted, so whether their raw
+-- log held 700 or 701 lines is an OPEN QUESTION -- see the P0 report, label 8. No verdict
+-- turns on it: samples_with_waiter and the max columns are unaffected either way, because
+-- a short line coerces its empty fields to 0.
 --
 -- Reading the columns honestly:
---   waiting      number of backends in this database holding an UNGRANTED lock at the
---                instant of the sample. Excludes this sampler's own backend.
---   max_wait_ms  clock_timestamp() - query_start, i.e. the AGE OF THE STATEMENT, not
---                the age of the wait. A statement can run for a while before it starts
---                waiting, so this is an UPPER BOUND on wait time and will read higher
---                than the server log's figure for the same event. That is consistent,
---                not contradictory. A 0.0 means the sample caught a waiter in the
---                instant its statement began.
+--   waiting          number of backends in this database holding an UNGRANTED lock at the
+--                    instant of the sample. Excludes this sampler's own backend.
+--   max_stmt_age_ms  clock_timestamp() - query_start, i.e. the AGE OF THE STATEMENT, not
+--                    the age of the wait. A statement can run for a while before it starts
+--                    waiting, so this is an UPPER BOUND on wait time and will read higher
+--                    than the server log's figure for the same event. That is consistent,
+--                    not contradictory. A 0.0 means the sample caught a waiter in the
+--                    instant its statement began. THIS is the column the P0 report
+--                    published under the name max_wait_ms; it was the only one that
+--                    existed then, and the name overstated what it measured.
+--   max_wait_ms      clock_timestamp() - pg_locks.waitstart, i.e. the ACTUAL AGE OF THE
+--                    WAIT. waitstart has existed since PostgreSQL 14 and this stack is
+--                    postgres:16-alpine, so it was available for the P0 runs and simply
+--                    was not used -- the P0 baseline bounds metric 1 instead of measuring
+--                    it for want of this one column. Unlike the server log, it has no
+--                    100 ms floor. Caveat from the PostgreSQL docs: waitstart can be NULL
+--                    for a very short interval after a wait begins even though granted is
+--                    false, so a sample that lands in that interval contributes 0 here
+--                    while still counting in `waiting`.
+--
+-- Both columns are kept: max_stmt_age_ms is what the four published P0 baselines contain,
+-- so dropping it would make the next run incomparable with them field-by-field, and their
+-- ratio is itself informative (how much of a statement's life was spent waiting).
+--
+-- THE LIMIT THAT SURVIVES BOTH COLUMNS: at 5 Hz this is a SAMPLE of waits, not a census,
+-- and a length-biased one -- a wait is observed with probability proportional to its
+-- duration, so short waits are systematically under-represented and a wait shorter than
+-- 200 ms can be missed entirely. Counts from this sampler are not incidence counts, and
+-- max over samples is a LOWER bound on the true maximum wait. A p50/p95 of wait duration
+-- still needs the server log (floored at deadlock_timeout) or a census instrument.
 --
 -- statement_timeout is disabled as a precaution. Under \watch each iteration is its own
 -- sub-millisecond statement in its own implicit transaction, so statement_timeout would
@@ -124,6 +156,9 @@ SELECT clock_timestamp() AS ts,
        (SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid)
          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS waiting,
        (SELECT coalesce(max(EXTRACT(epoch FROM clock_timestamp() - a.query_start) * 1000), 0)
+          FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+         WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS max_stmt_age_ms,
+       (SELECT coalesce(max(EXTRACT(epoch FROM clock_timestamp() - l.waitstart) * 1000), 0)
           FROM pg_locks l JOIN pg_stat_activity a USING (pid)
          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS max_wait_ms
 \watch i=0.2 c=700

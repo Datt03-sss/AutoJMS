@@ -30,14 +30,27 @@ bearing here and are asserted by the code below, not by hope:
     is the successful one, and both are printed so neither can be mistaken for the other.
 
 Provenance note (2026-09-07): the four published P0 baselines -- interactive-10,
-interactive-50, bulk-10, and bulk-50 -- were produced by an earlier version of this
-file. This version differs in three respects that affect the numbers: (1) duration_seconds
-was up to one full interval too high in that version, so the published sustained_rps
-understates the loading-window rate by roughly 4 % at concurrency 50; (2) there was no
-ok_rps field and the note string was narrower; (3) lease renewals went out as a burst
-rather than a spread floor, so the latency samples were perturbed differently. A re-run
-of this file will not reproduce the published figures, and that is intended -- the
-instrument was corrected without re-measuring.
+interactive-50, bulk-10 v2, and bulk-50 v2 -- were produced by earlier versions of this
+file. Scoping rule for the list below: every way this version's OUTPUT differs from
+theirs, whether or not the difference moves a published number, because a field that
+appears out of nowhere is as confusing as a number that shifts.
+
+Differences that MOVE a number: (1) duration_seconds was up to one full interval too
+high in those versions, so the published sustained_rps understates the loading-window
+rate by roughly 4 % at concurrency 50; (2) lease renewals went out as a burst rather
+than a spread floor, so the latency samples were perturbed differently.
+
+Differences that ADD output without moving a published number: (3) ok_rps did not
+exist; (4) lease_renewer_incomplete did not exist, so no published run could have
+carried it; (5) the note string was narrower; (6) the process now exits non-zero when
+the renewer did not finish or any renewal failed. The two interactive runs start no
+renewer, so for them that exit is structurally unreachable. The two bulk runs report
+lease_renew_failures = 0, which rules out one half of the condition; the renewer-join
+half was not observable in the version that produced them, so for those two it is
+unknown rather than known-clean.
+
+A re-run of this file will not reproduce the published figures, and that is intended --
+the instrument was corrected without re-measuring.
 """
 import argparse, json, random, statistics, string, sys, threading, time, urllib.error, urllib.request
 
