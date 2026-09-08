@@ -12,27 +12,12 @@ namespace AutoJMS.DataHub.Api.Tests.Infrastructure;
 /// instead of rolling back. <see cref="PostgresDataSource"/> is sealed and builds a real
 /// <c>NpgsqlDataSource</c>, so there is no seam to substitute either.
 ///
-/// Point <c>DATAHUB_TEST_CONNECTION_STRING</c> at a migrated DataHub database to run
-/// these; without it they skip. CI skips them — no workflow provisions PostgreSQL — so
-/// this is a local and staging guard, not a build gate.
+/// Needs a database, so it carries <see cref="RequiresDataHubDatabaseFactAttribute"/> and
+/// skips without one. <c>EnrollmentEndpointTests</c> covers the same branch from the HTTP
+/// edge, where the defect was reported; this one pins the status the branch itself returns.
 /// </summary>
 public sealed class EnrollmentRepositoryTests
 {
-    private const string ConnectionStringVariable = "DATAHUB_TEST_CONNECTION_STRING";
-
-    /// <summary>
-    /// xunit 2.x decides skipping at discovery, so the reason is set in the constructor —
-    /// there is no <c>Assert.Skip</c> to call from the test body on this version.
-    /// </summary>
-    private sealed class RequiresDataHubDatabaseFactAttribute : FactAttribute
-    {
-        public RequiresDataHubDatabaseFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(ConnectionStringVariable)))
-                Skip = $"{ConnectionStringVariable} is not set, so there is no database to enroll against.";
-        }
-    }
-
     [RequiresDataHubDatabaseFact]
     public async Task Enrolling_into_an_unprovisioned_site_reports_not_found()
     {
@@ -42,8 +27,7 @@ public sealed class EnrollmentRepositoryTests
         // below it has always intended. Asserting the returned result — rather than an
         // HTTP status — puts the assertion on the branch itself: before the fix this test
         // does not observe a 503, it observes the throw.
-        var connectionString = Environment.GetEnvironmentVariable(ConnectionStringVariable)!;
-        var options = TestOptions(connectionString);
+        var options = TestOptions(RequiresDataHubDatabaseFactAttribute.ConnectionString!);
         await using var dataSource = new PostgresDataSource(options);
         var repository = new EnrollmentRepository(
             dataSource,
