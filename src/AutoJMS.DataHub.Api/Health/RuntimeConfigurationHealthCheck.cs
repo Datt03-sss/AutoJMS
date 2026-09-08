@@ -45,7 +45,11 @@ public sealed class RuntimeConfigurationHealthCheck(
             if (!HasSecret(options.StagingTestSigningKey))
                 missing.Add("DATAHUB_STAGING_TEST_SIGNING_KEY");
         }
-        else
+        // AddDataHubIdentity's key-material arm has no channel guard, so a staging host with
+        // a real public key gets the RSA validator and enrolls correctly. Reporting it
+        // missing here took /health/ready to 503 and failed the deploy gate on a host that
+        // was working — the same fault fixed for production above.
+        else if (!Auth.RsaLicenseAssertionValidator.HasKeyMaterial(options))
         {
             missing.Add("staging license verifier (enable the staging test issuer or install the signed-assertion verifier)");
         }

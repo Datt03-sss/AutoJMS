@@ -208,6 +208,33 @@ public sealed class RuntimeConfigurationHealthCheckTests
         Assert.Contains("staging license verifier", result.Description, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Staging_is_healthy_with_signed_assertion_key_material_and_no_test_issuer()
+    {
+        // Regression: the branch block had no arm for staging + RSA key material, so a
+        // staging host configured exactly like production — test issuer off, real public
+        // key installed — fell through to `else`, reported the staging license verifier
+        // missing, and /health/ready answered 503 on a host that was serving correctly.
+        // AddDataHubIdentity wires RsaLicenseAssertionValidator for this same case; its
+        // key-material arm carries no channel guard. This is the production bug described
+        // at RuntimeConfigurationHealthCheck.cs:35-39, repeated on the staging side.
+        var check = Check(new DataHubRuntimeOptions
+        {
+            Channel = "staging",
+            EnvironmentName = "Staging",
+            ConnectionString = "Host=postgres;Database=datahub;Username=datahub;Password=test",
+            DeviceTokenSigningKey = new string('d', 32),
+            EnrollmentPepper = new string('e', 32),
+            AllowStagingTestIssuer = false,
+            LicenseAssertionPublicKeyPem = "-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----",
+            ManifestAdminToken = new string('m', 32)
+        });
+
+        var result = await check.CheckHealthAsync(new HealthCheckContext());
+
+        Assert.Equal(HealthStatus.Healthy, result.Status);
+    }
+
     [Theory]
     [InlineData("Staging", "production")]
     [InlineData("Production", "staging")]
