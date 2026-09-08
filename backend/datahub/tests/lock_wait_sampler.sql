@@ -1,11 +1,12 @@
 -- lock_wait_sampler.sql — 5 Hz pg_locks sampler for the P0 G7/G8 baseline, plus the
 -- positive control that proves it can see anything at all.
 --
--- This file produced half of the published P0 lock numbers (task-6-report §12.6). It
--- took THREE iterations to become an instrument instead of a decoration, and it lived
--- only as a scratch file on a staging host that has since been wiped. It is committed
--- here so the next person inherits the working version and the three traps, rather
--- than re-deriving all of them.
+-- This file produced the pg_locks half of the published P0 G7/G8 lock-wait baselines
+-- (interactive-10, interactive-50, bulk-10, bulk-50; measured 2026-09-07). It took
+-- THREE iterations to become an instrument instead of a decoration, and it lived only
+-- as a scratch file on a staging host that has since been wiped. It is committed here
+-- so the next person inherits the working version and the three traps, rather than
+-- re-deriving all of them.
 --
 -- What it measures: how many backends in this database are waiting on a lock right
 -- now, sampled every 200 ms. It complements the PostgreSQL log, which only records a
@@ -69,8 +70,11 @@
 -- ============================================================================
 --
 -- Requires psql 16+ for the named \watch parameters (postgres:16-alpine in
--- docker-compose.yml). On psql 15 and older, use bare `\watch 0.2` and stop it by
--- hand or with timeout(1) — the sampler query itself is unchanged.
+-- docker-compose.yml). On psql 15 and older, use bare `\watch 0.2` -- the sampler
+-- query is unchanged. Note that bare \watch never terminates on its own; in a `-f -`
+-- pipeline there is no terminal to interrupt it, and timeout(1) kills the local client
+-- without necessarily killing the psql process inside the container. Confirm the
+-- container-side process has exited before treating the run as complete.
 
 
 -- ============================================================================
@@ -85,8 +89,8 @@
 --
 -- Aggregate afterwards (samples | samples_with_waiter | max observed):
 --
---   awk -F'|' '{n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3} \
---              END {print "samples="n, "samples_with_waiter="w+0, "max_wait_ms="m+0}' \
+--   awk -F'|' '{n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3+0} \
+--              END {print "samples="n+0, "samples_with_waiter="w+0, "max_wait_ms="m+0}' \
 --     /tmp/lockwait-<label>.log
 --
 -- Reading the columns honestly:
@@ -146,15 +150,8 @@ SELECT clock_timestamp() AS ts,
 -- #             \watch re-runs the previous query buffer, which a separate -c does not
 -- #             leave behind.
 -- $PSQL -At -F"|" -f - > /tmp/pc-sampler.log 2>&1 <<'SQL' &
--- SET statement_timeout = 0;
--- \pset title ''
--- SELECT clock_timestamp() AS ts,
---        (SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid)
---          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS waiting,
---        (SELECT coalesce(max(EXTRACT(epoch FROM clock_timestamp() - a.query_start) * 1000), 0)
---           FROM pg_locks l JOIN pg_stat_activity a USING (pid)
---          WHERE NOT l.granted AND a.pid <> pg_backend_pid() AND a.datname = current_database()) AS max_wait_ms
--- \watch i=0.2 c=60
+-- <paste the SET / \pset / SELECT ... \watch query from section 1 here verbatim,
+--  replacing \watch i=0.2 c=700 with \watch i=0.2 c=60>
 -- SQL
 --
 -- # session B — asks for the same key ~2 s later and blocks until A releases

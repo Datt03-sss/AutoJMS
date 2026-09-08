@@ -8,7 +8,9 @@ Reporting a client number under a server-side name is exactly the defect this
 harness exists to avoid.
 
 Rate limits this must stay under (IngressRateLimitMiddleware.cs):
-  IP bucket     600 permits / 1 min fixed window  -> keep total under 10 req/s
+  IP bucket     600 permits / 1 min fixed window  -> keep load under ~9.7 req/s in
+                                                      bulk mode (renewal floor ~0.33 rps);
+                                                      ~10 req/s in interactive mode
   device bucket 240 permits / 1 min, per device   -> spread across devices
   enrollment     10 permits / 1 min, per IP       -> enroll once, paced, reuse
 
@@ -25,6 +27,16 @@ bearing here and are asserted by the code below, not by hope:
     the same window whose latencies are being recorded;
   * a rejected request is not throughput -- sustained_rps is the attempt rate, ok_rps
     is the successful one, and both are printed so neither can be mistaken for the other.
+
+Provenance note (2026-09-07): the four published P0 baselines -- interactive-10,
+interactive-50, bulk-10, and bulk-50 -- were produced by an earlier version of this
+file. This version differs in three respects that affect the numbers: (1) duration_seconds
+was up to one full interval too high in that version, so the published sustained_rps
+understates the loading-window rate by roughly 4 % at concurrency 50; (2) there was no
+ok_rps field and the note string was narrower; (3) lease renewals went out as a burst
+rather than a spread floor, so the latency samples were perturbed differently. A re-run
+of this file will not reproduce the published figures, and that is intended -- the
+instrument was corrected without re-measuring.
 """
 import argparse, json, random, statistics, string, sys, threading, time, urllib.error, urllib.request
 
@@ -89,11 +101,13 @@ def renew_lease(base, site_id, token, term):
                            token=token, body={"leaderTerm": term})
     return status, body
 
-# LeaseRepository.RenewIntervalSeconds. On the 120 s run this harness is actually used
-# for, ticks land at t=30/60/90 -- the t=120 tick is the deadline itself and never fires
-# -- so it is 3 renewals per device per run, i.e. 30 requests across 10 devices. That is
-# exactly what all four published runs observed (lease_renewals = 30). Against the
-# 600/min IP bucket and the 240/min per-device bucket it is negligible next to the load.
+# LeaseRepository.RenewIntervalSeconds. On the 120 s run this harness is used for,
+# ticks target t=30/60/90 -- the t=120 tick is the deadline itself and never fires --
+# giving approximately 3 renewals per device, i.e. ~30 requests across 10 devices per
+# run. This refers to the two bulk runs only -- the two interactive runs emit no lease
+# fields at all. At concurrency 50 each spread tick takes ~33 s, so ticks free-run and
+# the count can come out 29 rather than 30. Against the 600/min IP bucket and the
+# 240/min per-device bucket the renewal traffic is negligible next to the load.
 RENEW_INTERVAL_SECONDS = 30
 # stop.set() can land while the renewer is inside one HTTPS call, which call() caps at
 # REQUEST_TIMEOUT_SECONDS. Wait that long plus slack for TLS teardown before declaring
@@ -105,13 +119,13 @@ def renew_leases_until(base, devices, deadline, counters, lock, stop):
     deadline. A failed renewal is a real finding (the lease was lost or fenced), so it
     is counted and printed, never swallowed.
 
-    The tick is SPREAD across the interval instead of fired as a back-to-back burst.
-    urllib.request pools nothing, so N serial renewals mean N fresh TLS handshakes: as
-    a burst that is roughly a 2x instantaneous rate spike three times per run, landing
-    in the very window whose client latencies are being recorded. Spread at
-    RENEW_INTERVAL_SECONDS / len(devices) the same N requests become a constant floor,
-    and every lease is still renewed once per interval -- ~31 s apart against a 120 s
-    LeaseDurationSeconds, which is margin, not a race."""
+    The tick is SPREAD across the interval rather than fired as a burst. urllib.request
+    pools nothing, so N serial renewals mean N fresh TLS handshakes. A burst biases
+    mainly the tail latency while leaving most of the window clean; a spread floor
+    applies a small, uniform bias across p50/p95/p99 alike. Both are trades; spread is
+    chosen because the bias is more predictable for a paced harness. Every lease is
+    still renewed once per interval -- ~31 s apart against a 120 s LeaseDurationSeconds,
+    which is margin, not a race."""
     gap = RENEW_INTERVAL_SECONDS / max(1, len(devices))
     next_at = time.time() + RENEW_INTERVAL_SECONDS
     while True:
@@ -151,6 +165,9 @@ def main():
     p.add_argument("--concurrency", type=int, default=10)
     p.add_argument("--duration-seconds", type=int, default=120)
     p.add_argument("--target-rps", type=float, default=8.0)
+    p.add_argument("--samples-file", default=None,
+                   help="path to write per-request [epoch_s, latency_ms] pairs as JSON; "
+                        "omit to discard timestamps after the run")
     args = p.parse_args()
 
     site_codes = [s.strip() for s in args.sites.split(",") if s.strip()]
@@ -184,21 +201,20 @@ def main():
     # IP bucket, and the run drowns in 429s instead of measuring anything.
     interval = args.concurrency / args.target_rps if args.target_rps > 0 else 0
     lock = threading.Lock()
-    # (wall_clock_epoch, latency_ms) per successful request, not a bare latency. The
-    # timestamp is what lets a later analysis exclude a contaminated window -- a renewal
-    # tick, a sampler pass, anything overlapping -- without re-running the load. The
-    # latency component is extracted unchanged for the percentiles below, so the
-    # published p50/p95/p99 formula is untouched by this.
+    # (wall_clock_epoch, latency_ms) per successful request, not a bare latency. Pass
+    # --samples-file to write these pairs to disk after the run; a later analysis can
+    # then exclude a contaminated window -- a renewal tick, a sampler pass, anything
+    # overlapping -- without re-running the load. Without --samples-file the timestamps
+    # are not retained. The latency component is extracted unchanged for the percentiles
+    # below, so the published p50/p95/p99 formula is untouched by this.
     samples = []
     counts = {"sent": 0, "ok": 0, "http_429": 0, "http_409": 0, "other_errors": 0}
     # Kept in their own dict, not in counts, so renewal overhead can never leak into
     # sent or sustained_rps.
     lease_counts = {"lease_renewals": 0, "lease_renew_failures": 0}
 
-    # Bound BEFORE worker() is defined. worker() closes over deadline, and binding it
-    # after the closure only worked because no thread started early. A future edit that
-    # starts one sooner would raise NameError inside a thread, where it prints and the
-    # run silently continues with fewer workers -- a quieter, worse failure than a crash.
+    # Bound before worker() is defined so that every closure that reads them is safe
+    # regardless of when threads start.
     started = time.time()
     deadline = started + args.duration_seconds
 
@@ -230,13 +246,8 @@ def main():
                     counts["other_errors"] += 1
                     if counts["other_errors"] <= 3:
                         print(f"HTTP {status}: {text[:200]}", file=sys.stderr)
-            # Pace so the FLEET hits --target-rps. Without this the run measures how
-            # fast a burst drains, which is not a sustained throughput at all.
-            # Clamped at the deadline: the loop tests the deadline BEFORE a request and
-            # sleeps AFTER accounting, so an unclamped worker appends up to one full
-            # interval of pure idle -- 6.25 s at --concurrency 50 --target-rps 8 -- with
-            # zero requests in flight. That idle is not measurement time; leaving it in
-            # inflated duration_seconds and deflated every rate derived from it.
+            # Pace the FLEET to --target-rps; clamped at the deadline so that no idle
+            # time after the last request is charged to elapsed.
             slack = min(interval - (time.perf_counter() - cycle), deadline - time.time())
             if slack > 0:
                 time.sleep(slack)
@@ -253,10 +264,8 @@ def main():
         t.start()
     for t in threads:
         t.join()
-    # Stamped the instant the last worker stops, BEFORE teardown. elapsed is the divisor
-    # of every rate this prints, so anything charged to it has to be loading. Stopping
-    # the renewer is teardown, not load: taken after stop.set() it billed the whole
-    # shutdown -- up to one in-flight HTTPS call per device -- to the measurement.
+    # Stamped before teardown so that renewer shutdown is not charged to elapsed, the
+    # divisor of every rate this prints.
     elapsed = time.time() - started
     stop.set()
     renewer_incomplete = False
@@ -279,10 +288,9 @@ def main():
     out = {
         "mode": args.mode, "concurrency": args.concurrency, "devices": len(devices),
         "duration_seconds": round(elapsed, 1), **counts_out,
-        # sustained_rps counts every attempt, including rejections -- kept with its
-        # original name and formula so the published baselines stay comparable. ok_rps
-        # is the rate that actually got served. A run has been seen printing
-        # sustained_rps 8.0 with 309/960 rejected, where the served rate was 5.4.
+        # sustained_rps counts every attempt including rejections, kept with its original
+        # name and formula so the published baselines stay comparable; ok_rps is the
+        # successful rate.
         "sustained_rps": round(counts_out["sent"] / elapsed, 1),
         "ok_rps": round(counts_out["ok"] / elapsed, 1),
     }
@@ -302,6 +310,11 @@ def main():
                 "capped by --target-rps.",
     })
     print(json.dumps(out, indent=2))
+    if args.samples_file is not None:
+        with open(args.samples_file, "w", encoding="utf-8") as f:
+            json.dump([[ts, ms] for ts, ms in samples], f)
+    if renewer_incomplete or lease_out["lease_renew_failures"] > 0:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
