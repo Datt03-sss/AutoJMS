@@ -159,7 +159,7 @@ SELECT clock_timestamp() AS ts,
 -- $PSQL -At -c "SELECT pg_advisory_lock($KEY);" -c "SELECT pg_advisory_unlock($KEY);"
 -- wait
 --
--- awk -F'|' '{n++; if ($2+0 > 0) w++} END {print "samples="n, "samples_with_waiter="w+0}' \
+-- awk -F'|' '{n++; if ($2+0 > 0) w++} END {print "samples="n+0, "samples_with_waiter="w+0}' \
 --   /tmp/pc-sampler.log
 -- # PASS: samples_with_waiter is clearly non-zero (~35 of 60 for a ~7 s block)
 -- # FAIL: 0 — the instrument is blind; do not report any lock conclusion from it
