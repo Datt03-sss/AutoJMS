@@ -178,7 +178,7 @@ Bốn mục dưới đây do audit bên thứ ba nêu và **không đúng với 
 
 | Cáo buộc | Thực tế |
 |---|---|
-| `service_account.json` bị lộ | `git ls-files` sạch với `service_account`, `.pfx`, `.pem`, `.env`; không có trên đĩa; đã ignore ở `.gitignore:33` và `:87`. |
+| `service_account.json` bị lộ | `git ls-files` sạch với `service_account`, `.pfx`, `.pem`, `.env`; không có trên đĩa; đã ignore trong `.gitignore` bằng các pattern `service_account.json`, `service_account*.json`, `*.pfx`, `*.pem`, `.env`, `.env.*`. (Trước đây ô này trích số dòng `:33` và `:87` — cả hai đều **sai ngay từ khi được viết**: hai dòng đó là một comment và một đường dẫn cache. Trích **pattern** thay vì số dòng để nó không mục nữa mỗi lần `.gitignore` đổi.) |
 | AuthToken JMS bị log nguyên văn | Đã mask. `Main.cs:1774`: `authToken={TokenRedactor.MaskToken(token)}`. 49 điểm gọi mask. Regex tìm token nội suy trực tiếp trong `AppLogger.*` trả về **rỗng**. |
 | Token lưu plaintext trong `AutoJMS.json` | Đã vá, `SettingsManager.cs:214-218`, kèm comment `// Do NOT re-add: Set(root, "lastAuthToken", ...)` và migration một chiều xoá giá trị cũ. |
 | "Cần tắt host objects trong WebView2" | Không có `AddHostObjectToScript` **ở đâu** trong codebase. Bridge thuần postMessage. Không có gì để tắt. |
