@@ -217,7 +217,8 @@ public sealed class RuntimeConfigurationHealthCheckTests
         // missing, and /health/ready answered 503 on a host that was serving correctly.
         // AddDataHubIdentity wires RsaLicenseAssertionValidator for this same case; its
         // key-material arm carries no channel guard. This is the production bug described
-        // at RuntimeConfigurationHealthCheck.cs:35-39, repeated on the staging side.
+        // in the comment above the `isProduction` arm of RuntimeConfigurationHealthCheck,
+        // repeated on the staging side.
         var check = Check(new DataHubRuntimeOptions
         {
             Channel = "staging",

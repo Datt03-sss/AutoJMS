@@ -19,8 +19,13 @@ Read-only: it opens one file, connects to nothing, and writes only JSON on stdou
   python pg_log_metrics.py --self-test
 
 SECURITY: a `log_min_duration_statement = 0` capture contains every statement the API ran.
-Keep the log file OUTSIDE this repository's working tree. `*.log` is gitignored, but the
-secret gate's untracked-file pass still reads anything sitting in the tree.
+Keep the log file OUTSIDE this repository's working tree, and do not rely on the secret
+gate to catch one left inside it -- NO pass of the gate reads it. `check-secrets.ps1`
+part 2 skips it because `.log` is not in `$sourceExtensions`, and part 5 skips it because
+it enumerates with `git ls-files --others --exclude-standard`, which drops ignored paths;
+the script's own header states that exclusion is deliberate. So `*.log` being gitignored
+keeps a capture out of `git add .`, and that is the whole of the protection: a capture
+sitting in the tree is scanned by nothing and will report a clean gate.
 """
 
 import argparse

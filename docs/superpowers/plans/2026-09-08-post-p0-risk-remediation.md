@@ -2,6 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **STATUS: EXECUTED — all four tasks complete (2026-09-08).** Commits `4196055..HEAD`: Task 1
+> `d357c06`, Task 2 `c9bbc83`, Task 3 `acbe7d0`/`3d93c9d`/`b7a49f2`/`84a70ac`, Task 4 `6ce9217`/`5e5d18e`.
+> The unchecked `- [ ]` boxes below are the plan **as written before execution** and are left
+> as-authored on purpose — this file is the record of what was planned, not a live checklist.
+> The same applies to every line number it cites (`RuntimeConfigurationHealthCheck.cs:48` and the
+> `:33/:43/:48` arms in R1, the `Modify:` path in Task 1): those are coordinates in the
+> **pre-change** tree at `4196055` and no longer point at the same lines. Read the code by symbol.
+> R4's answer turned out to be **no** — the P0 log did not survive; see §12 of
+> `docs/review/p0-report-2026-09-07.md`.
+
 **Goal:** Close the four post-P0 items that are genuine defects fixable without an Owner decision, and recover the two missing G7/G8 metrics from evidence that may already exist — without starting P1.
 
 **Architecture:** Four independent tasks, no shared state. Task 1 is a one-line branch fix in a health check, driven by a failing xUnit test. Task 2 is a `.gitignore` rule verified with `git check-ignore`. Task 3 builds an offline log aggregator, self-tested against a fixture with no network and no database. Task 4 is a read-only VPS probe that answers one open question and records the answer. Tasks 1–3 can be done in any order; Task 4 depends on Task 3's deliverable.
