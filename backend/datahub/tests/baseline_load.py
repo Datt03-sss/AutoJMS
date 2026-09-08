@@ -7,7 +7,8 @@ absent: they come from the PostgreSQL log and pg_locks (plan Task 6 Steps 6 and 
 Reporting a client number under a server-side name is exactly the defect this
 harness exists to avoid.
 
-Rate limits this must stay under (IngressRateLimitMiddleware.cs):
+Rate limits this must stay under (IP and device buckets: IngressRateLimitMiddleware.cs;
+  enrollment: Program.cs:102-110, bound at EnrollmentEndpoints.cs:28):
   IP bucket     600 permits / 1 min fixed window  -> keep load under ~9.7 req/s in
                                                       bulk mode (renewal floor ~0.33 rps);
                                                       ~10 req/s in interactive mode
@@ -106,7 +107,7 @@ def renew_lease(base, site_id, token, term):
 # giving approximately 3 renewals per device, i.e. ~30 requests across 10 devices per
 # run. This refers to the two bulk runs only -- the two interactive runs emit no lease
 # fields at all. At concurrency 50 each spread tick takes ~33 s, so ticks free-run and
-# the count can come out 29 rather than 30. Against the 600/min IP bucket and the
+# the final count can come out short of 30. Against the 600/min IP bucket and the
 # 240/min per-device bucket the renewal traffic is negligible next to the load.
 RENEW_INTERVAL_SECONDS = 30
 # stop.set() can land while the renewer is inside one HTTPS call, which call() caps at
@@ -124,8 +125,15 @@ def renew_leases_until(base, devices, deadline, counters, lock, stop):
     mainly the tail latency while leaving most of the window clean; a spread floor
     applies a small, uniform bias across p50/p95/p99 alike. Both are trades; spread is
     chosen because the bias is more predictable for a paced harness. Every lease is
-    still renewed once per interval -- ~31 s apart against a 120 s LeaseDurationSeconds,
-    which is margin, not a race."""
+    still renewed once per interval -- ~31 s apart in steady state -- against a 120 s
+    LeaseDurationSeconds, which is margin, not a race. First-interval caveat: the first
+    renewal for each device lands ~RENEW_INTERVAL_SECONDS after its acquire, plus
+    accumulated serial latency from preceding devices; at concurrency 50, device 9's
+    first renewal can reach ~57 s post-acquire and cross the 60 s gap-audit threshold in
+    LeaseRepository.cs:118 (missedARenew = silence > RenewIntervalSeconds * 2). This
+    adds one INSERT inside the renew transaction and a spurious audit row -- 1-2 rows per
+    bulk run, negligible for the measurements but noted because it is the instrument
+    perturbing the measured system in a way the burst version did not."""
     gap = RENEW_INTERVAL_SECONDS / max(1, len(devices))
     next_at = time.time() + RENEW_INTERVAL_SECONDS
     while True:
@@ -203,10 +211,10 @@ def main():
     lock = threading.Lock()
     # (wall_clock_epoch, latency_ms) per successful request, not a bare latency. Pass
     # --samples-file to write these pairs to disk after the run; a later analysis can
-    # then exclude a contaminated window -- a renewal tick, a sampler pass, anything
-    # overlapping -- without re-running the load. Without --samples-file the timestamps
-    # are not retained. The latency component is extracted unchanged for the percentiles
-    # below, so the published p50/p95/p99 formula is untouched by this.
+    # then exclude a contaminated window -- a sampler pass, an external maintenance
+    # event, anything overlapping -- without re-running the load. Without --samples-file
+    # the timestamps are not retained. The latency component is extracted unchanged for
+    # the percentiles below, so the published p50/p95/p99 formula is untouched by this.
     samples = []
     counts = {"sent": 0, "ok": 0, "http_429": 0, "http_409": 0, "other_errors": 0}
     # Kept in their own dict, not in counts, so renewal overhead can never leak into
@@ -307,7 +315,8 @@ def main():
         "note": "client-side latency only; server p95 comes from the postgres log. "
                 "sustained_rps is the ATTEMPT rate -- 429/409/errors are counted as sent; "
                 "ok_rps is the successful rate. Neither is a saturation point: both are "
-                "capped by --target-rps.",
+                "capped by --target-rps. client_latency_p* covers successful requests "
+                "only (status == 200); a run with rejections hides their latency shape.",
     })
     print(json.dumps(out, indent=2))
     if args.samples_file is not None:

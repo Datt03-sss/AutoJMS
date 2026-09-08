@@ -2,7 +2,10 @@
 -- positive control that proves it can see anything at all.
 --
 -- This file produced the pg_locks half of the published P0 G7/G8 lock-wait baselines
--- (interactive-10, interactive-50, bulk-10, bulk-50; measured 2026-09-07). It took
+-- for bulk-10 and bulk-50 only (measured 2026-09-07). The interactive-10 and
+-- interactive-50 sampler figures came from the earlier iteration afflicted by defects 2
+-- and 3 below; they are not reproducible by this corrected query, and for those two
+-- runs the server log -- not the sampler -- is the trustworthy lock-wait evidence. It took
 -- THREE iterations to become an instrument instead of a decoration, and it lived only
 -- as a scratch file on a staging host that has since been wiped. It is committed here
 -- so the next person inherits the working version and the three traps, rather than
@@ -89,9 +92,15 @@
 --
 -- Aggregate afterwards (samples | samples_with_waiter | max observed):
 --
---   awk -F'|' '{n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3+0} \
+--   awk -F'|' 'NF>=3 {n++; if ($2+0 > 0) w++; if ($3+0 > m) m=$3+0} \
 --              END {print "samples="n+0, "samples_with_waiter="w+0, "max_wait_ms="m+0}' \
 --     /tmp/lockwait-<label>.log
+-- The NF>=3 guard skips lines that do not have three pipe-delimited fields: psql's
+-- command tag for SET statement_timeout=0 and any notices or errors merged via 2>&1
+-- each land as a short line that increments n without the guard. This is why all three
+-- published bulk runs report samples=701 against a 700-sample \watch run; the
+-- samples_with_waiter and max_wait_ms columns are unaffected (short lines coerce their
+-- empty fields to 0). A run with this corrected awk will report 700.
 --
 -- Reading the columns honestly:
 --   waiting      number of backends in this database holding an UNGRANTED lock at the
@@ -103,7 +112,9 @@
 --                not contradictory. A 0.0 means the sample caught a waiter in the
 --                instant its statement began.
 --
--- statement_timeout is disabled because the session deliberately runs for 140 s.
+-- statement_timeout is disabled as a precaution. Under \watch each iteration is its own
+-- sub-millisecond statement in its own implicit transaction, so statement_timeout would
+-- not be triggered by normal sampler operation; the SET is kept as a safeguard.
 SET statement_timeout = 0;
 \pset title ''
 SELECT clock_timestamp() AS ts,
@@ -124,8 +135,12 @@ SELECT clock_timestamp() AS ts,
 -- condition it is meant to detect. Copy the block below, strip the leading `-- `, and
 -- fill in the three placeholders.
 --
--- It is safe on a live database: pg_advisory_lock takes a lock in a namespace the
--- application does not use, on an arbitrary key, and reads or writes NO table data.
+-- It is safe on a live database: pg_advisory_lock uses the same single-bigint advisory
+-- key space as the application (RetentionRepository.cs takes a single-argument
+-- pg_try_advisory_xact_lock). A key collision is astronomically unlikely (~1-in-2³²)
+-- and harmless if it occurs: the application's lock is a non-blocking try, so a
+-- collision costs one skipped retention pass at most. The control reads or writes NO
+-- table data.
 -- The holder releases after 9 s and both sessions exit.
 --
 -- Expected result, and the whole point: the corrected sampler reports a non-zero
