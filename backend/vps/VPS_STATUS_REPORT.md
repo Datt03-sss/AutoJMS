@@ -10,9 +10,11 @@
 > + danh sách cổng mở + ngưỡng ban của fail2ban là một bản đồ trinh sát hoàn chỉnh. Luật gốc:
 > [DEPLOY_EXECUTION_CHECKLIST.vi.md §6](../datahub/deploy/DEPLOY_EXECUTION_CHECKLIST.vi.md).
 >
-> **Antigravity:** ghi chi tiết vào `*.private.md`, rồi cập nhật file này. Nếu giá trị hạ tầng lọt
-> vào file tracked, `eng/harness/check-secrets.ps1` (phần 4 — infra denylist) **fail gate** thay vì
-> pass im lặng như trước.
+> **Quy ước cập nhật (áp dụng cho MỌI agent chạm vào VPS, không riêng Antigravity):** ghi chi tiết
+> định danh vào `*.private.md`, rồi cập nhật file này và đổi ô "Người cập nhật" cho đúng người vừa
+> chạm. Nếu giá trị hạ tầng lọt vào file tracked, `eng/harness/check-secrets.ps1` (phần 4 — infra
+> denylist) **fail gate** thay vì pass im lặng như trước — nhưng phần 4 **INACTIVE** khi máy chưa
+> cấu hình denylist, nên đừng coi nó là lưới an toàn duy nhất.
 
 | | |
 |---|---|
@@ -112,8 +114,8 @@ retention **âm thầm ngừng chạy** chứ không làm sập API.
 1. **Claude Code** đọc file này để nắm hạ tầng backend, migration đã áp và kết quả kiểm chứng.
    Cần giá trị định danh cụ thể (IP, tài khoản, đường dẫn) thì **hỏi Owner** — chúng không nằm
    trong git.
-2. **Antigravity** cập nhật `*.private.md` **và** file này sau mỗi task VPS. Không đưa giá trị
-   định danh vào file này.
+2. **Antigravity — và bất kỳ agent nào khác chạm vào VPS** — cập nhật `*.private.md` **và** file
+   này sau mỗi task VPS. Không đưa giá trị định danh vào file này.
 3. Chi tiết quy ước: [.agent/rules/09-cross-agent-collaboration.md](../../.agent/rules/09-cross-agent-collaboration.md).
 
 ---
@@ -130,7 +132,7 @@ retention **âm thầm ngừng chạy** chứ không làm sập API.
 | **URL** | `https://dev.jmsauto.online` |
 | **Nhà cấp chứng chỉ** | Let's Encrypt (issuer: `C=US, O=Let's Encrypt, CN=YE1`) |
 | **Hết hạn chứng chỉ** | `Dec 6 16:20:37 2026 GMT` |
-| **Gate 3.3** | ✅ PASS — `curl` trả về `200 0` (`ssl_verify_result=0`) |
-| **Gate 3.4** | ✅ PASS — `subject=CN=dev.jmsauto.online`, `subjectAltName=DNS:dev.jmsauto.online` |
+| **Gate 3.3** | ⚠️ Đo được `200 0` (`ssl_verify_result=0`) trên chặng **TLS công khai client → Caddy**. Runbook viết 3.3 theo nghĩa `SSL Mode=VerifyFull` của chặng **API → PostgreSQL**; chặng đó **chưa có bằng chứng nào**. Đây là hai đại lượng khác nhau — **không** đọc dòng này là 3.3 đã PASS |
+| **Gate 3.4** | ⚠️ `subject=CN=dev.jmsauto.online`, `subjectAltName=DNS:dev.jmsauto.online` — **cùng giới hạn về chặng như 3.3**. Chứng chỉ là của edge công khai, không phải của kết nối DB |
 | **Gate 3.1** | ✅ PASS — cổng 5432 vẫn không tiếp cận được từ internet sau restart |
 | **Gate 3.6** | ✅ PASS — `postgres` container chỉ bind `5432/tcp` nội bộ |
