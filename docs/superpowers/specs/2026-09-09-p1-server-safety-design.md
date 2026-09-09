@@ -14,9 +14,9 @@
 
 Give the server the safety machinery the later streaming phases depend on — terminal
 state, an anti-resurrection ledger, and an ingest time horizon — without changing what
-the system does today. Every new code path in P1 is reachable but inert: with
-`jms_event_policies` empty no scan type is terminal, so no projection is ever marked
-terminal, no tombstone is ever written, and no purge is ever eligible.
+the system does today. Every new code path in P1 is reachable but inert: no scan type
+is terminal, so no projection is ever marked terminal, no tombstone is ever written, and no
+purge is ever eligible.
 
 ## Owner decisions signed for this phase
 
@@ -24,7 +24,7 @@ These signatures exist nowhere else on disk. They are the gate that opened P1.
 
 | ID | Decision | Note |
 |---|---|---|
-| **OD-1** | Deferred past P4 (restates OD-A = A3, signed 2026-09-08). P1 runs with `jms_event_policies` **empty**, fail-closed. | No scan type code may be seeded — not even temporarily for a test. |
+| **OD-1** | Deferred past P4 (restates OD-A = A3, signed 2026-09-08). P1 runs with **no terminal scan type**, fail-closed. | No scan type code may be classified terminal — not even temporarily for a test. See "The empty-policy premise" below for what actually makes this true. |
 | **OD-2** | Ingest horizon **45 days**, future skew **15 minutes**. Event/dedupe retention 60 days unchanged. Terminal purge 90 days. Tombstone retention ≥ 2 years. | Deviation from §514's proposed 5-minute skew, accepted: the binding invariant is `ingest < event_retention` (45 < 60 ✅) and skew is not part of it. |
 | **OD-6** | **B — server observed time.** `terminal_at` is stamped by the server when it observes the terminal event, not by `source_event_at`. | Consequence: test `AT-TERM-LATE` is **not required**; §27 gates it on OD-6 = A. |
 | **G7/G8 p50** | Accept the measured upper bound ≤ 279.4 ms together with the clean zero at 1 worker/site, in place of a recovered `counter_lock_wait` p50. | Option C recovered `transaction_p95` and `commit_p95` but could not recover the p50; that is instrument physics, not a missing run. |
@@ -72,7 +72,7 @@ setting now would be dead configuration. The name is reserved here so P6 cannot 
 | Block | Content | Active in P1? |
 |---|---|---|
 | **A** | Migrations `007_event_metadata.sql`, `008_terminal_tombstone.sql`, `009_terminal_index_notx.sql` | Written; **not applied** — see "Sequencing" |
-| **B** | Fail-closed terminal policy | Present, inert (empty policy table) |
+| **B** | Fail-closed terminal policy | Present, inert (empty terminal code set) |
 | **C** | Minimal ingest delta in `IngestRepository` | Horizon active; terminal paths inert |
 | **D** | Reopen endpoint | Active |
 
@@ -120,11 +120,34 @@ Two preflight rules bind every migration in this set:
 
 ## B — Terminal policy
 
-`TerminalPolicy` is a pure function over the loaded policy set: a scan type is terminal
-only if `jms_event_policies` says so. The table is empty, so nothing is terminal,
-`is_terminal` stays `false` for every row, no tombstone is written, and no purge becomes
-eligible. Seeding any code — including 9001, 9002, 9004, and including "just for a test" —
-is forbidden until OD-1 is signed.
+### The empty-policy premise
+
+`jms_event_policies` is **not** empty. `002_seed_policies.sql` seeds two rows —
+`(1, 98, 'inventory')` and `(1, 110, 'state_transition')` — and
+`JmsEventPolicyCatalog.Default` hard-codes the same two
+(`src/AutoJMS.DataHub.Api/Domain/JmsEventPolicy.cs`). Any implementation that gates the
+terminal path on "the policy table is empty" would be gating on something false.
+
+What makes P1 fail-closed is stronger than an empty table: **nothing in the schema or the
+domain can express "terminal" at all.** `jms_event_policies.event_kind` is CHECK-constrained
+to exactly four values — `state_transition`, `activity`, `inventory`, `communication`
+(`001_core.sql:122-130`) — and `JmsEventKind` mirrors those four with no terminal member. A
+terminal classification therefore has no carrier, and §19.3 forbids adding one in P1. The
+terminal code set is empty by construction, not by configuration.
+
+### The type
+
+`TerminalPolicy` is a pure function over an explicitly supplied set of terminal scan type
+codes. It does not read `jms_event_policies`, because that table cannot answer the
+question. Production constructs it with an empty set, at a single call site commented as
+awaiting OD-1. Tests construct it with a non-empty set, which is the only way the branch is
+exercised at all — and is not seeding, because nothing outside the test's own object graph
+sees it.
+
+So `is_terminal` stays `false` for every row in production, no tombstone is written, and no
+purge becomes eligible. Adding a terminal code to the schema, to a migration, or to
+`JmsEventKind` — including 9001, 9002, 9004, and including "just for a test" — is forbidden
+until OD-1 is signed.
 
 ## C — Ingest delta
 
@@ -299,10 +322,10 @@ baseline.
 
 ## Rollback
 
-P1 adds **no runtime feature flag.** The empty `jms_event_policies` table is already the
-off switch that §22's flag stands for: with no terminal codes, the terminal and tombstone
-paths cannot execute, so there is nothing to disable. Adding a second, redundant switch
-would be dead configuration.
+P1 adds **no runtime feature flag.** The absent terminal classification is already the off
+switch that §22's flag stands for: `TerminalPolicy` is constructed with an empty code set
+and no schema value can populate it, so the terminal and tombstone paths cannot execute and
+there is nothing to disable. Adding a second, redundant switch would be dead configuration.
 
 The rollback lever for step 1 is therefore reverting the commits — safe in full, because
 no migration has been applied and no terminal or tombstone state can exist. That stays
