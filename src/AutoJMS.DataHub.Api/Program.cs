@@ -34,6 +34,7 @@ builder.Services.AddSingleton<EnrollmentRepository>();
 builder.Services.AddSingleton<DeviceRepository>();
 builder.Services.AddSingleton<IngressIpRateLimiter>();
 builder.Services.AddSingleton(JmsEventPolicyCatalog.Default);
+builder.Services.AddSingleton(IngestHorizonPolicy.From(runtimeOptions));
 builder.Services.AddSingleton<JmsEventPolicyRepository>();
 builder.Services.AddSingleton<ProjectionReducer>();
 builder.Services.AddSingleton<IngestRepository>();

@@ -16,7 +16,9 @@ namespace AutoJMS.DataHub.Api.Infrastructure;
 public sealed class IngestRepository(
     PostgresDataSource dataSource,
     ProjectionReducer reducer,
-    JmsEventPolicyRepository policyRepository)
+    JmsEventPolicyRepository policyRepository,
+    IngestHorizonPolicy horizonPolicy,
+    TimeProvider timeProvider)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public async Task<IngestOperationResult> IngestAsync(
@@ -37,6 +39,25 @@ public sealed class IngestRepository(
         var normalizedKey = idempotencyKey.Trim();
         if (normalizedKey.Length is < 8 or > 128)
             return IngestOperationResult.Failure(StatusCodes.Status400BadRequest, ApiProblemCodes.BadRequest, "Idempotency-Key must contain between 8 and 128 characters.");
+
+        // Before the connection is opened, so a batch outside the window costs no
+        // transaction and takes no locks. Items whose scanTime does not parse are left
+        // alone here and handled by the existing path inside the loop below, which keeps
+        // the parse-error code and message exactly as they were.
+        var now = timeProvider.GetUtcNow();
+        foreach (var item in request.Items)
+        {
+            var scanTime = ScanTimeParser.Parse(item.ScanTime);
+            if (!scanTime.Success) continue;
+
+            // Whole-batch failure by design: the ≤200 items commit or roll back together,
+            // so accepting a subset would break the one guarantee bulk ingest makes.
+            if (horizonPolicy.FindViolation(scanTime.UtcValue!.Value, now) is { } violation)
+                return IngestOperationResult.Failure(
+                    StatusCodes.Status422UnprocessableEntity,
+                    IngestHorizonPolicy.ProblemCode,
+                    violation);
+        }
 
         var bodyHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions))).ToLowerInvariant();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
