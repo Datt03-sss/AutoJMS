@@ -67,6 +67,31 @@ row, because rows are written by the retention purge, which is P6. Adding an unr
 setting now would be dead configuration. The name is reserved here so P6 cannot reuse
 `TombstoneRetention` by accident.
 
+**D-3 — writing a migration file is a readiness change, so the image must not be deployed
+before it is applied.**
+
+`PostgresDataSource.RequiredMigrations` and `RequiredTables`
+(`src/AutoJMS.DataHub.Api/Infrastructure/PostgresDataSource.cs:100-117`) are the schema the
+readiness probe demands of the live database, and `SchemaContractTests` reads
+`backend/datahub/migrations` at test time and asserts the directory equals that list. So
+the three files cannot land on disk by themselves: doing that fails the build, which fails
+the §18 exit gate. Updating the lists in the same commit is the only green option, and it
+is what the code intends — the list's own comment says the image "declares the schema it
+needs, and the deploy applies them."
+
+The consequence is a **deployment** constraint, not a code one, and §20 is untouched:
+
+> No host may run the P1 image until 007–009 are applied to its database.
+
+Before that, readiness answers Unhealthy → `/health/ready` 503, and Compose gates the caddy
+service on it. Step 1 of "Sequencing" commits and pushes but deploys nothing, so nothing
+regresses in between. The gated step reorders to: verify backup → apply 007–009 → deploy.
+Any database used by a `RequiresDataHubDatabaseFact` run needs the same three migrations,
+for the same reason.
+
+This also covers C2–C4, whose SQL names the new columns: it cannot run against an
+unmigrated database, and under this constraint it never does.
+
 ## Scope
 
 | Block | Content | Active in P1? |
@@ -301,8 +326,14 @@ that gates the build.
 - `src/AutoJMS.DataHub.Api/Infrastructure/IngestRepository.cs` — C1–C4
 - `src/AutoJMS.DataHub.Api/Infrastructure/IngestContracts.cs` — `TerminalLockedItems`
 - `src/AutoJMS.DataHub.Api/Configuration/DataHubRuntimeOptions.cs` — two horizon settings
-- `src/AutoJMS.DataHub.Api/Health/RuntimeConfigurationHealthCheck.cs` — horizon invariant
-- `src/AutoJMS.DataHub.Api/Program.cs` — route registration and the startup check
+- `src/AutoJMS.DataHub.Api/Infrastructure/PostgresDataSource.cs` — the D-3 readiness lists
+- `src/AutoJMS.DataHub.Api/Program.cs` — DI, route registration, and the startup check
+
+The horizon invariant's health arm is a **new** `IngestHorizonHealthCheck` rather than an
+addition to `RuntimeConfigurationHealthCheck`. Observable behaviour is what the spec asks
+for either way — Degraded on `/health/ready` — but the existing check is deliberately pure
+configuration with no I/O, and giving it a database read would change its failure modes and
+force a constructor change through every one of its existing tests.
 
 `src/AutoJMS.DataHub.Api/Program.cs` is **not** a protected file. The protected entry is
 `src/AutoJMS/Program.cs`, the WinForms host — a different path.
@@ -312,10 +343,13 @@ that gates the build.
 Contract §20 is a prohibition, not advice: "⛔ CẤM migration trước khi backup được verify."
 G4 (backup restore) is still FAIL. So the phase splits:
 
-1. **Now.** Write A + B + C + D and their tests. Build Release, run `eng/harness/verify.ps1`,
-   commit, push. Migration files exist on disk; none is applied anywhere.
-2. **Gated.** Apply 007/008/009 to staging only after a backup → restore into a temporary
-   instance passes. That run also closes G4.
+1. **Now.** Write A + B + C + D and their tests, including the
+   `PostgresDataSource.RequiredMigrations`/`RequiredTables` update that D-3 forces. Build
+   Release, run `eng/harness/verify.ps1`, commit, push. Migration files exist on disk; none
+   is applied anywhere; **nothing is deployed.**
+2. **Gated.** Verify a backup → restore into a temporary instance — that run also closes
+   G4 — then apply 007/008/009 to staging, and only then deploy the P1 image. Per D-3 the
+   order is not interchangeable: deploying first takes `/health/ready` to 503.
 
 Phase exit (§18): Build Release PASS, P1 tests PASS, throughput not worse than the
 baseline.
