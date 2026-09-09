@@ -40,6 +40,7 @@ builder.Services.AddSingleton(IngestHorizonPolicy.From(runtimeOptions));
 // written and no purge becomes eligible. This is the off switch P1 ships with — adding a
 // feature flag beside it would be a second, redundant one.
 builder.Services.AddSingleton(TerminalPolicy.Empty);
+builder.Services.AddSingleton<ReopenRepository>();
 builder.Services.AddSingleton<JmsEventPolicyRepository>();
 builder.Services.AddSingleton<ProjectionReducer>();
 builder.Services.AddSingleton<IngestRepository>();
@@ -200,6 +201,7 @@ app.MapEnrollmentEndpoints();
 app.MapLeaseEndpoints();
 app.MapIngestEndpoints();
 app.MapSyncEndpoints();
+app.MapReopenEndpoints();
 app.MapHub<SiteHub>("/hubs/site").RequireRateLimiting("device");
 
 // Last thing before serving. A retention policy that deletes events inside the ingest
