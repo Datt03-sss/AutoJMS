@@ -104,16 +104,27 @@ public sealed class PostgresDataSource : IAsyncDisposable
         "003_seed_retention",
         "004_projection_slot_payloads",
         "005_change_retention_floor",
-        "006_revocation_and_retention_indexes"
+        "006_revocation_and_retention_indexes",
+        "007_event_metadata",
+        "008_terminal_tombstone",
+        "009_terminal_index_notx"
     ];
 
-    /// <summary>Every table those migrations create. Same contract, same test.</summary>
+    /// <summary>
+    /// Every table those migrations create. Same contract, same test.
+    ///
+    /// Adding a name here is a deployment decision, not just a list edit: readiness is what
+    /// docker-compose gates the API container on, so a host that has not applied the
+    /// migration creating this table answers /health/ready with 503 and never enters
+    /// rotation. 007-009 must be applied before the image carrying them is deployed.
+    /// </summary>
     public static readonly string[] RequiredTables =
     [
         "schema_migrations", "sites", "devices", "site_fetch_leases",
         "site_change_counters", "waybill_scan_events", "waybill_projections",
         "dashboard_changes", "jms_event_policies", "idempotency_records",
-        "retention_policies", "audit_logs", "revoked_device_credentials"
+        "retention_policies", "audit_logs", "revoked_device_credentials",
+        "waybill_tombstones"
     ];
 
     /// <summary>
