@@ -94,6 +94,8 @@ inside the `postgres` container) and share `scripts/_datahub-common.sh`:
 | `apply-migrations.sh` | `apply-migrations.ps1 -ComposeFile` | apply pending migrations, verify each version marker |
 | `run-sql.sh` | the `Get-Content \| docker compose exec` pipeline above | run a `.sql` file, passing `--variable` through to psql |
 | `publish-manifests.sh` | `publish-manifests.ps1` | publish `seeds/` to the control plane, then verify each object anonymously |
+| `backup-postgres.sh` | `backup-postgres.ps1 -ComposeFile` | dump the database out of the container, optionally `--critical-only` |
+| `restore-postgres.sh` | `restore-postgres.ps1 -ComposeFile` | restore a dump in one transaction, `--allow-existing-data` to clean first |
 | `smoke-test.sh` | — | ten-step end-to-end staging smoke (24 checks) |
 
 Every script needs the env file, which lives outside the repo: pass
@@ -243,9 +245,56 @@ Restore uses one transaction and refuses to clean an existing database unless
 `-AllowExistingData` is explicitly supplied. Prefer an empty isolated database
 for drills; never point a first restore at the live production database.
 
+On a host without PowerShell, `backup-postgres.sh` and `restore-postgres.sh` do
+the same work through the same container:
+
+```bash
+./scripts/backup-postgres.sh --env-file /opt/autojms-datahub/.env.production --output-dir /srv/datahub-backups
+./scripts/restore-postgres.sh --env-file /opt/autojms-datahub/.env.staging --dump-file /srv/datahub-backups/datahub-<timestamp>.dump
+```
+
 Direct `DatabaseUrl` mode remains available through a managed endpoint or SSH tunnel;
 a normal host shell cannot resolve `postgres` because port 5432 is intentionally
-unpublished.
+unpublished. The bash scripts do not offer it, for the reason `apply-migrations.sh`
+gives: a host with no `pg_dump` gains nothing from an untested host-client path.
+
+### Moving to a replacement database server: `-CriticalOnly`
+
+`backup-postgres.ps1 -CriticalOnly` (`backup-postgres.sh --critical-only`) dumps
+the **full schema of the whole database** but skips the **row data** of the
+observation tables listed in `scripts/critical-backup-exclusions.txt` —
+`waybill_scan_events`, `waybill_projections`, `dashboard_changes`,
+`idempotency_records` and `site_fetch_leases`. Everything the JMS API cannot give
+back — sites, devices, event policies, tombstones, retention policies, revoked
+credentials, migration markers, change counters and audit logs — is still in the
+dump. Restoring one produces a complete, correctly migrated database whose
+observation tables are empty and ready to refill from JMS, which is what makes
+replacing a database server cheap instead of a multi-gigabyte transfer.
+
+That file is the classification, with the reasoning for every table, and it is a
+list of exclusions rather than of what to keep so that a table added by a future
+migration and forgotten there keeps its data. Read it before changing the flag's
+behaviour.
+
+One post-restore statement is **mandatory** after restoring a `-CriticalOnly`
+dump, and both scripts print it on every critical run:
+
+```sql
+UPDATE site_change_counters SET pruned_through_seq = change_seq;
+```
+
+`ChangeCursorWindow.RequiresResync` is `after < prunedThrough || after > current`.
+The change counters are kept (nothing in the API ever inserts one, so a site
+without its counter row answers 404 like an unprovisioned site) while the feed
+itself is empty, so without this statement a station that was offline during the
+migration returns holding a cursor below `change_seq`, is told no resync is
+needed, reads zero rows and concludes it is up to date. The restore scripts do
+not run it themselves: a dump does not record which flags produced it, and
+running it after a full restore would discard a change feed that is valid.
+
+A full backup remains the default and is unchanged; `-CriticalOnly` is not a
+replacement for it. Keep taking full dumps for disaster recovery, where the JMS
+replay window may not cover the loss.
 
 The seeded `archive_after` value is policy metadata for a future archive adapter;
 phase 1 does not pretend that an `is_archived` flag saves disk or that an external

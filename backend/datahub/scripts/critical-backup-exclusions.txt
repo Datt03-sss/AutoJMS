@@ -1,0 +1,84 @@
+# Tables whose DATA is skipped by `backup-postgres.ps1 -CriticalOnly` and
+# `backup-postgres.sh --critical-only`. One table per line; `#` starts a comment.
+#
+# A critical backup still carries the FULL schema of the whole database - every
+# table, column, index, constraint and sequence. Only the rows of the tables
+# listed below are left out, so restoring one produces a complete, correctly
+# migrated database whose observation tables are empty and ready to be refilled
+# from the JMS API. It exists so replacing a database server does not mean
+# moving tens of gigabytes of data the API can fetch again.
+#
+# Both scripts read this one file. Keeping the list here rather than inline is
+# the point: two hand-maintained copies, one in PowerShell and one in bash,
+# would drift, and the drift would only show up during a real recovery.
+#
+# This is a list of EXCLUSIONS, not a list of what to keep, and that direction
+# is deliberate. A table added by a future migration and forgotten here keeps
+# its data: the failure mode is a dump larger than expected, which is visible on
+# the next `ls`, instead of a dump silently missing a table nobody classified.
+# waybill_tombstones arrived in migration 008 and is the worst table in this
+# schema to lose quietly - an empty one resurrects every deleted waybill.
+#
+# "Large" is not the test for adding a name. The test is: can the API rebuild
+# these rows from JMS, or are they worthless on the new host?
+
+# --- re-fetchable from the JMS API -------------------------------------------
+# The reducer rebuilds projections from events, and events come back from JMS,
+# so neither is a source of truth a replacement host cannot recover.
+waybill_scan_events
+waybill_projections
+
+# The dashboard change feed. Regenerated as ingest resumes, and already bounded
+# by the 14-day delete_after seeded in 003_seed_retention.sql.
+#
+# WARNING: excluding this REQUIRES a post-restore step, because
+# site_change_counters is deliberately kept and the two are read together:
+#
+#     UPDATE site_change_counters SET pruned_through_seq = change_seq;
+#
+# ChangeCursorWindow.RequiresResync is `after < prunedThrough || after > current`.
+# Restore the counters unchanged beside an empty feed and a station that was
+# offline during the migration comes back holding a cursor BELOW change_seq, is
+# told no resync is needed, reads zero rows, and concludes it is up to date -
+# silently wrong until each of those waybills happens to change again. Setting
+# pruned_through_seq to change_seq is simply an accurate statement of what this
+# backup did, and it moves those stations onto the snapshot path instead.
+dashboard_changes
+
+# Replay guards, every one carrying an expires_at a few hours out. All of them
+# have expired by the time a server migration finishes.
+idempotency_records
+
+# Leader-election leases. Restoring these is not merely wasteful, it is wrong: a
+# lease row carries leader_device_id and lease_expires_at, so a stale one makes
+# the new host believe a leader already owns the site and suppresses fetching
+# until it expires. They re-form on their own within one lease interval.
+site_fetch_leases
+
+# --- deliberately NOT excluded ------------------------------------------------
+# Recorded here so the next person does not have to re-derive it.
+#
+#   sites, devices              Station and device identity. The JMS API has
+#                               neither; losing them is permanent.
+#   jms_event_policies          The reducer's event policy. Under OD-1 a missing
+#                               row changes how every event is classified.
+#   waybill_tombstones          The anti-resurrection ledger. See above.
+#   retention_policies          Operator-tuned intervals: seeded once in 003,
+#                               edited in place afterwards.
+#   revoked_device_credentials  Losing a row un-revokes a revoked device.
+#   schema_migrations           Version markers. Without them apply-migrations
+#                               re-runs 001 against a populated database.
+#   site_change_counters        NOT ephemeral, despite looking like a cache.
+#                               Nothing in the API ever INSERTs one: ingest and
+#                               reopen only `SELECT ... FOR UPDATE` and `UPDATE`
+#                               it, so a site whose counter row is missing is
+#                               indistinguishable from an unprovisioned site and
+#                               answers 404 to ingest, changes and snapshot.
+#                               Three rows per three sites - the size argument
+#                               never applies here.
+#   audit_logs                  Not re-fetchable, and already bounded by a
+#                               90-day delete_after. README.md lists audit data
+#                               among the non-disposable set. It is the largest
+#                               table this file keeps; a deployment that decides
+#                               it is expendable can add it here, and that is a
+#                               one-line, reversible change.
