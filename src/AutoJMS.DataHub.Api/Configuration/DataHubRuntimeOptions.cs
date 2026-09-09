@@ -89,6 +89,45 @@ public sealed class DataHubRuntimeOptions
     public const int MaximumTombstoneRetentionDays = 365;
 
     /// <summary>
+    /// How far back a scan time may be and still be ingested.
+    ///
+    /// The bound that matters is not this number but its relation to event retention:
+    /// <c>ingest_horizon &lt; event_retention</c>. Dedupe is
+    /// <c>ON CONFLICT (site_id, event_fingerprint) DO NOTHING</c> against
+    /// <c>waybill_scan_events</c>, so once retention has deleted an event there is nothing
+    /// left to conflict with and the same scan is accepted again — and again on every
+    /// retry — silently rebuilding projection state from history the server has already
+    /// decided to forget. A horizon shorter than retention means every event ingest will
+    /// accept still has its own dedupe row.
+    ///
+    /// 45 days against the seeded 60-day event policy, signed as OD-2. The maximum is 59
+    /// because 60 is the seeded retention and equality is already a violation; it is a
+    /// static floor under a dynamic value, which is why
+    /// <see cref="Infrastructure.IngestHorizonInvariant"/> re-checks it against the actual
+    /// per-site policies at startup and in the health check.
+    /// </summary>
+    public TimeSpan IngestHorizon { get; set; } = TimeSpan.FromDays(DefaultIngestHorizonDays);
+
+    public const int DefaultIngestHorizonDays = 45;
+    public const int MinimumIngestHorizonDays = 1;
+    public const int MaximumIngestHorizonDays = 59;
+
+    /// <summary>
+    /// How far ahead of server time a scan time may be and still be ingested.
+    ///
+    /// Station clocks drift, and a scan stamped slightly in the future is a clock fault,
+    /// not a forgery — rejecting it would drop real work. Fifteen minutes, signed as OD-2.
+    /// This is deliberately not part of the retention invariant: a future-dated event is
+    /// never at risk of having been deleted already. Zero is a legal setting for a
+    /// deployment that trusts NTP.
+    /// </summary>
+    public TimeSpan IngestFutureSkew { get; set; } = TimeSpan.FromSeconds(DefaultIngestFutureSkewSeconds);
+
+    public const int DefaultIngestFutureSkewSeconds = 900;
+    public const int MinimumIngestFutureSkewSeconds = 0;
+    public const int MaximumIngestFutureSkewSeconds = 3600;
+
+    /// <summary>
     /// CIDR ranges whose X-Forwarded-* headers are honoured. Only the reverse proxy may be
     /// trusted here: an empty trust list makes ForwardedHeadersMiddleware accept the header
     /// from any caller, which lets a client forge its own client IP and evade the per-IP
@@ -172,6 +211,16 @@ public sealed class DataHubRuntimeOptions
                 DefaultTombstoneRetentionDays,
                 MinimumTombstoneRetentionDays,
                 MaximumTombstoneRetentionDays)),
+            IngestHorizon = TimeSpan.FromDays(ParseBoundedInt(
+                configuration["DATAHUB_INGEST_HORIZON_DAYS"],
+                DefaultIngestHorizonDays,
+                MinimumIngestHorizonDays,
+                MaximumIngestHorizonDays)),
+            IngestFutureSkew = TimeSpan.FromSeconds(ParseBoundedInt(
+                configuration["DATAHUB_INGEST_FUTURE_SKEW_SECONDS"],
+                DefaultIngestFutureSkewSeconds,
+                MinimumIngestFutureSkewSeconds,
+                MaximumIngestFutureSkewSeconds)),
             TrustedProxyNetworks = FirstNonEmpty(configuration["DATAHUB_TRUSTED_PROXY_NETWORKS"], DefaultTrustedProxyNetworks),
             PublicHost = NormalizePublicHost(configuration["DATAHUB_PUBLIC_HOST"])
         };
