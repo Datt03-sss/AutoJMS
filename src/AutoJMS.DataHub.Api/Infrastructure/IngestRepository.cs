@@ -40,25 +40,6 @@ public sealed class IngestRepository(
         if (normalizedKey.Length is < 8 or > 128)
             return IngestOperationResult.Failure(StatusCodes.Status400BadRequest, ApiProblemCodes.BadRequest, "Idempotency-Key must contain between 8 and 128 characters.");
 
-        // Before the connection is opened, so a batch outside the window costs no
-        // transaction and takes no locks. Items whose scanTime does not parse are left
-        // alone here and handled by the existing path inside the loop below, which keeps
-        // the parse-error code and message exactly as they were.
-        var now = timeProvider.GetUtcNow();
-        foreach (var item in request.Items)
-        {
-            var scanTime = ScanTimeParser.Parse(item.ScanTime);
-            if (!scanTime.Success) continue;
-
-            // Whole-batch failure by design: the ≤200 items commit or roll back together,
-            // so accepting a subset would break the one guarantee bulk ingest makes.
-            if (horizonPolicy.FindViolation(scanTime.UtcValue!.Value, now) is { } violation)
-                return IngestOperationResult.Failure(
-                    StatusCodes.Status422UnprocessableEntity,
-                    IngestHorizonPolicy.ProblemCode,
-                    violation);
-        }
-
         var bodyHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request, JsonOptions))).ToLowerInvariant();
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -126,6 +107,30 @@ public sealed class IngestRepository(
                 return IngestOperationResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.");
             var replay = existing.Value.Response with { Replayed = true };
             return IngestOperationResult.Success(replay, []);
+        }
+
+        // Below the replay lookup on purpose. The horizon's past bound widens as the clock
+        // advances, so checking above it would let a batch that already committed be answered
+        // 422 on retry instead of replaying its recorded response. Idempotency wins; the price
+        // is that a first-time violation now costs a connection and a transaction.
+        // Items whose scanTime does not parse are left alone here and handled by the existing
+        // path inside the loop below, which keeps the parse-error code and message as they were.
+        var now = timeProvider.GetUtcNow();
+        foreach (var item in request.Items)
+        {
+            var scanTime = ScanTimeParser.Parse(item.ScanTime);
+            if (!scanTime.Success) continue;
+
+            // Whole-batch failure by design: the ≤200 items commit or roll back together,
+            // so accepting a subset would break the one guarantee bulk ingest makes.
+            if (horizonPolicy.FindViolation(scanTime.UtcValue!.Value, now) is { } violation)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return IngestOperationResult.Failure(
+                    StatusCodes.Status422UnprocessableEntity,
+                    IngestHorizonPolicy.ProblemCode,
+                    violation);
+            }
         }
 
         // Claim the key before touching observations. A competing request with
