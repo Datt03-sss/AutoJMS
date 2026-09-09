@@ -43,9 +43,17 @@ Red-green-refactor works only where a class has no WinForms/WebView2/JMS depende
 For out-of-scope changes the verification artefact is the **Owner Manual Test Checklist** in the final
 report, not a unit test.
 
-Note: the test project has no `InternalsVisibleTo`, so a member must be `public` to be tested. Making
-a pure helper public for testability is acceptable; do not add `InternalsVisibleTo` to the assembly —
-it changes the .NET Reactor obfuscation posture for every internal in the project.
+Note: .NET Reactor protects exactly one assembly. `tools/reactor/AutoJMS_Reactor.nrproj` sets
+`<Main_Assembly>artifacts\publish\win-x64\AutoJMS.dll</Main_Assembly>`, with `Merge_Assemblies` and
+`Embed_Assemblies` both false, so the WinForms desktop assembly is the whole of the obfuscated
+surface. Do not add a new `InternalsVisibleTo` there: it changes the obfuscation posture for every
+internal in the project. It already has one — `src/AutoJMS/AutoJMS.csproj:67` grants `AutoJMS.Tests`
+access — so a WinForms helper need not be made `public` just to be testable.
+
+That rule does not reach projects outside the Reactor's `Main_Assembly`. `src/AutoJMS.DataHub.Api`
+is server-side, ships in Docker on the VPS and is never obfuscated, so `InternalsVisibleTo` costs
+nothing: `src/AutoJMS.DataHub.Api/Properties/AssemblyInfo.cs` uses it for
+`AutoJMS.DataHub.Api.Tests`. Prefer that over widening a server class's public API for a test.
 
 ## Where superpowers' defaults must yield to repo rules
 
