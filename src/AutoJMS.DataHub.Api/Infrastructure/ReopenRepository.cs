@@ -120,7 +120,16 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
         if (!await ReserveIdempotencyAsync(connection, transaction, siteId, normalizedKey, bodyHash, cancellationToken))
         {
             var competing = await ReadIdempotencyAsync(connection, transaction, siteId, normalizedKey, cancellationToken);
-            if (competing is null || !string.Equals(competing.Value.BodyHash, bodyHash, StringComparison.Ordinal))
+            if (competing is null)
+            {
+                // A vanished winner means the peer has not committed, not that the caller
+                // rebound the key — same reasoning, and same split, as
+                // IngestRepository.cs:142-153.
+                await transaction.RollbackAsync(cancellationToken);
+                return ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.");
+            }
+
+            if (!string.Equals(competing.Value.BodyHash, bodyHash, StringComparison.Ordinal))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_KEY_REUSED", "The idempotency key is bound to a different waybill.");

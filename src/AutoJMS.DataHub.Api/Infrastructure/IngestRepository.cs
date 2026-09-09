@@ -140,7 +140,19 @@ public sealed class IngestRepository(
         if (!await ReserveIdempotencyAsync(connection, transaction, siteId, normalizedKey, bodyHash, cancellationToken))
         {
             var competing = await ReadIdempotencyAsync(connection, transaction, siteId, normalizedKey, cancellationToken);
-            if (competing is null || !string.Equals(competing.Value.BodyHash, bodyHash, StringComparison.Ordinal))
+            if (competing is null)
+            {
+                // The reserve lost the row, yet the winner is invisible here: ON CONFLICT DO
+                // NOTHING skips a speculative insertion rather than waiting on it, so a peer
+                // that has not committed leaves nothing for this snapshot to read. That is the
+                // concurrent duplicate idempotency exists to absorb, so the answer is "retry" —
+                // not "you bound this key to a different body", which sends the caller hunting
+                // a client bug that is not there.
+                await transaction.RollbackAsync(cancellationToken);
+                return IngestOperationResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.");
+            }
+
+            if (!string.Equals(competing.Value.BodyHash, bodyHash, StringComparison.Ordinal))
             {
                 await transaction.RollbackAsync(cancellationToken);
                 return IngestOperationResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_KEY_REUSED", "The idempotency key is bound to a different request body.");
