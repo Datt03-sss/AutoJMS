@@ -44,9 +44,11 @@ builder.Services.AddSingleton<ChangeRepository>();
 builder.Services.AddSingleton<ManifestStore>();
 builder.Services.AddSingleton<IManifestRootProbe, FileSystemManifestRootProbe>();
 builder.Services.AddSingleton<RetentionRepository>();
+builder.Services.AddSingleton<IRetentionPolicyReader, RetentionPolicyReader>();
 builder.Services.AddHostedService<RetentionHostedService>();
 builder.Services.AddHealthChecks()
     .AddCheck<RuntimeConfigurationHealthCheck>("runtime-configuration", tags: ["ready"])
+    .AddCheck<IngestHorizonHealthCheck>("ingest-horizon", tags: ["ready"])
     .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 builder.Services.AddSignalR(options => options.EnableDetailedErrors = false);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -194,6 +196,12 @@ app.MapLeaseEndpoints();
 app.MapIngestEndpoints();
 app.MapSyncEndpoints();
 app.MapHub<SiteHub>("/hubs/site").RequireRateLimiting("device");
+
+// Last thing before serving. A retention policy that deletes events inside the ingest
+// horizon makes ingest silently re-accept scans whose dedupe rows are gone, so this refuses
+// the boot rather than letting the host corrupt projections quietly. An unreadable database
+// is not a refusal — see IngestHorizonStartupCheck.
+await IngestHorizonStartupCheck.RunAsync(app.Services, app.Logger, CancellationToken.None);
 
 app.Run();
 
