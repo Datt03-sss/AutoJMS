@@ -57,5 +57,42 @@ public sealed class IngestResponseContractTests
 
         Assert.NotNull(deserialized);
         Assert.Equal(3, deserialized!.TerminalLockedItems);
+        // Pin the camelCase wire name: stored idempotency_records.response rows and all
+        // clients depend on this exact spelling. A rename would silently break replay.
+        Assert.Contains("\"terminalLockedItems\"", json);
+    }
+
+    /// <summary>
+    /// Pins the one-way terminal semantics in the upsert SQL without a database.
+    /// The SQL is a compile-time constant, so this test can never flake and costs nothing.
+    ///
+    /// WHY THIS MATTERS: if the OR / COALESCE guards are removed from the ON CONFLICT
+    /// DO UPDATE clause, an ordinary later upsert clears is_terminal and re-opens a
+    /// waybill that was terminal — the anti-resurrection invariant collapses silently
+    /// because no runtime error is raised when a boolean flag is overwritten with false.
+    /// </summary>
+    [Fact]
+    public void UpsertProjectionSql_does_not_clear_a_terminal_mark_on_conflict()
+    {
+        var sql = IngestRepository.UpsertProjectionSql;
+
+        // is_terminal ORs the stored value with the incoming value — a false incoming
+        // flag can never clear a true that was already persisted.
+        Assert.Contains(
+            "is_terminal = waybill_projections.is_terminal OR EXCLUDED.is_terminal",
+            sql,
+            StringComparison.Ordinal);
+
+        // terminal_at and terminal_state_code COALESCE — once written, they are never
+        // overwritten by a later upsert that sends NULLs for those columns.
+        Assert.Contains(
+            "COALESCE(waybill_projections.terminal_at, EXCLUDED.terminal_at)",
+            sql,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "COALESCE(waybill_projections.terminal_state_code, EXCLUDED.terminal_state_code)",
+            sql,
+            StringComparison.Ordinal);
     }
 }

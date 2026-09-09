@@ -251,7 +251,11 @@ public sealed class IngestRepository(
                 terminalGuard[observation.WaybillNo] = true;
             }
 
-            if (next.Version != (current?.Version ?? 0))
+            // Force into the write set when a terminal mark was just established — even if
+            // the reducer reported no version change (out-of-order scan that lost IsWinner).
+            // Without this, is_terminal stays false in the database and the next batch reads
+            // false, accepts the same scans again, and the client sees inconsistent results.
+            if (next.Version != (current?.Version ?? 0) || terminalByWaybill.ContainsKey(observation.WaybillNo))
                 changedByWaybill[observation.WaybillNo] = (next, ProjectionBody.From(next, DateTimeOffset.UtcNow));
         }
 
@@ -554,6 +558,62 @@ public sealed class IngestRepository(
         };
 
     /// <summary>
+    /// SQL used by <see cref="UpsertProjectionAsync"/>. Exposed as <c>internal</c> so that
+    /// tests can assert the one-way terminal semantics (OR / COALESCE) without a database.
+    /// </summary>
+    internal const string UpsertProjectionSql = """
+        INSERT INTO waybill_projections (
+            site_id, waybill_no,
+            state_code, state_name, state_status, state_event_at, state_fingerprint, state_event_id, state_kind, state_payload,
+            last_activity_code, last_activity_name, last_activity_status, last_activity_kind, last_activity_at,
+            last_activity_fingerprint, last_activity_event_id, last_activity_payload,
+            inventory_code, inventory_name, inventory_status, inventory_event_at, inventory_fingerprint, inventory_event_id, inventory_payload,
+            payload, reducer_version, version, updated_at,
+            last_change_seq, is_terminal, terminal_at, terminal_state_code)
+        VALUES (@site_id, @waybill_no,
+                @state_code, @state_name, @state_status, @state_event_at, @state_fingerprint, @state_event_id, @state_kind, @state_payload,
+                @activity_code, @activity_name, @activity_status, @activity_kind, @activity_event_at,
+                @activity_fingerprint, @activity_event_id, @activity_payload,
+                @inventory_code, @inventory_name, @inventory_status, @inventory_event_at, @inventory_fingerprint, @inventory_event_id, @inventory_payload,
+                @payload, @reducer_version, @version, @updated_at,
+                @last_change_seq, @is_terminal, @terminal_at, @terminal_state_code)
+        ON CONFLICT (site_id, waybill_no) DO UPDATE SET
+            state_code = EXCLUDED.state_code,
+            state_name = EXCLUDED.state_name,
+            state_status = EXCLUDED.state_status,
+            state_event_at = EXCLUDED.state_event_at,
+            state_fingerprint = EXCLUDED.state_fingerprint,
+            state_event_id = EXCLUDED.state_event_id,
+            state_kind = EXCLUDED.state_kind,
+            state_payload = EXCLUDED.state_payload,
+            last_activity_code = EXCLUDED.last_activity_code,
+            last_activity_name = EXCLUDED.last_activity_name,
+            last_activity_status = EXCLUDED.last_activity_status,
+            last_activity_kind = EXCLUDED.last_activity_kind,
+            last_activity_at = EXCLUDED.last_activity_at,
+            last_activity_fingerprint = EXCLUDED.last_activity_fingerprint,
+            last_activity_event_id = EXCLUDED.last_activity_event_id,
+            last_activity_payload = EXCLUDED.last_activity_payload,
+            inventory_code = EXCLUDED.inventory_code,
+            inventory_name = EXCLUDED.inventory_name,
+            inventory_status = EXCLUDED.inventory_status,
+            inventory_event_at = EXCLUDED.inventory_event_at,
+            inventory_fingerprint = EXCLUDED.inventory_fingerprint,
+            inventory_event_id = EXCLUDED.inventory_event_id,
+            inventory_payload = EXCLUDED.inventory_payload,
+            payload = EXCLUDED.payload,
+            reducer_version = EXCLUDED.reducer_version,
+            version = EXCLUDED.version,
+            updated_at = EXCLUDED.updated_at,
+            last_change_seq = EXCLUDED.last_change_seq,
+            -- Terminal is one-way here. An ordinary later upsert must not clear a mark
+            -- an earlier one made; only the reopen endpoint does that, explicitly.
+            is_terminal = waybill_projections.is_terminal OR EXCLUDED.is_terminal,
+            terminal_at = COALESCE(waybill_projections.terminal_at, EXCLUDED.terminal_at),
+            terminal_state_code = COALESCE(waybill_projections.terminal_state_code, EXCLUDED.terminal_state_code);
+        """;
+
+    /// <summary>
     /// <paramref name="changeSeq"/> is the sequence this transaction allocated for the row,
     /// written only for rows it actually writes — existing rows are never backfilled.
     /// <paramref name="terminal"/> is null except when the reducer produced a terminal code,
@@ -568,58 +628,7 @@ public sealed class IngestRepository(
         (DateTimeOffset At, int StateCode)? terminal,
         CancellationToken cancellationToken)
     {
-        const string sql = """
-            INSERT INTO waybill_projections (
-                site_id, waybill_no,
-                state_code, state_name, state_status, state_event_at, state_fingerprint, state_event_id, state_kind, state_payload,
-                last_activity_code, last_activity_name, last_activity_status, last_activity_kind, last_activity_at,
-                last_activity_fingerprint, last_activity_event_id, last_activity_payload,
-                inventory_code, inventory_name, inventory_status, inventory_event_at, inventory_fingerprint, inventory_event_id, inventory_payload,
-                payload, reducer_version, version, updated_at,
-                last_change_seq, is_terminal, terminal_at, terminal_state_code)
-            VALUES (@site_id, @waybill_no,
-                    @state_code, @state_name, @state_status, @state_event_at, @state_fingerprint, @state_event_id, @state_kind, @state_payload,
-                    @activity_code, @activity_name, @activity_status, @activity_kind, @activity_event_at,
-                    @activity_fingerprint, @activity_event_id, @activity_payload,
-                    @inventory_code, @inventory_name, @inventory_status, @inventory_event_at, @inventory_fingerprint, @inventory_event_id, @inventory_payload,
-                    @payload, @reducer_version, @version, @updated_at,
-                    @last_change_seq, @is_terminal, @terminal_at, @terminal_state_code)
-            ON CONFLICT (site_id, waybill_no) DO UPDATE SET
-                state_code = EXCLUDED.state_code,
-                state_name = EXCLUDED.state_name,
-                state_status = EXCLUDED.state_status,
-                state_event_at = EXCLUDED.state_event_at,
-                state_fingerprint = EXCLUDED.state_fingerprint,
-                state_event_id = EXCLUDED.state_event_id,
-                state_kind = EXCLUDED.state_kind,
-                state_payload = EXCLUDED.state_payload,
-                last_activity_code = EXCLUDED.last_activity_code,
-                last_activity_name = EXCLUDED.last_activity_name,
-                last_activity_status = EXCLUDED.last_activity_status,
-                last_activity_kind = EXCLUDED.last_activity_kind,
-                last_activity_at = EXCLUDED.last_activity_at,
-                last_activity_fingerprint = EXCLUDED.last_activity_fingerprint,
-                last_activity_event_id = EXCLUDED.last_activity_event_id,
-                last_activity_payload = EXCLUDED.last_activity_payload,
-                inventory_code = EXCLUDED.inventory_code,
-                inventory_name = EXCLUDED.inventory_name,
-                inventory_status = EXCLUDED.inventory_status,
-                inventory_event_at = EXCLUDED.inventory_event_at,
-                inventory_fingerprint = EXCLUDED.inventory_fingerprint,
-                inventory_event_id = EXCLUDED.inventory_event_id,
-                inventory_payload = EXCLUDED.inventory_payload,
-                payload = EXCLUDED.payload,
-                reducer_version = EXCLUDED.reducer_version,
-                version = EXCLUDED.version,
-                updated_at = EXCLUDED.updated_at,
-                last_change_seq = EXCLUDED.last_change_seq,
-                -- Terminal is one-way here. An ordinary later upsert must not clear a mark
-                -- an earlier one made; only the reopen endpoint does that, explicitly.
-                is_terminal = waybill_projections.is_terminal OR EXCLUDED.is_terminal,
-                terminal_at = COALESCE(waybill_projections.terminal_at, EXCLUDED.terminal_at),
-                terminal_state_code = COALESCE(waybill_projections.terminal_state_code, EXCLUDED.terminal_state_code);
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        await using var command = new NpgsqlCommand(UpsertProjectionSql, connection, transaction);
         command.Parameters.AddWithValue("site_id", projection.SiteId);
         command.Parameters.AddWithValue("waybill_no", projection.WaybillNo);
         AddSlot(command, "state", projection.CurrentState);
