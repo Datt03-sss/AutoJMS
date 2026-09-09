@@ -114,6 +114,40 @@ Two psql details are easy to regress, so they are documented at the wrappers in
 drains stdin, so an exec call that does not need stdin must be given
 `</dev/null` or it silently swallows the rest of a piped script.
 
+## Pointing the .NET tests at a database
+
+Most of `tests/AutoJMS.DataHub.Api.Tests` is pure logic and runs anywhere. A few
+cases guard defects that only exist in Npgsql's connector state — a rollback
+issued while a reader is still open — and no fake reproduces those, so they carry
+`[RequiresDataHubDatabaseFact]` and read `DATAHUB_TEST_CONNECTION_STRING`. With
+the variable unset they report as **skipped**, which is deliberate: no CI workflow
+provisions PostgreSQL, and a test that cannot pass there would only teach people
+to ignore red. They are a local and staging guard, not a build gate.
+
+```bash
+DATAHUB_TEST_CONNECTION_STRING='Host=…;Database=datahub;Username=…;Password=…' \
+  dotnet test ./tests/AutoJMS.DataHub.Api.Tests
+```
+
+The database must already be **migrated** — `apply-migrations` through
+`009_terminal_index_notx`. One of these cases boots the real host through
+`WebApplicationFactory<Program>`, so it runs `IngestHorizonStartupCheck` and
+everything `Program.cs` registers against whatever you named. All three cases
+address sites that were never provisioned (a fresh GUID, a `NOSUCH…` code) and
+assert the 404, so they write nothing; the host-booting one also pushes
+`RetentionInterval` past its own lifetime, since retention deletes rows and
+`PeriodicTimer` would otherwise fire against a real database. Point the variable
+at a test database anyway — the shape of these tests is not a licence to aim the
+API's startup path at production.
+
+One trap on the way there: `tests/p0_preflight.sql` rows **G2.2** and **G2.3**
+assert that `waybill_tombstones` and the eight P1 columns are *absent*, because
+that file is the P0 gate and those rows are what detects a migration applied
+before the backup-restore gate passed. Applying `007`–`009` makes both rows read
+FAIL by design. That is the expected reading of a P1 database, not a regression —
+but the file's header says any non-PASS row stops the release, so decide which
+gate you are running before you read its output.
+
 ## Client and Windows Service boundary
 
 The desktop application and its Windows Service never receive PostgreSQL
