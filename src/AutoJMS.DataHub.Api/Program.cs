@@ -35,6 +35,11 @@ builder.Services.AddSingleton<DeviceRepository>();
 builder.Services.AddSingleton<IngressIpRateLimiter>();
 builder.Services.AddSingleton(JmsEventPolicyCatalog.Default);
 builder.Services.AddSingleton(IngestHorizonPolicy.From(runtimeOptions));
+// Empty on purpose, and the only place that decides it. OD-1 defers the terminal scan type
+// set past P4, so nothing is terminal, no projection is ever marked, no tombstone is
+// written and no purge becomes eligible. This is the off switch P1 ships with — adding a
+// feature flag beside it would be a second, redundant one.
+builder.Services.AddSingleton(TerminalPolicy.Empty);
 builder.Services.AddSingleton<JmsEventPolicyRepository>();
 builder.Services.AddSingleton<ProjectionReducer>();
 builder.Services.AddSingleton<IngestRepository>();
