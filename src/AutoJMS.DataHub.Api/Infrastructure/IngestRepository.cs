@@ -18,7 +18,8 @@ public sealed class IngestRepository(
     ProjectionReducer reducer,
     JmsEventPolicyRepository policyRepository,
     IngestHorizonPolicy horizonPolicy,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    TerminalPolicy terminalPolicy)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     public async Task<IngestOperationResult> IngestAsync(
@@ -170,8 +171,14 @@ public sealed class IngestRepository(
 
         var accepted = 0;
         var duplicates = 0;
+        var terminalLocked = 0;
         var changedByWaybill = new Dictionary<string, (WaybillProjection Projection, ProjectionBody Body)>(StringComparer.Ordinal);
         var seenWaybills = new Dictionary<string, WaybillProjection>(StringComparer.Ordinal);
+        // One probe per distinct waybill, not per item: a 200-item batch usually touches a
+        // handful of waybills. true means blocked — terminal, or tombstoned by an earlier
+        // purge. Kept in step with the terminal marks this batch makes, below.
+        var terminalGuard = new Dictionary<string, bool>(StringComparer.Ordinal);
+        var terminalByWaybill = new Dictionary<string, (DateTimeOffset At, int StateCode)>(StringComparer.Ordinal);
 
         foreach (var input in request.Items)
         {
@@ -196,6 +203,26 @@ public sealed class IngestRepository(
             }
 
             accepted++;
+
+            // After the event insert, not before: dedupe and history stay complete whatever
+            // this decides, so a blocked scan is recorded once and never re-accepted. The
+            // count is separate from `accepted` because the event WAS accepted — it just
+            // did not move the projection.
+            if (!terminalGuard.TryGetValue(observation.WaybillNo, out var blocked))
+            {
+                blocked = await ReadTerminalGuardAsync(connection, transaction, siteId, observation.WaybillNo, cancellationToken);
+                terminalGuard[observation.WaybillNo] = blocked;
+            }
+
+            if (blocked)
+            {
+                // No projection mutation, no version bump, no change_seq, no
+                // dashboard_changes row — and deliberately no rollback: the rest of the
+                // batch is unaffected and commits.
+                terminalLocked++;
+                continue;
+            }
+
             var current = seenWaybills.TryGetValue(observation.WaybillNo, out var cached)
                 ? cached
                 : await ReadProjectionAsync(connection, transaction, siteId, observation.WaybillNo, cancellationToken);
@@ -213,6 +240,17 @@ public sealed class IngestRepository(
             };
             var next = reducer.Reduce(current, eventValue, policies);
             seenWaybills[observation.WaybillNo] = next;
+
+            // Inert in P1: TerminalPolicy is empty, so this never fires. OD-6 = B, so the
+            // stamp is the server's observed time rather than the event's — a device that
+            // uploads a month-old terminal scan must not make the purge clock retroactive.
+            if (terminalPolicy.IsTerminal(next.CurrentState?.Code))
+            {
+                terminalByWaybill[observation.WaybillNo] = (timeProvider.GetUtcNow(), next.CurrentState!.Code!.Value);
+                // A later item in this same batch for this waybill is now blocked too.
+                terminalGuard[observation.WaybillNo] = true;
+            }
+
             if (next.Version != (current?.Version ?? 0))
                 changedByWaybill[observation.WaybillNo] = (next, ProjectionBody.From(next, DateTimeOffset.UtcNow));
         }
@@ -241,7 +279,10 @@ public sealed class IngestRepository(
             {
                 sequence = checked(sequence + 1);
                 var body = entry.Body with { Version = entry.Projection.Version };
-                await UpsertProjectionAsync(connection, transaction, entry.Projection, body.UpdatedAt, cancellationToken);
+                var terminalMark = terminalByWaybill.TryGetValue(entry.Projection.WaybillNo, out var mark)
+                    ? mark
+                    : ((DateTimeOffset At, int StateCode)?)null;
+                await UpsertProjectionAsync(connection, transaction, entry.Projection, body.UpdatedAt, sequence, terminalMark, cancellationToken);
                 await InsertChangeAsync(connection, transaction, siteId, sequence, entry.Projection.WaybillNo, body, cancellationToken);
                 doorbells.Add(new ChangeDoorbell(siteId, sequence, "waybill_projection", entry.Projection.WaybillNo));
                 firstSeq ??= sequence;
@@ -251,7 +292,7 @@ public sealed class IngestRepository(
             await UpdateCounterAsync(connection, transaction, siteId, sequence, cancellationToken);
         }
 
-        var response = new IngestResponse(siteId, accepted, duplicates, changed.Count, false, firstSeq, lastSeq);
+        var response = new IngestResponse(siteId, accepted, duplicates, changed.Count, false, firstSeq, lastSeq, terminalLocked);
         await InsertIdempotencyAsync(connection, transaction, siteId, normalizedKey, bodyHash, response, cancellationToken);
         await AuditRepository.AppendAsync(
             connection,
@@ -259,7 +300,7 @@ public sealed class IngestRepository(
             siteId,
             $"device:{deviceId:D}",
             requireFence ? "jms.bulk_ingest" : "jms.interactive_ingest",
-            new { deviceId, accepted, duplicates, changedProjections = changed.Count, firstSeq, lastSeq },
+            new { deviceId, accepted, duplicates, changedProjections = changed.Count, terminalLocked, firstSeq, lastSeq },
             cancellationToken);
         if (requireFence && !await CheckFenceAsync(connection, transaction, siteId, deviceId, leaderTerm!.Value, forUpdate: true, cancellationToken: cancellationToken))
         {
@@ -409,7 +450,42 @@ public sealed class IngestRepository(
         return value is null or DBNull ? null : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static async Task<WaybillProjection?> ReadProjectionAsync(
+    /// <summary>
+    /// True when this waybill may no longer move: it is terminal, or a tombstone survives
+    /// from a purge that already removed it. Two EXISTS rather than a join because both are
+    /// primary-key probes and either alone is decisive.
+    ///
+    /// No FOR UPDATE. The projection row is locked a moment later by
+    /// <see cref="ReadProjectionAsync"/>, and a tombstone is written only by the retention
+    /// purge, which never runs inside this transaction.
+    /// </summary>
+    private static async Task<bool> ReadTerminalGuardAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid siteId,
+        string waybillNo,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT EXISTS (SELECT 1
+                             FROM waybill_projections
+                            WHERE site_id = @site_id AND waybill_no = @waybill_no AND is_terminal)
+                OR EXISTS (SELECT 1
+                             FROM waybill_tombstones
+                            WHERE site_id = @site_id AND waybill_no = @waybill_no);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("site_id", siteId);
+        command.Parameters.AddWithValue("waybill_no", waybillNo.Trim());
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
+    /// <summary>
+    /// Internal rather than private because <see cref="ReopenRepository"/> needs the same
+    /// twenty-six-ordinal mapping and two copies of it would drift. Visibility only: the
+    /// body is untouched, so §26's rule against rewriting the ingest read still holds.
+    /// </summary>
+    internal static async Task<WaybillProjection?> ReadProjectionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         Guid siteId,
@@ -477,11 +553,19 @@ public sealed class IngestRepository(
             _ => JmsEventKind.Activity
         };
 
+    /// <summary>
+    /// <paramref name="changeSeq"/> is the sequence this transaction allocated for the row,
+    /// written only for rows it actually writes — existing rows are never backfilled.
+    /// <paramref name="terminal"/> is null except when the reducer produced a terminal code,
+    /// which cannot happen while <see cref="TerminalPolicy"/> is empty.
+    /// </summary>
     private static async Task UpsertProjectionAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         WaybillProjection projection,
         DateTimeOffset updatedAt,
+        long changeSeq,
+        (DateTimeOffset At, int StateCode)? terminal,
         CancellationToken cancellationToken)
     {
         const string sql = """
@@ -491,13 +575,15 @@ public sealed class IngestRepository(
                 last_activity_code, last_activity_name, last_activity_status, last_activity_kind, last_activity_at,
                 last_activity_fingerprint, last_activity_event_id, last_activity_payload,
                 inventory_code, inventory_name, inventory_status, inventory_event_at, inventory_fingerprint, inventory_event_id, inventory_payload,
-                payload, reducer_version, version, updated_at)
+                payload, reducer_version, version, updated_at,
+                last_change_seq, is_terminal, terminal_at, terminal_state_code)
             VALUES (@site_id, @waybill_no,
                     @state_code, @state_name, @state_status, @state_event_at, @state_fingerprint, @state_event_id, @state_kind, @state_payload,
                     @activity_code, @activity_name, @activity_status, @activity_kind, @activity_event_at,
                     @activity_fingerprint, @activity_event_id, @activity_payload,
                     @inventory_code, @inventory_name, @inventory_status, @inventory_event_at, @inventory_fingerprint, @inventory_event_id, @inventory_payload,
-                    @payload, @reducer_version, @version, @updated_at)
+                    @payload, @reducer_version, @version, @updated_at,
+                    @last_change_seq, @is_terminal, @terminal_at, @terminal_state_code)
             ON CONFLICT (site_id, waybill_no) DO UPDATE SET
                 state_code = EXCLUDED.state_code,
                 state_name = EXCLUDED.state_name,
@@ -525,7 +611,13 @@ public sealed class IngestRepository(
                 payload = EXCLUDED.payload,
                 reducer_version = EXCLUDED.reducer_version,
                 version = EXCLUDED.version,
-                updated_at = EXCLUDED.updated_at;
+                updated_at = EXCLUDED.updated_at,
+                last_change_seq = EXCLUDED.last_change_seq,
+                -- Terminal is one-way here. An ordinary later upsert must not clear a mark
+                -- an earlier one made; only the reopen endpoint does that, explicitly.
+                is_terminal = waybill_projections.is_terminal OR EXCLUDED.is_terminal,
+                terminal_at = COALESCE(waybill_projections.terminal_at, EXCLUDED.terminal_at),
+                terminal_state_code = COALESCE(waybill_projections.terminal_state_code, EXCLUDED.terminal_state_code);
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("site_id", projection.SiteId);
@@ -539,6 +631,10 @@ public sealed class IngestRepository(
         command.Parameters.AddWithValue("reducer_version", projection.ReducerVersion);
         command.Parameters.AddWithValue("version", Math.Max(projection.Version, 1));
         command.Parameters.AddWithValue("updated_at", updatedAt);
+        command.Parameters.AddWithValue("last_change_seq", changeSeq);
+        command.Parameters.AddWithValue("is_terminal", terminal is not null);
+        AddNullable(command, "terminal_at", terminal?.At);
+        AddNullable(command, "terminal_state_code", terminal?.StateCode);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
