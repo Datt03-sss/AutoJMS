@@ -179,8 +179,15 @@ until OD-1 is signed.
 Four insertions into `IngestRepository.IngestAsync`. Everything else in the method is
 untouched.
 
-**C1 — horizon guardrail.** Runs before `OpenConnectionAsync`
-(`IngestRepository.cs:42`), so a violation costs no transaction. It parses each item's
+**C1 — horizon guardrail.** Runs *after* the idempotency replay lookup and *before*
+`ReserveIdempotencyAsync`, so a rejection neither burns the key nor contradicts a batch that
+already committed. **Amended 2026-09-09 by owner ruling (OA-1).** The original text placed it
+above `OpenConnectionAsync` so a violation cost no transaction; review found that the past
+bound `scan < now - Horizon` widens as the clock advances, so a batch committed at T could be
+answered 422 on retry at T′ instead of replaying its recorded response — a strict-sense break
+of §26 "full idempotency". Idempotency wins. The price is that a first-time violation now pays
+a connection and a transaction, and the early return must `RollbackAsync` like every other
+early return in that region. It parses each item's
 scan time independently and decides only the horizon question; items whose scan time fails
 to parse are left to the existing in-loop path at `:152-157` so parse-error semantics stay
 byte-identical. A violation is a hard error for the whole batch: HTTP 422, no partial
