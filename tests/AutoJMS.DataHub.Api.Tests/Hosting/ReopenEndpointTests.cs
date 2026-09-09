@@ -9,9 +9,9 @@ namespace AutoJMS.DataHub.Api.Tests.Hosting;
 /// The route's placement is the thing under test. The contract put reopen at
 /// <c>/api/v1/sites/...</c>, where AdminAuthenticationMiddleware returns early and never
 /// sets the marker the handler reads — so the endpoint would have answered 401 to a
-/// correctly authenticated operator, forever. These assertions fail if the route ever moves
-/// back outside the admin prefix, because an unauthenticated call there produces 404 (no
-/// route) rather than 401 (route exists, closed).
+/// correctly authenticated operator, forever. The third and fourth tests below fail if the
+/// route moves back outside the admin prefix: an authenticated call must reach the handler
+/// to produce a 400, whereas only the middleware was needed to produce the 401s above it.
 ///
 /// Everything here stops before the repository, so none of it needs a database.
 /// </summary>
@@ -48,7 +48,7 @@ public sealed class ReopenEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task A_device_token_is_not_sufficient_for_an_admin_route()
+    public async Task A_wrong_bearer_token_is_rejected()
     {
         // The whole reason the route moved under /api/v1/admin rather than having the
         // handler check a capability: an operator action must not be reachable with a

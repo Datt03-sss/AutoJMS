@@ -21,13 +21,14 @@ public sealed record ReopenResult(
     int StatusCode,
     string? ProblemCode,
     string? Detail,
-    ReopenResponse? Response)
+    ReopenResponse? Response,
+    IReadOnlyList<ChangeDoorbell> Doorbells)
 {
-    public static ReopenResult Success(ReopenResponse response)
-        => new(true, StatusCodes.Status200OK, null, null, response);
+    public static ReopenResult Success(ReopenResponse response, IReadOnlyList<ChangeDoorbell> doorbells)
+        => new(true, StatusCodes.Status200OK, null, null, response, doorbells);
 
     public static ReopenResult Failure(int statusCode, string code, string detail)
-        => new(false, statusCode, code, detail, null);
+        => new(false, statusCode, code, detail, null, []);
 }
 
 /// <summary>
@@ -104,13 +105,21 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
             await transaction.CommitAsync(cancellationToken);
             return existing.Value.Response is null
                 ? ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.")
-                : ReopenResult.Success(existing.Value.Response with { Replayed = true });
+                : ReopenResult.Success(existing.Value.Response with { Replayed = true }, []);
         }
 
         if (!await ReserveIdempotencyAsync(connection, transaction, siteId, normalizedKey, bodyHash, cancellationToken))
         {
-            await transaction.RollbackAsync(cancellationToken);
-            return ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.");
+            var competing = await ReadIdempotencyAsync(connection, transaction, siteId, normalizedKey, cancellationToken);
+            if (competing is null || !string.Equals(competing.Value.BodyHash, bodyHash, StringComparison.Ordinal))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_KEY_REUSED", "The idempotency key is bound to a different waybill.");
+            }
+            await transaction.CommitAsync(cancellationToken);
+            return competing.Value.Response is null
+                ? ReopenResult.Failure(StatusCodes.Status409Conflict, "IDEMPOTENCY_IN_PROGRESS", "The idempotency key is still being processed.")
+                : ReopenResult.Success(competing.Value.Response with { Replayed = true }, []);
         }
 
         // Counter first, then the projection — the same lock order ingest takes, so the two
@@ -147,7 +156,7 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
                 new { waybillNo = normalizedWaybill, version = projection.Version },
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ReopenResult.Success(unchanged);
+            return ReopenResult.Success(unchanged, []);
         }
 
         if (startingSequence.Value == long.MaxValue)
@@ -174,7 +183,7 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
             new { waybillNo = normalizedWaybill, version = newVersion, changeSeq = sequence },
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ReopenResult.Success(response);
+        return ReopenResult.Success(response, [new ChangeDoorbell(siteId, sequence, "waybill_projection", normalizedWaybill)]);
     }
 
     private static async Task<(string BodyHash, ReopenResponse? Response)?> ReadIdempotencyAsync(
@@ -338,6 +347,8 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
         command.Parameters.AddWithValue("sequence", sequence);
         command.Parameters.AddWithValue("updated_at", updatedAt);
         var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is null or DBNull)
+            throw new InvalidOperationException($"ClearTerminalAsync returned no row for waybill '{waybillNo}'.");
         return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
