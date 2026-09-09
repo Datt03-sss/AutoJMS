@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net.Sockets;
 using AutoJMS.DataHub.Api.Configuration;
 using Npgsql;
 
@@ -186,6 +187,15 @@ public sealed class PostgresDataSource : IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            return false;
+        }
+        catch (SocketException)
+        {
+            // A hostname that does not resolve surfaces here as a bare SocketException rather
+            // than wrapped in NpgsqlException, so without this clause readiness throws instead
+            // of answering "unreachable" — which is the one question this method exists to
+            // answer. IngestHorizonStartupCheck and IngestHorizonHealthCheck already catch it
+            // for the same reason.
             return false;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
