@@ -108,6 +108,15 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
                 : ReopenResult.Success(existing.Value.Response with { Replayed = true }, []);
         }
 
+        // Probe for site existence before the idempotency reserve: idempotency_records.site_id
+        // carries a FK to sites, so a reserve against an unknown site raises 23503. Existence
+        // is all this branch needs — no lock, reopen does not modify the sites row.
+        if (!await SiteExistsAsync(connection, transaction, siteId, cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ReopenResult.Failure(StatusCodes.Status404NotFound, ApiProblemCodes.NotFound, "The site has not been provisioned.");
+        }
+
         if (!await ReserveIdempotencyAsync(connection, transaction, siteId, normalizedKey, bodyHash, cancellationToken))
         {
             var competing = await ReadIdempotencyAsync(connection, transaction, siteId, normalizedKey, cancellationToken);
@@ -350,6 +359,19 @@ public sealed class ReopenRepository(PostgresDataSource dataSource, TimeProvider
         if (value is null or DBNull)
             throw new InvalidOperationException($"ClearTerminalAsync returned no row for waybill '{waybillNo}'.");
         return Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<bool> SiteExistsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid siteId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT 1 FROM sites WHERE id = @site_id;";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("site_id", siteId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is not null and not DBNull;
     }
 
     private static async Task InsertChangeAsync(

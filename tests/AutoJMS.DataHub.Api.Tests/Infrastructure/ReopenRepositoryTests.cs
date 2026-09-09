@@ -9,8 +9,8 @@ namespace AutoJMS.DataHub.Api.Tests.Infrastructure;
 /// Database-backed tests for <see cref="ReopenRepository"/>. Paths that require seeded
 /// waybill projections or migrations 007–009 (replay, no-op, tombstone) are deliberately
 /// uncovered until the backup-verification gate is passed. The one case that needs neither
-/// is the unprovisioned-site 404, which exercises the transaction entry, the idempotency
-/// reserve, and the rollback before any projection read.
+/// is the unprovisioned-site 404, which exercises the transaction entry, the site-existence
+/// probe, and the rollback — before the idempotency reserve and before any projection read.
 /// </summary>
 public sealed class ReopenRepositoryTests
 {

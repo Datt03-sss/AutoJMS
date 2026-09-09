@@ -50,9 +50,8 @@ public sealed class ReopenEndpointTests : IDisposable
     [Fact]
     public async Task A_wrong_bearer_token_is_rejected()
     {
-        // The whole reason the route moved under /api/v1/admin rather than having the
-        // handler check a capability: an operator action must not be reachable with a
-        // station's credentials.
+        // Any bearer token that is not the configured admin token — arbitrary string or
+        // a valid device token — is rejected with 401 by AdminAuthenticationMiddleware.
         using var client = _factory.CreateClient();
         using var request = Request(Route(), "key-12345678");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "a-device-token-that-is-not-the-admin-token");
