@@ -162,4 +162,36 @@ foreach ($migration in $migrationFiles) {
     }
 }
 
-Write-Host 'DataHub migrations complete.' -ForegroundColor Green
+# The trap described above Test-NoTransactionMigration, turned into a check.
+# Nothing in the loop can see it: every statement genuinely succeeded, the version
+# marker is present, and readiness only counts tables and migration rows -- so a
+# skipped-forever INVALID index reports as a clean deploy and shows up later as a
+# sequential scan on a table the retention pass sweeps. Ask the catalogue instead.
+#
+# Scoped to public and run on every invocation, including an all-SKIP one: that is
+# what turns it into a detector for damage an earlier run left behind. An index
+# being built CONCURRENTLY by another session right now also reads invalid here,
+# which is the correct answer during a migration run -- nothing else should be
+# building indexes on this database while this script holds the deploy.
+#
+# Mirrors the same check at the end of apply-migrations.sh.
+$invalidIndexes = (Invoke-PsqlQuery @"
+SELECT string_agg(c.relname, ',' ORDER BY c.relname)
+  FROM pg_index i
+  JOIN pg_class c ON c.oid = i.indexrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+ WHERE n.nspname = 'public' AND NOT i.indisvalid;
+"@ | Out-String).Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw "Unable to check for invalid indexes after applying migrations (exit code $LASTEXITCODE)."
+}
+if (-not [string]::IsNullOrWhiteSpace($invalidIndexes)) {
+    throw @"
+Invalid index after migration: $invalidIndexes
+A CREATE INDEX CONCURRENTLY did not finish. Per contract 19.2: DROP INDEX
+CONCURRENTLY the name above, re-run this script once, and stop and report if it
+fails again. The run above did NOT leave a usable schema.
+"@
+}
+
+Write-Host 'DataHub migrations complete (no invalid indexes).' -ForegroundColor Green

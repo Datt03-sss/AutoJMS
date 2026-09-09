@@ -95,5 +95,32 @@ for file in $(ls -1 "$MIGRATION_DIR"/*.sql | sort); do
     applied_count=$((applied_count + 1))
 done
 
-printf 'DataHub migrations complete (%d applied, %d already present).\n' \
+# CONCURRENTLY's blind spot, and the reason contract 19.2 exists. A cancelled or
+# failed CREATE INDEX CONCURRENTLY leaves an INVALID index behind. The file's own
+# IF NOT EXISTS then finds that name on the next run, skips it, and lets the
+# version marker record -- so the loop above reports success over an index the
+# planner will never use, and readiness cannot tell either: it counts tables and
+# migration rows, both of which are present. Every statement genuinely succeeded,
+# so no per-file check can see this. Ask the catalogue instead.
+#
+# Scoped to public and run on every invocation, including an all-SKIP one: that is
+# what turns it into a detector for damage an earlier run left behind. An index
+# being built CONCURRENTLY by another session right now also reads invalid here,
+# which is the correct answer during a migration run -- nothing else should be
+# building indexes on this database while this script holds the deploy.
+invalid_indexes="$(printf '%s\n' "SELECT string_agg(c.relname, ',' ORDER BY c.relname)
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND NOT i.indisvalid;" \
+    | datahub::psql_stdin --tuples-only --no-align --set ON_ERROR_STOP=1 \
+    | tr -d '[:space:]')"
+if [ -n "$invalid_indexes" ]; then
+    datahub::die "invalid index after migration: $invalid_indexes
+  A CREATE INDEX CONCURRENTLY did not finish. Per contract 19.2: DROP INDEX
+  CONCURRENTLY the name above, re-run this script once, and stop and report if it
+  fails again. The run above did NOT leave a usable schema."
+fi
+
+printf 'DataHub migrations complete (%d applied, %d already present, no invalid indexes).\n' \
     "$applied_count" "$skipped_count"
