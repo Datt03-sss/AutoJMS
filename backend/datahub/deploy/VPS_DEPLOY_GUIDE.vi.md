@@ -355,8 +355,42 @@ cd ~/AutoJMS/backend/datahub && cp env.staging.template .env.staging && chmod 60
 | `DATAHUB_ENROLLMENT_PEPPER` | giá trị hex từ 7.1 |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | giá trị hex từ 7.1 |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | để `true` (chỉ staging) |
-| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` | để **trống** ở staging (staging dùng HMAC test issuer) |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` | **PEM public key của license server** — xem 7.2.1 |
 | `DATAHUB_DEVICE_TOKEN_LIFETIME_SECONDS` | để `86400`, hoặc `900` nếu muốn ép re-enroll để test |
+
+> ⚠️ Bảng này trước đây ghi "để **trống** ở staging (staging dùng HMAC test issuer)".
+> Đó là nguyên nhân trực tiếp của sự cố 2026-09-11: staging bỏ trống ô này nên client
+> thật — vốn nhận assertion **RS256** do license server ký — bị từ chối ở bước so
+> prefix và mọi lần enroll trả `401 UNAUTHORIZED`. Từ khi có
+> `PrefixRoutedLicenseAssertionValidator`, staging chạy được **đồng thời** hai nguồn:
+> `v1rs256.` đi vào validator RSA, `v1.` đi vào HMAC test issuer. Điền key vào không
+> làm mất test issuer, còn bỏ trống thì mất hẳn đường của client thật.
+
+### 7.2.1 Lấy public key ở đâu
+
+Không tạo cặp khoá mới. Nửa private đã nằm trên license server dưới tên
+`DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`; tạo cặp mới là làm hỏng mọi assertion
+đang lưu hành. Lấy nửa public **từ chính license server**:
+
+```bash
+curl -s https://<license-server-host>/health/datahub-assertion-key
+```
+
+Trả về `publicKey` (PEM SPKI) và `fingerprint` (`sha256:...`). Dán `publicKey`
+vào `.env.staging`, giữ nguyên xuống dòng — trong file `.env` hãy bọc trong dấu
+nháy kép và dùng `\n`, hoặc dùng `_PATH` trỏ tới file `.pem` mount vào container.
+
+Đối chiếu `fingerprint` sau khi nạp để chắc hai bên cùng một cặp khoá — so hai
+chuỗi ngắn, không cần chuyển key material qua chat hay ticket:
+
+```bash
+docker exec autojms-datahub-api-1 sh -c 'printf %s "$DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY"' \
+  | openssl pkey -pubin -pubout -outform DER | openssl dgst -sha256 -binary | base64
+```
+
+Endpoint đó trả `503` nếu license server chưa có private key, và `500` nếu có
+nhưng key hỏng — cả hai đều nghĩa là license server chưa ký được assertion nào,
+sửa phía đó trước.
 
 Giữ nguyên `ASPNETCORE_ENVIRONMENT=Staging`, `DATAHUB_CHANNEL=staging`,
 `POSTGRES_DB=datahub_staging`, `POSTGRES_USER=datahub_staging`.
@@ -378,13 +412,13 @@ Nếu file lọt vào `git status`, dừng lại và sửa `.gitignore` trước
 | `DATAHUB_CHANNEL` | `staging` | `production` |
 | `DATAHUB_ALLOW_STAGING_TEST_ISSUER` | `true` | `false` (hoặc bỏ hẳn) |
 | `DATAHUB_STAGING_TEST_SIGNING_KEY` | có | **trống** |
-| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (hoặc `_PATH`) | trống | **PEM public key của license server** |
+| `DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` (hoặc `_PATH`) | **PEM public key** (của kênh staging) | **PEM public key** (của kênh production) |
 | `DATAHUB_LICENSE_ASSERTION_ISSUER` | `autojms-license-staging` | `autojms-license-production` |
 | `DATAHUB_LICENSE_ASSERTION_AUDIENCE` | `autojms-datahub-enroll-staging` | `autojms-datahub-enroll-production` |
 
 > ⚠️ **Điều kiện go-live production:** production nạp `RsaLicenseAssertionValidator` **chỉ khi**
 > có key material (`DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY` hoặc `_PATH` —
-> xem `AddDataHubIdentity` trong `Auth/IdentityServiceCollectionExtensions.cs:20`).
+> xem `AddDataHubIdentity` trong `Auth/IdentityServiceCollectionExtensions.cs:41-47`).
 > Không có key ⇒ nạp `UnavailableLicenseAssertionValidator` và
 > `POST /api/v1/devices/enroll` trả **`503 LICENSE_ASSERTION_UNAVAILABLE`**. Đây là
 > *fail-closed có chủ ý*, không phải bug. Mọi bước khác (stack, migration, provision,

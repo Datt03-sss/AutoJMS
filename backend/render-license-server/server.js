@@ -741,6 +741,82 @@ app.get("/api/version", healthLimiter, (req, res) => res.json(versionPayload()))
 // /health/* does not need a new allow-list entry.
 app.get("/health/version", healthLimiter, (req, res) => res.json(versionPayload()));
 
+// ==========================================
+// DATAHUB ASSERTION PUBLIC KEY
+// ==========================================
+// The VPS needs the PUBLIC half of DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY, and this
+// process is the only place it can still be derived from: the private key is
+// `sync: false`, so it lives only in the Render dashboard, and the free tier has no
+// shell to run `openssl rsa -pubout` in. Until now the only supply route was somebody
+// still holding the original .pub file from key generation. When dev.jmsauto.online
+// was rebuilt on 2026-09-07 nobody did — DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY came
+// back empty and every enrollment has answered 401 since.
+//
+// Publishing it is safe by construction: an RSA public key only verifies signatures,
+// which is precisely what the DataHub host does with it. This is what a JWKS endpoint
+// exists to do. Anonymous for the same reason /api/version is — provisioning happens
+// before any token exists — and it deliberately does NOT echo issuer/audience/channel,
+// which are matched separately and are diagnosed by the DataHub's own refusal logs.
+//
+// It doubles as the boot check that was missing. formatKey() does not parse the key
+// (server.js:58-61), so a mangled private key stays invisible until crypto.sign throws
+// on a real verify-license call. Deriving the public half fails on exactly the same
+// input, so a 500 here means the signing key is unusable and enrollment is already
+// broken — a smoke test can catch that instead of a customer.
+let assertionPublicKeyCache;
+
+function datahubAssertionPublicKey() {
+    if (assertionPublicKeyCache) return assertionPublicKeyCache;
+    if (!DATAHUB_ASSERTION.PRIVATE_KEY) return null;
+
+    const key = crypto.createPublicKey(DATAHUB_ASSERTION.PRIVATE_KEY);
+    assertionPublicKeyCache = {
+        publicKey: key.export({ type: "spki", format: "pem" }).toString().trim(),
+        // Same shape as an SSH fingerprint, so an operator can confirm the key the VPS
+        // verifies with is the key this service signs with by comparing two short
+        // strings, without either side pasting key material anywhere.
+        fingerprint: `sha256:${crypto
+            .createHash("sha256")
+            .update(key.export({ type: "spki", format: "der" }))
+            .digest("base64")}`,
+        modulusBits: key.asymmetricKeyDetails?.modulusLength ?? null
+    };
+    return assertionPublicKeyCache;
+}
+
+app.get("/health/datahub-assertion-key", healthLimiter, (req, res) => {
+    let derived;
+    try {
+        derived = datahubAssertionPublicKey();
+    } catch (err) {
+        return res.status(500).json({
+            ok: false,
+            configured: true,
+            error: "DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY is set but is not a readable RSA private key",
+            time: Date.now()
+        });
+    }
+
+    if (!derived) {
+        return res.status(503).json({
+            ok: false,
+            configured: false,
+            error: "DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY is not set - this service mints no assertions",
+            time: Date.now()
+        });
+    }
+
+    res.json({
+        ok: true,
+        configured: true,
+        algorithm: "RS256",
+        publicKey: derived.publicKey,
+        fingerprint: derived.fingerprint,
+        modulusBits: derived.modulusBits,
+        time: Date.now()
+    });
+});
+
 app.get("/health/firebase", healthLimiter, async (req, res) => {
     const started = Date.now();
 

@@ -57,6 +57,26 @@
 # So the only proof of a complete cutover remains POST /api/verify-license with a
 # real key returning a `datahub` block containing an `assertion`.
 #
+# !! THE 08-27 VPS SIDE NO LONGER EXISTS — measured 2026-09-11 !!
+# The paragraph above is still true of THIS service: it holds the private key and it
+# does mint assertions (a real verify-license returns a populated `datahub` block).
+# It is no longer true of the host that verifies them. The staging DataHub box was
+# rebuilt on 2026-09-07 21:46 and its half of the pair did not survive:
+# DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY is present-but-EMPTY in the container and in
+# the compose env file, PUBLIC_KEY_PATH is empty, and DATAHUB_ALLOW_STAGING_TEST_ISSUER
+# came back as `true` — the opposite of the 08-27 setting. So the 201 recorded above
+# cannot be reproduced today; enrollment answers 401 on every attempt.
+#
+# Read the 08-27 block as evidence about a machine that is gone, not as the current
+# state of any host. A rebuild silently reverts everything that lives only in a VPS
+# env file, and nothing in this repo notices.
+#
+# Recovering the public half needs no key generation and no dashboard copy-paste:
+# GET /health/datahub-assertion-key on this service derives it from the private key
+# it already holds and returns the SPKI PEM plus a sha256 fingerprint. That endpoint
+# exists because the private key is `sync: false` and the free tier has no shell, so
+# this process is the only place the public half can still be obtained.
+#
 # !! BLUEPRINT vs LIVE CONFLICT — RESOLVED 2026-08-27 !!
 # The live service runs the STAGING triple: DATAHUB_CHANNEL=staging,
 # ISSUER=autojms-license-staging, AUDIENCE=autojms-datahub-enroll-staging. Until
