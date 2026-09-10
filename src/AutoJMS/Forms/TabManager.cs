@@ -18,9 +18,16 @@ public class TabManager
     private TierConfig _tierConfig;
     private string _currentTier = "BASE";
 
+    /// <param name="tabControl">
+    /// Bắt buộc khác null. Ném ngay tại chỗ dựng thay vì để null trôi vào <see cref="ApplyTier"/>:
+    /// một TabManager không có TabControl thì KHÔNG gỡ được tab nào, tức là phân quyền tab mất
+    /// hiệu lực hoàn toàn — hỏng âm thầm kiểu đó nguy hiểm hơn là ném lỗi.
+    /// </param>
     public TabManager(TabControl tabControl)
     {
-        _tabControl = tabControl;
+        _tabControl = tabControl ?? throw new System.ArgumentNullException(
+            nameof(tabControl),
+            "TabManager phải nhận TabControl đã khởi tạo — dựng nó SAU InitializeComponent().");
     }
 
     public string CurrentTier => _currentTier;
@@ -30,7 +37,8 @@ public class TabManager
         _tabPages[name] = page;
         if (page == null) return;
 
-        int index = _tabControl?.TabPages.IndexOf(page) ?? -1;
+        // Tab chưa nằm trong TabControl (đăng ký trước khi Add) thì xếp cuối theo thứ tự gọi.
+        int index = _tabControl.TabPages.IndexOf(page);
         _designOrder[name] = index >= 0 ? index : _designOrder.Count;
     }
 

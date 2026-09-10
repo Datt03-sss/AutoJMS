@@ -122,4 +122,17 @@ public sealed class TabEntitlementTests
 
         Assert.Equal(new[] { "HOME", "ABOUT" }, VisibleTabs(control));
     }
+
+    /// <summary>
+    /// Hồi quy: Main dựng TabManager TRƯỚC InitializeComponent(), nên tabControl (field do
+    /// Designer gán) còn null và _tabControl readonly giữ null vĩnh viễn — ApplyTier ném
+    /// NullReferenceException, app chết ngay lúc khởi động. Một TabManager không có
+    /// TabControl thì không gỡ được tab nào, tức phân quyền tab mất hiệu lực; phải chặn
+    /// ngay tại chỗ dựng chứ không được nhận null rồi hỏng âm thầm.
+    /// </summary>
+    [Fact]
+    public void Dung_TabManager_voi_TabControl_null_thi_bi_chan_ngay()
+    {
+        Assert.Throws<System.ArgumentNullException>(() => new TabManager(null));
+    }
 }

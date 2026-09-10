@@ -142,7 +142,6 @@ namespace AutoJMS
         public Main(string tier = "BASE")
         {
             CurrentTier = tier ?? "BASE";
-            _tabManager = new TabManager(tabControl);
 
             // Resolve what this tier is allowed to run in the background.
             // Every startup/background entry point consults this policy instead
@@ -169,7 +168,11 @@ namespace AutoJMS
             AlignLeftPanelControls();
             tabHome_urlBar.KeyDown += TabHome_urlBar_KeyDown;
 
-            // Register all built-in tabs with the TabManager
+            // Register all built-in tabs with the TabManager.
+            // Phải dựng TabManager SAU InitializeComponent(): tabControl là field do Designer
+            // sinh, chỉ được gán bên trong InitializeComponent. Dựng trước thì _tabControl
+            // (readonly) giữ null vĩnh viễn và ApplyTier ném NullReferenceException.
+            _tabManager = new TabManager(tabControl);
             _tabManager.RegisterTab("HOME", tabHome);
             _tabManager.RegisterTab("DKCH", tabDKCH);
             _tabManager.RegisterTab("TRACKING", tabTracking);
