@@ -551,7 +551,8 @@ eQIDAQAB
                         failure = ClassifyEnrollFailure(res.StatusCode, code);
                         retryable = IsRetryableEnrollStatus(res.StatusCode);
                         AppLogger.Warning($"DataHub enroll attempt {attempt}/{EnrollMaxAttempts} failed " +
-                                          $"status={(int)res.StatusCode} code={code} cause={failure} site={siteCode}");
+                                          $"status={(int)res.StatusCode} code={code} cause={failure} site={siteCode} " +
+                                          $"details={DescribeProblem(body)}");
                     }
                     else
                     {
@@ -615,6 +616,46 @@ eQIDAQAB
             }
             catch { return "UNKNOWN"; }   // not problem+json
         }
+
+        /// <summary>
+        /// The server-authored explanation behind a refusal, on one bounded line.
+        /// </summary>
+        /// <remarks>
+        /// The refusal body used to be read for its <c>code</c> and then dropped, so every 401
+        /// logged as the same "code=UNAUTHORIZED cause=LicenseRejected" no matter whether the
+        /// assertion was malformed, expired, or aimed at the wrong channel. Only ProblemDetails
+        /// fields are echoed — all of them written by our own API, none of them carrying the
+        /// assertion or a token — and a non-JSON body (a reverse-proxy error page) is reduced to
+        /// a short single-line excerpt rather than dumped whole.
+        /// </remarks>
+        private static string DescribeProblem(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return "<empty>";
+
+            try
+            {
+                using var problem = JsonDocument.Parse(body);
+                var root = problem.RootElement;
+                var parts = new StringBuilder();
+                foreach (var field in new[] { "title", "detail", "traceId" })
+                {
+                    if (root.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String)
+                    {
+                        var text = value.GetString();
+                        if (string.IsNullOrWhiteSpace(text)) continue;
+                        if (parts.Length > 0) parts.Append(' ');
+                        parts.Append(field).Append('=').Append(text);
+                    }
+                }
+                if (parts.Length > 0) return Truncate(parts.ToString(), 400);
+            }
+            catch { /* not problem+json — fall through to the excerpt */ }
+
+            return Truncate(body.Replace('\r', ' ').Replace('\n', ' ').Trim(), 200);
+        }
+
+        private static string Truncate(string value, int max)
+            => value.Length <= max ? value : value.Substring(0, max) + "…";
 
         /// <summary>
         /// The problem code decides, and the status is only the fallback — a refusal can arrive

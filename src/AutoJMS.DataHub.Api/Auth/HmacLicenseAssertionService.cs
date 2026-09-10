@@ -12,6 +12,12 @@ namespace AutoJMS.DataHub.Api.Auth;
 /// </summary>
 public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IStagingTestLicenseAssertionIssuer
 {
+    /// <summary>Deliberately distinct from <see cref="RsaLicenseAssertionValidator.VersionPrefix"/>
+    /// so the two schemes can be routed apart and neither can be replayed against the other.</summary>
+    public const string VersionPrefix = "v1";
+
+    private const string Scheme = "staging HMAC";
+
     private readonly DataHubRuntimeOptions _options;
     private readonly TimeProvider _clock;
 
@@ -47,7 +53,7 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
             Audience = _options.LicenseAssertionAudience
         };
         var encodedPayload = Base64Url.Encode(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload)));
-        return $"v1.{encodedPayload}.{Sign(encodedPayload, GetStagingKey())}";
+        return $"{VersionPrefix}.{encodedPayload}.{Sign(encodedPayload, GetStagingKey())}";
     }
 
     public ValueTask<LicenseAssertionValidationResult> ValidateAsync(string assertion, CancellationToken cancellationToken)
@@ -57,16 +63,42 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
             || !string.Equals(_options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_UNAVAILABLE"));
         if (string.IsNullOrWhiteSpace(assertion) || assertion.Length > 8192)
+        {
+            LicenseAssertionDiagnostics.Refused(Scheme, "Assertion is empty or over the 8192-character limit");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
         var parts = assertion.Split('.', StringSplitOptions.None);
-        if (parts.Length != 3 || parts[0] != "v1" || !Base64Url.TryDecode(parts[1], out var payloadBytes)
-            || !Base64Url.TryDecode(parts[2], out var suppliedSignature))
+        if (parts.Length != 3)
+        {
+            LicenseAssertionDiagnostics.Refused(Scheme, $"Expected 3 dot-separated segments, got {parts.Length}");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
+        if (parts[0] != VersionPrefix)
+        {
+            // The line that produced every 401 on staging: an RS256 assertion arrives as
+            // "v1rs256." and dies here, because AddDataHubIdentity had registered this
+            // validator alone. Both schemes are routed by prefix now.
+            LicenseAssertionDiagnostics.Refused(Scheme, $"Prefix mismatch: expected '{VersionPrefix}' got '{parts[0]}'");
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
+        if (!Base64Url.TryDecode(parts[1], out var payloadBytes) || !Base64Url.TryDecode(parts[2], out var suppliedSignature))
+        {
+            LicenseAssertionDiagnostics.Refused(Scheme, "Payload or signature segment is not valid base64url");
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
 
         var key = SelectValidationKey();
-        if (key.Length < 32 || !CryptographicOperations.FixedTimeEquals(
-                HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(parts[1])), suppliedSignature))
+        if (key.Length < 32)
+        {
+            LicenseAssertionDiagnostics.Refused(Scheme, "DATAHUB_STAGING_TEST_SIGNING_KEY is shorter than the 32-byte minimum");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
+        }
+        if (!CryptographicOperations.FixedTimeEquals(
+                HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(parts[1])), suppliedSignature))
+        {
+            LicenseAssertionDiagnostics.Refused(Scheme, "HMAC signature verification failed");
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
+        }
 
         LicenseAssertionPayload? payload;
         try
@@ -80,7 +112,9 @@ public sealed class HmacLicenseAssertionService : ILicenseAssertionValidator, IS
 
         // Claim checks live in LicenseAssertionClaims so the RS256 validator enforces the
         // identical rule set — see RsaLicenseAssertionValidator.
-        return ValueTask.FromResult(LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow()));
+        var result = LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow(), out var diagnostic);
+        if (!result.Succeeded) LicenseAssertionDiagnostics.Refused(Scheme, diagnostic);
+        return ValueTask.FromResult(result);
     }
 
     /// <summary>

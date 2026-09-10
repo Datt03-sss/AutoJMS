@@ -47,13 +47,27 @@ public sealed class RsaLicenseAssertionValidator : ILicenseAssertionValidator, I
         if (_publicKey is null)
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_UNAVAILABLE"));
         if (string.IsNullOrWhiteSpace(assertion) || assertion.Length > 8192)
+        {
+            LicenseAssertionDiagnostics.Refused("RS256", "Assertion is empty or over the 8192-character limit");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
 
         var parts = assertion.Split('.', StringSplitOptions.None);
-        if (parts.Length != 3 || !string.Equals(parts[0], VersionPrefix, StringComparison.Ordinal)
-            || !Base64Url.TryDecode(parts[1], out var payloadBytes)
-            || !Base64Url.TryDecode(parts[2], out var signature))
+        if (parts.Length != 3)
+        {
+            LicenseAssertionDiagnostics.Refused("RS256", $"Expected 3 dot-separated segments, got {parts.Length}");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
+        if (!string.Equals(parts[0], VersionPrefix, StringComparison.Ordinal))
+        {
+            LicenseAssertionDiagnostics.Refused("RS256", $"Prefix mismatch: expected '{VersionPrefix}' got '{parts[0]}'");
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
+        if (!Base64Url.TryDecode(parts[1], out var payloadBytes) || !Base64Url.TryDecode(parts[2], out var signature))
+        {
+            LicenseAssertionDiagnostics.Refused("RS256", "Payload or signature segment is not valid base64url");
+            return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_MALFORMED"));
+        }
 
         bool signatureValid;
         try
@@ -70,7 +84,11 @@ public sealed class RsaLicenseAssertionValidator : ILicenseAssertionValidator, I
         }
 
         if (!signatureValid)
+        {
+            LicenseAssertionDiagnostics.Refused("RS256",
+                "RS256 signature verification failed — the assertion was signed by a different key than DATAHUB_LICENSE_ASSERTION_PUBLIC_KEY");
             return ValueTask.FromResult(LicenseAssertionValidationResult.Failure("LICENSE_ASSERTION_INVALID"));
+        }
 
         LicenseAssertionPayload? payload;
         try
@@ -82,7 +100,9 @@ public sealed class RsaLicenseAssertionValidator : ILicenseAssertionValidator, I
             payload = null;
         }
 
-        return ValueTask.FromResult(LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow()));
+        var result = LicenseAssertionClaims.Validate(payload, _options, _clock.GetUtcNow(), out var diagnostic);
+        if (!result.Succeeded) LicenseAssertionDiagnostics.Refused("RS256", diagnostic);
+        return ValueTask.FromResult(result);
     }
 
     public void Dispose() => _publicKey?.Dispose();

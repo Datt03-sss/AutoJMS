@@ -18,19 +18,62 @@ namespace AutoJMS.ModuleSystem
         public static bool SilentUpdateEnabled = true;
         public static bool SkipHashCheck = false;
 
-        private readonly string _storageBase;
+        private readonly string _storageBaseOverride;
         private readonly string _modulesDir;
         private readonly HttpClient _http;
         private const int MaxRetries = 3;
 
-        public VpsModuleProvider()
+        public VpsModuleProvider() : this(null) { }
+
+        /// <param name="storageBase">
+        /// Pins the origin instead of resolving it per request. Pass null (the normal path) to
+        /// resolve lazily; tests pass an explicit value — including "" for the offline case.
+        /// </param>
+        public VpsModuleProvider(string storageBase)
         {
-            _storageBase = (Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_MODULES_BASE_URL")
-                ?? Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_API_BASE_URL")
-                ?? string.Empty).TrimEnd('/');
+            _storageBaseOverride = storageBase?.TrimEnd('/');
             _modulesDir = Path.Combine(AppPaths.ModulesCacheDir, "modules");
             _http = new HttpClient(new AppHttpCaptureHandler(new HttpClientHandler(), "VpsModuleProvider")) { Timeout = TimeSpan.FromSeconds(30) };
             Directory.CreateDirectory(_modulesDir);
+        }
+
+        /// <summary>
+        /// Picks the origin to fetch manifests and module payloads from, in priority order:
+        /// an explicit modules/CDN override, the DataHub URL the license response gave us, then
+        /// the API environment variable as a last resort.
+        /// </summary>
+        /// <remarks>
+        /// Resolution used to be environment-only, which meant a normal workstation — where
+        /// neither variable is set — produced an empty base, a relative request URI, and
+        /// "An invalid request URI was provided" out of HttpClient. The real origin is only
+        /// known after the license verify response reaches DataHubClient.Configure, so this is
+        /// evaluated per request rather than in the constructor.
+        /// </remarks>
+        public static string ResolveStorageBase(string modulesOverride, string dataHubBaseUrl, string apiBaseUrl)
+        {
+            var chosen = !string.IsNullOrWhiteSpace(modulesOverride) ? modulesOverride
+                : !string.IsNullOrWhiteSpace(dataHubBaseUrl) ? dataHubBaseUrl
+                : !string.IsNullOrWhiteSpace(apiBaseUrl) ? apiBaseUrl
+                : string.Empty;
+            return chosen.Trim().TrimEnd('/');
+        }
+
+        private string StorageBase =>
+            _storageBaseOverride ?? ResolveStorageBase(
+                Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_MODULES_BASE_URL"),
+                DataHubClient.CurrentBaseUrl,
+                Environment.GetEnvironmentVariable("AUTOJMS_DATAHUB_API_BASE_URL"));
+
+        /// <summary>
+        /// Absolute URL for <paramref name="path"/>, or null when it cannot be built. Absolute
+        /// inputs (a manifest that points at its own CDN) pass through untouched.
+        /// </summary>
+        private string ResolveUrl(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+            if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return path;
+            var storageBase = StorageBase;
+            return string.IsNullOrWhiteSpace(storageBase) ? null : $"{storageBase}/{path.TrimStart('/')}";
         }
 
         // ─── Fetch JSON from VPS config API ────────────────
@@ -38,7 +81,13 @@ namespace AutoJMS.ModuleSystem
         private async Task<T> FetchJsonAsync<T>(string relativePath, CancellationToken ct = default)
             where T : new()
         {
-            var url = $"{_storageBase}/{relativePath.TrimStart('/')}";
+            var url = ResolveUrl(relativePath);
+            if (url == null)
+            {
+                AppLogger.Warning($"[VpsModuleProvider] Bỏ qua fetch {relativePath}: chưa cấu hình BaseUrl.");
+                return new T();
+            }
+
             for (int attempt = 1; attempt <= MaxRetries; attempt++)
             {
                 try
@@ -51,9 +100,12 @@ namespace AutoJMS.ModuleSystem
                         AllowTrailingCommas = true
                     }) ?? new T();
                 }
-                catch (Exception ex) when (attempt < MaxRetries)
+                // The last attempt has to be caught too. With `when (attempt < MaxRetries)` it
+                // escaped instead, so one unreachable manifest took down the whole sync pass.
+                catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     AppLogger.Warning($"Fetch {relativePath} attempt {attempt} failed: {ex.Message}");
+                    if (attempt == MaxRetries) break;
                     await Task.Delay(1000 * attempt, ct);
                 }
             }
@@ -82,13 +134,19 @@ namespace AutoJMS.ModuleSystem
                 return false;
             }
 
+            var url = ResolveUrl(remotePath);
+            if (url == null)
+            {
+                AppLogger.Warning($"[VpsModuleProvider] Bỏ qua tải {moduleName}: chưa cấu hình BaseUrl.");
+                return false;
+            }
+
             var fileName = Path.GetFileName(remotePath);
             var stagingPath = GetStagingPath(moduleName, fileName);
 
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(stagingPath));
-                var url = remotePath.StartsWith("http") ? remotePath : $"{_storageBase}/{remotePath.TrimStart('/')}";
 
                 for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {

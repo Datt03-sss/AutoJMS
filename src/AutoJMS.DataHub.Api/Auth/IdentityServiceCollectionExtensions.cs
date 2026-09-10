@@ -11,11 +11,26 @@ public static class IdentityServiceCollectionExtensions
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IDeviceTokenService, HmacDeviceTokenService>();
         services.AddSingleton<HmacLicenseAssertionService>();
-        if (StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer)
-            && string.Equals(options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal))
+        bool stagingTestIssuer = StagingTestIssuerPolicy.IsEnabled(options.EnvironmentName, options.AllowStagingTestIssuer)
+            && string.Equals(options.Channel, DataHubRuntimeOptions.AllowedStagingChannel, StringComparison.Ordinal);
+
+        if (stagingTestIssuer)
         {
-            services.AddSingleton<ILicenseAssertionValidator>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
             services.AddSingleton<IStagingTestLicenseAssertionIssuer>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
+
+            if (RsaLicenseAssertionValidator.HasKeyMaterial(options))
+            {
+                // Staging has two legitimate assertion sources — the real license server (RS256)
+                // and the in-process test issuer (HMAC) — so both are registered and routed by
+                // version prefix. Registering the HMAC arm alone, as this branch used to, made
+                // every RS256 assertion from the license server a 401 at the prefix check.
+                services.AddSingleton<RsaLicenseAssertionValidator>();
+                services.AddSingleton<ILicenseAssertionValidator, PrefixRoutedLicenseAssertionValidator>();
+            }
+            else
+            {
+                services.AddSingleton<ILicenseAssertionValidator>(sp => sp.GetRequiredService<HmacLicenseAssertionService>());
+            }
         }
         else if (RsaLicenseAssertionValidator.HasKeyMaterial(options))
         {

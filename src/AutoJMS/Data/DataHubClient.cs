@@ -195,6 +195,18 @@ public static class DataHubClient
         get { lock (ConfigLock) return !string.IsNullOrWhiteSpace(_baseUrl) && !string.IsNullOrWhiteSpace(_deviceToken); }
     }
 
+    /// <summary>
+    /// The DataHub origin this process is talking to, already trimmed of its trailing slash,
+    /// or empty before <see cref="Configure"/> has run. The authoritative value arrives in the
+    /// license verify response (VerifyResult.DataHubBaseUrl), not from the environment, so
+    /// components that used to read AUTOJMS_DATAHUB_API_BASE_URL directly — and got nothing on
+    /// a normal workstation — should read this instead.
+    /// </summary>
+    public static string CurrentBaseUrl
+    {
+        get { lock (ConfigLock) return _baseUrl; }
+    }
+
     /// <summary>True when a real site GUID is configured; the site lease/ingest paths need it.</summary>
     public static bool HasSiteId
     {
