@@ -157,3 +157,4 @@ tools/render-cli/bin/
 # file dữ liệu gốc. Chính file .xlsx danh sách mã vận đơn cũng nằm trong diện này.
 docs/manual/samples/
 docs/manual/waybilltest.xlsx
+docs/manual/tonkho30ngay.xlsx

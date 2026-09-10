@@ -26,6 +26,9 @@ namespace AutoJMS
         [JsonPropertyName("internetCheckUrl")] public string InternetCheckUrl { get; set; } = "http://clients3.google.com/generate_204";
         [JsonPropertyName("updateXmlUrl")] public string UpdateXmlUrl { get; set; } = DefaultUpdateXmlUrl;
         [JsonPropertyName("actionSiteCode")] public string ActionSiteCode { get; set; } = "";
+        // Escape hatch for the Doris2 inventory report's dimension. Empty = the service default ("2").
+        // Only set this if J&T changes the report's scoping; see FullStackInventorySyncService.
+        [JsonPropertyName("inventoryDimension")] public string InventoryDimension { get; set; } = "";
         [JsonPropertyName("moduleServerUrl")] public string ModuleServerUrl { get; set; } = "";
 
 

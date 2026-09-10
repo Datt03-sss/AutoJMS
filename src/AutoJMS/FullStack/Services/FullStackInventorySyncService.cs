@@ -21,7 +21,11 @@ namespace AutoJMS.FullStack.Services
         private const int PageConcurrency = 5;
         private const string InventoryRouteName = "DetentionMonitoringDB";
         private const string InventoryRouterNameList = "%E7%BB%8F%E8%90%A5%E6%8C%87%E6%A0%87%3E%E6%B4%BE%E4%BB%B6%E7%AB%AF%3E%E7%95%99%E4%BB%93%E7%9B%91%E6%8E%A7DB";
-        private const string InventoryDimension = "3";
+        // dimension selects how the report scopes "still in inventory". Measured live on 214A03 over the
+        // same 30-day window: "2" → 2435 waybills (what the JMS web UI itself sends), "3" → 745. The old
+        // value also passed isFlag:"1" in the body, narrowing it further to 495 — a ~5x undercount of the
+        // real inventory. isFlag is a RESPONSE field ("N"/"Y"), never a request parameter.
+        private const string DefaultInventoryDimension = "2";
 
         private readonly IFullStackWaybillRepository _repository;
 
@@ -155,11 +159,11 @@ namespace AutoJMS.FullStack.Services
             if (!pr.Ok)
                 return new InventoryHead { Success = false, ErrorCode = pr.ErrorCode, ErrorMessage = pr.ErrorMessage };
 
-            var codes = new List<string>(pr.Waybills.Count);
-            foreach (var w in pr.Waybills)
+            var codes = new List<string>(pr.Records.Count);
+            foreach (var rec in pr.Records)
             {
-                if (string.IsNullOrWhiteSpace(w)) continue;
-                codes.Add(w.Trim().ToUpperInvariant());
+                if (string.IsNullOrWhiteSpace(rec?.WaybillNo)) continue;
+                codes.Add(rec.WaybillNo.Trim().ToUpperInvariant());
             }
             codes.Sort(StringComparer.Ordinal);
 
@@ -192,18 +196,20 @@ namespace AutoJMS.FullStack.Services
             string end = endDate.ToString("yyyy-MM-dd HH:mm:ss");
 
             // Collect new codes from a page under lock, then hand them to the consumer (tracking).
-            async Task AbsorbPageAsync(int page, IReadOnlyList<string> waybills)
+            async Task AbsorbPageAsync(int page, IReadOnlyList<InventoryFetchItem> records)
             {
                 List<string> newCodes = new();
                 lock (collectLock)
                 {
-                    foreach (var raw in waybills)
+                    foreach (var record in records)
                     {
-                        if (string.IsNullOrWhiteSpace(raw)) continue;
-                        var wb = raw.Trim().ToUpperInvariant();
+                        if (string.IsNullOrWhiteSpace(record?.WaybillNo)) continue;
+                        var wb = record.WaybillNo.Trim().ToUpperInvariant();
                         if (seen.Add(wb))
                         {
-                            items.Add(new InventoryFetchItem { WaybillNo = wb, PageNo = page });
+                            record.WaybillNo = wb;
+                            record.PageNo = page;
+                            items.Add(record);
                             newCodes.Add(wb);
                         }
                     }
@@ -222,9 +228,9 @@ namespace AutoJMS.FullStack.Services
                 return new InventoryFetchResult { Success = false, ErrorCode = first.ErrorCode, ErrorMessage = first.ErrorMessage };
 
             int totalRecords = first.Total;
-            await AbsorbPageAsync(1, first.Waybills).ConfigureAwait(false);
+            await AbsorbPageAsync(1, first.Records).ConfigureAwait(false);
 
-            if (first.IsNoData || first.Waybills.Count == 0)
+            if (first.IsNoData || first.Records.Count == 0)
             {
                 return new InventoryFetchResult
                 {
@@ -265,7 +271,7 @@ namespace AutoJMS.FullStack.Services
                             return;
                         }
                         if (pr.Total > 0) System.Threading.Interlocked.Exchange(ref totalRecords, pr.Total);
-                        await AbsorbPageAsync(page, pr.Waybills).ConfigureAwait(false);
+                        await AbsorbPageAsync(page, pr.Records).ConfigureAwait(false);
                     }).ConfigureAwait(false);
             }
             else if (totalPages < 0)
@@ -281,9 +287,9 @@ namespace AutoJMS.FullStack.Services
                         AppLogger.Warning($"[FullStackSync] page={page} FAILED (fallback, run INCOMPLETE): {pr.ErrorCode}/{pr.ErrorMessage}");
                         break;
                     }
-                    if (pr.Waybills.Count == 0) break;
+                    if (pr.Records.Count == 0) break;
                     if (pr.Total > 0) totalRecords = pr.Total;
-                    await AbsorbPageAsync(page, pr.Waybills).ConfigureAwait(false);
+                    await AbsorbPageAsync(page, pr.Records).ConfigureAwait(false);
                     page++;
                 }
             }
@@ -308,13 +314,13 @@ namespace AutoJMS.FullStack.Services
             public bool Ok;
             public string ErrorCode;
             public string ErrorMessage;
-            public List<string> Waybills = new();
+            public List<InventoryFetchItem> Records = new();
             public int Pages;
             public int Total;
             public bool IsNoData;
         }
 
-        // Fetches a single inventory page with retries. Returns the raw billcodes on the page
+        // Fetches a single inventory page with retries. Returns the raw records on the page
         // (deduplication is done by the caller under a lock).
         private async Task<PageFetch> FetchOnePageAsync(string url, string actionSiteCode, string start, string end, int page, CancellationToken ct)
         {
@@ -327,8 +333,7 @@ namespace AutoJMS.FullStack.Services
                     {
                         { "current", page },
                         { "size", PageSize },
-                        { "dimension", InventoryDimension },
-                        { "isFlag", "1" },
+                        { "dimension", GetInventoryDimension() },
                         { "actionSiteCode", actionSiteCode },
                         { "startDate", start },
                         { "endDate", end },
@@ -369,8 +374,8 @@ namespace AutoJMS.FullStack.Services
                     {
                         foreach (var record in recordsNode.EnumerateArray())
                         {
-                            var waybill = ExtractBillcode(record);
-                            if (!string.IsNullOrWhiteSpace(waybill)) result.Waybills.Add(waybill);
+                            var item = ExtractItem(record, page);
+                            if (item != null) result.Records.Add(item);
                         }
                     }
                     else if (detectedTotal > 0)
@@ -382,7 +387,7 @@ namespace AutoJMS.FullStack.Services
                         result.IsNoData = true;
                     }
 
-                    AppLogger.Info($"[FullStackSync] page={page} records={result.Waybills.Count} pages={detectedPages} total={detectedTotal}");
+                    AppLogger.Info($"[FullStackSync] page={page} records={result.Records.Count} pages={detectedPages} total={detectedTotal}");
                     return result;
                 }
                 catch (OperationCanceledException) { throw; }
@@ -495,15 +500,59 @@ namespace AutoJMS.FullStack.Services
             string[] fields = { "billcode", "billCode", "waybillNo", "waybill_no", "mailNo" };
             foreach (var f in fields)
             {
-                if (record.TryGetProperty(f, out var prop))
-                {
-                    string v = prop.ValueKind == JsonValueKind.String ? prop.GetString()
-                             : prop.ValueKind == JsonValueKind.Number ? prop.GetRawText()
-                             : null;
-                    if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
-                }
+                var v = ReadText(record, f);
+                if (!string.IsNullOrWhiteSpace(v)) return v;
             }
             return null;
+        }
+
+        // Reads one Doris2 property as trimmed text. The report mixes strings ("2026-08-16 00:44:57"),
+        // numbers (codMoney: 119998.0) and JSON nulls in the same record, so everything is normalized
+        // to string here and left null when absent/blank.
+        private static string ReadText(JsonElement record, string name)
+        {
+            if (!record.TryGetProperty(name, out var prop)) return null;
+            string v = prop.ValueKind switch
+            {
+                JsonValueKind.String => prop.GetString(),
+                JsonValueKind.Number => prop.GetRawText(),
+                JsonValueKind.True => "Y",
+                JsonValueKind.False => "N",
+                _ => null
+            };
+            return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        }
+
+        // Maps one Doris2 record into an InventoryFetchItem. Only the fields the dashboard can act on
+        // are carried; the report returns ~48 per record (see tools/test_inventory_fetch.py --inspect).
+        private static InventoryFetchItem ExtractItem(JsonElement record, int page)
+        {
+            if (record.ValueKind != JsonValueKind.Object) return null;
+            var waybill = ExtractBillcode(record);
+            if (string.IsNullOrWhiteSpace(waybill)) return null;
+
+            return new InventoryFetchItem
+            {
+                WaybillNo = waybill,
+                PageNo = page,
+                CustomerCode = ReadText(record, "customerCode"),
+                DestinationName = ReadText(record, "destinationName"),
+                CodMoney = ReadText(record, "codMoney"),
+                OrderSourceName = ReadText(record, "orderSourceName"),
+                LastOpTime = ReadText(record, "lastopTime"),
+                LastOpSiteName = ReadText(record, "lastOpSiteName"),
+                ActualOperatingTime = ReadText(record, "actualOperatingTime"),
+                SendScanTime = ReadText(record, "sendScanTime"),
+                RetType = ReadText(record, "retType"),
+                RetDuration = ReadText(record, "retDuration"),
+                SignTime = ReadText(record, "signTime"),
+                BackApplyTime = ReadText(record, "backApplyTime"),
+                ProblemRegisterTypeName = ReadText(record, "problemRegisterTypeName"),
+                IsEnd = ReadText(record, "isEnd"),
+                IsCancel = ReadText(record, "isCancel"),
+                StatDate = ReadText(record, "statDate"),
+                UpdateTime = ReadText(record, "updateTime")
+            };
         }
 
         private static string GetActionSiteCode()
@@ -511,6 +560,12 @@ namespace AutoJMS.FullStack.Services
             if (!string.IsNullOrWhiteSpace(AppConfig.Current.ActionSiteCode))
                 return AppConfig.Current.ActionSiteCode.Trim();
             return "214A02";
+        }
+
+        private static string GetInventoryDimension()
+        {
+            var configured = AppConfig.Current.InventoryDimension;
+            return string.IsNullOrWhiteSpace(configured) ? DefaultInventoryDimension : configured.Trim();
         }
 
         private static string Truncate(string text, int max)

@@ -31,14 +31,36 @@ namespace AutoJMS.FullStack.Services
             await EnrichWithResultAsync(waybills, ct).ConfigureAwait(false);
         }
 
+        // Bulk inventory sync path. A 30-day sync covers 2.400–4.000 waybills at 10–20 events each, so
+        // persisting them would push 30k–50k rows into details.db AND journey_history.db per run — the
+        // disk stall that freezes the UI. The dashboard only needs the merged row per waybill, which is
+        // what this returns; per-event history stays lazy, fetched on demand by FullStackJourneyService
+        // when the operator opens one waybill (FETCH_JOURNEY / ShowWaybillJourneyWorkspace).
+        public Task<IReadOnlyList<WaybillDbModel>> EnrichForInventorySyncAsync(IEnumerable<string> waybills, CancellationToken ct = default)
+            => EnrichRowsAsync(waybills, persistEvents: false, ct);
+
         public async Task<IReadOnlyList<FullStackJourneyResult>> EnrichWithResultAsync(IEnumerable<string> waybills, CancellationToken ct = default)
+            => (await EnrichCoreAsync(waybills, persistEvents: true, ct).ConfigureAwait(false)).Journeys;
+
+        private async Task<IReadOnlyList<WaybillDbModel>> EnrichRowsAsync(IEnumerable<string> waybills, bool persistEvents, CancellationToken ct)
+            => (await EnrichCoreAsync(waybills, persistEvents, ct).ConfigureAwait(false)).Rows;
+
+        private sealed class EnrichOutcome
+        {
+            // Rows are the MERGED state the repository wrote (Keep()-preserved detail + risk/SLA
+            // enrichment), not the raw scrape — so a caller can put them straight on screen.
+            public IReadOnlyList<WaybillDbModel> Rows = Array.Empty<WaybillDbModel>();
+            public IReadOnlyList<FullStackJourneyResult> Journeys = Array.Empty<FullStackJourneyResult>();
+        }
+
+        private async Task<EnrichOutcome> EnrichCoreAsync(IEnumerable<string> waybills, bool persistEvents, CancellationToken ct)
         {
             var list = waybills?
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Select(x => x.Trim().ToUpperInvariant())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? new List<string>();
-            if (list.Count == 0) return Array.Empty<FullStackJourneyResult>();
+            if (list.Count == 0) return new EnrichOutcome();
             if (!JmsAuthStateService.HasToken && !AuthStateService.Instance.IsAuthenticated)
                 throw new InvalidOperationException("Đang chờ đăng nhập / authToken");
 
@@ -117,19 +139,28 @@ namespace AutoJMS.FullStack.Services
             }
 
             // Primary write — route history first, so the dashboard reflects movement immediately.
-            await _repository.UpsertTrackingRowsAsync(finalRows, ct).ConfigureAwait(false);
+            // The merged rows come back so a caller can render them without re-reading the database.
+            var mergedRows = await _repository.UpsertTrackingRowsAsync(finalRows, ct).ConfigureAwait(false);
 
             // Supplemental write — tracking events / journey history land AFTER the route upsert so
-            // they don't delay the dashboard-critical row update.
+            // they don't delay the dashboard-critical row update. Skipped entirely on the bulk
+            // inventory path; the events are still built so the journey result counts stay accurate.
             var finalEvents = BuildFinalEvents(list, eventDict, aliasMap);
-            await _repository.UpsertTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
-            try
+            if (persistEvents)
             {
-                await new JourneyHistoryService().StoreTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
+                await _repository.UpsertTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
+                try
+                {
+                    await new JourneyHistoryService().StoreTrackingEventsAsync(finalEvents, ct).ConfigureAwait(false);
+                }
+                catch (System.Exception jhEx)
+                {
+                    AppLogger.Warning($"[FullStackTracking] journey_history persist skipped: {jhEx.Message}");
+                }
             }
-            catch (System.Exception jhEx)
+            else
             {
-                AppLogger.Warning($"[FullStackTracking] journey_history persist skipped: {jhEx.Message}");
+                AppLogger.Info($"[FullStackTracking] bulk inventory sync — skipped persisting {finalEvents.Count:N0} events to details.db/journey_history.db");
             }
             await _repository.MarkEnrichedAsync(list, ct).ConfigureAwait(false);
 
@@ -144,18 +175,22 @@ namespace AutoJMS.FullStack.Services
             }
             AppLogger.Info($"[FullStackTracking] enrichment finished count={finalRows.Count}");
 
-            return list.Select(x =>
+            return new EnrichOutcome
             {
-                int eventCount = finalEvents.Count(e => string.Equals(e.WaybillNo, x, StringComparison.OrdinalIgnoreCase));
-                return new FullStackJourneyResult
+                Rows = mergedRows,
+                Journeys = list.Select(x =>
                 {
-                    WaybillNo = x,
-                    Enriched = true,
-                    TrackingEventCount = eventCount,
-                    EnrichedAt = DateTime.UtcNow,
-                    Message = eventCount > 0 ? $"Đã kéo {eventCount:N0} tracking events" : "Đã enrich summary, chưa có tracking event chi tiết"
-                };
-            }).ToList();
+                    int eventCount = finalEvents.Count(e => string.Equals(e.WaybillNo, x, StringComparison.OrdinalIgnoreCase));
+                    return new FullStackJourneyResult
+                    {
+                        WaybillNo = x,
+                        Enriched = true,
+                        TrackingEventCount = eventCount,
+                        EnrichedAt = DateTime.UtcNow,
+                        Message = eventCount > 0 ? $"Đã kéo {eventCount:N0} tracking events" : "Đã enrich summary, chưa có tracking event chi tiết"
+                    };
+                }).ToList()
+            };
         }
 
         private static List<TrackingEvent> BuildFinalEvents(

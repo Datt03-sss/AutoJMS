@@ -10,7 +10,9 @@ namespace AutoJMS.FullStack.Repositories
     {
         Task<List<WaybillDbModel>> GetDashboardRowsAsync(CancellationToken ct = default);
         Task<FullStackSyncResult> ApplyInventoryRunAsync(InventoryRun run, IReadOnlyList<InventoryFetchItem> items, CancellationToken ct = default);
-        Task UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default);
+        // Returns the merged, stored rows (cached detail + derived state/risk/SLA) so a caller can
+        // render a batch without re-reading the whole dashboard from disk.
+        Task<IReadOnlyList<WaybillDbModel>> UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default);
         Task UpsertTrackingEventsAsync(IReadOnlyList<TrackingEvent> events, CancellationToken ct = default);
         Task MarkEnrichedAsync(IEnumerable<string> waybillNos, CancellationToken ct = default);
         // Returns the subset of the given waybills whose static order-detail is already cached,

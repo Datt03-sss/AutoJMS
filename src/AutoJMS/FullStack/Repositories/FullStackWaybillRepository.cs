@@ -61,10 +61,17 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
             try
             {
             var now = DateTime.UtcNow;
+            // Dedup on billcode, keeping the earliest page's record intact — the Doris2 fields on it are
+            // what seed a brand-new row below, so this must not project them away.
             var uniqueItems = items?
                 .Where(x => !string.IsNullOrWhiteSpace(x?.WaybillNo))
                 .GroupBy(x => x.WaybillNo.Trim().ToUpperInvariant(), StringComparer.OrdinalIgnoreCase)
-                .Select(g => new InventoryFetchItem { WaybillNo = g.Key, PageNo = g.Min(x => x.PageNo) })
+                .Select(g =>
+                {
+                    var first = g.OrderBy(x => x.PageNo).First();
+                    first.WaybillNo = g.Key;
+                    return first;
+                })
                 .ToList() ?? new List<InventoryFetchItem>();
 
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
@@ -79,6 +86,7 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
                 ct.ThrowIfCancellationRequested();
                 bool exists = await ExistsAsync(connection, transaction, item.WaybillNo, ct).ConfigureAwait(false);
                 var current = exists ? await GetRowForMutationAsync(connection, transaction, item.WaybillNo, ct).ConfigureAwait(false) : CreateEmptyRow(item.WaybillNo);
+                SeedFromInventory(current, item);
                 ApplyInventoryPresence(current, runId, exists, now);
                 EnrichStateRiskSla(current, isInCurrentInventory: true);
                 await UpsertRowAsync(connection, transaction, current, ct).ConfigureAwait(false);
@@ -144,9 +152,12 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
             }
         }
 
-        public async Task UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default)
+        // Returns the rows AS MERGED AND STORED — cached detail preserved by Keep(), plus the
+        // state/risk/SLA fields EnrichStateRiskSla derives. Callers that want to show a batch straight
+        // away must use this result rather than the input rows, which carry neither.
+        public async Task<IReadOnlyList<WaybillDbModel>> UpsertTrackingRowsAsync(IReadOnlyList<WaybillDbModel> rows, CancellationToken ct = default)
         {
-            if (rows == null || rows.Count == 0) return;
+            if (rows == null || rows.Count == 0) return Array.Empty<WaybillDbModel>();
 
             await _writeGate.WaitAsync(ct).ConfigureAwait(false);
             try
@@ -154,6 +165,7 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
             await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
             await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
+            var merged = new List<WaybillDbModel>(rows.Count);
             foreach (var source in rows.Where(x => !string.IsNullOrWhiteSpace(x?.WaybillNo)))
             {
                 ct.ThrowIfCancellationRequested();
@@ -163,10 +175,12 @@ ORDER BY COALESCE(last_seen_at, first_seen_at, updated_at) DESC, waybill_no ASC;
                 MergeTracking(existing, source);
                 EnrichStateRiskSla(existing, existing.IsActive);
                 await UpsertRowAsync(connection, transaction, existing, ct).ConfigureAwait(false);
+                merged.Add(ToDto(existing));
             }
 
             await transaction.CommitAsync(ct).ConfigureAwait(false);
             AppLogger.Info($"[FullStackLocalDb] tracking rows upserted count={rows.Count}");
+            return merged;
             }
             finally
             {
@@ -570,6 +584,34 @@ ON CONFLICT(waybill_no) DO UPDATE SET
 
             AddRowParameters(command, row);
             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        // Fills display columns straight from the Doris2 inventory record, so a waybill seen for the
+        // first time already shows COD / destination / last operation before any tracking call runs.
+        // Fill-only: a column that already holds a tracked value is never overwritten, because the
+        // tracking API is the more precise source and this report is a daily aggregate.
+        private static void SeedFromInventory(FullStackWaybill row, InventoryFetchItem item)
+        {
+            if (row == null || item == null) return;
+
+            // Only the columns MergeTracking guards with Keep() are seeded. The tracking block
+            // (TrangThaiHienTai, ThoiGianThaoTac, BuuCucThaoTac, ...) is overwritten with Empty() on
+            // every enrichment, so seeding it would be wiped moments later — and tracking always
+            // supplies those anyway. This report's unique contribution is the detail block, which a
+            // bulk sync skips.
+            row.CODThucTe = Fill(row.CODThucTe, item.CodMoney);
+            row.Phuong = Fill(row.Phuong, item.DestinationName);
+            row.TenNguoiGui = Fill(row.TenNguoiGui, item.CustomerCode);
+            row.NoiDungHangHoa = Fill(row.NoiDungHangHoa, item.OrderSourceName);
+            row.ThoiGianNhanHang = Fill(row.ThoiGianNhanHang, item.SendScanTime);
+        }
+
+        // Writes incoming only into a column that is still unset ("empty"/null). Mirror of Keep().
+        private static string Fill(string existing, string incoming)
+        {
+            var current = Empty(existing);
+            if (current != "empty") return current;
+            return string.IsNullOrWhiteSpace(incoming) ? current : incoming.Trim();
         }
 
         // When source has no value ("empty"), keep the previously cached value. Lets a tracking-only

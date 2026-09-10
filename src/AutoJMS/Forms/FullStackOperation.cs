@@ -1,5 +1,6 @@
 using Sunny.UI;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -110,7 +111,15 @@ namespace AutoJMS
         private readonly IJourneyAttachmentService _journeyAttachmentService = new JourneyAttachmentService();
         private List<WaybillDbModel> _lastFilteredDashRows = new();
         private bool _isSyncRunning = false;
-        private volatile bool _streamRefreshInFlight = false;
+        // 0 = idle, 1 = a stream render is in flight. Interlocked because the sync consumer thread
+        // and the UI thread (re-arm at the end of a render) both try to claim it.
+        private int _streamRefreshInFlight = 0;
+        // Pages of enriched rows waiting to be spliced into _cloudData. Written from the sync's
+        // background consumer, drained only on the UI thread.
+        private readonly ConcurrentQueue<IReadOnlyList<WaybillDbModel>> _pendingStreamRows = new();
+        // Set when rows changed in SQLite outside this form's knowledge (DataHub merge, hot-set
+        // enrich): RAM cannot be patched from a batch, so the next render re-reads the snapshot.
+        private volatile bool _streamReloadRequested = false;
         private string _savedOperationFilter = string.Empty;
         private string _savedOperationSearch = string.Empty;
         private IReadOnlyDictionary<string, FullStackOperationMetadata> _operationMetadata = new Dictionary<string, FullStackOperationMetadata>(StringComparer.OrdinalIgnoreCase);
@@ -141,6 +150,9 @@ namespace AutoJMS
             _tooltip.InitialDelay = 500;
             _tooltip.ReshowDelay = 200;
             _tooltip.AutoPopDelay = 10000;
+
+            // After _tooltip so the hint can be attached — see FullStackOperation.ExcelSeed.cs.
+            AttachExcelSeedMenu();
 
             // Subscribe to auth — will activate runtime when token arrives
             _authTokenHandler = async token => await StartRealtimeRuntimeAsync();
@@ -695,31 +707,101 @@ namespace AutoJMS
         }
 
         // Realtime streaming refresh: invoked from the sync consumer after each page of codes is
-        // enriched. Coalesced (skips while a refresh is already running) and marshaled to the UI thread.
+        // enriched, carrying THAT page's merged rows. The batch is queued BEFORE the coalescing
+        // check on purpose — the old code returned early while a render was in flight, which was
+        // harmless when every refresh re-read the whole DB, but silently drops the page now that
+        // the page itself is the only copy of that data in this direction.
+        private Task OnSyncBatchPersistedAsync(IReadOnlyList<WaybillDbModel> pageRows)
+        {
+            if (pageRows != null && pageRows.Count > 0) _pendingStreamRows.Enqueue(pageRows);
+            ScheduleStreamRefresh();
+            return Task.CompletedTask;
+        }
+
+        // Rows landed in SQLite without passing through this form (DataHub merge, leader hot-set),
+        // so there is no batch to splice — the render has to re-read the snapshot from disk.
         private Task OnSyncBatchPersistedAsync()
+        {
+            _streamReloadRequested = true;
+            ScheduleStreamRefresh();
+            return Task.CompletedTask;
+        }
+
+        // Coalesces renders, not data: a caller that loses the race leaves its work in the queue
+        // (or its reload flag set) and the running pass picks it up when it finishes.
+        private void ScheduleStreamRefresh()
         {
             try
             {
-                if (_streamRefreshInFlight) return Task.CompletedTask;
-                _streamRefreshInFlight = true;
+                if (_isClosing || IsDisposed) return;
+                if (Interlocked.CompareExchange(ref _streamRefreshInFlight, 1, 0) != 0) return;
                 if (InvokeRequired) BeginInvoke(new Action(() => _ = RunStreamRefreshAsync()));
                 else _ = RunStreamRefreshAsync();
             }
             catch (Exception ex)
             {
-                _streamRefreshInFlight = false;
+                Interlocked.Exchange(ref _streamRefreshInFlight, 0);
                 AppLogger.Warning("[FullStackOperation] stream refresh dispatch error: " + ex.Message);
             }
-            return Task.CompletedTask;
+        }
+
+        // Splices the queued pages into _cloudData IN PLACE and returns how many rows were applied.
+        // MUST run on the UI thread with no await inside: the dashboard render walks _cloudData with
+        // dozens of LINQ passes, so a mutation from the sync's background thread would throw
+        // InvalidOperationException mid-enumeration.
+        private int DrainPendingStreamRows()
+        {
+            if (_pendingStreamRows.IsEmpty) return 0;
+
+            var index = new Dictionary<string, int>(_cloudData.Count, StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < _cloudData.Count; i++)
+            {
+                var key = _cloudData[i]?.WaybillNo?.Trim();
+                if (!string.IsNullOrEmpty(key)) index[key] = i;
+            }
+
+            int applied = 0;
+            while (_pendingStreamRows.TryDequeue(out var batch))
+            {
+                if (batch == null) continue;
+                foreach (var row in batch)
+                {
+                    var key = row?.WaybillNo?.Trim();
+                    if (string.IsNullOrEmpty(key)) continue;
+                    if (index.TryGetValue(key, out int at)) _cloudData[at] = row;
+                    else { index[key] = _cloudData.Count; _cloudData.Add(row); }
+                    applied++;
+                }
+            }
+            return applied;
         }
 
         private async Task RunStreamRefreshAsync()
         {
             try
             {
-                var snapshot = await _fullStackDashboardService.LoadSnapshotAsync(_cts.Token);
-                _cloudData = snapshot.Rows ?? new List<WaybillDbModel>();
-                _lastDataUpdate = snapshot.LastSyncAt?.ToLocalTime() ?? _lastDataUpdate;
+                // Before the first await, on the UI thread — see DrainPendingStreamRows.
+                int spliced = DrainPendingStreamRows();
+                bool reload = _streamReloadRequested;
+                _streamReloadRequested = false;
+
+                if (reload)
+                {
+                    var snapshot = await _fullStackDashboardService.LoadSnapshotAsync(_cts.Token);
+                    _cloudData = snapshot.Rows ?? new List<WaybillDbModel>();
+                    _lastDataUpdate = snapshot.LastSyncAt?.ToLocalTime() ?? _lastDataUpdate;
+                    // A page may have been queued while the disk read was running.
+                    spliced += DrainPendingStreamRows();
+                }
+                else if (spliced == 0)
+                {
+                    return; // nothing new — don't burn a full grid render
+                }
+                else
+                {
+                    _lastDataUpdate = DateTime.Now;
+                }
+
                 await RefreshDashViewAsync(_cts.Token);
             }
             catch (OperationCanceledException) { }
@@ -729,7 +811,21 @@ namespace AutoJMS
             }
             finally
             {
-                _streamRefreshInFlight = false;
+                Interlocked.Exchange(ref _streamRefreshInFlight, 0);
+                // Work that arrived while this render was running was queued, not dropped — but
+                // nothing will pick it up unless the pass that blocked it re-arms here. Posted
+                // rather than called inline so the message pump gets a turn between batches: the
+                // grid repaints and the operator can still click while the sync keeps streaming.
+                try
+                {
+                    if (!_isClosing && !IsDisposed && IsHandleCreated
+                        && (!_pendingStreamRows.IsEmpty || _streamReloadRequested))
+                        BeginInvoke(new Action(ScheduleStreamRefresh));
+                }
+                catch (Exception rearmEx)
+                {
+                    AppLogger.Warning("[FullStackOperation] stream refresh re-arm skipped: " + rearmEx.Message);
+                }
             }
         }
 

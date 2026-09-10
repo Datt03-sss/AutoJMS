@@ -1,3 +1,4 @@
+using AutoJMS.Data;
 using AutoJMS.FullStack.LocalDb;
 using AutoJMS.FullStack.Models;
 using AutoJMS.FullStack.Repositories;
@@ -55,11 +56,12 @@ namespace AutoJMS.FullStack.Services
             => SyncInventoryAndRefreshTrackingAsync(from, to, null, ct);
 
         // onBatchPersisted (optional): fired after each fetched page of codes has been enriched and
-        // written, so the caller can refresh the UI in realtime.
+        // written, carrying THAT page's merged rows so the caller can splice them into whatever it is
+        // already showing — no full reload from disk between pages.
         public async Task<FullStackSyncResult> SyncInventoryAndRefreshTrackingAsync(
             DateTime? from,
             DateTime? to,
-            Func<Task> onBatchPersisted,
+            Func<IReadOnlyList<WaybillDbModel>, Task> onBatchPersisted,
             CancellationToken ct = default)
         {
             await InitializeAsync(ct).ConfigureAwait(false);
@@ -83,11 +85,12 @@ namespace AutoJMS.FullStack.Services
                     {
                         try
                         {
-                            await _trackingEnrichmentService.EnrichAsync(pageCodes, ct).ConfigureAwait(false);
+                            // Bulk path: rows only, no per-event writes (see EnrichForInventorySyncAsync).
+                            var pageRows = await _trackingEnrichmentService.EnrichForInventorySyncAsync(pageCodes, ct).ConfigureAwait(false);
                             enrichedCount += pageCodes.Count;
                             if (onBatchPersisted != null)
                             {
-                                try { await onBatchPersisted().ConfigureAwait(false); }
+                                try { await onBatchPersisted(pageRows).ConfigureAwait(false); }
                                 catch (Exception cbEx) { AppLogger.Warning($"[FullStackDashboard] onBatchPersisted error: {cbEx.Message}"); }
                             }
                         }
