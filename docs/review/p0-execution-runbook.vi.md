@@ -227,13 +227,17 @@ Rồi chạy lại 1.6 cho tới khi rỗng. Nếu vẫn fail → ⛔ STOP + REP
 | # | Kiểm | Lệnh gợi ý | Kỳ vọng |
 |---|---|---|---|
 | 3.1 | Internet → DB:5432 | từ máy ngoài: `nc -vz <public-ip> 5432` | **BLOCKED / timeout** |
-| 3.2 | API → DB qua WireGuard | từ VPS-API: `nc -vz <db-wg-ip> 5432` | **OPEN** |
-| 3.3 | TLS VerifyFull | connection string dùng `SSL Mode=VerifyFull` | **PASS** |
-| 3.4 | Certificate hostname | hostname trong cert khớp host đang kết nối | **khớp** |
+| 3.2 | API → DB qua WireGuard | từ VPS-API: `nc -vz <db-wg-ip> 5432` | **OPEN** — *chỉ multi-host* |
+| 3.3 | TLS VerifyFull | connection string dùng `SSL Mode=VerifyFull` | **PASS** — *chỉ multi-host* |
+| 3.4 | Certificate hostname | hostname trong cert khớp host đang kết nối | **khớp** — *chỉ multi-host* |
 | 3.5 | API → PostgreSQL | `./dc.sh --env-file "$ENV" logs --tail 50 api` + health `ready` | **PASS** |
 | 3.6 | Docker bind | `docker ps --format '{{.Ports}}'` cho postgres | **không** bind `0.0.0.0:5432`; nếu cần thì bind nội bộ |
 
 Bất kỳ dòng nào FAIL → ⛔ **STOP**.
+
+**3.2–3.4 giả định tô-pô multi-host** — API và PostgreSQL ở hai máy, nối bằng WireGuard, TLS bọc chặng giữa hai máy đó. Staging hiện **không** chạy tô-pô này: `postgres` chỉ nằm trên network `data` khai báo `internal: true`, mở cổng bằng `expose: "5432"` chứ không `ports:`, và API kết nối bằng `Host=postgres` trong cùng network. Không có chặng liên-máy nào để bọc, nên trên single-host **3.2, 3.3, 3.4 là N/A** — ghi `N/A (single-host)` chứ không ghi PASS, và chúng trở lại bắt buộc ngay khi production tách API với DB ra hai máy.
+
+Đổi lại, single-host phải chứng minh 3.1 và 3.6 chặt hơn: `internal: true` khiến Docker không cấp route ra ngoài cho network `data`, và `expose` (khác `ports`) không mở cổng nào trên host — hai điều này chặn ở mức cấu hình compose, không phụ thuộc firewall còn đúng hay không.
 
 ---
 
@@ -289,33 +293,33 @@ Năm mục còn lại (OD-3, 4, 5, 7, 8) có thể ký cùng lúc; **OD-8** đi�
 | G2 | Preflight | 8 cột `missing`; không mismatch; 1.6 rỗng; **1.8 = 0** | ☐ |
 | G3 | Backup | Tạo được file dump | ✅ |
 | G4 | Restore | Restore thành công vào instance tạm | ✅ |
-| G5 | Smoke trên DB restored | 10 bước PASS | ☐ |
-| G6 | Infra 3.1–3.6 | Toàn bộ PASS | ☐ |
+| G5 | Smoke trên DB restored | Toàn vẹn bản restore + 10 bước PASS | ✅ |
+| G6 | Infra 3.1–3.6 | 3.1/3.5/3.6 PASS; 3.2–3.4 N/A trên single-host | ✅ |
 | G7 | Baseline A (interactive) | Đủ 5 metrics × 2 mức tải | ☐ |
 | G8 | Baseline B (bulk) | Đủ 5 metrics × 2 mức tải | ☐ |
 | G9 | OD ký | OD-1, OD-2, OD-6 tối thiểu | ☐ |
 
 **Chỉ khi G1–G9 đều ✅ mới được đề xuất mở P1.**
 
-### Bằng chứng đã ghi nhận — Staging VPS, 10/09/2026
+### Bằng chứng đã ghi nhận — 10/09/2026
 
-Nguồn: lần đo của Antigravity trên `https://dev.jmsauto.online`, do Owner chuyển tiếp.
+Hai môi trường khác nhau, nên mỗi số dưới đây đều ghi kèm nơi đo:
 
-| Gate | Bằng chứng |
-|---|---|
-| G3 ✅ | `backup-postgres.sh` tạo dump sạch: Full **1,9 MB**, Critical (`--critical-only`) **169 KB** |
-| G4 ✅ | Restore vào PostgreSQL 16, **RTO Critical 3,4 s**, checksum dữ liệu khớp 100% |
+- **Staging VPS** — `https://dev.jmsauto.online`, single-host Docker Compose, DB đang phục vụ.
+- **VM Test Lab** — máy ảo trong LAN của Owner, dựng riêng để restore vào **instance tạm**.
 
-**G5 và G6 chưa tick — bằng chứng hiện có đo một thứ khác với tiêu chí:**
+| Gate | Bằng chứng | Đo tại |
+|---|---|---|
+| G3 ✅ | `backup-postgres.sh` tạo dump sạch: Full **1,9 MB**, Critical (`--critical-only`) **169 KB** | Staging VPS |
+| G4 ✅ | Restore vào PostgreSQL 16 trên **instance tạm**: **RTO Critical 3,4 s** (3 lần đo, DB quiesced), schema/row count/sequence khớp, 0 index INVALID, đủ 9 marker migration, checksum khớp **100%** | VM Test Lab — dump tạo tại Staging VPS |
+| G5 ✅ | Hai nửa: toàn vẹn bản restore (checksum 100%) + hợp đồng API 10 bước `smoke-test.sh` **24/24 assertion PASS** | VM Test Lab + Staging VPS — xem ghi chú |
+| G6 ✅ | 3.1 `TcpTestSucceeded: False` từ ngoài Internet, UFW active · 3.5 `/health/ready` báo `postgres: Healthy` · 3.6 `ss -tulpn` không có listener `5432` trên host · 3.2–3.4 **N/A (single-host)** | Staging VPS |
 
-| Mục | Tiêu chí trong bảng | Bằng chứng đang có | Khoảng cách |
-|---|---|---|---|
-| G5 | Smoke **trên DB restored** | `smoke-test.sh` 24/24 assertion trên `https://dev.jmsauto.online` | Chứng minh stack staging đang phục vụ chạy được, chưa chứng minh **bản restore** chạy được. Đây đúng là §20 bước 3 — và cũng chính là lý do G4 từng bị hạ từ PASS xuống FAIL ở P0: restore chạy vào staging đang phục vụ thay vì instance tạm |
-| G6 · 3.2 | `API → DB` **qua WireGuard**, `nc -vz <db-wg-ip> 5432` → OPEN | "Giao tiếp nội bộ Docker" | Khác tô-pô. Hoặc đo lại đúng 3.2, hoặc sửa 3.2 nếu staging cố ý chạy một host duy nhất |
-| G6 · 3.3 | Connection string dùng `SSL Mode=VerifyFull` | Caddy Let's Encrypt trên `https://dev.jmsauto.online` | Khác chặng: 3.3 nói về **API → PostgreSQL**; Caddy là chặng **client → API** |
-| G6 · 3.4 | Hostname trong cert khớp host đang kết nối (cert của DB) | — | Chưa đo |
+**G5 ký ở dạng hợp bằng chứng, không phải một lần chạy duy nhất.** Tiêu chí viết ở Bước 2.3 là chạy `smoke-test.sh` trỏ vào một API đang dùng DB restored. Cái đã làm là tách đôi: bản restore được chứng minh **đúng dữ liệu** ở VM Test Lab, còn 10 bước hợp đồng được chứng minh **chạy được** ở Staging. Chưa có lần chạy nào ghép cả hai. Owner chấp nhận hợp bằng chứng này cho P0; muốn đóng đúng chữ thì dựng một API container trỏ vào instance restored ở VM Lab rồi chạy lại `smoke-test.sh` — VM Lab đang được giữ lại nên làm được bất cứ lúc nào.
 
-3.1, 3.5, 3.6 đã có bằng chứng khớp tiêu chí: `TcpTestSucceeded: False` từ ngoài Internet + UFW active (3.1); `/health/ready` báo `postgres: Healthy` (3.5); `ss -tulpn` không có listener `5432` trên host (3.6).
+**RTO 3,4 s không đo trên phần cứng Staging.** Khi điền OD-8 phải ghi kèm nguồn: số này đo ở VM Test Lab, chỉ có file dump là tạo tại VPS. RTO trên phần cứng VPS có thể khác, và khác nhiều hơn nữa trên production.
+
+**G6 tick với 3 dòng N/A, không phải 3 dòng PASS.** WireGuard và `SSL Mode=VerifyFull` (3.2–3.4) là thiết kế cho production multi-host; staging chạy single-host nên không có chặng liên-máy để bọc — chi tiết ở Bước 3. Ngay khi production tách API và DB ra hai máy, ba dòng đó trở lại bắt buộc và G6 phải đo lại từ đầu.
 
 ---
 

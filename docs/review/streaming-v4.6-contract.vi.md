@@ -607,7 +607,9 @@ Lý do: `is_terminal`/`terminal_at`/`waybill_tombstones` là **dữ liệu nghi�
 | AT-MG1 | P0/P1 | Partial state (1 cột đã có, 1 chưa) | **STOP + REPORT** per-object, **không** skip toàn bộ | M |
 | AT-MG2 | P1 | `CONCURRENTLY` fail | Phát hiện `indisvalid=false` → DROP → retry → nếu fail thì STOP | M |
 | AT-MG3 | P0 | backup → restore → smoke trên DB restored | PASS cả 3; fail → STOP RELEASE | M |
-| AT-MG4 | P0 | `Internet → DB:5432` / `API → DB` / TLS VerifyFull | BLOCKED / PASS / PASS | M |
+| AT-MG4 | P0 | `Internet → DB:5432` / `API → DB` / TLS VerifyFull | **Multi-host:** BLOCKED / PASS / PASS — API↔DB qua WireGuard, `SSL Mode=VerifyFull`. **Single-host:** BLOCKED / PASS / **N/A** — không có chặng liên-máy để bọc TLS; thay bằng network `data` `internal: true` + `expose` (không `ports`) | M |
+
+> AT-MG4 phụ thuộc tô-pô, nên `Kỳ vọng` chia hai nhánh chứ không có một đáp án chung. **`Internet → DB:5432` phải BLOCKED ở cả hai nhánh** — đó là yêu cầu bảo mật, không phải kết quả đo. WireGuard và `SSL Mode=VerifyFull` chỉ áp dụng khi API và DB nằm trên hai máy; đưa production về multi-host là đưa hai mục đó trở lại bắt buộc. Kết quả đã ghi nhận nằm ở `docs/review/p0-execution-runbook.vi.md` (G6), không ghi ở đây.
 
 ### Cutover (§21)
 | AT-HC1 | P4 | Hard-cut khi retry queue > 0 | **Bị chặn** (không chỉ kiểm outbox) | I |
