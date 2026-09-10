@@ -289,17 +289,24 @@ Năm mục còn lại (OD-3, 4, 5, 7, 8) có thể ký cùng lúc; **OD-8** đi�
 
 | # | Hạng mục | PASS khi | Kết quả |
 |---|---|---|---|
-| G1 | Bằng chứng OD-1 | Có bảng từ vựng + ứng viên terminal | ☐ |
-| G2 | Preflight | 8 cột `missing`; không mismatch; 1.6 rỗng; **1.8 = 0** | ☐ |
+| G1 | Bằng chứng OD-1 | Có bảng từ vựng + ứng viên terminal | ⛔ **CHẶN** — staging không có dữ liệu quét thật |
+| G2 | Preflight | 8 cột `missing`; không mismatch; 1.6 rỗng; **1.8 = 0** | ⛔ **QUÁ HẠN** — P1 đã áp dụng 10/09 |
 | G3 | Backup | Tạo được file dump | ✅ |
 | G4 | Restore | Restore thành công vào instance tạm | ✅ |
 | G5 | Smoke trên DB restored | Toàn vẹn bản restore + 10 bước PASS | ✅ |
 | G6 | Infra 3.1–3.6 | 3.1/3.5/3.6 PASS; 3.2–3.4 N/A trên single-host | ✅ |
-| G7 | Baseline A (interactive) | Đủ 5 metrics × 2 mức tải | ☐ |
-| G8 | Baseline B (bulk) | Đủ 5 metrics × 2 mức tải | ☐ |
+| G7 | Baseline A (interactive) | Đủ 5 metrics × 2 mức tải | ✅ |
+| G8 | Baseline B (bulk) | Đủ 5 metrics × 2 mức tải | ✅ |
 | G9 | OD ký | OD-1, OD-2, OD-6 tối thiểu | ☐ |
 
 **Chỉ khi G1–G9 đều ✅ mới được đề xuất mở P1.**
+
+**Câu trên đã bị vi phạm về thứ tự, và không thể sửa bằng cách đo lại.** Migration `007`/`008`/`009` vào staging lúc **10/09 01:19**, trong khi G1 và G2 chưa bao giờ ✅ — trái với chính điều **1** của mục "⛔ P0 KHÔNG được làm" ở cuối tài liệu này. Hệ quả: G2 nay là một gate tiền-P1 chạy trên môi trường hậu-P1, nên nó **không thể pass mà cũng không thể fail có nghĩa** — đó là quyết định của Owner, không phải việc đo thêm. Hai đường xử lý:
+
+- **Chấp nhận** — ghi nhận P1 đã mở trên staging, hạ G2 xuống "N/A (đã qua thời điểm)", và ký OD dựa trên bằng chứng hiện có.
+- **Dựng lại sạch** — restore một staging tiền-migration (dump đã có, RTO 2,3 s), chạy lại G2 đúng thứ tự, rồi mới áp migration.
+
+G1 thì đường nào cũng không giải được bằng staging: bảng dưới cho thấy staging **chưa từng nhận một lần quét thật nào**, nên chờ thêm cũng không sinh ra ứng viên terminal.
 
 ### Bằng chứng đã ghi nhận — 10/09/2026
 
@@ -310,16 +317,53 @@ Hai môi trường khác nhau, nên mỗi số dưới đây đều ghi kèm nơ
 
 | Gate | Bằng chứng | Đo tại |
 |---|---|---|
+| G1 ⛔ | Từ vựng quét trên staging chỉ có **2 mã**: `110/state_transition` (7 802) và `98/inventory` (2). Nhưng **7 800 trên 7 804 sự kiện là waybill `BENCH-%`** — cặn của chính lượt đo baseline 07/09, mà harness hardcode `code: 110`; 4 sự kiện còn lại là fixture `SMOKE-WB-001` của `smoke-test.sh`. **14/14 site đều là bench hoặc smoke.** Không có ứng viên terminal để trình | Staging VPS |
+| G2 ⛔ | `p0_preflight.sql` báo 2 dòng `*** STOP ***`, và báo **đúng**: nó khẳng định 8 cột P1 cùng `waybill_tombstones` phải **vắng mặt**, trong khi migration `007`/`008`/`009` đã áp dụng lúc **10/09 01:19**. Gate tiền-P1 chạy sau khi P1 đã vào | Staging VPS |
 | G3 ✅ | `backup-postgres.sh` tạo dump sạch: Full **1,9 MB**, Critical (`--critical-only`) **169 KB** | Staging VPS |
-| G4 ✅ | Restore vào PostgreSQL 16 trên **instance tạm**: **RTO Critical 3,4 s** (3 lần đo, DB quiesced), schema/row count/sequence khớp, 0 index INVALID, đủ 9 marker migration, checksum khớp **100%** | VM Test Lab — dump tạo tại Staging VPS |
-| G5 ✅ | Hai nửa: toàn vẹn bản restore (checksum 100%) + hợp đồng API 10 bước `smoke-test.sh` **24/24 assertion PASS** | VM Test Lab + Staging VPS — xem ghi chú |
+| G4 ✅ | Restore vào PostgreSQL 16 trên **instance tạm**: **RTO Critical 3,4 s** (3 lần đo, DB quiesced), schema/row count/sequence khớp, 0 index INVALID, đủ 9 marker migration, checksum khớp **100%**. Đo lại trên **phần cứng VPS**: 1,44 / 0,68 / 0,57 s ad-hoc và **2,30 s** qua chính script đã ship (gồm cả `docker cp`) | VM Test Lab + Staging VPS |
+| G5 ✅ | **Một lần chạy ghép cả hai nửa**: dựng stack Docker Compose thứ hai (`COMPOSE_PROJECT_NAME=g5`) trên VPS, restore dump critical vào đó, rồi chạy `smoke-test.sh` với **cả SQL lẫn HTTP trỏ vào chính instance restored** — **24/24 assertion PASS**. Toàn vẹn bản restore: 14 bảng, 0 index INVALID, 9 migration, 13 site | Staging VPS |
 | G6 ✅ | 3.1 `TcpTestSucceeded: False` từ ngoài Internet, UFW active · 3.5 `/health/ready` báo `postgres: Healthy` · 3.6 `ss -tulpn` không có listener `5432` trên host · 3.2–3.4 **N/A (single-host)** | Staging VPS |
 
-**G5 ký ở dạng hợp bằng chứng, không phải một lần chạy duy nhất.** Tiêu chí viết ở Bước 2.3 là chạy `smoke-test.sh` trỏ vào một API đang dùng DB restored. Cái đã làm là tách đôi: bản restore được chứng minh **đúng dữ liệu** ở VM Test Lab, còn 10 bước hợp đồng được chứng minh **chạy được** ở Staging. Chưa có lần chạy nào ghép cả hai. Owner chấp nhận hợp bằng chứng này cho P0; muốn đóng đúng chữ thì dựng một API container trỏ vào instance restored ở VM Lab rồi chạy lại `smoke-test.sh` — VM Lab đang được giữ lại nên làm được bất cứ lúc nào.
+**G1 chặn vì thiếu dữ liệu, không vì thiếu công cụ.** Truy vấn từ vựng chạy được và trả về kết quả sạch; vấn đề là mọi hàng nó đếm đều do chính bộ test sinh ra. Cả hai mã có mặt đều là mã **do harness hardcode**: `110` trong `baseline_load.py`, `110` và `98` trong fixture của `smoke-test.sh`. Số hàng đã qua cửa sổ settle 14 ngày là **0** — lịch sử staging chỉ trải từ 08/09 đến 10/09 — nên **chờ thêm cũng không có gì để chờ**: nguồn duy nhất sinh ra dữ liệu là bộ test, và bộ test luôn sinh đúng hai mã đó. Muốn có ứng viên terminal phải lấy từ **production hoặc từ một bản trích JMS thật**, không lấy từ staging ở bất kỳ thời điểm nào. Đây cũng là lý do điều **4** của mục "⛔ P0 KHÔNG được làm" phải giữ nguyên: seed một mã terminal đoán được sẽ biến G1 thành vòng lặp tự khẳng định.
 
-**RTO 3,4 s không đo trên phần cứng Staging.** Khi điền OD-8 phải ghi kèm nguồn: số này đo ở VM Test Lab, chỉ có file dump là tạo tại VPS. RTO trên phần cứng VPS có thể khác, và khác nhiều hơn nữa trên production.
+**G5 nay đóng đúng chữ.** Lần ký trước là hợp bằng chứng từ hai máy: bản restore chứng minh ở VM Lab, 10 bước hợp đồng chứng minh ở Staging, không lần nào ghép cả hai. Khoảng trống đó đã được lấp: `--base` của `smoke-test.sh` **chỉ đổi hướng HTTP**, phần SQL vẫn đi qua `docker compose exec`, nên muốn ghép phải dựng nguyên một compose project thứ hai chứ không chỉ đổi URL. Đã dựng, đã chạy, 24/24.
+
+**RTO nay có số đo trên phần cứng Staging.** Cảnh báo cũ — "3,4 s đo ở VM Lab, không phải VPS" — đã được gỡ bằng 4 lần đo ở trên. Con số dùng cho OD-8 nên là **2,30 s**, vì đó là lần duy nhất chạy qua đúng script sẽ dùng khi có sự cố thật. Production vẫn có thể khác.
+
+**24/24 PASS đó đi qua đường HMAC, không phải đường RSA.** Staging đang bật `DATAHUB_ALLOW_STAGING_TEST_ISSUER=true` và `.env.staging` **không có** `DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY`, nên `RsaLicenseAssertionValidator` tắt và mọi assertion trong lượt smoke đều là HMAC `v1.`. Cờ đó **đã ở sẵn trên staging từ trước** — lượt này chỉ phát hiện chứ không bật, và cũng không tắt để tránh làm hỏng môi trường đang phục vụ. Điều cần ghi rõ: **đường xác thực mà production sẽ dùng chưa từng được chạy thử một lần nào.** Đây là một hạng mục riêng cho P1, không phải một dòng của G5.
 
 **G6 tick với 3 dòng N/A, không phải 3 dòng PASS.** WireGuard và `SSL Mode=VerifyFull` (3.2–3.4) là thiết kế cho production multi-host; staging chạy single-host nên không có chặng liên-máy để bọc — chi tiết ở Bước 3. Ngay khi production tách API và DB ra hai máy, ba dòng đó trở lại bắt buộc và G6 phải đo lại từ đầu.
+
+### G7 / G8 — baseline đo lại ngày 10/09/2026
+
+Báo cáo 07/09 để G7 và G8 ở **FAIL**, và nói rõ đó là FAIL của *kế hoạch đo*, không phải của hệ thống: tải đã chạy sạch nhưng **3 trên 5 metrics chưa từng đo được ở bất kỳ mức tải nào** — `counter_lock_wait (p50)`, `transaction_p95`, `commit_p95`. Lượt đo này nhắm đúng ba metrics đó.
+
+Đo trên **stack Docker Compose thứ hai** dựng riêng ở VPS rồi xoá, restore từ dump full (7 804 scan event, 7 802 projection, 13 site) — **không** chạy tải lên stack đang phục vụ. Trước mọi lượt đo đã chạy **positive control bắt buộc** của `lock_wait_sampler.sql`: **36/60 mẫu thấy waiter, `max_wait_ms` leo tới 7 062 ms** ⇒ dụng cụ không mù. Overlap sampler × cửa sổ tải được **tính**, không giả định; cả bốn lượt phủ trọn 120 s.
+
+`counter_lock_wait` ở đây là **`AccessExclusiveLock on tuple` của `site_change_counters`** (OID xác thực tại chỗ = 16457). Báo cáo 07/09 đã *loại* các dòng tuple-lock vì sợ trùng đếm với `ShareLock on transactionid`; ở cả bốn lượt này `ShareLock on transactionid` = **0**, nên không có gì để trùng.
+
+| Gate | Mức tải | Sàn | req / ok / lỗi | rps | `counter_lock_wait` p50 / p95 / max | `transaction_p95` | `commit_p95` |
+|---|---|---|---|---|---|---|---|
+| **G7** A interactive | 10 | 5 ms | 932 / 932 / **0** | 7,7 | < 5 ms / < 5 ms / < 5 ms — **0 lần chờ** | 1 388,7 ms | 50,0 ms |
+| **G7** A interactive | 50 | 5 ms | 1 000 / 1 000 / **0** | 8,3 | < 5 ms / < 5 ms / **568,0 ms** — 47 lần (4,70 %) | 2 452,0 ms | 61,2 ms |
+| **G8** B bulk | 10 | 5 ms | 886 / 886 / **0** | 7,4 | < 5 ms / < 5 ms / < 5 ms — **0 lần chờ** | 1 714,8 ms | 57,4 ms |
+| **G8** B bulk | 50 | 100 ms | 950 / 950 / **0** | 7,9 | < 100 ms / < 100 ms / **816,0 ms** — 11 lần (1,16 %) | 444,2 ms | 62,5 ms |
+
+Lease ở chế độ bulk giữ được nguyên vẹn: `bulk-10` 29 renew / **0 fail**, `bulk-50` 30 renew / **0 fail**, `http_409 = 0` ở cả hai.
+
+**Cách hạ sàn quan sát — và cái giá của nó.** Sàn 100 ms của báo cáo cũ là **kiểm duyệt trái**: nó vứt mọi lần chờ ngắn hơn 100 ms, nên `p50` không thể tồn tại. Hạ `deadlock_timeout` xuống 5 ms biến server log từ mẫu thành **census** và siết cận `p50`/`p95` chặt hơn **20 lần**. Nhưng chính nó phá lượt đo ở mức tải cao — cùng một tải, chỉ đổi sàn:
+
+| Sàn `deadlock_timeout` | ok / 409 | `lease_renew_failures` | client p50 |
+|---|---|---|---|
+| 5 ms | 197 / **803** | 27 | 1 140,6 ms |
+| 25 ms | 905 / 95 | 3 | 305,9 ms |
+| **100 ms** | **950 / 0** | **0** | **63,9 ms** |
+
+Ở concurrency 50 chế độ bulk, 5 worker cùng đập vào **một dòng** `site_change_counters`; sàn 5 ms bắt bộ dò deadlock chạy mỗi 5 ms cho từng backend đang chờ, và toàn bộ lease sập theo. Vì vậy `bulk-50` chỉ hợp lệ ở sàn 100 ms, và `p50`/`p95` của nó vẫn là **cận**, không phải số đo. Ba điểm tải còn lại đo được ở sàn 5 ms. **Ai đo lại phải chọn sàn theo mức tải, không dùng một sàn cho cả bốn lượt.**
+
+**Hai điều chưa đổi so với 07/09.** Thứ nhất, `throughput` vẫn là **trần tự áp**: 7,4–8,3 rps là đúng mục tiêu `--target-rps 8`, và `IngressRateLimitMiddleware` chặn ở 600 req/phút cho mỗi IP nguồn, nên **không thể tìm điểm bão hoà từ một IP** — con số này chứng minh hệ chịu được ≥ 8 rps chứ không định vị được trần của nó. Thứ hai, `client_latency` không phải độ trễ của hệ ở trạng thái sạch: `log_min_duration_statement = 0` ghi ~1 150 dòng/giây qua log driver của Docker trong suốt lượt đo.
+
+**Sampler và server log cho hai con số khác nhau, và cả hai đều đúng.** Ví dụ `interactive-50`: log ghi lần chờ hoàn tất dài nhất là 568,0 ms, còn sampler bắt được một backend đang chờ **1 425,5 ms**. Log chỉ đếm lần chờ đã `acquired`; sampler bắt cả lần đang dở, nhưng đếm **mọi** khoá chưa cấp trong database chứ không riêng `site_change_counters`. Đừng gộp hai cột này làm một.
 
 ---
 

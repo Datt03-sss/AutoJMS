@@ -158,6 +158,8 @@ Cho tới khi OD-1 được ký:
 **P1 chỉ được phép**: thêm schema, thêm framework/guard **capability** (đường dẫn code tồn tại nhưng không kích hoạt).
 ⛔ **CẤM implement guessed terminal codes** dưới mọi hình thức, kể cả "tạm để test".
 
+**Bằng chứng cho OD-1 không thể lấy từ staging** (khảo sát 10/09/2026). Toàn bộ `jms_scan_events` trên staging do bộ test sinh ra, và bộ test hardcode đúng hai mã `110`/`98` — chính hai mã seed `002` đã phân loại. Chờ qua cửa sổ settle 14 ngày cũng không đổi gì vì nguồn sinh dữ liệu không đổi. Ứng viên terminal phải đến từ **production hoặc một bản trích payload JMS thật**.
+
 ---
 
 ## §7. Terminal Lifecycle (khoá hoàn toàn)
@@ -379,6 +381,10 @@ Cache paths: **site-scoped** (§12, §13). Cursor: **multi-site** (`cursor.json`
 **Metrics bắt buộc (mỗi nhóm)**: `counter_lock_wait` · `transaction_p95` · `commit_p95` · `throughput` · `error_rate`.
 
 Baseline này là **mốc so sánh cho P1 và P7**. Không có baseline → không được vào P1.
+
+**Đo xong 10/09/2026** — bốn điểm tải, đủ 5 metrics, số liệu ở `docs/review/p0-execution-runbook.vi.md` § "G7 / G8".
+
+⚠️ **Khi P1/P7 đo lại: phải ghi kèm `deadlock_timeout` đang đặt.** `counter_lock_wait` lấy từ `log_lock_waits`, mà `log_lock_waits` chỉ ghi những lần chờ **dài hơn `deadlock_timeout`** — nên giá trị đó là **sàn quan sát**, và `p50`/`p95` đo dưới hai sàn khác nhau **không so sánh được với nhau**. Baseline 10/09 dùng sàn **5 ms** cho ba điểm và **100 ms** cho `bulk` 50 concurrent (ở sàn 5 ms, mức tải này tự sập vì nhiễu dụng cụ — chi tiết trong runbook). Không dùng một sàn duy nhất cho cả bốn điểm.
 
 ---
 
