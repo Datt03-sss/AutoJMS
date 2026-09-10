@@ -123,16 +123,53 @@ public sealed class TierEntitlementTests
     // ------------------------------------------------------- SafeDefault
 
     [Fact]
-    public void SafeDefault_luon_tat_fullstack_ke_ca_khi_license_la_ULTRA()
+    public void SafeDefault_cua_BASE_van_tat_fullstack()
     {
-        // Mất mạng, không có cache: SafeDefault tắt tường minh nên fail-closed.
+        // Cổng tier phải đóng ở đây. Nới safe-default cho ULTRA không được phép làm
+        // rò một cờ nào sang BASE.
         var resolved = TierRuntimePolicy.Resolve(
-            RuntimePolicyDocument.SafeDefault("BASE", "safe-default"), "ULTRA");
+            RuntimePolicyDocument.SafeDefault("BASE", "safe-default"), "BASE");
 
-        Assert.Equal("ULTRA", resolved.Tier);
+        Assert.Equal("BASE", resolved.Tier);
         Assert.False(resolved.EnableFullStackOperation);
+        Assert.False(resolved.EnableBackgroundAutoSync);
         Assert.True(resolved.AllowManualTracking);
         Assert.True(resolved.AllowManualPrint);
+    }
+
+    [Fact]
+    public void SafeDefault_cua_ULTRA_giu_fullstack_cho_license_ULTRA()
+    {
+        // Mất mạng, không có cache. Trước đây SafeDefault tắt FullStack vô điều kiện,
+        // nên một máy ULTRA có cấu hình DataHub mà fetch hỏng lại chạy như BASE — tệ
+        // hơn hẳn máy KHÔNG cấu hình DataHub (đường đó bỏ qua runtime policy và giữ đủ
+        // quyền). Xem TIER_LICENSE_AUDIT_REPORT.vi.md §1.4.
+        var resolved = TierRuntimePolicy.Resolve(
+            RuntimePolicyDocument.SafeDefault("ULTRA", "safe-default"), "ULTRA");
+
+        Assert.Equal("ULTRA", resolved.Tier);
+        Assert.True(resolved.EnableFullStackOperation);
+        Assert.True(resolved.EnableBackgroundAutoSync);
+        Assert.True(resolved.EnableStartupInventorySync);
+        Assert.True(resolved.EnableStartupDatabaseTracking);
+        Assert.True(resolved.AllowManualTracking);
+        Assert.True(resolved.AllowManualPrint);
+    }
+
+    [Fact]
+    public void SafeDefault_cua_ULTRA_khong_nang_quyen_cho_license_BASE()
+    {
+        // Bất biến quan trọng nhất của bản vá: SafeDefault("ULTRA") là một document
+        // KHÔNG hạn chế, không phải một giấy phép. Phép AND với entitlement của
+        // license BASE vẫn phải tắt sạch FullStack.
+        var resolved = TierRuntimePolicy.Resolve(
+            RuntimePolicyDocument.SafeDefault("ULTRA", "safe-default"), "BASE");
+
+        Assert.Equal("BASE", resolved.Tier);
+        Assert.False(resolved.EnableFullStackOperation);
+        Assert.False(resolved.EnableBackgroundAutoSync);
+        Assert.False(resolved.EnableStartupInventorySync);
+        Assert.False(resolved.EnableStartupDatabaseTracking);
     }
 
     // ------------------------------------------------- thu hẹp tab thủ công

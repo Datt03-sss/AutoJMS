@@ -23,15 +23,16 @@ public sealed class VpsRuntimePolicyService
     /// (Program.cs:357), nên 90 giây đó là 90 giây app đứng hình trước khi form đầu
     /// tiên hiện ra.
     ///
-    /// 8 giây, không phải 3: trần này rút ngắn thời gian NHƯỜNG cho fallback, và
-    /// fallback cuối cùng là SafeDefault("BASE") — nó tắt FullStack, background sync,
-    /// inventory sync và database tracking, kể cả cho một license ULTRA hợp lệ, mà
-    /// không ghi một dòng error nào. Nghĩa là hạ trần quá tay sẽ đổi "app treo 90 s"
-    /// lấy "khách ULTRA thỉnh thoảng mất tính năng" — một lỗi rẻ hơn nhiều về mặt
-    /// hiển thị nhưng đắt hơn nhiều về mặt hậu quả. Một VPS khoẻ trả manifest dưới
-    /// 1 s, nên 8 s vẫn đủ cho cả 6 đường đi trọn vẹn ở trạng thái bình thường; nó
-    /// chỉ cắt đúng trường hợp bệnh lý. Chỉ nên hạ tiếp xuống 3–5 s SAU KHI
-    /// SafeDefault thôi hạ cấp tier (xem TIER_LICENSE_AUDIT_REPORT.vi.md §1.4).
+    /// 8 giây, không phải 3: trần này rút ngắn thời gian NHƯỜNG cho fallback. Một VPS
+    /// khoẻ trả manifest dưới 1 s, nên 8 s vẫn đủ cho cả 6 đường đi trọn vẹn ở trạng
+    /// thái bình thường; nó chỉ cắt đúng trường hợp bệnh lý.
+    ///
+    /// Điều kiện để hạ tiếp xuống 3–5 s — "SafeDefault thôi hạ cấp tier"
+    /// (TIER_LICENSE_AUDIT_REPORT.vi.md §1.4/§5.2) — nay ĐÃ đạt: fallback gọi
+    /// SafeDefault(normalizedTier) và các cờ FullStack đi theo tier, nên rơi xuống
+    /// safe-default không còn âm thầm biến một máy ULTRA thành BASE. Hạ trần bây giờ
+    /// chỉ đánh đổi giữa thời gian chờ và việc dùng policy cũ/mặc định thay vì policy
+    /// mới nhất — không còn là đánh đổi mất tính năng đã trả tiền.
     /// </summary>
     private static readonly TimeSpan FetchBudget = TimeSpan.FromSeconds(8);
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -83,8 +84,10 @@ public sealed class VpsRuntimePolicyService
             return cached;
         }
 
-        var safe = RuntimePolicyDocument.SafeDefault("BASE", "safe-default");
-        AppLogger.Warning("[Policy] source=safe-default tier=BASE");
+        // normalizedTier, KHÔNG phải hằng "BASE": tier ở đây do license cấp, và truyền
+        // "BASE" vào là tự hạ cấp một máy ULTRA hợp lệ chỉ vì một lần fetch hỏng.
+        var safe = RuntimePolicyDocument.SafeDefault(normalizedTier, "safe-default");
+        AppLogger.Warning($"[Policy] source=safe-default tier={safe.Tier}");
         return safe;
     }
 

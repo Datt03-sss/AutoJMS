@@ -134,8 +134,10 @@ document đã tắt sạch FullStack, và phép `AND` ở `TierRuntimePolicy.cs:
 Hệ quả vận hành: khách ULTRA mất tính năng đã trả tiền vì một lần fetch hỏng, **không có thông
 báo nào**, và cách "khắc phục" hiệu quả nhất tại hiện trường lại là *gỡ cấu hình DataHub đi*.
 
-> **Đề xuất vá — chưa thực hiện, xem §5.** Đây là nới một cổng tier trong đường safe-default,
-> tức là quyết định bảo mật, nên thuộc thẩm quyền Owner.
+> **ĐÃ VÁ (2026-09-11), Owner duyệt.** Cả hai chỗ đã sửa theo đúng §5.2. Xác nhận trên máy
+> thật: log đổi từ `[Policy] source=safe-default tier=BASE` + `fullStack=False` +
+> `FullStackOperation disabled for ULTRA — not pre-created.` sang `tier=ULTRA` +
+> `fullStack=True` + `FullStackOperation pre-created in background`.
 
 ### 1.5 Cờ policy chết (viết ra nhưng không ai đọc)
 
@@ -351,7 +353,7 @@ Kết quả: **123/123 test pass** (`node --test test/*.test.js`); `dotnet build
 ## 5. Thay đổi **cố ý không** thực hiện — chờ quyết định Owner
 
 Hai mục dưới đây đều có bản vá sẵn sàng; tôi không tự áp vì cả hai là quyết định của Owner,
-không phải dọn dẹp mã.
+không phải dọn dẹp mã. **§5.2 đã được Owner duyệt và áp ngày 2026-09-11; chỉ còn §5.1 chờ.**
 
 ### 5.1 Lật mặc định `modulePolicy.autoUpdate`
 
@@ -363,18 +365,22 @@ sẽ **tự cập nhật**, đúng ngược ý người viết template.
 hiện trường**. Đó là quyết định chính sách phát hành. Đã thêm cảnh báo (§4-E) để liệt kê được
 các bản ghi cần backfill trước khi lật.
 
-### 5.2 Sửa nghịch lý safe-default của ULTRA (§1.4)
+### 5.2 Sửa nghịch lý safe-default của ULTRA (§1.4) — ✅ ĐÃ THỰC HIỆN 2026-09-11
 
-Cần **hai** sửa đổi, đủ cả hai mới có tác dụng:
+Owner duyệt ngày 2026-09-11 sau khi một máy ULTRA thật rơi đúng vào bẫy này (DataHub
+`dev.jmsauto.online` chưa publish seed nào ⇒ 404 toàn bộ ⇒ FullStackOperation không mở được).
+Đã áp cả **hai** sửa đổi — thiếu một là vô tác dụng:
 
-1. `VpsRuntimePolicyService.cs:53` — dùng `normalizedTier` thay cho hằng `"BASE"`.
-2. `RuntimePolicyDocument.SafeDefault` (dòng 88-98) — các cờ FullStack phải theo `tier`, không
+1. `VpsRuntimePolicyService.FetchPolicyAsync` — dùng `normalizedTier` thay cho hằng `"BASE"`,
+   và log tier thật thay vì in cứng `tier=BASE`.
+2. `RuntimePolicyDocument.SafeDefault` — `forms.fullStackOperation`, `fullStack.backgroundSync`,
+   `FullStack.Enabled`, `FullStack.BackgroundSync`, `FullStack.Launch` đi theo `tier` thay vì
    đặt `false` vô điều kiện.
 
-**Vì sao không tự sửa**: đây là **nới một cổng tier trong đường safe-default**. Nới cổng tier là
-việc nhạy cảm bảo mật, và các phiên trước đã chốt rằng quyết định về cổng tier thuộc Owner.
-Nếu Owner đồng ý, cần kèm bộ test cho đúng ma trận: safe-default của BASE **vẫn phải** tắt
-FullStack.
+Bộ test ma trận đi kèm ở `tests/AutoJMS.Tests/TierEntitlementTests.cs`, đúng ba nhánh:
+safe-default(BASE)+license BASE ⇒ tắt; safe-default(ULTRA)+license ULTRA ⇒ bật;
+safe-default(**ULTRA**)+license **BASE** ⇒ **vẫn tắt** — nhánh thứ ba là chốt chống leo quyền,
+vì `TierRuntimePolicy.Resolve` vẫn AND với entitlement của license.
 
 ---
 

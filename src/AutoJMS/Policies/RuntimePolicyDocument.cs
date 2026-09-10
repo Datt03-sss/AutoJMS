@@ -70,6 +70,22 @@ public sealed class RuntimePolicyDocument
             : value.ToString();
     }
 
+    /// <summary>
+    /// Policy dùng khi không lấy được document nào từ DataHub VÀ cache cũng trống.
+    ///
+    /// Các cờ FullStack đi theo <paramref name="tier"/>, không tắt vô điều kiện. Trước đây
+    /// chúng bị đặt false bất kể tier, và hệ quả là một nghịch lý: DataHub KHÔNG cấu hình
+    /// thì Program.cs bỏ qua hẳn runtime policy nên ULTRA giữ đủ quyền, còn DataHub CÓ cấu
+    /// hình nhưng fetch hỏng thì ULTRA mất sạch FullStack — âm thầm, không một dòng error.
+    /// Tức là cấu hình đúng rồi gặp lỗi mạng thoáng qua lại tệ hơn không cấu hình, và cách
+    /// chữa hiệu quả nhất tại hiện trường là đi gỡ cấu hình DataHub. Xem
+    /// TIER_LICENSE_AUDIT_REPORT.vi.md §1.4 và §5.2.
+    ///
+    /// Đây KHÔNG phải nâng quyền. <see cref="TierRuntimePolicy.Resolve(RuntimePolicyDocument, string)"/>
+    /// vẫn AND từng cờ với entitlement của license, nên safe-default("ULTRA") chỉ có tác
+    /// dụng khi license thực sự là ULTRA; với BASE mọi cờ FullStack vẫn tắt.
+    /// </summary>
+    /// <param name="tier">Tier do license cấp. Gọi bằng hằng "BASE" là hạ cấp oan máy ULTRA.</param>
     public static RuntimePolicyDocument SafeDefault(string tier = "BASE", string source = "safe-default")
     {
         bool isUltra = string.Equals(tier, "ULTRA", StringComparison.OrdinalIgnoreCase);
@@ -85,17 +101,17 @@ public sealed class RuntimePolicyDocument
         policy.SetFeature("tabs.tracking", true);
         policy.SetFeature("tabs.print", true);
         policy.SetFeature("tabs.about", true);
-        policy.SetFeature("forms.fullStackOperation", false);
-        policy.SetFeature("fullStack.backgroundSync", false);
+        policy.SetFeature("forms.fullStackOperation", isUltra);
+        policy.SetFeature("fullStack.backgroundSync", isUltra);
         policy.SetFeature("googleSheets.enabled", true);
         policy.SetFeature("googleSheets.provider", "TokenBroker");
         policy.SetFeature("print.defaultAutoPrint", true);
         policy.SetFeature("print.enablePrinterPreflight", true);
         policy.SetFeature("debugCapture.enabled", false);
 
-        policy.FullStack.Enabled = false;
-        policy.FullStack.BackgroundSync = false;
-        policy.FullStack.Launch = "DISABLED";
+        policy.FullStack.Enabled = isUltra;
+        policy.FullStack.BackgroundSync = isUltra;
+        policy.FullStack.Launch = isUltra ? "AFTER_MAINFORM_SHOWN" : "DISABLED";
         policy.GoogleSheets.Provider = "TokenBroker";
         return policy;
     }
