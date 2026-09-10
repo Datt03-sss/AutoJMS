@@ -160,6 +160,8 @@ Cho tới khi OD-1 được ký:
 
 **Bằng chứng cho OD-1 không thể lấy từ staging** (khảo sát 10/09/2026). Toàn bộ `jms_scan_events` trên staging do bộ test sinh ra, và bộ test hardcode đúng hai mã `110`/`98` — chính hai mã seed `002` đã phân loại. Chờ qua cửa sổ settle 14 ngày cũng không đổi gì vì nguồn sinh dữ liệu không đổi. Ứng viên terminal phải đến từ **production hoặc một bản trích payload JMS thật**.
 
+✅ **Đã có bản trích JMS thật (10/09/2026)** — 239 đơn, 4.753 sự kiện, **24 mã** (staging chỉ có 2). Ứng viên terminal: `100 / Ký nhận CPN`, kết thúc 193/197 đơn mang nó = **98,0%**. Xem [od1-scan-vocabulary-evidence.vi.md](./od1-scan-vocabulary-evidence.vi.md). §6 **vẫn fail-closed** cho tới khi Owner ký — bằng chứng không thay cho chữ ký. Ba điều kiện phải xử lý trước khi ký nằm ở §4 của tài liệu đó; đáng chú ý là nhãn seed `002` cho `110` (`state_transition`) mâu thuẫn với JMS thật (`Quét kiện vấn đề`).
+
 ---
 
 ## §7. Terminal Lifecycle (khoá hoàn toàn)

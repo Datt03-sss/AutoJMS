@@ -24,6 +24,13 @@ Mọi lệnh dưới đây dùng ba script **đã có sẵn trong repo**: `dc.sh
 **Mục đích**: biến OD-1 từ "chờ đối chiếu JMS thật" thành "Owner xác nhận danh sách có bằng chứng".
 **Cơ sở**: `waybill_scan_events` đã lưu **cả** `scan_type_code` **và** `scan_type_name`.
 
+> ✅ **Đã có bằng chứng (10/09/2026)** — trích thẳng từ JMS thật bằng
+> [tools/harvest_jms_events.py](../../tools/harvest_jms_events.py): 239/239 đơn, 4.753 sự kiện,
+> 24 mã. Kết quả và ba cảnh báo kèm theo (cửa sổ settle 14 ngày, nhãn seed `110` sai, bench residue
+> `BENCH-%` trên staging) nằm ở [od1-scan-vocabulary-evidence.vi.md](./od1-scan-vocabulary-evidence.vi.md).
+> Query dưới đây vẫn là bản chính thức để chạy trên DB — **đọc §4 của tài liệu bằng chứng trước khi chạy**,
+> nếu không query 0.2 sẽ trả về 1 dòng sai và query 0.5 sẽ báo drift giả.
+
 Tạo `backend/datahub/tests/od1_scan_vocabulary.sql`:
 
 ```sql
@@ -289,7 +296,7 @@ Năm mục còn lại (OD-3, 4, 5, 7, 8) có thể ký cùng lúc; **OD-8** đi�
 
 | # | Hạng mục | PASS khi | Kết quả |
 |---|---|---|---|
-| G1 | Bằng chứng OD-1 | Có bảng từ vựng + ứng viên terminal | ⛔ **CHẶN** — staging không có dữ liệu quét thật |
+| G1 | Bằng chứng OD-1 | Có bảng từ vựng + ứng viên terminal | ✅ — 24 mã thật, ứng viên `100` (98,0%). Xem [od1-scan-vocabulary-evidence.vi.md](./od1-scan-vocabulary-evidence.vi.md) |
 | G2 | Preflight | 8 cột `missing`; không mismatch; 1.6 rỗng; **1.8 = 0** | ⛔ **QUÁ HẠN** — P1 đã áp dụng 10/09 |
 | G3 | Backup | Tạo được file dump | ✅ |
 | G4 | Restore | Restore thành công vào instance tạm | ✅ |
