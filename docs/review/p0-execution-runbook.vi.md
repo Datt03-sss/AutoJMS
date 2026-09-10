@@ -287,8 +287,8 @@ Năm mục còn lại (OD-3, 4, 5, 7, 8) có thể ký cùng lúc; **OD-8** đi�
 |---|---|---|---|
 | G1 | Bằng chứng OD-1 | Có bảng từ vựng + ứng viên terminal | ☐ |
 | G2 | Preflight | 8 cột `missing`; không mismatch; 1.6 rỗng; **1.8 = 0** | ☐ |
-| G3 | Backup | Tạo được file dump | ☐ |
-| G4 | Restore | Restore thành công vào instance tạm | ☐ |
+| G3 | Backup | Tạo được file dump | ✅ |
+| G4 | Restore | Restore thành công vào instance tạm | ✅ |
 | G5 | Smoke trên DB restored | 10 bước PASS | ☐ |
 | G6 | Infra 3.1–3.6 | Toàn bộ PASS | ☐ |
 | G7 | Baseline A (interactive) | Đủ 5 metrics × 2 mức tải | ☐ |
@@ -296,6 +296,26 @@ Năm mục còn lại (OD-3, 4, 5, 7, 8) có thể ký cùng lúc; **OD-8** đi�
 | G9 | OD ký | OD-1, OD-2, OD-6 tối thiểu | ☐ |
 
 **Chỉ khi G1–G9 đều ✅ mới được đề xuất mở P1.**
+
+### Bằng chứng đã ghi nhận — Staging VPS, 10/09/2026
+
+Nguồn: lần đo của Antigravity trên `https://dev.jmsauto.online`, do Owner chuyển tiếp.
+
+| Gate | Bằng chứng |
+|---|---|
+| G3 ✅ | `backup-postgres.sh` tạo dump sạch: Full **1,9 MB**, Critical (`--critical-only`) **169 KB** |
+| G4 ✅ | Restore vào PostgreSQL 16, **RTO Critical 3,4 s**, checksum dữ liệu khớp 100% |
+
+**G5 và G6 chưa tick — bằng chứng hiện có đo một thứ khác với tiêu chí:**
+
+| Mục | Tiêu chí trong bảng | Bằng chứng đang có | Khoảng cách |
+|---|---|---|---|
+| G5 | Smoke **trên DB restored** | `smoke-test.sh` 24/24 assertion trên `https://dev.jmsauto.online` | Chứng minh stack staging đang phục vụ chạy được, chưa chứng minh **bản restore** chạy được. Đây đúng là §20 bước 3 — và cũng chính là lý do G4 từng bị hạ từ PASS xuống FAIL ở P0: restore chạy vào staging đang phục vụ thay vì instance tạm |
+| G6 · 3.2 | `API → DB` **qua WireGuard**, `nc -vz <db-wg-ip> 5432` → OPEN | "Giao tiếp nội bộ Docker" | Khác tô-pô. Hoặc đo lại đúng 3.2, hoặc sửa 3.2 nếu staging cố ý chạy một host duy nhất |
+| G6 · 3.3 | Connection string dùng `SSL Mode=VerifyFull` | Caddy Let's Encrypt trên `https://dev.jmsauto.online` | Khác chặng: 3.3 nói về **API → PostgreSQL**; Caddy là chặng **client → API** |
+| G6 · 3.4 | Hostname trong cert khớp host đang kết nối (cert của DB) | — | Chưa đo |
+
+3.1, 3.5, 3.6 đã có bằng chứng khớp tiêu chí: `TcpTestSucceeded: False` từ ngoài Internet + UFW active (3.1); `/health/ready` báo `postgres: Healthy` (3.5); `ss -tulpn` không có listener `5432` trên host (3.6).
 
 ---
 
