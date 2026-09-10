@@ -367,16 +367,33 @@ if [ -n "$TERM" ]; then ok "leaderTerm=$TERM"; else bad "no leaderTerm in $BODY"
 
 echo "== step 5: ingest (fenced) =="
 IDEM="smoke-idem-$(date -u +%Y%m%d%H%M%S)"
-# Scan times are generated, not hardcoded: waybill_scan_events is pruned 60 days
-# after event_occurred_at (003_seed_retention.sql), so a frozen date would
-# eventually place these rows outside the retention window.
-# A naive "yyyy-MM-dd HH:mm:ss" value is Asia/Ho_Chi_Minh, so 10:00 stores as
-# 03:00Z. ScanTimeParser never consults the clock, so any valid date works.
-SCAN_DATE="$(date -u +%Y-%m-%d)"
+# Scan times are generated, not hardcoded, and both must land in the recent past.
+# waybill_scan_events is pruned 60 days after event_occurred_at
+# (003_seed_retention.sql), and IngestHorizonPolicy answers 422
+# INGEST_HORIZON_VIOLATION for a scan older than the ingest horizon (45 days) or
+# more than the future skew (900s) ahead of server time.
+# A naive "yyyy-MM-dd HH:mm:ss" value is read as Vietnam local time, so the wall
+# clock has to be generated there too: a fixed "10:00:00" is 03:00Z, which is still
+# ahead of the server on any run started before 09:45 local and trips the skew
+# guard. Naive rather than ISO-8601-with-Z on purpose -- that is the shape JMS
+# sends, so this is also what covers ScanTimeParser's naive branch.
+#
+# UTC plus a literal 7 hours, not TZ=Asia/Ho_Chi_Minh: ScanTimeParser applies a
+# fixed +07:00 (VietnamOffset) rather than the IANA zone, and a runner without
+# zoneinfo -- Git Bash on Windows has none -- silently resolves every named zone to
+# GMT, which would put these seven hours further back than intended.
+SCAN_TIME_1="$(date -u -d '+7 hours -10 minutes' +'%Y-%m-%d %H:%M:%S')"
+SCAN_TIME_2="$(date -u -d '+7 hours -5 minutes' +'%Y-%m-%d %H:%M:%S')"
+# date -d is GNU. Without it both stay empty and the ingest below fails as a
+# missing scanTime, which names the wrong cause.
+if [ -z "$SCAN_TIME_1" ] || [ -z "$SCAN_TIME_2" ]; then
+    bad "could not generate scan times; this script needs GNU date (date -d)"
+    exit 1
+fi
 ITEMS=$(cat <<JSON
 {"items":[
- {"waybillNo":"SMOKE-WB-001","scanTime":"$SCAN_DATE 10:00:00","code":110,"status":"Arrived","scanTypeName":"state_transition","payload":{"src":"smoke"}},
- {"waybillNo":"SMOKE-WB-001","scanTime":"$SCAN_DATE 11:00:00","code":98,"status":"InStock","scanTypeName":"inventory","payload":{"src":"smoke"}}
+ {"waybillNo":"SMOKE-WB-001","scanTime":"$SCAN_TIME_1","code":110,"status":"Arrived","scanTypeName":"state_transition","payload":{"src":"smoke"}},
+ {"waybillNo":"SMOKE-WB-001","scanTime":"$SCAN_TIME_2","code":98,"status":"InStock","scanTypeName":"inventory","payload":{"src":"smoke"}}
 ]}
 JSON
 )
@@ -426,7 +443,7 @@ printf 'INFO  projection: %s\n' \
 echo "== step 9: negative cases =="
 req POST "/api/v1/sites/$SITE_ID/jms/ingest" -H "$AUTH" -H 'Content-Type: application/json' \
     -H "Idempotency-Key: smoke-unknown-field" -H "X-Leader-Term: $TERM" \
-    -d "{\"items\":[{\"waybillNo\":\"X\",\"scanTime\":\"$SCAN_DATE 10:00:00\",\"payload\":{},\"bogusField\":1}]}"
+    -d "{\"items\":[{\"waybillNo\":\"X\",\"scanTime\":\"$SCAN_TIME_1\",\"payload\":{},\"bogusField\":1}]}"
 chk "unknown JSON member rejected" "$HTTP" 400
 req GET "/api/v1/sites/$SITE_ID/changes?after=0" -H "Authorization: Bearer v1.bogus.bogus"
 chk "forged device token rejected" "$HTTP" 401
