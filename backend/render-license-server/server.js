@@ -7,10 +7,18 @@ const NodeCache = require("node-cache");
 const helmet = require("helmet");
 const cors = require("cors");
 const fs = require("fs");
+const path = require("path");
 const { GoogleAuth } = require("google-auth-library");
 const licenseLifecycle = require("./license-expiry");
 const { parseServiceAccount, resolveFirebaseServiceAccount } = require("./firebase-credentials");
 require("dotenv").config();
+
+// BELOW dotenv.config() on purpose, unlike every require above it. admin-routes
+// reads ADMIN_SECRET_TOKEN in its module body, so requiring it first would read
+// the variable before a local .env had been loaded — and the failure is silent:
+// the admin API would simply report itself disabled on a machine that had
+// configured it. Every require above this line is env-independent at load time.
+const adminRoutes = require("./admin-routes");
 
 const FIREBASE_TIMEOUT_MS = Number(process.env.FIREBASE_OPERATION_TIMEOUT_MS || 8000);
 const GOOGLE_SHEETS_GRANT_TIMEOUT_MS = Number(process.env.GOOGLE_SHEETS_GRANT_TIMEOUT_MS || 8000);
@@ -1882,6 +1890,36 @@ app.post("/api/logout", limiter, async (req, res) => {
         });
     }
 });
+
+// ==========================================
+// ADMIN API + DASHBOARD
+// ==========================================
+// Mounted last, after every desktop-client route, so nothing here can shadow
+// one of them. The router carries its own authentication and its own limiters;
+// globalLimiter still applies and is not bypassed — at 600/minute it is ~10
+// requests per second, and the dashboard makes one request per click, so it was
+// never the binding constraint for an operator. Bypassing it would only have
+// removed the flood guard from the one surface that can mint licences.
+app.use("/api/admin", adminRoutes);
+
+// Static, because the dashboard is plain HTML/CSS/JS with no build step: the
+// files in dashboard/ are what runs. Same rootDir as this server, so one push
+// deploys the API and the UI together.
+app.use(
+    "/admin",
+    express.static(path.join(__dirname, "dashboard"), {
+        // The Render URL is not secret and can end up in a referrer header. An
+        // admin console does not belong in a search index.
+        setHeaders: res => res.setHeader("X-Robots-Tag", "noindex, nofollow")
+    })
+);
+
+if (!adminRoutes.adminApiEnabled) {
+    // Not an error — the admin API is off by default, and a deployment that
+    // never uses it is a valid deployment. It is logged because the alternative
+    // is an owner staring at a 503 on /admin with no clue which knob is missing.
+    logEvent("warn", "admin.disabled", { reason: adminRoutes.adminDisabledReason });
+}
 
 // ==========================================
 // GRACEFUL SHUTDOWN

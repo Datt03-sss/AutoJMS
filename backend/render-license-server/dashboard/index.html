@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AutoJMS · Quản lý License</title>
+<!--
+  No CDN, anywhere on this page. helmet() on the server sets the default
+  Content-Security-Policy, whose script-src is 'self' — a Tailwind or Vue tag
+  pointing at a CDN would simply be blocked, and relaxing the policy to admit it
+  would mean letting third-party script run on the one page that holds an admin
+  token. Everything below is served from this directory.
+
+  For the same reason there is no inline <script> and no onclick= attribute:
+  script-src-attr is 'none'. Every handler is wired in app.js.
+-->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ====================================================================
+     LOCK SCREEN — first thing anyone sees, including a search crawler
+     that ignored the header.
+     ==================================================================== -->
+<div id="lock-screen" class="lock">
+  <form class="lock__card" id="lock-form" autocomplete="off">
+    <div class="lock__brand">
+      <span class="lock__mark">AJ</span>
+      <div>
+        <h1>AutoJMS License</h1>
+        <p>Bảng điều khiển quản trị</p>
+      </div>
+    </div>
+
+    <label class="field">
+      <span class="field__label">Admin Token</span>
+      <input
+        id="token-input"
+        class="field__input"
+        type="password"
+        name="admin-token"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Dán token quản trị"
+        required>
+    </label>
+
+    <p class="lock__hint">
+      Token chỉ lưu trong <code>sessionStorage</code> của tab này và mất khi đóng tab.
+    </p>
+
+    <p class="lock__error" id="lock-error" hidden></p>
+
+    <button class="btn btn--primary btn--block" type="submit" id="lock-submit">Mở khoá</button>
+  </form>
+</div>
+
+<!-- ====================================================================
+     APP
+     ==================================================================== -->
+<div id="app" hidden>
+
+  <header class="topbar">
+    <div class="topbar__brand">
+      <span class="topbar__mark">AJ</span>
+      <div>
+        <strong>AutoJMS License</strong>
+        <span class="topbar__sub">Bảng điều khiển quản trị</span>
+      </div>
+    </div>
+
+    <div class="topbar__actions">
+      <button class="btn btn--ghost" type="button" id="theme-toggle" title="Đổi giao diện sáng/tối">
+        <span id="theme-icon" aria-hidden="true">◐</span>
+        <span class="btn__text">Giao diện</span>
+      </button>
+      <button class="btn btn--ghost" type="button" id="refresh-button" title="Tải lại danh sách">
+        <span aria-hidden="true">↻</span>
+        <span class="btn__text">Tải lại</span>
+      </button>
+      <button class="btn btn--ghost" type="button" id="lock-button" title="Xoá token khỏi tab này">
+        <span aria-hidden="true">⎋</span>
+        <span class="btn__text">Khoá</span>
+      </button>
+      <button class="btn btn--primary" type="button" id="create-button">
+        <span aria-hidden="true">＋</span>
+        <span class="btn__text">Cấp License Mới</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="page">
+
+    <!-- 4 thẻ thống kê -->
+    <section class="stats" aria-label="Thống kê">
+      <button class="stat" type="button" data-filter-status="all">
+        <span class="stat__label">Tổng số key</span>
+        <span class="stat__value" id="stat-total">–</span>
+      </button>
+      <button class="stat stat--ok" type="button" data-filter-status="active">
+        <span class="stat__label">Đang chạy</span>
+        <span class="stat__value" id="stat-active">–</span>
+      </button>
+      <button class="stat stat--warn" type="button" data-filter-status="expiring">
+        <span class="stat__label">Sắp hết hạn (≤ 7 ngày)</span>
+        <span class="stat__value" id="stat-expiring">–</span>
+      </button>
+      <button class="stat stat--danger" type="button" data-filter-status="expired">
+        <span class="stat__label">Đã hết hạn</span>
+        <span class="stat__value" id="stat-expired">–</span>
+      </button>
+    </section>
+
+    <!-- Tìm kiếm & lọc -->
+    <section class="toolbar" aria-label="Tìm kiếm và lọc">
+      <div class="toolbar__search">
+        <span class="toolbar__search-icon" aria-hidden="true">⌕</span>
+        <input
+          id="search-input"
+          type="search"
+          placeholder="Tìm mã bưu cục, mã key, ghi chú…"
+          autocomplete="off"
+          spellcheck="false">
+      </div>
+
+      <label class="select">
+        <span class="select__label">Tier</span>
+        <select id="filter-tier">
+          <option value="all">Tất cả</option>
+          <option value="BASE">BASE</option>
+          <option value="ULTRA">ULTRA</option>
+        </select>
+      </label>
+
+      <label class="select">
+        <span class="select__label">Trạng thái</span>
+        <select id="filter-status">
+          <option value="all">Tất cả</option>
+          <option value="active">Đang chạy</option>
+          <option value="expiring">Sắp hết hạn</option>
+          <option value="grace">Gia hạn tạm</option>
+          <option value="expired">Hết hạn</option>
+          <option value="revoked">Đã khoá</option>
+          <option value="perpetual">Vĩnh viễn</option>
+        </select>
+      </label>
+
+      <span class="toolbar__count" id="result-count"></span>
+    </section>
+
+    <!-- Bảng -->
+    <section class="table-card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Mã bưu cục</th>
+            <th scope="col">Tier</th>
+            <th scope="col">License key</th>
+            <th scope="col">Hạn dùng</th>
+            <th scope="col">Còn lại</th>
+            <th scope="col">Trạng thái</th>
+            <th scope="col" class="table__actions-head">Thao tác</th>
+          </tr>
+        </thead>
+        <tbody id="license-rows"></tbody>
+      </table>
+
+      <p class="empty" id="empty-state" hidden></p>
+      <p class="empty" id="loading-state">Đang tải danh sách…</p>
+    </section>
+
+  </main>
+</div>
+
+<!-- ====================================================================
+     MODAL — Cấp License Mới
+     ==================================================================== -->
+<div class="modal" id="create-modal" hidden>
+  <div class="modal__backdrop" id="create-backdrop"></div>
+
+  <form class="modal__card" id="create-form" autocomplete="off">
+    <header class="modal__head">
+      <h2>Cấp License Mới</h2>
+      <button class="modal__close" type="button" id="create-close" title="Đóng">✕</button>
+    </header>
+
+    <div class="modal__body">
+      <label class="field">
+        <span class="field__label">Mã bưu cục (MiddleCode)</span>
+        <input
+          id="create-middle-code"
+          class="field__input field__input--mono"
+          type="text"
+          placeholder="214A03"
+          maxlength="32"
+          spellcheck="false"
+          required>
+        <span class="field__hint">Chữ và số, tự động viết hoa. Sẽ nằm giữa key: <code>XXXX-214A03-XXXX</code>.</span>
+      </label>
+
+      <fieldset class="field">
+        <legend class="field__label">Tier</legend>
+        <div class="segmented" id="create-tier">
+          <label class="segmented__option">
+            <input type="radio" name="tier" value="BASE">
+            <span>BASE</span>
+          </label>
+          <label class="segmented__option">
+            <input type="radio" name="tier" value="ULTRA" checked>
+            <span>ULTRA</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <label class="field">
+        <span class="field__label">Kỳ hạn</span>
+        <select id="create-terms" class="field__input">
+          <option value="1">1 tháng — neo ngày 16</option>
+          <option value="3">3 tháng</option>
+          <option value="6">6 tháng</option>
+          <option value="12">12 tháng (1 năm)</option>
+          <option value="0">Vĩnh viễn (không hạn)</option>
+        </select>
+        <span class="field__hint">Mọi kỳ hạn đều đáo hạn lúc 00:00 ngày 16, ít nhất 30 ngày kể từ hôm nay.</span>
+      </label>
+
+      <label class="field">
+        <span class="field__label">Ghi chú</span>
+        <textarea
+          id="create-notes"
+          class="field__input"
+          rows="2"
+          maxlength="500"
+          placeholder="Tên khách, số điện thoại, ngày thu tiền…"></textarea>
+      </label>
+
+      <label class="checkbox">
+        <input type="checkbox" id="create-skip-hash" checked>
+        <span>Bỏ qua kiểm tra hash file .exe (<code>skipHashCheck</code>)</span>
+      </label>
+
+      <p class="modal__error" id="create-error" hidden></p>
+    </div>
+
+    <footer class="modal__foot">
+      <button class="btn btn--ghost" type="button" id="create-cancel">Huỷ</button>
+      <button class="btn btn--primary" type="submit" id="create-submit">Tạo key</button>
+    </footer>
+  </form>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>

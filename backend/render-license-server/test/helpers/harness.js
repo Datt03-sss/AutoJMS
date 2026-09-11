@@ -183,6 +183,11 @@ async function startServer(options = {}) {
         SOURCE_VERSION: undefined,
         COMMIT_SHA: undefined,
         SHUTDOWN_TIMEOUT_MS: undefined,
+        // Unset is the meaningful default here: with no token the admin API
+        // reports itself disabled, and a value leaked in from another test would
+        // turn "the API refuses to run unconfigured" into a pass for the wrong
+        // reason — the exact failure this whole list exists to prevent.
+        ADMIN_SECRET_TOKEN: undefined,
         // The flood-guard override. Listed for the usual reason and one extra: it is
         // the only limiter that runs before the body parser, so a value leaked in
         // from another test would show up as unexplained 429s anywhere in the suite.
@@ -202,8 +207,16 @@ async function startServer(options = {}) {
     injectModule("google-auth-library", google.exports);
 
     // Required last, and only now: everything above has to be in place first.
+    //
+    // admin-routes is evicted alongside server.js because it ALSO does work in
+    // its module body — it resolves ADMIN_SECRET_TOKEN and constructs its rate
+    // limiters there. Left cached, the second startServer() in a file would
+    // silently reuse the first one's token decision and its spent limiter
+    // budget. server.js's own require of it then rebuilds it against this
+    // boot's environment.
     const serverPath = require.resolve("../../server");
     delete require.cache[serverPath];
+    delete require.cache[require.resolve("../../admin-routes")];
     const app = require("../../server");
 
     const jwt = require("jsonwebtoken");
