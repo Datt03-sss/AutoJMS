@@ -75,6 +75,16 @@ namespace AutoJMS
         private UIComboBox _thoiHieuShipperFilter;
         private TextBox _thoiHieuFilterText;
 
+        // Cell fonts for thoiHieuGrid_CellFormatting. CellFormatting fires once per visible
+        // cell per repaint, so a `new Font(...)` inside it leaked a GDI+ font handle on every
+        // one of them — the hourly block alone is 17 columns wide, so a single paint of a
+        // screenful allocated hundreds, reclaimed only whenever the finalizer got round to
+        // them. Built once here and handed to the cell style by reference instead.
+        private Font _thoiHieuHourFontBold;
+        private Font _thoiHieuHourFontRegular;
+        private Font _thoiHieuBoldFont;
+        private Font _thoiHieuBoldFontSource;
+
         // Lifecycle guards for the Thoi Hieu view:
         //  - _uiReady: set true once the UI (incl. _thoiHieuKpiSheet) is built.
         //  - _isClosing: set true on FormClosing so background ticks stop touching UI.
@@ -3778,6 +3788,38 @@ namespace AutoJMS
             return 0.91;
         }
 
+        /// <summary>
+        /// The grid's own font in bold — what the formatting handler used to derive per cell.
+        /// The source is tracked because <c>_thoiHieuGrid.Font</c> is ambient (nothing assigns
+        /// it), so a DPI or parent-font change swaps it out and the bold copy must follow, the
+        /// way deriving it every time did. The superseded copy is left to the finalizer rather
+        /// than disposed: a cell style painted moments earlier may still hold it, and that
+        /// happens at most a handful of times in a process against hundreds per repaint.
+        /// </summary>
+        private Font GetThoiHieuBoldFont()
+        {
+            var source = _thoiHieuGrid.Font;
+            if (_thoiHieuBoldFont == null || !ReferenceEquals(_thoiHieuBoldFontSource, source))
+            {
+                _thoiHieuBoldFont = new Font(source, FontStyle.Bold);
+                _thoiHieuBoldFontSource = source;
+            }
+            return _thoiHieuBoldFont;
+        }
+
+        /// <summary>Releases the cached cell fonts. Called from Dispose, not FormClosing:
+        /// a cancelled close leaves the grid painting, and it would paint with dead handles.</summary>
+        private void DisposeThoiHieuFonts()
+        {
+            _thoiHieuHourFontBold?.Dispose();
+            _thoiHieuHourFontBold = null;
+            _thoiHieuHourFontRegular?.Dispose();
+            _thoiHieuHourFontRegular = null;
+            _thoiHieuBoldFont?.Dispose();
+            _thoiHieuBoldFont = null;
+            _thoiHieuBoldFontSource = null;
+        }
+
         private void thoiHieuGrid_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0 || e.RowIndex >= _thoiHieuGrid.Rows.Count) return;
@@ -3816,7 +3858,7 @@ namespace AutoJMS
                 e.CellStyle.SelectionBackColor = Color.FromArgb(255, 255, 140);
                 if (isTotalRow)
                 {
-                    e.CellStyle.Font = new Font(_thoiHieuGrid.Font, FontStyle.Bold);
+                    e.CellStyle.Font = GetThoiHieuBoldFont();
                     e.CellStyle.ForeColor = Color.Black;
                 }
             }
@@ -3831,7 +3873,9 @@ namespace AutoJMS
                 {
                     int val = (int)(prop.GetValue(th) ?? 0);
                     e.CellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    e.CellStyle.Font = new Font("Segoe UI", 8F, isTotalRow ? FontStyle.Bold : FontStyle.Regular);
+                    e.CellStyle.Font = isTotalRow
+                        ? (_thoiHieuHourFontBold ??= new Font("Segoe UI", 8F, FontStyle.Bold))
+                        : (_thoiHieuHourFontRegular ??= new Font("Segoe UI", 8F, FontStyle.Regular));
                     if (val > 0)
                     {
                         e.Value = val.ToString("N0");
@@ -3857,7 +3901,7 @@ namespace AutoJMS
                 if (colName == "SPV" || colName == "TenNVPhat" || colName == "QuetMa" || colName == "MaNVPhat")
                 {
                     if (colName != "SPV" && colName != "TenNVPhat") e.Value = "";
-                    e.CellStyle.Font = new Font(_thoiHieuGrid.Font, FontStyle.Bold);
+                    e.CellStyle.Font = GetThoiHieuBoldFont();
                     e.CellStyle.BackColor = Color.FromArgb(192, 57, 43); // #C0392B
                     e.CellStyle.ForeColor = Color.White;
                     e.CellStyle.SelectionBackColor = Color.FromArgb(160, 40, 30);

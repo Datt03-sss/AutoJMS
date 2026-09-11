@@ -10,9 +10,11 @@ namespace AutoJMS
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && components != null)
+            if (disposing)
             {
-                components.Dispose();
+                // Cell fonts are not components, so nothing else releases them.
+                DisposeThoiHieuFonts();
+                components?.Dispose();
             }
 
             base.Dispose(disposing);
