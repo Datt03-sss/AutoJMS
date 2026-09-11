@@ -22,9 +22,9 @@ public sealed class EnrollmentEndpointTests : IClassFixture<WebApplicationFactor
     }
 
     /// <summary>
-    /// Stands in for the RSA validator so the test can reach enrollment without key
-    /// material and without turning the staging test issuer on. What is under test is the
-    /// status the repository's site lookup produces, which begins after validation.
+    /// Stands in for the RSA validator so these can reach enrollment without key material and
+    /// without turning the staging test issuer on. Everything under test here begins after
+    /// validation, so the assertion's contents are the only part that has to be real.
     /// </summary>
     private sealed class AcceptingLicenseValidator(LicenseAssertionIdentity identity) : ILicenseAssertionValidator
     {
@@ -33,29 +33,81 @@ public sealed class EnrollmentEndpointTests : IClassFixture<WebApplicationFactor
     }
 
     [RequiresDataHubDatabaseFact]
-    public async Task Enrolling_into_an_unprovisioned_site_answers_404_rather_than_503()
+    public async Task Enrolling_into_an_unprovisioned_site_provisions_it_and_answers_201()
     {
-        // The bug this guards was only visible from out here. EnrollAsync reached
-        // RollbackAsync with the site lookup's reader still open, Npgsql threw because one
-        // command may be in progress per connector, and Program.cs's catch-all turned every
-        // unhandled exception into 503 SERVICE_UNAVAILABLE -- so a caller naming a site that
-        // was never provisioned was told the backend was down. Asserting the repository
-        // result alone cannot see that: the 503 is produced by the error handler, not by
-        // the branch.
-        var siteCode = "NOSUCH" + Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
-        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        // The whole point of the change, seen from where a station sees it. This site code has
+        // never been in `sites`; before auto-provision the answer was 404 NOT_FOUND and someone
+        // had to SSH in and INSERT the row before the customer could activate.
+        //
+        // Asserted from out here rather than on the repository result alone because the
+        // enrollment body is a contract the station parses: LicenseApiService hands siteId and
+        // deviceToken straight to DataHubClient.Configure, so a 201 missing either would pass
+        // a repository test and still leave the station unable to sync.
+        var connectionString = RequiresDataHubDatabaseFactAttribute.ConnectionString!;
+        var siteCode = DataHubTestDatabase.NewSiteCode();
+        try
+        {
+            using var factory = WithLicenseFor(siteCode, connectionString);
+            using var client = factory.CreateClient();
+
+            using var response = await client.SendAsync(EnrollRequestFor(siteCode, "PC-01"));
+
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var siteId = document.RootElement.GetProperty("siteId").GetGuid();
+            Assert.Equal(siteCode, document.RootElement.GetProperty("siteCode").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("deviceToken").GetString()));
+            Assert.Equal(siteId, await DataHubTestDatabase.FindSiteIdAsync(connectionString, siteCode));
+        }
+        finally
+        {
+            await DataHubTestDatabase.TryDeleteSiteAsync(connectionString, siteCode);
+        }
+    }
+
+    [Fact]
+    public async Task Enrolling_into_a_site_outside_the_signed_assertion_answers_403()
+    {
+        // The guard that keeps auto-provision from becoming "any valid licence may create any
+        // site it names in the request body". The assertion below is signed for a different
+        // site, so the request is refused at the edge and never reaches the repository — which
+        // is why this one needs no database and runs on every build, unlike its neighbours.
+        var licensedSiteCode = DataHubTestDatabase.NewSiteCode();
+        var requestedSiteCode = DataHubTestDatabase.NewSiteCode();
+        using var factory = WithLicenseFor(licensedSiteCode, connectionString: null);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(EnrollRequestFor(requestedSiteCode, "PC-01"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(ApiProblemCodes.SiteNotLicensed, document.RootElement.GetProperty("code").GetString());
+    }
+
+    private static HttpRequestMessage EnrollRequestFor(string siteCode, string deviceName)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/devices/enroll")
+        {
+            Content = JsonContent.Create(new EnrollRequest(siteCode, deviceName, "operator"))
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "signed-by-the-stub-validator");
+        return request;
+    }
+
+    private WebApplicationFactory<Program> WithLicenseFor(string licensedSiteCode, string? connectionString)
+        => _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
         {
             services.RemoveAll<DataHubRuntimeOptions>();
             services.AddSingleton(new DataHubRuntimeOptions
             {
                 Channel = DataHubRuntimeOptions.AllowedStagingChannel,
                 EnvironmentName = "Testing",
-                ConnectionString = RequiresDataHubDatabaseFactAttribute.ConnectionString!,
-                // Both are length-checked ahead of the query, and a short one fails the
-                // request with 503 -- which is the status this test exists to rule out.
+                ConnectionString = connectionString ?? string.Empty,
+                // Both are length-checked ahead of the query, and a short one fails the request
+                // with 503 -- a status none of these tests want to see for that reason.
                 DeviceTokenSigningKey = new string('d', 32),
                 EnrollmentPepper = new string('p', 32),
-                // Retention deletes rows, and this host is pointed at a real database.
+                // Retention deletes rows, and this host may be pointed at a real database.
                 // PeriodicTimer fires first after a full interval, so one longer than the
                 // test's lifetime keeps the pass from ever running.
                 RetentionInterval = TimeSpan.FromHours(12)
@@ -64,24 +116,10 @@ public sealed class EnrollmentEndpointTests : IClassFixture<WebApplicationFactor
             services.AddSingleton<ILicenseAssertionValidator>(new AcceptingLicenseValidator(
                 new LicenseAssertionIdentity(
                     DataHubRuntimeOptions.AllowedStagingChannel,
-                    new HashSet<string>(StringComparer.Ordinal) { siteCode },
+                    new HashSet<string>(StringComparer.Ordinal) { licensedSiteCode },
                     DateTimeOffset.UtcNow.AddHours(1),
                     null,
                     1,
                     1)));
         }));
-
-        using var client = factory.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/devices/enroll")
-        {
-            Content = JsonContent.Create(new EnrollRequest(siteCode, "PC-01", "operator"))
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "signed-by-the-stub-validator");
-
-        using var response = await client.SendAsync(request);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal(ApiProblemCodes.NotFound, document.RootElement.GetProperty("code").GetString());
-    }
 }
