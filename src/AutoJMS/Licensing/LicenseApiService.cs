@@ -1043,13 +1043,17 @@ eQIDAQAB
 
                         case HeartbeatOutcome.Fatal:
                             _fatalRetryCount++;
+                            // Giữ số lần thử TRƯỚC khi mốc 5 reset bộ đếm: nếu đọc lại
+                            // _fatalRetryCount ở dòng log bên dưới thì đúng lần hỏng thứ 5 —
+                            // lần đáng chú ý nhất — lại in ra "lần 0".
+                            int fatalAttempt = _fatalRetryCount;
                             if (_fatalRetryCount >= 5)
                             {
                                 _onWarning?.Invoke("Đứt kết nối quá lâu. Ứng dụng vẫn hoạt động nhưng chưa xác thực.");
                                 _fatalRetryCount = 0;
                             }
                             _currentToken = null;
-                            _onWarning?.Invoke($"Token hết hạn hoặc lỗi. Sẽ thử lại (lần {_fatalRetryCount})...");
+                            _onWarning?.Invoke($"Token hết hạn hoặc lỗi. Sẽ thử lại (lần {fatalAttempt})...");
                             break;
                     }
 

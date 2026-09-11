@@ -179,6 +179,24 @@ namespace AutoJMS
             return true;
         }
 
+        /// <summary>
+        /// Bảng tính CHƯA ĐƯỢC CẤU HÌNH (<c>dataSpreadsheetId</c> để rỗng — mặc định của bản cài mới)
+        /// là trạng thái bình thường, không phải lỗi code.
+        /// <para>
+        /// Trước đây ID rỗng vẫn được gửi thẳng lên Google; API ném
+        /// <c>Parameter validation failed for "spreadsheetId"</c>, rơi vào nhánh catch cuối của
+        /// <see cref="BatchReadAsync"/> và bị ghi thành <c>[ERROR] Lỗi hệ thống</c> ngay trong log
+        /// khởi động, trông hệt như app hỏng. Chặn tại cửa và báo đúng bản chất: thiếu cấu hình.
+        /// </para>
+        /// </summary>
+        private static bool HasSpreadsheetId(string spreadsheetId, string operation)
+        {
+            if (!string.IsNullOrWhiteSpace(spreadsheetId)) return true;
+
+            ShowSheetToast($"Chưa cấu hình mã bảng tính Google Sheet — '{operation}' tạm không dùng được.");
+            return false;
+        }
+
         // ==========================================
         // 2. LÕI CHỐNG LỖI QUOTA VÀ LỖI MẠNG
         // ==========================================
@@ -314,6 +332,7 @@ namespace AutoJMS
         {
             // NGẮT NGAY TỪ CỬA NẾU MẤT MẠNG
             if (NetworkState.Current == NetworkStatus.Offline) return new List<IList<IList<object>>>();
+            if (!HasSpreadsheetId(spreadsheetId, "BatchRead")) return new List<IList<IList<object>>>();
             if (!CanUseGoogleSheetFeature()) return new List<IList<IList<object>>>();
 
             try
@@ -386,6 +405,7 @@ namespace AutoJMS
         public static async Task ClearSheetAsync(string spreadsheetId, string range)
         {
             if (NetworkState.Current == NetworkStatus.Offline) return;
+            if (!HasSpreadsheetId(spreadsheetId, "ClearSheet")) return;
 
             try
             {
@@ -415,6 +435,7 @@ namespace AutoJMS
         public static async Task UpdateBumpSheetAsync(IList<IList<object>> values, string spreadsheetId, string range)
         {
             if (NetworkState.Current == NetworkStatus.Offline) return;
+            if (!HasSpreadsheetId(spreadsheetId, "UpdateSheet")) return;
 
             try
             {
@@ -445,6 +466,7 @@ namespace AutoJMS
         public static async Task UpdateCellAsync(string spreadsheetId, string range, string value)
         {
             if (NetworkState.Current == NetworkStatus.Offline) return;
+            if (!HasSpreadsheetId(spreadsheetId, "UpdateCell")) return;
 
             try
             {
