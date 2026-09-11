@@ -1482,10 +1482,18 @@ namespace AutoJMS
             tabChat_btnReload.Enabled = false;
             tabChat_btnReload.Text = "Đang tải...";
 
-            await LoadDataAndRefreshViewsAsync();
-
-            tabChat_btnReload.Enabled = true;
-            tabChat_btnReload.Text = "-Làm mới-";
+            try
+            {
+                await LoadDataAndRefreshViewsAsync();
+            }
+            finally
+            {
+                // Without the finally the button stays disabled on "Đang tải..." for the life
+                // of the process: the throw reaches Application.ThreadException, which logs it
+                // and carries on, so nothing restores the button and chat can't be reloaded.
+                tabChat_btnReload.Enabled = true;
+                tabChat_btnReload.Text = "-Làm mới-";
+            }
         }
 
         private void tabChat_statusSelect_SelectedIndexChanged(object sender, EventArgs e)

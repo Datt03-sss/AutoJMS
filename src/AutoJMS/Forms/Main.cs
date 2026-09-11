@@ -220,10 +220,26 @@ namespace AutoJMS
             };
             LoadSourceFingerprintCache();
 
-            File.WriteAllText("debug.log", "App started\n");
+            // Both writes here used to be CWD-relative. On an installed build the working
+            // directory is the read-only install dir, so "debug.log" threw
+            // UnauthorizedAccessException inside this constructor — which runs before
+            // Application.Run, where the ThreadException handler cannot catch it — and the
+            // app died at launch with nothing recorded. It never reproduced on a dev tree,
+            // where the bin folder happens to be writable. AppPaths.LogsDir is created in
+            // Program.Main long before we get here.
+            AppLogger.Info("App started");
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
-                File.WriteAllText("crash.log", e.ExceptionObject.ToString());
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(AppPaths.LogsDir, "crash.log"),
+                        e.ExceptionObject?.ToString() ?? "(no exception object)");
+                }
+                catch
+                {
+                    // Last-resort handler: a throw out of here loses the crash entirely.
+                }
             };
 
             // UI styling
