@@ -38,7 +38,6 @@ namespace AutoJMS
         // NEW: Global service instances (nullable — only set after successful license verify)
         public static VpsManifestService DataHubManifest { get; private set; } = null!;
         public static RuntimeConfigService RuntimeConfig { get; private set; } = null!;
-        public static IntegrityService Integrity { get; private set; } = null!;
         public static MajorUpdateService MajorUpdateServiceInstance { get; private set; } = null!;
         public static SmallUpdateService SmallUpdate { get; private set; } = null!;
         public static UserSettingsService UserSettings { get; private set; } = null!;
@@ -307,7 +306,13 @@ namespace AutoJMS
                     }
                 }, AppCts.Token);
 
-                // Version-aware hash integrity check (non-blocking)
+                // Version-aware hash integrity check (non-blocking). This is the ONLY
+                // integrity path. A second implementation (IntegrityService) used to be
+                // constructed into Program.Integrity and never read — dead code that
+                // carried its own dev-mode bypass, so fixing one copy would have missed
+                // the other. Removed. Note this path deliberately has no skip: the
+                // licence's skipHashCheck now only relaxes the small-update signature
+                // check below, never the DLL hash.
                 _ = Task.Run(async () =>
                 {
                     try
@@ -360,14 +365,12 @@ namespace AutoJMS
                     RuntimePolicyApplier.ApplyToSettings(RuntimePolicy, UserSettings.Current);
                     UserSettings.Save();
 
-                    bool skipHashCheck = result.SkipHashCheck;
                     if (RuntimePolicy?.ModulePolicy != null)
                     {
                         AutoJMS.ModuleSystem.VpsModuleProvider.AutoUpdateEnabled = RuntimePolicy.ModulePolicy.AutoUpdate;
                         AutoJMS.ModuleSystem.VpsModuleProvider.SilentUpdateEnabled = RuntimePolicy.ModulePolicy.SilentUpdate;
                     }
 
-                    Integrity = new IntegrityService(DataHubManifest, skipHashCheck);
                     MajorUpdateServiceInstance = new MajorUpdateService(DataHubManifest, releases, result.UpdateChannel ?? "stable");
                     SmallUpdate = new SmallUpdateService(DataHubManifest, RuntimeConfig);
 
