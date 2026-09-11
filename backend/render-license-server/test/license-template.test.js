@@ -94,17 +94,17 @@ test("pasted unedited, the template does not open the app", async () => {
     assert.equal(response.body.error, "LICENSE_EXPIRED");
 });
 
-test("its placeholder site code is refused a DataHub assertion even once the licence is live", async () => {
+test("its placeholder site code is refused even once the licence is live", async () => {
     harness.db.reset(seedWith({ ...template(), expiresAt: liveExpiry() }));
 
     const response = await verify();
 
-    // Signing in is allowed — REQUIRE_UNIQUE_SITE_CODE is unset in this harness,
-    // matching production. What must NOT happen is enrollment: no assertion means
-    // the DataHub API turns the device away instead of seating it in a shared tenant.
-    assert.equal(response.status, 200);
-    assert.equal(response.body.datahub.licenseAssertion, "");
-    assert.equal(response.body.datahub.assertionExpiresAt, 0);
+    // Filling in expiresAt and leaving middleCode as shipped is the realistic
+    // half-edit, and it must not open the app: REQUIRE_UNIQUE_SITE_CODE is unset in
+    // this harness, matching production, and unset now means enforce. The template
+    // is only safe to paste because both of its placeholders are gates.
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error, "LICENSE_SITE_CODE_INVALID");
 });
 
 test("with both placeholders replaced, every value in the template reaches the client", async () => {

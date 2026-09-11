@@ -157,6 +157,19 @@ public class PrintJobCoordinatorTests
                 .Setup(x => x.PostJsonAsync(request.ApiUrl, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns(apiDelayTcs.Task);
 
+            // Everything the first job needs AFTER the API call is armed here, before that
+            // call is released. SetResult can run the continuation synchronously on the STA
+            // thread, so registering these afterwards was a race: when it lost, the job
+            // reached an unconfigured GetByteArrayAsync, got null back, and the failure
+            // surfaced as result1.CompletedBySpooler being false — nothing to do with the
+            // duplicate guard this test is about.
+            _mockJmsApiClient
+                .Setup(x => x.GetByteArrayAsync("http://mockpdf/123456.pdf", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new byte[] { 1 });
+            _mockSpoolerSubmitter
+                .Setup(x => x.SubmitPrintAsync(It.IsAny<PrintJobCacheEntry>(), "123456"))
+                .ReturnsAsync(new PrintSubmitResult { CompletedBySpooler = true });
+
             // Start first print job (it will block on PostJsonAsync)
             var printTask1 = _coordinator.PrintAsync(request);
 
@@ -168,12 +181,6 @@ public class PrintJobCoordinatorTests
             {
                 Content = new StringContent("{\"code\":200,\"data\":\"http://mockpdf/123456.pdf\"}")
             });
-            _mockJmsApiClient
-                .Setup(x => x.GetByteArrayAsync("http://mockpdf/123456.pdf", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new byte[] { 1 });
-            _mockSpoolerSubmitter
-                .Setup(x => x.SubmitPrintAsync(It.IsAny<PrintJobCacheEntry>(), "123456"))
-                .ReturnsAsync(new PrintSubmitResult { CompletedBySpooler = true });
 
             var result1 = await printTask1;
 

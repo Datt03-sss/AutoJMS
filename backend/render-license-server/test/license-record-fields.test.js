@@ -97,19 +97,19 @@ test("an unusable offlineGraceHours falls back rather than becoming zero", async
 
 // ---- placeholder site codes ---------------------------------------------
 
-test("a placeholder site code is refused a DataHub assertion but still signs in", async () => {
+test("a placeholder site code is refused outright", async () => {
     // middleCode IS the DataHub tenant key. "0000" is truthy, so it used to pass
     // the site-code filter and every licence still carrying the placeholder was
     // minted an assertion for the SAME tenant — those customers would read and
-    // write each other's rows. Login is deliberately unaffected: the station
-    // works locally, it just has no data-plane credential.
+    // write each other's rows. That was first fixed by withholding the assertion
+    // while still letting the station sign in; since 2026-09-11 the key is refused
+    // at the gate instead, so a placeholder cannot reach production at all.
     reseed({ middleCode: "0000" });
 
     const response = await verify();
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.datahub.licenseAssertion, "");
-    assert.equal(response.body.datahub.assertionExpiresAt, 0);
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error, "LICENSE_SITE_CODE_INVALID");
 });
 
 test("every placeholder spelling is refused, not just the empty string", async () => {

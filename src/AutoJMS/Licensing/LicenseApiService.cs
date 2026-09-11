@@ -58,6 +58,18 @@ namespace AutoJMS
         public string UpdateChannel { get; set; } = "stable";
         public string DataSpreadsheetId { get; set; }
         public string SessionId { get; set; }
+
+        // Lifecycle, straight from the server's `license` block. The server has sent
+        // these since the expiry work landed and nothing read them, so a station found
+        // out it was expiring by failing to start. EffectiveStatus is "active",
+        // "grace" or "expired"; ExpiresAt/GraceUntil are ISO-8601 with a +07:00 offset
+        // and are null on a v1 record that has no expiry at all — null means "no expiry
+        // known", never "expired". DaysRemaining is null for the same reason and may be
+        // negative inside the grace window.
+        public string EffectiveStatus { get; set; } = "";
+        public int? DaysRemaining { get; set; }
+        public string ExpiresAt { get; set; } = "";
+        public string GraceUntil { get; set; } = "";
     }
 
     public class HeartbeatResult
@@ -91,6 +103,29 @@ eQIDAQAB
         private static readonly HttpClient Http = CreateHttpClient();
         public static string CurrentSessionId { get; private set; } = string.Empty;
         public static string CurrentAccessToken { get; private set; } = string.Empty;
+
+        /// <summary>Days before expiry at which the client starts reminding the operator.</summary>
+        private const int ExpiryWarningDays = 7;
+
+        // The last lifecycle the server reported, kept so the UI can show a reminder
+        // without re-asking the server. Set once per activation; a station that never
+        // reaches the server keeps the previous launch's answer rather than inventing
+        // "fine", which is why the empty string means "unknown", not "healthy".
+        public static string LicenseEffectiveStatus { get; private set; } = string.Empty;
+        public static int? LicenseDaysRemaining { get; private set; }
+        public static string LicenseExpiresAt { get; private set; } = string.Empty;
+        public static string LicenseGraceUntil { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// The reminder to show, or an empty string when there is nothing to say.
+        /// Empty is the normal state — a licence with plenty of term left, and a v1
+        /// record with no expiry at all, both produce it.
+        /// </summary>
+        public static string LicenseExpiryWarning { get; private set; } = string.Empty;
+
+        /// <summary>Last lifecycle state written to the log; null until the first one is.
+        /// See RememberLicenseLifecycle for why the comparison is not on the warning alone.</summary>
+        private static string _lastLoggedLifecycleState;
         private static string ApiBase =>
             (Environment.GetEnvironmentVariable("AUTOJMS_LICENSE_API_BASE_URL") ?? DEFAULT_API_BASE)
                 .Trim()
@@ -208,6 +243,28 @@ eQIDAQAB
                              licMiddleProp.TryGetProperty("middleCode", out var nestedMcProp))
                         middleCode = nestedMcProp.GetString() ?? "";
                     AppLogger.Info($"Parsed middleCode from server response: {(string.IsNullOrWhiteSpace(middleCode) ? "<empty>" : middleCode)}");
+
+                    // Parse the lifecycle block and raise the pre-expiry reminder (C1)
+                    string effectiveStatus = "";
+                    int? daysRemaining = null;
+                    string expiresAt = "";
+                    string graceUntil = "";
+                    if (root.TryGetProperty("license", out var licLifecycleProp) &&
+                        licLifecycleProp.ValueKind == JsonValueKind.Object)
+                    {
+                        if (licLifecycleProp.TryGetProperty("effectiveStatus", out var statusProp) &&
+                            statusProp.ValueKind == JsonValueKind.String)
+                            effectiveStatus = statusProp.GetString() ?? "";
+
+                        if (licLifecycleProp.TryGetProperty("daysRemaining", out var daysProp) &&
+                            daysProp.ValueKind == JsonValueKind.Number &&
+                            daysProp.TryGetInt64(out long days))
+                            daysRemaining = (int)Math.Clamp(days, int.MinValue, int.MaxValue);
+
+                        expiresAt = ReadInstantAsText(licLifecycleProp, "expiresAt");
+                        graceUntil = ReadInstantAsText(licLifecycleProp, "graceUntil");
+                    }
+                    RememberLicenseLifecycle(effectiveStatus, daysRemaining, expiresAt, graceUntil);
 
                     // Parse skipHashCheck from root or integrity sub-object
                     bool skipHashCheck = false;
@@ -369,7 +426,11 @@ eQIDAQAB
                         Releases = releases,
                         UpdateChannel = updateChannel,
                         DataSpreadsheetId = dataSpreadsheetId,
-                        SessionId = CurrentSessionId
+                        SessionId = CurrentSessionId,
+                        EffectiveStatus = effectiveStatus,
+                        DaysRemaining = daysRemaining,
+                        ExpiresAt = expiresAt,
+                        GraceUntil = graceUntil
                     };
                 }
             }
@@ -407,6 +468,84 @@ eQIDAQAB
             return statusCode == 408 ||
                    statusCode == 429 ||
                    statusCode >= 500;
+        }
+
+        /// <summary>
+        /// Reads an instant the server may express either way. license-expiry.js emits
+        /// ISO-8601 text with an explicit +07:00 offset, but a record backfilled with an
+        /// epoch number reaches the client as a JSON number, and the difference is not
+        /// worth a parse failure here: this value is displayed, never computed with.
+        /// </summary>
+        private static string ReadInstantAsText(JsonElement parent, string name)
+        {
+            if (!parent.TryGetProperty(name, out var prop)) return string.Empty;
+
+            return prop.ValueKind switch
+            {
+                JsonValueKind.String => prop.GetString() ?? string.Empty,
+                JsonValueKind.Number => prop.TryGetInt64(out long epochMs)
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(epochMs)
+                        .ToOffset(TimeSpan.FromHours(7))
+                        .ToString("yyyy-MM-dd'T'HH:mm:ssK")
+                    : string.Empty,
+                _ => string.Empty
+            };
+        }
+
+        /// <summary>
+        /// Stores the lifecycle the server just reported and builds the operator-facing
+        /// reminder from it.
+        ///
+        /// Two states are worth interrupting someone over, and neither is an error: a
+        /// licence inside its grace window is already past expiry and running on
+        /// borrowed days, and one inside <see cref="ExpiryWarningDays"/> of expiry is
+        /// about to be. Everything else — including a v1 record with no expiry, which
+        /// arrives as a null daysRemaining — warns about nothing.
+        ///
+        /// The first observation is always logged, and after that only a CHANGE is. The
+        /// heartbeat calls this every minute for as long as the app is open, so logging
+        /// unconditionally would bury the day a licence actually crossed a threshold under
+        /// a thousand identical lines — but suppressing the first one too would mean a
+        /// healthy licence left no trace at all, and "the lifecycle block was parsed" would
+        /// be indistinguishable from "the parse never ran" in the one place anyone looks.
+        /// </summary>
+        private static void RememberLicenseLifecycle(
+            string effectiveStatus, int? daysRemaining, string expiresAt, string graceUntil)
+        {
+            LicenseEffectiveStatus = effectiveStatus ?? string.Empty;
+            LicenseDaysRemaining = daysRemaining;
+            LicenseExpiresAt = expiresAt ?? string.Empty;
+            LicenseGraceUntil = graceUntil ?? string.Empty;
+
+            string warning = string.Empty;
+            if (string.Equals(effectiveStatus, "grace", StringComparison.OrdinalIgnoreCase))
+            {
+                warning = string.IsNullOrWhiteSpace(graceUntil)
+                    ? "Giấy phép đang trong thời gian ân hạn!"
+                    : $"Giấy phép đang trong thời gian ân hạn, hết hạn ân hạn {graceUntil}!";
+            }
+            else if (daysRemaining.HasValue && daysRemaining.Value <= ExpiryWarningDays && daysRemaining.Value > 0)
+            {
+                warning = $"Giấy phép sắp hết hạn trong {daysRemaining.Value} ngày. Vui lòng gia hạn.";
+            }
+
+            LicenseExpiryWarning = warning;
+
+            // Keyed on everything the line below prints, not just the warning: a licence
+            // counting 7 -> 6 -> 5 days down is a different line each time and worth one
+            // each, while a station idling at "active, no expiry" repeats forever.
+            string state = effectiveStatus + "|" + daysRemaining + "|" + expiresAt + "|" + warning;
+            if (state == _lastLoggedLifecycleState) return;
+            _lastLoggedLifecycleState = state;
+
+            if (warning.Length > 0)
+                AppLogger.Warning("[LICENSE] " + warning);
+            else
+                AppLogger.Info(
+                    "[LICENSE] Lifecycle: status=" +
+                    (string.IsNullOrWhiteSpace(effectiveStatus) ? "<unknown>" : effectiveStatus) +
+                    ", daysRemaining=" + (daysRemaining.HasValue ? daysRemaining.Value.ToString() : "<none>") +
+                    ", expiresAt=" + (string.IsNullOrWhiteSpace(expiresAt) ? "<none>" : expiresAt));
         }
 
         private static string RedactVerifyResponseForLog(string body)
@@ -870,11 +1009,47 @@ eQIDAQAB
                         if (!ValidateJwtToken(newToken))
                             return new HeartbeatResult(HeartbeatOutcome.Fatal, null, "Invalid JWT");
                         CurrentAccessToken = newToken?.Trim() ?? string.Empty;
+
+                        // The heartbeat carries the same lifecycle block as verify-license,
+                        // and it is the only one that arrives while the app is open. Stations
+                        // here run for days, so without this the reminder would be whatever
+                        // was true at launch and a licence could cross into its last week —
+                        // or into grace — without the screen ever changing.
+                        RememberLicenseLifecycle(
+                            root.TryGetProperty("effectiveStatus", out var hbStatus) && hbStatus.ValueKind == JsonValueKind.String
+                                ? hbStatus.GetString() ?? ""
+                                : "",
+                            root.TryGetProperty("daysRemaining", out var hbDays) && hbDays.ValueKind == JsonValueKind.Number && hbDays.TryGetInt64(out long hbDaysValue)
+                                ? (int)Math.Clamp(hbDaysValue, int.MinValue, int.MaxValue)
+                                : (int?)null,
+                            ReadInstantAsText(root, "expiresAt"),
+                            ReadInstantAsText(root, "graceUntil"));
+
                         return new HeartbeatResult(HeartbeatOutcome.Continue, newToken, null);
                     }
 
+                    // Every non-2xx used to be Fatal "Token Expired", which spent a
+                    // _fatalRetryCount on a Render cold start: the free instance answers
+                    // 502/503 for the first few seconds after a spin-up, and a station
+                    // that heartbeats through one was being told its token was revoked.
+                    // Classified the same way verify-license classifies its own failures
+                    // (IsTransientHttpStatus), so the two routes cannot disagree about
+                    // what a 503 means.
                     if (!res.IsSuccessStatusCode)
-                        return new HeartbeatResult(HeartbeatOutcome.Fatal, null, "Token Expired");
+                    {
+                        int status = (int)res.StatusCode;
+                        if (status >= 500)
+                            return new HeartbeatResult(HeartbeatOutcome.TransientFailure, null, $"Server error {status}");
+
+                        if (res.StatusCode == HttpStatusCode.Unauthorized ||
+                            res.StatusCode == HttpStatusCode.Forbidden)
+                            return new HeartbeatResult(HeartbeatOutcome.Fatal, null, "Token Expired or Revoked");
+
+                        // 400, 404, 408, 429 and anything else: the server is reachable and
+                        // says no, but it has not said the credential is dead. Retrying is
+                        // the honest reading, and the retry budget still bounds it.
+                        return new HeartbeatResult(HeartbeatOutcome.TransientFailure, null, $"Server refused ({status})");
+                    }
 
                     return new HeartbeatResult(HeartbeatOutcome.TransientFailure, null, "Unknown action");
                 }

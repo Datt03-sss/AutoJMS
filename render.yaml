@@ -52,8 +52,10 @@
 #     (server.js:215-216) - placeholders like "0000" are dropped on purpose. That
 #     path is silent at 200 as well.
 #   * VALID_EXE_HASHES is still unconfirmed. Empty means the whole hash check is
-#     skipped (server.js:895) with no log line at all - the anti-tamper gate turns
-#     itself off quietly.
+#     skipped for every station. That used to happen with no log line at all - the
+#     anti-tamper gate turned itself off quietly. Since 2026-09-11 each activation
+#     that takes the empty-env path logs `license.hash_check_skipped_empty_env`, so
+#     the state is now readable from the service logs instead of only from the env.
 # So the only proof of a complete cutover remains POST /api/verify-license with a
 # real key returning a `datahub` block containing an `assertion`.
 #
@@ -264,10 +266,20 @@ services:
         value: "7"
       - key: LICENSE_OFFLINE_GRACE_HOURS
         value: "72"
-      # Keep at 0 until every key's middleCode has been backfilled with a real
-      # site code. Turning it on early locks out the entire fleet.
-      - key: REQUIRE_UNIQUE_SITE_CODE
-        value: "0"
+      # ---- REQUIRE_UNIQUE_SITE_CODE: deliberately absent ---------------------
+      # Enforcement of unique middleCodes is the code default as of 2026-09-11
+      # (owner decision), and "0" is the only value that disables it. This
+      # blueprint used to pin exactly that value, which meant the gate stayed off
+      # in production no matter what the code said — so the entry is removed
+      # rather than set, and an apply of this blueprint therefore TURNS THE GATE
+      # ON.
+      #
+      # Read that as a release step, not a config tidy-up: any key whose
+      # middleCode is still "0000"/""/"DEFAULT" gets 403 LICENSE_SITE_CODE_INVALID
+      # at launch from the moment this applies. Backfill the fleet's middleCodes
+      # first; set REQUIRE_UNIQUE_SITE_CODE=0 by hand on the service only if a
+      # migration genuinely needs the old behaviour back, and remove it again
+      # afterwards.
 
 # ---- A deliberate omission: `region` -----------------------------------------
 # Not set here, and that is a decision rather than an oversight.

@@ -4,6 +4,15 @@ This service verifies licenses and issues the signed desktop assertion. It does
 not connect to PostgreSQL and it never receives or returns a DataHub device
 token. The desktop enrolls its device with the VPS DataHub API separately.
 
+**Supabase is gone, completely.** DataHub on the VPS is the only data plane:
+this server holds no Supabase variable, `env.template` and `render.yaml` declare
+none, and no `.js` or `.cs` file in the repo references one. An older production
+build used to return a `supabase` block containing an anon key to every client,
+which is why `docs/agent/TIER_LICENSE_AUDIT_REPORT.vi.md` (L-3) still lists
+*revoking* that key as an open owner action — it was handed out for months and
+removing the code does not un-issue it. Anything that still mentions Supabase in
+`docs/` is describing that history, not a live dependency.
+
 > **Deploy source warning.** Render production currently serves
 > `Datt03-sss/AutoJMS-API`, not this directory — proven by `GET
 > /health/firebase/licenses` returning 200 in production while that route has
@@ -203,11 +212,15 @@ Other verify-license rejections added by this schema:
 |---|---|---|
 | 403 | LICENSE_EXPIRED | past `expiresAt` + `graceDays` |
 | 403 | LICENSE_TIER_INVALID | `tier` is not BASE or ULTRA |
-| 403 | LICENSE_SITE_CODE_INVALID | `middleCode` is a placeholder, and REQUIRE_UNIQUE_SITE_CODE=1 |
+| 403 | LICENSE_SITE_CODE_INVALID | `middleCode` is a placeholder (unless REQUIRE_UNIQUE_SITE_CODE=0) |
 
-`middleCode` is the DataHub site code. Every existing key still carries the
-`"0000"` placeholder, so REQUIRE_UNIQUE_SITE_CODE defaults to 0 and the server
-only logs LICENSE_SITE_CODE_PLACEHOLDER. Backfill first, then turn it on.
+`middleCode` is the DataHub site code, so two keys sharing a placeholder share a
+tenant. Refusing placeholders is the default as of 2026-09-11 (owner decision):
+leave REQUIRE_UNIQUE_SITE_CODE unset in production. Setting it to the literal
+`"0"` — and only that — restores the old behaviour, where the server signs the
+station in, logs LICENSE_SITE_CODE_PLACEHOLDER and withholds the DataHub
+assertion. That is a migration aid for a fleet that has not been backfilled yet,
+not a setting to leave in place.
 
 ## DataHub assertion
 

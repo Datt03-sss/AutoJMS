@@ -90,11 +90,14 @@ const CONFIG = {
     BILLING_ANCHOR_DAY:
         Number(process.env.LICENSE_BILLING_ANCHOR_DAY || licenseLifecycle.BILLING_ANCHOR_DAY),
 
-    // Site code is the DataHub tenant key. Every key in the fleet still ships
-    // the "0000" placeholder, so enforcement stays opt-in until they are
-    // migrated — flip REQUIRE_UNIQUE_SITE_CODE=1 once that is done.
+    // Site code is the DataHub tenant key, so a shared placeholder puts several
+    // customers in one tenant. Enforcement is therefore ON unless the operator
+    // explicitly opts out with REQUIRE_UNIQUE_SITE_CODE=0 (owner decision,
+    // 2026-09-11). The opt-out is the only recognised way to disable it: an
+    // unset, empty or misspelt value enforces, because the failure mode of the
+    // old opt-in default was a silent cross-tenant leak.
     REQUIRE_UNIQUE_SITE_CODE:
-        String(process.env.REQUIRE_UNIQUE_SITE_CODE || "").trim() === "1"
+        String(process.env.REQUIRE_UNIQUE_SITE_CODE || "").trim() !== "0"
 };
 
 /**
@@ -1033,22 +1036,22 @@ app.post("/api/verify-license", limiter, async (req, res) => {
         }
 
         // ---- Module policy --------------------------------------------------
-        // NOTE (owner decision pending): this fallback grants autoUpdate by
-        // absence, while the v2 template in backend/firebase/config-key.example.json ships
-        // autoUpdate:false. A record missing modulePolicy therefore self-updates,
-        // which is the opposite of what whoever wrote the template intended.
-        // Flipping the default would freeze updates on every v1 record still in the
-        // field, so it is a release-policy call, not a code cleanup — left as is and
-        // logged instead, so the records needing a backfill can be listed.
+        // The fallback now matches the v2 template in
+        // backend/firebase/config-key.example.json, which ships autoUpdate:false
+        // (owner decision, 2026-09-11). It used to grant autoUpdate by absence, so a
+        // record missing modulePolicy self-updated — the opposite of what the template
+        // declares, and decided by an omission rather than by anyone. A v1 record that
+        // wants unattended updates now has to say so; the warning below still lists the
+        // records needing a backfill.
         if (!data.modulePolicy) {
             logEvent("warn", "license.module_policy_missing", {
                 requestId,
                 license: maskedLicenseKey,
-                appliedDefault: "autoUpdate=true"
+                appliedDefault: "autoUpdate=false"
             });
         }
         const modulePolicy = data.modulePolicy || {
-            autoUpdate: true,
+            autoUpdate: false,
             silentUpdate: true,
             applyOnNextStartup: true
         };
@@ -1080,6 +1083,17 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                         message: "Application hash is invalid or outdated."
                     });
                 }
+            } else {
+                // An unset VALID_EXE_HASHES disables integrity checking for the whole
+                // fleet, and it did so without leaving a trace: the key asked to be
+                // verified, the server skipped it, and the logs looked identical to a
+                // clean pass. This line is the difference between "integrity is on" and
+                // "integrity is configured off", which is a question only the log can
+                // answer after the fact (J-3/H-1).
+                logEvent("info", "license.hash_check_skipped_empty_env", {
+                    requestId,
+                    license: maskedLicenseKey
+                });
             }
         }
 
@@ -1483,12 +1497,22 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
 
         jtiCache.set(decoded.jti, true);
 
+        // Both reads are keyed off the verified token alone, so neither can tell the
+        // other anything: issuing them together turns the route's two serial Firebase
+        // round-trips into one wall-clock wait. The checks below still run in the old
+        // order, so a station gets the same refusal for the same reason as before.
+        // The cost is that a session that fails its check has already paid for the
+        // licence read — one small node, against a round-trip saved on every heartbeat
+        // in the fleet. (The licence read's own rationale is the lifecycle gate below.)
         const sessionRef = admin.database().ref(`sessions/${decoded.sid}`);
-        const snap = await withTimeout(
-            sessionRef.once("value"),
-            FIREBASE_TIMEOUT_MS,
-            "FIREBASE_SESSION_READ"
-        );
+        const [snap, licenseSnap] = await Promise.all([
+            withTimeout(sessionRef.once("value"), FIREBASE_TIMEOUT_MS, "FIREBASE_SESSION_READ"),
+            withTimeout(
+                admin.database().ref(`Licenses/${decoded.key}`).once("value"),
+                FIREBASE_TIMEOUT_MS,
+                "FIREBASE_HEARTBEAT_LICENSE_READ"
+            )
+        ]);
 
         if (!snap.exists()) {
             return res.status(401).json({
@@ -1514,13 +1538,8 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
         // never expired at all, and revoking a license only worked if the customer
         // happened to restart the app.
         //
-        // The extra Firebase read is the price: one small node per heartbeat, on
-        // top of the session read that already happens here.
-        const licenseSnap = await withTimeout(
-            admin.database().ref(`Licenses/${decoded.key}`).once("value"),
-            FIREBASE_TIMEOUT_MS,
-            "FIREBASE_HEARTBEAT_LICENSE_READ"
-        );
+        // The extra Firebase read is the price: one small node per heartbeat. It is
+        // issued alongside the session read above, so it costs no extra round-trip.
         const licenseData = licenseSnap.val();
 
         if (!licenseData) {
@@ -1616,9 +1635,10 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             payload: newToken,
             tier,
             // Forwarded so a station can warn before expiry instead of dying at it.
-            // Nothing on the client reads these yet — LicenseApiService is a
-            // protected file — but they cost nothing and the data has to exist
-            // before the warning can be built.
+            // LicenseApiService reads all four as of 2026-09-11 and refreshes its
+            // reminder from them on every beat — which is what makes this the
+            // heartbeat's job rather than verify-license's alone: a station stays
+            // open for days, so the launch reading goes stale while someone watches it.
             effectiveStatus: lifecycle.effectiveStatus,
             expiresAt: lifecycle.expiresAt,
             graceUntil: lifecycle.graceUntil,
@@ -1677,11 +1697,22 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
 
         // Deliberately not consuming decoded.jti here: the heartbeat owns replay detection, and
         // burning the jti would kill the very session that is asking to stay connected.
-        const sessionSnap = await withTimeout(
-            admin.database().ref(`sessions/${decoded.sid}`).once("value"),
-            FIREBASE_TIMEOUT_MS,
-            "FIREBASE_SESSION_READ"
-        );
+        //
+        // Read together for the same reason as the heartbeat: both are addressed by the
+        // verified token alone, so serialising them only bought an extra round-trip on a
+        // route the client hits whenever its 24h device token comes up for renewal.
+        const [sessionSnap, licenseSnap] = await Promise.all([
+            withTimeout(
+                admin.database().ref(`sessions/${decoded.sid}`).once("value"),
+                FIREBASE_TIMEOUT_MS,
+                "FIREBASE_SESSION_READ"
+            ),
+            withTimeout(
+                admin.database().ref(`Licenses/${decoded.key}`).once("value"),
+                FIREBASE_TIMEOUT_MS,
+                "FIREBASE_LICENSE_READ"
+            )
+        ]);
         if (!sessionSnap.exists() || sessionSnap.val()?.status !== "active") {
             return res.status(401).json({
                 success: false,
@@ -1690,11 +1721,6 @@ app.post("/api/datahub/license-assertion", datahubAssertionLimiter, async (req, 
             });
         }
 
-        const licenseSnap = await withTimeout(
-            admin.database().ref(`Licenses/${decoded.key}`).once("value"),
-            FIREBASE_TIMEOUT_MS,
-            "FIREBASE_LICENSE_READ"
-        );
         const data = licenseSnap.val();
         if (!data || data.status !== "active") {
             return res.status(401).json({

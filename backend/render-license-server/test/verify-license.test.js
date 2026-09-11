@@ -258,41 +258,60 @@ test("with no signing key the response still launches the app but cannot enroll"
     }
 });
 
-test("a placeholder site code is refused when enforcement is on", async () => {
-    // Every key in the fleet still ships middleCode "0000", so enforcement is
-    // opt-in until they are migrated. Both halves of that switch are asserted.
-    const strict = await startServer({
-        env: { REQUIRE_UNIQUE_SITE_CODE: "1" },
+test("a placeholder site code is refused by default, with no env set", async () => {
+    // Enforcement is on unless the operator opts out (owner decision, 2026-09-11),
+    // so this is the shipped behaviour, not a configured one: the harness sets
+    // REQUIRE_UNIQUE_SITE_CODE to undefined. A real code still signs in, which is
+    // the half that proves the gate refuses placeholders rather than everything.
+    seed({ middleCode: "0000" });
+
+    const refused = await verify();
+
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.error, "LICENSE_SITE_CODE_INVALID");
+
+    seed({ middleCode: "HN07" });
+    const allowed = await verify();
+
+    assert.equal(allowed.status, 200);
+    assert.equal(allowed.body.license.siteCode, "HN07");
+});
+
+test("the opt-out is the literal string 0, and nothing else", async () => {
+    // The old default was opt-in, so a typo ("true", "yes", "") silently disabled
+    // the gate. Only "0" disables it now; every other value enforces. Both halves
+    // of that switch are asserted against a live server.
+    const lenient = await startServer({
+        env: { REQUIRE_UNIQUE_SITE_CODE: "0" },
         seed: { Licenses: { [FIXTURE.licenseKey]: activeLicense({ middleCode: "0000" }) } }
     });
 
     try {
-        const refused = await strict.post("/api/verify-license", {
+        const allowed = await lenient.post("/api/verify-license", {
+            body: { licenseKey: FIXTURE.licenseKey, hwid: FIXTURE.hwid }
+        });
+
+        assert.equal(allowed.status, 200);
+        assert.equal(allowed.body.license.siteCode, "0000");
+        // No site means no assertion: "cannot enroll", never "enroll unrestricted".
+        assert.equal(allowed.body.datahub.licenseAssertion, "");
+    } finally {
+        await lenient.close();
+    }
+
+    const typo = await startServer({
+        env: { REQUIRE_UNIQUE_SITE_CODE: "false" },
+        seed: { Licenses: { [FIXTURE.licenseKey]: activeLicense({ middleCode: "0000" }) } }
+    });
+
+    try {
+        const refused = await typo.post("/api/verify-license", {
             body: { licenseKey: FIXTURE.licenseKey, hwid: FIXTURE.hwid }
         });
 
         assert.equal(refused.status, 403);
         assert.equal(refused.body.error, "LICENSE_SITE_CODE_INVALID");
-
-        strict.db.reset({ Licenses: { [FIXTURE.licenseKey]: activeLicense({ middleCode: "HN07" }) } });
-        const allowed = await strict.post("/api/verify-license", {
-            body: { licenseKey: FIXTURE.licenseKey, hwid: FIXTURE.hwid }
-        });
-
-        assert.equal(allowed.status, 200);
-        assert.equal(allowed.body.license.siteCode, "HN07");
     } finally {
-        await strict.close();
+        await typo.close();
     }
-});
-
-test("a placeholder site code is allowed while enforcement is off", async () => {
-    seed({ middleCode: "0000" });
-
-    const response = await verify();
-
-    assert.equal(response.status, 200);
-    assert.equal(response.body.license.siteCode, "0000");
-    // No site means no assertion: "cannot enroll", never "enroll unrestricted".
-    assert.equal(response.body.datahub.siteCode, "0000");
 });

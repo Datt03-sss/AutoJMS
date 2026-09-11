@@ -57,6 +57,20 @@ builder.Services.AddHealthChecks()
     .AddCheck<IngestHorizonHealthCheck>("ingest-horizon", tags: ["ready"])
     .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"]);
 builder.Services.AddSignalR(options => options.EnableDetailedErrors = false);
+// A snapshot or a changes page is JSON whose bulk is repeated field names, so gzip
+// takes most of it off a station's metered link. EnableForHttps is opt-in in ASP.NET
+// Core precisely because compressing a secret in the same body as attacker-influenced
+// text leaks the secret through the compressed length (BREACH/CRIME) — turning it on
+// is only safe together with the exclusion branch below, which keeps every
+// token-bearing response out of the compressor. The two lines belong together.
+// application/problem+json is listed explicitly: it is not in
+// ResponseCompressionDefaults.MimeTypes, and it is what every error on this API
+// returns.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ["application/json", "application/problem+json", "text/json", "text/plain"];
+});
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -154,6 +168,18 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
         "The DataHub dependency is temporarily unavailable.");
 }));
 app.UseForwardedHeaders();
+// Compression is branched, never global. /api/v1/devices/enroll returns the device
+// bearer token in its body, and /hubs/site's negotiate returns a connection token;
+// compressing either one beside a caller-controlled field is the BREACH/CRIME
+// side-channel, so both are served uncompressed. Everything else — snapshot, changes,
+// manifests, lease, ingest acks — is site data the caller already holds a token to
+// read, and is the traffic worth compressing in the first place. Excluding /hubs also
+// keeps the compressor's buffering away from SignalR's long-polling and SSE
+// transports, which need each frame flushed as it is written.
+app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments("/api/v1/devices/enroll", StringComparison.OrdinalIgnoreCase)
+            && !context.Request.Path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase),
+    branch => branch.UseResponseCompression());
 app.UseMiddleware<IngressRateLimitMiddleware>();
 // Before device authentication: an admin route must be reachable with the operator
 // token alone, and a device token must never be sufficient for one.
