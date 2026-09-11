@@ -79,16 +79,17 @@ Date: 2026-08-23 · Revised: **2026-08-27**
   - `006_revocation_and_retention_indexes.sql`
 - Twelve tables exist; `create_datahub_site(...)` is the only SQL function in `public`.
 - PostgreSQL is not published to the host; only ports 22/80/443 are open.
-- `smoke-test.sh` passed against staging, including the five negative cases — **but it cannot pass
-  any more, by design, and that is not a regression to fix.** Step 2 mints its own assertion with
-  the `v1.` HMAC prefix (`backend/datahub/scripts/smoke-test.sh:125`). Setting
-  `DATAHUB_ALLOW_STAGING_TEST_ISSUER=false` on 2026-08-27 made the registration in
-  `IdentityServiceCollectionExtensions.cs:14-25` an if/**else-if**: exactly one validator is live,
-  and it is now `RsaLicenseAssertionValidator`, which rejects any prefix other than `v1rs256`
-  (`RsaLicenseAssertionValidator.cs:53` → `LICENSE_ASSERTION_MALFORMED`). So step 3 fails and every
-  later step that needs the device token fails with it. **Do not flip the flag back to make the
-  smoke test green** — that would de-register the RSA validator and reopen the staging HMAC path.
-  The script needs an RS256 mode, or the suite needs to be driven by a real assertion.
+- `smoke-test.sh` passes against staging, 24/24 including the five negative cases, last run
+  2026-09-11 on the rebuilt image. The earlier entry here said it "cannot pass any more, by
+  design"; that was true of the 08-27 configuration and is no longer true. Step 2 mints its own
+  assertion with the `v1.` HMAC prefix (`backend/datahub/scripts/smoke-test.sh:328`), and staging
+  now registers `PrefixRoutedLicenseAssertionValidator`
+  (`IdentityServiceCollectionExtensions.cs:17-33`): `v1rs256.` routes to
+  `RsaLicenseAssertionValidator`, `v1.` routes to the staging HMAC issuer. The prefixes are
+  disjoint (`RsaLicenseAssertionValidator.cs:61-64` rejects anything but its own), so serving both
+  accepts nothing that either validator alone would have refused. **Production must still run
+  `DATAHUB_ALLOW_STAGING_TEST_ISSUER=false`** — there the registration is RSA-only and the HMAC
+  path does not exist.
 - Operational scripts deployed to `/opt/autojms-datahub/bin/`: `dc.sh`, `apply-migrations.sh`,
   `run-sql.sh`, `smoke-test.sh`, `_datahub-common.sh`.
 - **Manifest write path exists and is reachable.** `PUT /api/v1/admin/manifests/{**objectPath}` is

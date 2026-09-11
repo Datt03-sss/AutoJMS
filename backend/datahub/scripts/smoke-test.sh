@@ -11,9 +11,16 @@
 #
 # Only ever run this against staging: it writes real rows.
 #
-# THREE WAYS TO OBTAIN THE ASSERTION, tried in this order. The API registers
-# exactly ONE validator -- IdentityServiceCollectionExtensions.cs:14-25 is an
-# if/else-if -- so the mode has to match how the stack is configured:
+# THREE WAYS TO OBTAIN THE ASSERTION, tried in this order. Which ones the stack
+# will actually accept depends on how AddDataHubIdentity registered its validator
+# (IdentityServiceCollectionExtensions.cs:17-47):
+#
+#   DATAHUB_ALLOW_STAGING_TEST_ISSUER=true  + a public key configured
+#       -> PrefixRoutedLicenseAssertionValidator: v1rs256. goes to RSA, v1. goes
+#          to the staging HMAC issuer. All three modes below work. The two
+#          prefixes are disjoint, so routing both widens nothing.
+#   DATAHUB_ALLOW_STAGING_TEST_ISSUER=true  + no public key  -> HMAC only.
+#   DATAHUB_ALLOW_STAGING_TEST_ISSUER=false                  -> RSA only.
 #
 #   1. DATAHUB_SMOKE_TEST_ASSERTION=<token>
 #      Used verbatim. Works against any validator because nothing is signed here.
@@ -23,18 +30,18 @@
 #   2. DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY, or
 #      DATAHUB_LICENSE_ASSERTION_PRIVATE_KEY_FILE=<path>
 #      Mints v1rs256.<payload>.<signature> with the RSA private half. This is the
-#      mode to use once the stack runs DATAHUB_ALLOW_STAGING_TEST_ISSUER=false,
-#      because RsaLicenseAssertionValidator rejects every other version prefix
-#      (RsaLicenseAssertionValidator.cs:53). The key may come from the process
-#      environment, from --env-file, or from a file path; it is never written to
-#      disk and never appears on a command line. Adds no tool requirement -- see
-#      the signer in step 2 for why it does its own PKCS#1 padding.
+#      only minting mode left once the stack runs
+#      DATAHUB_ALLOW_STAGING_TEST_ISSUER=false, because RsaLicenseAssertionValidator
+#      rejects every other version prefix (RsaLicenseAssertionValidator.cs:61-64).
+#      The key may come from the process environment, from --env-file, or from a
+#      file path; it is never written to disk and never appears on a command line.
+#      Adds no tool requirement -- see the signer in step 2 for why it does its own
+#      PKCS#1 padding.
 #
 #   3. otherwise: mints v1.<payload>.<signature> with
-#      DATAHUB_STAGING_TEST_SIGNING_KEY. Only works while the stack still has
-#      DATAHUB_ALLOW_STAGING_TEST_ISSUER=true -- which production must never have
-#      enabled, and which switches RsaLicenseAssertionValidator OFF. Never turn
-#      that flag back on just to make this script green; use mode 1 or 2 instead.
+#      DATAHUB_STAGING_TEST_SIGNING_KEY. Needs DATAHUB_ALLOW_STAGING_TEST_ISSUER=true,
+#      which production must never have enabled. Never turn that flag back on just
+#      to make this script green; use mode 1 or 2 instead.
 #
 # No secret is printed. The device token and the assertion are shown as
 # first4...last4 only, which is enough to prove one was issued.
