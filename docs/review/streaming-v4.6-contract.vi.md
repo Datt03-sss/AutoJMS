@@ -537,7 +537,7 @@ Lý do: `is_terminal`/`terminal_at`/`waybill_tombstones` là **dữ liệu nghi�
 | Ingest 1-transaction, bulk ≤ 200, all-or-nothing | `IngestRepository.IngestAsync` | ✅ |
 | Idempotency đầy đủ (reserve `status_code=0`, replay, `KEY_REUSED`, `IN_PROGRESS`) | `IngestRepository` | ✅ |
 | Lease fencing 3 chốt, `clock_timestamp()` | `IngestRepository.CheckFenceAsync` | ✅ |
-| Dedupe `UNIQUE(site_id,event_fingerprint)` + `ON CONFLICT DO NOTHING RETURNING id` | `001_core` + `InsertEventAsync` | ✅ |
+| Dedupe `UNIQUE(site_id,event_fingerprint)` + `ON CONFLICT DO NOTHING RETURNING id` | `001_core` + `InsertEventSql` | ✅ |
 | Cấp phát `change_seq` dưới `FOR UPDATE` (ingest **và** retention cùng lock order) | `IngestRepository`, `RetentionRepository` | ✅ |
 | Snapshot `RepeatableRead` + `LIMIT maxRows+1` + `truncated` + `asOfChangeSeq` | `ChangeRepository.ReadSnapshotAsync` | ✅ |
 | Delta feed + `pruned_through_seq` + `RESYNC_REQUIRED` | `ChangeRepository`, `ChangeCursorWindow` | ✅ |

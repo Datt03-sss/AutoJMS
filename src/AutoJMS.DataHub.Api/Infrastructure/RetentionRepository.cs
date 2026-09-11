@@ -91,6 +91,13 @@ public sealed class RetentionRepository(PostgresDataSource dataSource)
         // Event IDs are optional historical references, not foreign keys. Keep the
         // winner IDs stable when observations expire so retention does not mutate
         // projection state without allocating a dashboard change.
+        //
+        // ORDER BY (event_occurred_at, id) rather than id alone, to match
+        // ix_waybill_scan_events_retention (migration 010). The delete set is the same either
+        // way — the predicate is unchanged and repeated passes drain the same rows — but age
+        // order lets an index-only scan take the batch off the head of the index instead of
+        // walking the primary key and the heap behind it. id stays as the tiebreak so the
+        // ordering is total and a batch boundary cannot revisit the same row.
         const string sql = """
             WITH candidates AS (
                 SELECT e.id
@@ -103,7 +110,7 @@ public sealed class RetentionRepository(PostgresDataSource dataSource)
                    AND global_policy.table_name = 'waybill_scan_events'
                  WHERE COALESCE(site_policy.delete_after, global_policy.delete_after) IS NOT NULL
                    AND e.event_occurred_at < now() - COALESCE(site_policy.delete_after, global_policy.delete_after)
-                 ORDER BY e.id
+                 ORDER BY e.event_occurred_at, e.id
                  LIMIT @batch_size
             )
             DELETE FROM waybill_scan_events e

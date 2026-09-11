@@ -110,16 +110,22 @@ public sealed class IngestRepository(
             return IngestOperationResult.Success(replay, []);
         }
 
+        // Parsed once, here, rather than once in this loop and again in the item loop. The
+        // event batch cannot be assembled until every item's UTC value is known, so the
+        // second parse had nothing left to buy.
+        var scanTimes = new ScanTimeParseResult[request.Items.Count];
+        for (var i = 0; i < request.Items.Count; i++)
+            scanTimes[i] = ScanTimeParser.Parse(request.Items[i].ScanTime);
+
         // Below the replay lookup on purpose. The horizon's past bound widens as the clock
         // advances, so checking above it would let a batch that already committed be answered
         // 422 on retry instead of replaying its recorded response. Idempotency wins; the price
         // is that a first-time violation now costs a connection and a transaction.
         // Items whose scanTime does not parse are left alone here and handled by the existing
-        // path inside the loop below, which keeps the parse-error code and message as they were.
+        // path below, which keeps the parse-error code and message as they were.
         var now = timeProvider.GetUtcNow();
-        foreach (var item in request.Items)
+        foreach (var scanTime in scanTimes)
         {
-            var scanTime = ScanTimeParser.Parse(item.ScanTime);
             if (!scanTime.Success) continue;
 
             // Whole-batch failure by design: the ≤200 items commit or roll back together,
@@ -181,52 +187,143 @@ public sealed class IngestRepository(
             return IngestOperationResult.Failure(StatusCodes.Status404NotFound, ApiProblemCodes.NotFound, "The site change counter has not been provisioned.");
         }
 
+        // Reported here rather than beside the horizon check, so precedence is exactly what
+        // the statement-per-item loop produced: a horizon violation still outranks a parse
+        // error, an unprovisioned counter still outranks both, and the item named is still
+        // the first bad one in request order.
+        foreach (var scanTime in scanTimes)
+        {
+            if (scanTime.Success) continue;
+            await transaction.RollbackAsync(cancellationToken);
+            return IngestOperationResult.Failure(StatusCodes.Status400BadRequest, ScanTimeParser.InvalidScanTimeCode, scanTime.ErrorMessage ?? "scanTime is invalid.");
+        }
+
+        var observations = new JmsObservation[request.Items.Count];
+        var fingerprints = new string[request.Items.Count];
+        for (var i = 0; i < request.Items.Count; i++)
+        {
+            observations[i] = request.Items[i] with
+            {
+                SiteId = siteId,
+                WaybillNo = request.Items[i].WaybillNo.Trim()
+            };
+            fingerprints[i] = EventFingerprintV1.Compute(observations[i], scanTimes[i].UtcValue!.Value);
+        }
+
+        // Phase 1 — every event insert in one round trip.
+        //
+        // A 200-item bulk used to spend 200 sequential network exchanges here, each a full
+        // latency hop taken while this transaction already holds site_change_counters under
+        // FOR UPDATE, so the wire time was also lock-hold time for every other writer at the
+        // site. The statement text, the parameter set and the ON CONFLICT DO NOTHING
+        // RETURNING id dedupe are unchanged per item, and the server still executes them in
+        // request order inside this transaction — a batch removes the round trips, not the
+        // statements, so §26's dedupe contract and the lock behaviour are untouched.
+        var eventIds = new long?[observations.Length];
+        await using (var eventBatch = new NpgsqlBatch(connection, transaction))
+        {
+            for (var i = 0; i < observations.Length; i++)
+                eventBatch.BatchCommands.Add(BuildInsertEventCommand(observations[i], scanTimes[i].UtcValue!.Value, fingerprints[i]));
+
+            await using var eventReader = await eventBatch.ExecuteReaderAsync(cancellationToken);
+            for (var i = 0; i < observations.Length; i++)
+            {
+                // No row means the fingerprint was already present: RETURNING yields nothing
+                // when DO NOTHING skips the insert. Same signal ExecuteScalar gave as null.
+                eventIds[i] = await eventReader.ReadAsync(cancellationToken) ? eventReader.GetInt64(0) : (long?)null;
+                if (i + 1 < observations.Length && !await eventReader.NextResultAsync(cancellationToken))
+                    throw new InvalidOperationException($"The event batch returned {i + 1} results for {observations.Length} observations.");
+            }
+        }
+
         var accepted = 0;
         var duplicates = 0;
         var terminalLocked = 0;
-        var changedByWaybill = new Dictionary<string, (WaybillProjection Projection, ProjectionBody Body)>(StringComparer.Ordinal);
-        var seenWaybills = new Dictionary<string, WaybillProjection>(StringComparer.Ordinal);
         // One probe per distinct waybill, not per item: a 200-item batch usually touches a
-        // handful of waybills. true means blocked — terminal, or tombstoned by an earlier
-        // purge. Kept in step with the terminal marks this batch makes, below.
-        var terminalGuard = new Dictionary<string, bool>(StringComparer.Ordinal);
-        var terminalByWaybill = new Dictionary<string, (DateTimeOffset At, int StateCode)>(StringComparer.Ordinal);
-
-        foreach (var input in request.Items)
+        // handful of waybills. First-appearance order, which is the order the loop probed in.
+        var acceptedWaybills = new List<string>();
+        var seenAccepted = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < eventIds.Length; i++)
         {
-            var parsed = ScanTimeParser.Parse(input.ScanTime);
-            if (!parsed.Success)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return IngestOperationResult.Failure(StatusCodes.Status400BadRequest, ScanTimeParser.InvalidScanTimeCode, parsed.ErrorMessage ?? "scanTime is invalid.");
-            }
-
-            var observation = input with
-            {
-                SiteId = siteId,
-                WaybillNo = input.WaybillNo.Trim()
-            };
-            var fingerprint = EventFingerprintV1.Compute(observation, parsed.UtcValue!.Value);
-            var eventId = await InsertEventAsync(connection, transaction, observation, parsed.UtcValue.Value, fingerprint, cancellationToken);
-            if (eventId is null)
+            if (eventIds[i] is null)
             {
                 duplicates++;
                 continue;
             }
 
             accepted++;
+            if (seenAccepted.Add(observations[i].WaybillNo))
+                acceptedWaybills.Add(observations[i].WaybillNo);
+        }
 
-            // After the event insert, not before: dedupe and history stay complete whatever
-            // this decides, so a blocked scan is recorded once and never re-accepted. The
-            // count is separate from `accepted` because the event WAS accepted — it just
-            // did not move the projection.
-            if (!terminalGuard.TryGetValue(observation.WaybillNo, out var blocked))
+        // Phase 2 — the same probes, one round trip. true means blocked: terminal, or
+        // tombstoned by an earlier purge. Kept in step with the terminal marks this batch
+        // makes, below. Probe order is irrelevant — none of them takes a lock.
+        var terminalGuard = new Dictionary<string, bool>(StringComparer.Ordinal);
+        if (acceptedWaybills.Count > 0)
+        {
+            await using var guardBatch = new NpgsqlBatch(connection, transaction);
+            foreach (var waybillNo in acceptedWaybills)
+                guardBatch.BatchCommands.Add(BuildTerminalGuardCommand(siteId, waybillNo));
+
+            await using var guardReader = await guardBatch.ExecuteReaderAsync(cancellationToken);
+            for (var i = 0; i < acceptedWaybills.Count; i++)
             {
-                blocked = await ReadTerminalGuardAsync(connection, transaction, siteId, observation.WaybillNo, cancellationToken);
-                terminalGuard[observation.WaybillNo] = blocked;
+                terminalGuard[acceptedWaybills[i]] =
+                    await guardReader.ReadAsync(cancellationToken) && !guardReader.IsDBNull(0) && guardReader.GetBoolean(0);
+                if (i + 1 < acceptedWaybills.Count && !await guardReader.NextResultAsync(cancellationToken))
+                    throw new InvalidOperationException($"The terminal-guard batch returned {i + 1} results for {acceptedWaybills.Count} waybills.");
             }
+        }
 
-            if (blocked)
+        // Phase 3 — the projection reads, still FOR UPDATE, still one statement per distinct
+        // unblocked waybill, still in first-appearance order, now in one round trip.
+        //
+        // §5bis.1 of the audit stopped at this step: collapsing the reads into a single
+        // `waybill_no = ANY(...)` would lock waybills the statement-per-item loop never
+        // reached, which is a concurrency change rather than a performance one. A batch does
+        // not have that problem — the same statements run against the same rows in the same
+        // order, so the transaction's lock set and lock acquisition order are identical. The
+        // set is chosen after the guard for the same reason the loop chose it there: a
+        // blocked waybill is never read.
+        //
+        // The guard can flip to true mid-batch when this batch establishes a terminal mark,
+        // but only while processing an item of that same waybill — which is after its
+        // projection was already read. So the set below is exactly what the loop read.
+        var readableWaybills = acceptedWaybills.Where(waybillNo => !terminalGuard[waybillNo]).ToList();
+        var storedProjections = new Dictionary<string, WaybillProjection>(StringComparer.Ordinal);
+        if (readableWaybills.Count > 0)
+        {
+            await using var projectionBatch = new NpgsqlBatch(connection, transaction);
+            foreach (var waybillNo in readableWaybills)
+                projectionBatch.BatchCommands.Add(BuildReadProjectionCommand(siteId, waybillNo));
+
+            await using var projectionReader = await projectionBatch.ExecuteReaderAsync(cancellationToken);
+            for (var i = 0; i < readableWaybills.Count; i++)
+            {
+                if (await projectionReader.ReadAsync(cancellationToken))
+                    storedProjections[readableWaybills[i]] = MapProjection(projectionReader, siteId, readableWaybills[i]);
+                if (i + 1 < readableWaybills.Count && !await projectionReader.NextResultAsync(cancellationToken))
+                    throw new InvalidOperationException($"The projection batch returned {i + 1} results for {readableWaybills.Count} waybills.");
+            }
+        }
+
+        var changedByWaybill = new Dictionary<string, (WaybillProjection Projection, ProjectionBody Body)>(StringComparer.Ordinal);
+        var seenWaybills = new Dictionary<string, WaybillProjection>(StringComparer.Ordinal);
+        var terminalByWaybill = new Dictionary<string, (DateTimeOffset At, int StateCode)>(StringComparer.Ordinal);
+
+        // Reduction is now pure: every row it needs is already in hand, so nothing in this
+        // loop touches the network.
+        for (var i = 0; i < observations.Length; i++)
+        {
+            if (eventIds[i] is null) continue;
+            var observation = observations[i];
+
+            // Consulted after the event insert, not before: dedupe and history stay complete
+            // whatever this decides, so a blocked scan is recorded once and never
+            // re-accepted. The count is separate from `accepted` because the event WAS
+            // accepted — it just did not move the projection.
+            if (terminalGuard[observation.WaybillNo])
             {
                 // No projection mutation, no version bump, no change_seq, no
                 // dashboard_changes row — and deliberately no rollback: the rest of the
@@ -235,20 +332,24 @@ public sealed class IngestRepository(
                 continue;
             }
 
-            var current = seenWaybills.TryGetValue(observation.WaybillNo, out var cached)
-                ? cached
-                : await ReadProjectionAsync(connection, transaction, siteId, observation.WaybillNo, cancellationToken);
+            WaybillProjection? current;
+            if (seenWaybills.TryGetValue(observation.WaybillNo, out var cached))
+                current = cached;
+            else if (storedProjections.TryGetValue(observation.WaybillNo, out var stored))
+                current = stored;
+            else
+                current = null;
             var eventValue = new JmsEvent
             {
                 SiteId = siteId,
                 WaybillNo = observation.WaybillNo,
-                EventOccurredAt = parsed.UtcValue.Value,
-                EventFingerprint = fingerprint,
+                EventOccurredAt = scanTimes[i].UtcValue!.Value,
+                EventFingerprint = fingerprints[i],
                 Code = observation.Code,
                 Name = observation.ScanTypeName,
                 Status = observation.Status,
                 Payload = observation.Payload,
-                EventId = eventId
+                EventId = eventIds[i]
             };
             var next = reducer.Reduce(current, eventValue, policies);
             seenWaybills[observation.WaybillNo] = next;
@@ -290,7 +391,13 @@ public sealed class IngestRepository(
                     "The site change sequence counter has reached its maximum value and must be reset.");
             }
 
+            // Phase 4 — the writes. Sequence allocation is unchanged: still one change_seq per
+            // changed waybill, still allocated under the FOR UPDATE taken on
+            // site_change_counters, still in the same order, so the numbers a given batch
+            // produces are identical. Only the delivery changed — upsert, change row and the
+            // final counter update leave in one round trip instead of 2N+1.
             var sequence = startingSequence.Value;
+            await using var writeBatch = new NpgsqlBatch(connection, transaction);
             foreach (var entry in changed)
             {
                 sequence = checked(sequence + 1);
@@ -298,14 +405,17 @@ public sealed class IngestRepository(
                 var terminalMark = terminalByWaybill.TryGetValue(entry.Projection.WaybillNo, out var mark)
                     ? mark
                     : ((DateTimeOffset At, int StateCode)?)null;
-                await UpsertProjectionAsync(connection, transaction, entry.Projection, body.UpdatedAt, sequence, terminalMark, cancellationToken);
-                await InsertChangeAsync(connection, transaction, siteId, sequence, entry.Projection.WaybillNo, body, cancellationToken);
+                writeBatch.BatchCommands.Add(BuildUpsertProjectionCommand(entry.Projection, body.UpdatedAt, sequence, terminalMark));
+                writeBatch.BatchCommands.Add(BuildInsertChangeCommand(siteId, sequence, entry.Projection.WaybillNo, body));
                 doorbells.Add(new ChangeDoorbell(siteId, sequence, "waybill_projection", entry.Projection.WaybillNo));
                 firstSeq ??= sequence;
                 lastSeq = sequence;
             }
 
-            await UpdateCounterAsync(connection, transaction, siteId, sequence, cancellationToken);
+            // Last in the batch, as it was last in the loop: the counter may only advance once
+            // every row that consumed a sequence has been written.
+            writeBatch.BatchCommands.Add(BuildUpdateCounterCommand(siteId, sequence));
+            await writeBatch.ExecuteNonQueryAsync(cancellationToken);
         }
 
         var response = new IngestResponse(siteId, accepted, duplicates, changed.Count, false, firstSeq, lastSeq, terminalLocked);
@@ -415,55 +525,48 @@ public sealed class IngestRepository(
         return value is null or DBNull ? null : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static async Task UpdateCounterAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid siteId,
-        long sequence,
-        CancellationToken cancellationToken)
+    private const string UpdateCounterSql = "UPDATE site_change_counters SET change_seq = @sequence WHERE site_id = @site_id;";
+
+    private static NpgsqlBatchCommand BuildUpdateCounterCommand(Guid siteId, long sequence)
     {
-        const string sql = "UPDATE site_change_counters SET change_seq = @sequence WHERE site_id = @site_id;";
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        var command = new NpgsqlBatchCommand(UpdateCounterSql);
         command.Parameters.AddWithValue("site_id", siteId);
         command.Parameters.AddWithValue("sequence", sequence);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return command;
     }
 
-    private static async Task<long?> InsertEventAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private const string InsertEventSql = """
+        INSERT INTO waybill_scan_events (
+            site_id, waybill_no, event_fingerprint, event_occurred_at,
+            scan_type_code, scan_type_name, status, network_code,
+            operator_code, package_number, task_code, payload)
+        VALUES (@site_id, @waybill_no, @fingerprint, @occurred_at,
+                @code, @scan_type_name, @status, @network_code,
+                @operator_code, @package_number, @task_code, @payload)
+        ON CONFLICT (site_id, event_fingerprint) DO NOTHING
+        RETURNING id;
+        """;
+
+    private static NpgsqlBatchCommand BuildInsertEventCommand(
         JmsObservation observation,
         DateTimeOffset occurredAt,
-        string fingerprint,
-        CancellationToken cancellationToken)
+        string fingerprint)
     {
-        const string sql = """
-            INSERT INTO waybill_scan_events (
-                site_id, waybill_no, event_fingerprint, event_occurred_at,
-                scan_type_code, scan_type_name, status, network_code,
-                operator_code, package_number, task_code, payload)
-            VALUES (@site_id, @waybill_no, @fingerprint, @occurred_at,
-                    @code, @scan_type_name, @status, @network_code,
-                    @operator_code, @package_number, @task_code, @payload)
-            ON CONFLICT (site_id, event_fingerprint) DO NOTHING
-            RETURNING id;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        var command = new NpgsqlBatchCommand(InsertEventSql);
         command.Parameters.AddWithValue("site_id", observation.SiteId);
         command.Parameters.AddWithValue("waybill_no", observation.WaybillNo.Trim());
         command.Parameters.AddWithValue("fingerprint", fingerprint);
         command.Parameters.AddWithValue("occurred_at", occurredAt);
-        AddNullable(command, "code", observation.Code);
-        AddNullable(command, "scan_type_name", observation.ScanTypeName);
-        AddNullable(command, "status", observation.Status);
-        AddNullable(command, "network_code", observation.ScanNetworkCode);
-        AddNullable(command, "operator_code", observation.ScanByCode);
-        AddNullable(command, "package_number", observation.PackageNumber);
-        AddNullable(command, "task_code", observation.TaskCode);
+        AddNullable(command.Parameters, "code", observation.Code);
+        AddNullable(command.Parameters, "scan_type_name", observation.ScanTypeName);
+        AddNullable(command.Parameters, "status", observation.Status);
+        AddNullable(command.Parameters, "network_code", observation.ScanNetworkCode);
+        AddNullable(command.Parameters, "operator_code", observation.ScanByCode);
+        AddNullable(command.Parameters, "package_number", observation.PackageNumber);
+        AddNullable(command.Parameters, "task_code", observation.TaskCode);
         var payload = observation.Payload is { } element ? element.GetRawText() : "{}";
-        command.Parameters.Add("payload", NpgsqlDbType.Jsonb).Value = payload;
-        var value = await command.ExecuteScalarAsync(cancellationToken);
-        return value is null or DBNull ? null : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+        command.Parameters.Add(new NpgsqlParameter("payload", NpgsqlDbType.Jsonb) { Value = payload });
+        return command;
     }
 
     /// <summary>
@@ -472,34 +575,50 @@ public sealed class IngestRepository(
     /// primary-key probes and either alone is decisive.
     ///
     /// No FOR UPDATE. The projection row is locked a moment later by
-    /// <see cref="ReadProjectionAsync"/>, and a tombstone is written only by the retention
+    /// <see cref="ReadProjectionSql"/>, and a tombstone is written only by the retention
     /// purge, which never runs inside this transaction.
     /// </summary>
-    private static async Task<bool> ReadTerminalGuardAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid siteId,
-        string waybillNo,
-        CancellationToken cancellationToken)
+    private const string TerminalGuardSql = """
+        SELECT EXISTS (SELECT 1
+                         FROM waybill_projections
+                        WHERE site_id = @site_id AND waybill_no = @waybill_no AND is_terminal)
+            OR EXISTS (SELECT 1
+                         FROM waybill_tombstones
+                        WHERE site_id = @site_id AND waybill_no = @waybill_no);
+        """;
+
+    private static NpgsqlBatchCommand BuildTerminalGuardCommand(Guid siteId, string waybillNo)
     {
-        const string sql = """
-            SELECT EXISTS (SELECT 1
-                             FROM waybill_projections
-                            WHERE site_id = @site_id AND waybill_no = @waybill_no AND is_terminal)
-                OR EXISTS (SELECT 1
-                             FROM waybill_tombstones
-                            WHERE site_id = @site_id AND waybill_no = @waybill_no);
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        var command = new NpgsqlBatchCommand(TerminalGuardSql);
         command.Parameters.AddWithValue("site_id", siteId);
         command.Parameters.AddWithValue("waybill_no", waybillNo.Trim());
-        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        return command;
+    }
+
+    private const string ReadProjectionSql = """
+        SELECT state_code, state_name, state_status, state_event_at, state_fingerprint, state_event_id, state_kind, state_payload,
+               last_activity_code, last_activity_name, last_activity_status, last_activity_kind, last_activity_at,
+               last_activity_fingerprint, last_activity_event_id, last_activity_payload,
+               inventory_code, inventory_name, inventory_status, inventory_event_at, inventory_fingerprint, inventory_event_id, inventory_payload,
+               payload, reducer_version, version
+          FROM waybill_projections
+         WHERE site_id = @site_id AND waybill_no = @waybill_no
+         FOR UPDATE;
+        """;
+
+    private static NpgsqlBatchCommand BuildReadProjectionCommand(Guid siteId, string waybillNo)
+    {
+        var command = new NpgsqlBatchCommand(ReadProjectionSql);
+        command.Parameters.AddWithValue("site_id", siteId);
+        command.Parameters.AddWithValue("waybill_no", waybillNo.Trim());
+        return command;
     }
 
     /// <summary>
     /// Internal rather than private because <see cref="ReopenRepository"/> needs the same
     /// twenty-six-ordinal mapping and two copies of it would drift. Visibility only: the
-    /// body is untouched, so §26's rule against rewriting the ingest read still holds.
+    /// statement and the mapping are untouched — both were lifted out verbatim so the batched
+    /// ingest path shares them — so §26's rule against rewriting the ingest read still holds.
     /// </summary>
     internal static async Task<WaybillProjection?> ReadProjectionAsync(
         NpgsqlConnection connection,
@@ -508,21 +627,16 @@ public sealed class IngestRepository(
         string waybillNo,
         CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT state_code, state_name, state_status, state_event_at, state_fingerprint, state_event_id, state_kind, state_payload,
-                   last_activity_code, last_activity_name, last_activity_status, last_activity_kind, last_activity_at,
-                   last_activity_fingerprint, last_activity_event_id, last_activity_payload,
-                   inventory_code, inventory_name, inventory_status, inventory_event_at, inventory_fingerprint, inventory_event_id, inventory_payload,
-                   payload, reducer_version, version
-              FROM waybill_projections
-             WHERE site_id = @site_id AND waybill_no = @waybill_no
-             FOR UPDATE;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        await using var command = new NpgsqlCommand(ReadProjectionSql, connection, transaction);
         command.Parameters.AddWithValue("site_id", siteId);
         command.Parameters.AddWithValue("waybill_no", waybillNo.Trim());
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
+        return MapProjection(reader, siteId, waybillNo);
+    }
+
+    private static WaybillProjection MapProjection(NpgsqlDataReader reader, Guid siteId, string waybillNo)
+    {
         var reducerVersion = reader.GetInt32(24);
         var version = reader.GetInt64(25);
         return new WaybillProjection(
@@ -631,68 +745,63 @@ public sealed class IngestRepository(
     /// <paramref name="terminal"/> is null except when the reducer produced a terminal code,
     /// which cannot happen while <see cref="TerminalPolicy"/> is empty.
     /// </summary>
-    private static async Task UpsertProjectionAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private static NpgsqlBatchCommand BuildUpsertProjectionCommand(
         WaybillProjection projection,
         DateTimeOffset updatedAt,
         long changeSeq,
-        (DateTimeOffset At, int StateCode)? terminal,
-        CancellationToken cancellationToken)
+        (DateTimeOffset At, int StateCode)? terminal)
     {
-        await using var command = new NpgsqlCommand(UpsertProjectionSql, connection, transaction);
+        var command = new NpgsqlBatchCommand(UpsertProjectionSql);
         command.Parameters.AddWithValue("site_id", projection.SiteId);
         command.Parameters.AddWithValue("waybill_no", projection.WaybillNo);
-        AddSlot(command, "state", projection.CurrentState);
-        AddSlot(command, "activity", projection.LatestActivity);
-        AddSlot(command, "inventory", projection.Inventory);
+        AddSlot(command.Parameters, "state", projection.CurrentState);
+        AddSlot(command.Parameters, "activity", projection.LatestActivity);
+        AddSlot(command.Parameters, "inventory", projection.Inventory);
         var body = ProjectionBody.From(projection, updatedAt);
         var payload = body.Payload?.GetRawText() ?? "{}";
-        command.Parameters.Add("payload", NpgsqlDbType.Jsonb).Value = payload;
+        command.Parameters.Add(new NpgsqlParameter("payload", NpgsqlDbType.Jsonb) { Value = payload });
         command.Parameters.AddWithValue("reducer_version", projection.ReducerVersion);
         command.Parameters.AddWithValue("version", Math.Max(projection.Version, 1));
         command.Parameters.AddWithValue("updated_at", updatedAt);
         command.Parameters.AddWithValue("last_change_seq", changeSeq);
         command.Parameters.AddWithValue("is_terminal", terminal is not null);
-        AddNullable(command, "terminal_at", terminal?.At);
-        AddNullable(command, "terminal_state_code", terminal?.StateCode);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        AddNullable(command.Parameters, "terminal_at", terminal?.At);
+        AddNullable(command.Parameters, "terminal_state_code", terminal?.StateCode);
+        return command;
     }
 
-    private static void AddSlot(NpgsqlCommand command, string prefix, ProjectionSlot? slot)
+    private static void AddSlot(NpgsqlParameterCollection parameters, string prefix, ProjectionSlot? slot)
     {
-        AddNullable(command, $"{prefix}_code", slot?.Code);
-        AddNullable(command, $"{prefix}_name", slot?.Name);
-        AddNullable(command, $"{prefix}_status", slot?.Status);
-        AddNullable(command, $"{prefix}_event_at", slot?.EventOccurredAt);
-        AddNullable(command, $"{prefix}_fingerprint", slot?.EventFingerprint);
-        AddNullable(command, $"{prefix}_event_id", slot?.EventId);
-        AddJsonbNullable(command, $"{prefix}_payload", slot?.Payload);
+        AddNullable(parameters, $"{prefix}_code", slot?.Code);
+        AddNullable(parameters, $"{prefix}_name", slot?.Name);
+        AddNullable(parameters, $"{prefix}_status", slot?.Status);
+        AddNullable(parameters, $"{prefix}_event_at", slot?.EventOccurredAt);
+        AddNullable(parameters, $"{prefix}_fingerprint", slot?.EventFingerprint);
+        AddNullable(parameters, $"{prefix}_event_id", slot?.EventId);
+        AddJsonbNullable(parameters, $"{prefix}_payload", slot?.Payload);
         if (prefix != "activity" && prefix != "inventory")
-            AddNullable(command, $"{prefix}_kind", slot?.Kind.ToWireValue());
+            AddNullable(parameters, $"{prefix}_kind", slot?.Kind.ToWireValue());
         else if (prefix == "activity")
-            AddNullable(command, "activity_kind", slot?.Kind.ToWireValue());
+            AddNullable(parameters, "activity_kind", slot?.Kind.ToWireValue());
     }
 
-    private static async Task InsertChangeAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
+    private const string InsertChangeSql = """
+        INSERT INTO dashboard_changes (site_id, change_seq, entity_type, entity_key, operation, body)
+        VALUES (@site_id, @sequence, 'waybill_projection', @waybill_no, 'upsert', @body);
+        """;
+
+    private static NpgsqlBatchCommand BuildInsertChangeCommand(
         Guid siteId,
         long sequence,
         string waybillNo,
-        ProjectionBody body,
-        CancellationToken cancellationToken)
+        ProjectionBody body)
     {
-        const string sql = """
-            INSERT INTO dashboard_changes (site_id, change_seq, entity_type, entity_key, operation, body)
-            VALUES (@site_id, @sequence, 'waybill_projection', @waybill_no, 'upsert', @body);
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        var command = new NpgsqlBatchCommand(InsertChangeSql);
         command.Parameters.AddWithValue("site_id", siteId);
         command.Parameters.AddWithValue("sequence", sequence);
         command.Parameters.AddWithValue("waybill_no", waybillNo);
-        command.Parameters.Add("body", NpgsqlDbType.Jsonb).Value = JsonSerializer.Serialize(body, JsonOptions);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        command.Parameters.Add(new NpgsqlParameter("body", NpgsqlDbType.Jsonb) { Value = JsonSerializer.Serialize(body, JsonOptions) });
+        return command;
     }
 
     private static async Task InsertIdempotencyAsync(
@@ -725,13 +834,16 @@ public sealed class IngestRepository(
         return document.RootElement.Clone();
     }
 
-    private static void AddNullable(NpgsqlCommand command, string name, object? value)
-        => command.Parameters.AddWithValue(name, value ?? DBNull.Value);
+    // NpgsqlParameterCollection rather than NpgsqlCommand so the same helpers serve both a
+    // standalone command and a batched one — NpgsqlBatchCommand is not an NpgsqlCommand.
+    private static void AddNullable(NpgsqlParameterCollection parameters, string name, object? value)
+        => parameters.AddWithValue(name, value ?? DBNull.Value);
 
-    private static void AddJsonbNullable(NpgsqlCommand command, string name, JsonElement? value)
+    private static void AddJsonbNullable(NpgsqlParameterCollection parameters, string name, JsonElement? value)
     {
-        command.Parameters.Add(name, NpgsqlDbType.Jsonb).Value = value is { } element
-            ? element.GetRawText()
-            : "{}";
+        parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Jsonb)
+        {
+            Value = value is { } element ? element.GetRawText() : "{}"
+        });
     }
 }
