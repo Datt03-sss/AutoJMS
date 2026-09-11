@@ -89,30 +89,39 @@ namespace AutoJMS
                 };
                 var bodyJson = JsonSerializer.Serialize(body);
 
-                using var request = new HttpRequestMessage(HttpMethod.Post, ArrivalMonitorEndpoint);
-                request.Headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
-                request.Headers.TryAddWithoutValidation("Origin", "https://jms.jtexpress.vn");
-                request.Headers.TryAddWithoutValidation("Referer", "https://jms.jtexpress.vn/");
-                request.Headers.TryAddWithoutValidation("authToken", token);
-                request.Headers.TryAddWithoutValidation("lang", "VN");
-                request.Headers.TryAddWithoutValidation("langType", "VN");
-                request.Headers.TryAddWithoutValidation("routeName", "ArriveMonitor|crisbiIndex");
-                request.Headers.TryAddWithoutValidation("timezone", "GMT+0700");
-                request.Headers.TryAddWithoutValidation("User-Agent", WaybillDetailUserAgent);
-                request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+                var attempt = await SendArrivalRequestOnceAsync(token, bodyJson, ct).ConfigureAwait(true);
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
-                    .ConfigureAwait(true);
-
-                var respBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                // A session JMS has rejected is NOT "0 hàng đến". Without this check the panel
+                // silently reads zero and nobody is told to log in again. Mirror the working
+                // path in FullStackTrackingJourneyService.PostTrackingKeywordListAsync: pull a
+                // fresh token out of the WebView and resend exactly once.
+                if (JmsResponseClassifier.IsAuthExpired(attempt.StatusCode, attempt.Body))
                 {
-                    AppLogger.Warning($"[ArrivalMonitor] {jumpType} HTTP {(int)response.StatusCode}");
+                    AppLogger.Warning(
+                        $"[ArrivalMonitor] {jumpType} auth-expired on first attempt; http={attempt.StatusCode}");
+
+                    var refreshed = await JmsAuthTokenService.ForceRefreshFromWebViewAsync().ConfigureAwait(true);
+                    if (!string.IsNullOrWhiteSpace(refreshed)
+                        && !string.Equals(refreshed, token, StringComparison.Ordinal))
+                    {
+                        attempt = await SendArrivalRequestOnceAsync(refreshed, bodyJson, ct).ConfigureAwait(true);
+                    }
+                    else
+                    {
+                        // The WebView had nothing newer to give — the session really is gone.
+                        AppLogger.Warning(
+                            $"[ArrivalMonitor] {jumpType} no fresh authToken from WebView; " +
+                            "JMS session expired, đăng nhập lại để xem hàng đến.");
+                    }
+                }
+
+                if (!attempt.IsSuccess)
+                {
+                    AppLogger.Warning($"[ArrivalMonitor] {jumpType} HTTP {attempt.StatusCode}");
                     return (new List<object>(), 0);
                 }
 
-                return ParseArrivalBucket(respBody, subLabel, subKey);
+                return ParseArrivalBucket(attempt.Body, subLabel, subKey);
             }
             catch (OperationCanceledException)
             {
@@ -123,6 +132,31 @@ namespace AutoJMS
                 AppLogger.Error($"[ArrivalMonitor] {jumpType} fetch failed", ex);
                 return (new List<object>(), 0);
             }
+        }
+
+        // Split out so the auth-expired path above can resend with a refreshed token:
+        // an HttpRequestMessage cannot be sent twice.
+        private async Task<(int StatusCode, bool IsSuccess, string Body)> SendArrivalRequestOnceAsync(
+            string token, string bodyJson, CancellationToken ct)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, ArrivalMonitorEndpoint);
+            request.Headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
+            request.Headers.TryAddWithoutValidation("Origin", "https://jms.jtexpress.vn");
+            request.Headers.TryAddWithoutValidation("Referer", "https://jms.jtexpress.vn/");
+            request.Headers.TryAddWithoutValidation("authToken", token);
+            request.Headers.TryAddWithoutValidation("lang", "VN");
+            request.Headers.TryAddWithoutValidation("langType", "VN");
+            request.Headers.TryAddWithoutValidation("routeName", "ArriveMonitor|crisbiIndex");
+            request.Headers.TryAddWithoutValidation("timezone", "GMT+0700");
+            request.Headers.TryAddWithoutValidation("User-Agent", WaybillDetailUserAgent);
+            request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+
+            using var response = await _waybillDetailHttpClient
+                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+                .ConfigureAwait(true);
+
+            var respBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(true);
+            return ((int)response.StatusCode, response.IsSuccessStatusCode, respBody ?? string.Empty);
         }
 
         private (List<object> List, int Total) ParseArrivalBucket(string json, string subLabel, string subKey)
