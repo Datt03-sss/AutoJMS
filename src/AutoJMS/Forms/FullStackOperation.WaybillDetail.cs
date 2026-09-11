@@ -89,44 +89,90 @@ namespace AutoJMS
             request.Headers.TryAddWithoutValidation("User-Agent", WaybillDetailUserAgent);
         }
 
-        private async Task<string> FetchWaybillDetailJsonAsync(string url, string authToken, CancellationToken ct)
+        // A session JMS has rejected is not "no data" — but every request below used to
+        // read it that way, so a stale token stayed stale for the life of the process.
+        // Send once; on an auth-expired answer pull a fresh token out of the WebView and
+        // resend exactly once. Same contract as the two existing implementations,
+        // FullStackTrackingJourneyService.PostTrackingKeywordListAsync and
+        // FullStackOperation.ArrivalMonitor: never escalate to HandleExpired() from here,
+        // because that stops the DKCH manager and a momentary 401 must not do that.
+        //
+        // buildRequest takes the token and returns a NEW request each call: an
+        // HttpRequestMessage cannot be sent twice.
+        private async Task<(int StatusCode, bool IsSuccess, string Body)> SendWaybillRequestWithAuthRetryAsync(
+            Func<string, HttpRequestMessage> buildRequest, string token, string what, CancellationToken ct)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            ApplyWaybillDetailHeaders(request, authToken);
+            var attempt = await SendWaybillRequestOnceAsync(buildRequest, token, ct).ConfigureAwait(true);
+            if (!JmsResponseClassifier.IsAuthExpired(attempt.StatusCode, attempt.Body))
+                return attempt;
+
+            AppLogger.Warning($"[{what}] auth-expired on first attempt; http={attempt.StatusCode}");
+
+            var refreshed = await JmsAuthTokenService.ForceRefreshFromWebViewAsync().ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(refreshed) || string.Equals(refreshed, token, StringComparison.Ordinal))
+            {
+                // The WebView had nothing newer to give — the session really is gone.
+                AppLogger.Warning(
+                    $"[{what}] no fresh authToken from WebView; JMS session expired, đăng nhập lại.");
+                return attempt;
+            }
+
+            return await SendWaybillRequestOnceAsync(buildRequest, refreshed, ct).ConfigureAwait(true);
+        }
+
+        private async Task<(int StatusCode, bool IsSuccess, string Body)> SendWaybillRequestOnceAsync(
+            Func<string, HttpRequestMessage> buildRequest, string token, CancellationToken ct)
+        {
+            using var request = buildRequest(token);
 
             using var response = await _waybillDetailHttpClient
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
                 .ConfigureAwait(true);
 
             var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(true);
-            if (!response.IsSuccessStatusCode)
+            return ((int)response.StatusCode, response.IsSuccessStatusCode, body ?? string.Empty);
+        }
+
+        private async Task<string> FetchWaybillDetailJsonAsync(string url, string authToken, CancellationToken ct)
+        {
+            var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                tok =>
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Get, url);
+                    ApplyWaybillDetailHeaders(request, tok);
+                    return request;
+                },
+                authToken, "WaybillDetail", ct).ConfigureAwait(true);
+
+            if (!attempt.IsSuccess)
             {
-                AppLogger.Warning($"[WaybillDetail] HTTP {(int)response.StatusCode} for {url}");
+                AppLogger.Warning($"[WaybillDetail] HTTP {attempt.StatusCode} for {url}");
                 return null;
             }
-            return body;
+            return attempt.Body;
         }
 
         // getOrderDetail is a POST with a JSON body and routeName "trackingExpress".
         private async Task<string> FetchWaybillOrderDetailJsonAsync(string code, string authToken, CancellationToken ct)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, WaybillOrderDetailEndpoint);
-            ApplyWaybillDetailHeaders(request, authToken, "trackingExpress");
-
             var bodyJson = JsonSerializer.Serialize(new { waybillNo = code, countryId = "1" });
-            request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
 
-            using var response = await _waybillDetailHttpClient
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
-                .ConfigureAwait(true);
+            var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                tok =>
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Post, WaybillOrderDetailEndpoint);
+                    ApplyWaybillDetailHeaders(request, tok, "trackingExpress");
+                    request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                    return request;
+                },
+                authToken, "WaybillDetail", ct).ConfigureAwait(true);
 
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(true);
-            if (!response.IsSuccessStatusCode)
+            if (!attempt.IsSuccess)
             {
-                AppLogger.Warning($"[WaybillDetail] getOrderDetail HTTP {(int)response.StatusCode} for {code}");
+                AppLogger.Warning($"[WaybillDetail] getOrderDetail HTTP {attempt.StatusCode} for {code}");
                 return null;
             }
-            return body;
+            return attempt.Body;
         }
 
         private async Task FetchAndPostWaybillDetailAsync(string waybillNo)
@@ -405,22 +451,24 @@ namespace AutoJMS
                 }
 
                 var bodyJson = JsonSerializer.Serialize(new { current = 1, size = 100, waybillId = code, countryId = "1" });
-                using var request = new HttpRequestMessage(HttpMethod.Post, IssueHistoryEndpoint);
-                ApplyWaybillDetailHeaders(request, token, "trackingExpress");
-                request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Post, IssueHistoryEndpoint);
+                        ApplyWaybillDetailHeaders(request, tok, "trackingExpress");
+                        request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                        return request;
+                    },
+                    token, "IssueHistory", _cts.Token).ConfigureAwait(true);
 
-                var respBody = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                if (!attempt.IsSuccess)
                 {
-                    AppLogger.Warning($"[IssueHistory] HTTP {(int)response.StatusCode} for {code}");
+                    AppLogger.Warning($"[IssueHistory] HTTP {attempt.StatusCode} for {code}");
                     return;
                 }
 
-                var issues = ParseIssueHistory(respBody);
+                var issues = ParseIssueHistory(attempt.Body);
                 var podImages = await FetchProblemPieceImagesAsync(code, token).ConfigureAwait(true);
                 PostIssueHistoryToWebView2(code, issues, podImages);
             }
@@ -564,21 +612,23 @@ namespace AutoJMS
             var urls = new List<string>();
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Get, ProblemPieceEndpoint + Uri.EscapeDataString(code));
-                ApplyWaybillDetailHeaders(request, authToken);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(
+                            HttpMethod.Get, ProblemPieceEndpoint + Uri.EscapeDataString(code));
+                        ApplyWaybillDetailHeaders(request, tok);
+                        return request;
+                    },
+                    authToken, "ProblemPiece", _cts.Token).ConfigureAwait(true);
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
-
-                var body = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                if (!attempt.IsSuccess)
                 {
-                    AppLogger.Warning($"[ProblemPiece] HTTP {(int)response.StatusCode} for {code}");
+                    AppLogger.Warning($"[ProblemPiece] HTTP {attempt.StatusCode} for {code}");
                     return urls;
                 }
 
-                using var doc = JsonDocument.Parse(body);
+                using var doc = JsonDocument.Parse(attempt.Body);
                 HarvestImageUrls(doc.RootElement, urls);
                 AppLogger.Info($"[ProblemPiece] harvested {urls.Count} image url(s) for {code}");
             }
@@ -695,18 +745,20 @@ namespace AutoJMS
             try
             {
                 var bodyJson = JsonSerializer.Serialize(new { waybillNo = waybill, scanTime, scanByCode, imgType, countryId = "1" });
-                using var request = new HttpRequestMessage(HttpMethod.Post, PodImgPathEndpoint);
-                ApplyWaybillDetailHeaders(request, token, "trackingExpress");
-                request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Post, PodImgPathEndpoint);
+                        ApplyWaybillDetailHeaders(request, tok, "trackingExpress");
+                        request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                        return request;
+                    },
+                    token, "OrderImages", _cts.Token).ConfigureAwait(true);
 
-                var body = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode) return urls;
+                if (!attempt.IsSuccess) return urls;
 
-                using var doc = JsonDocument.Parse(body);
+                using var doc = JsonDocument.Parse(attempt.Body);
                 if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var x in data.EnumerateArray())
@@ -756,25 +808,27 @@ namespace AutoJMS
                 if (string.IsNullOrWhiteSpace(token)) return;
 
                 var bodyJson = JsonSerializer.Serialize(new { waybillNo = code, defaultReceiver = 2, countryId = "1" });
-                using var request = new HttpRequestMessage(HttpMethod.Post, ReceiverNetworkEndpoint);
-                ApplyWaybillDetailHeaders(request, token, "batchProblem");
-                request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Post, ReceiverNetworkEndpoint);
+                        ApplyWaybillDetailHeaders(request, tok, "batchProblem");
+                        request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                        return request;
+                    },
+                    token, "ReceiverNetwork", _cts.Token).ConfigureAwait(true);
 
-                var body = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                if (!attempt.IsSuccess)
                 {
-                    AppLogger.Warning($"[ReceiverNetwork] HTTP {(int)response.StatusCode} for {code}");
+                    AppLogger.Warning($"[ReceiverNetwork] HTTP {attempt.StatusCode} for {code}");
                     return;
                 }
 
                 string netCode = null, netName = null;
                 try
                 {
-                    using var doc = JsonDocument.Parse(body);
+                    using var doc = JsonDocument.Parse(attempt.Body);
                     if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
                     {
                         netCode = Field(data, true, "code");
@@ -824,24 +878,26 @@ namespace AutoJMS
                 if (string.IsNullOrWhiteSpace(token)) return;
 
                 var url = NetworkSelectEndpoint + "?current=1&size=10&name=" + Uri.EscapeDataString(reqCode) + "&queryLevel=3";
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                ApplyWaybillDetailHeaders(request, token, "batchProblem");
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Get, url);
+                        ApplyWaybillDetailHeaders(request, tok, "batchProblem");
+                        return request;
+                    },
+                    token, "NetworkInfo", _cts.Token).ConfigureAwait(true);
 
-                var body = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                if (!attempt.IsSuccess)
                 {
-                    AppLogger.Warning($"[NetworkInfo] HTTP {(int)response.StatusCode} for {reqCode}");
+                    AppLogger.Warning($"[NetworkInfo] HTTP {attempt.StatusCode} for {reqCode}");
                     return;
                 }
 
                 string netCode = null, netName = null;
                 try
                 {
-                    using var doc = JsonDocument.Parse(body);
+                    using var doc = JsonDocument.Parse(attempt.Body);
                     if (doc.RootElement.TryGetProperty("data", out var data)
                         && data.ValueKind == JsonValueKind.Object
                         && data.TryGetProperty("records", out var recs)
@@ -896,24 +952,26 @@ namespace AutoJMS
                 if (string.IsNullOrWhiteSpace(token)) return;
 
                 var url = NetworkSelectEndpoint + "?current=1&size=10&name=" + Uri.EscapeDataString(q) + "&queryLevel=3";
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                ApplyWaybillDetailHeaders(request, token, "batchProblem");
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Get, url);
+                        ApplyWaybillDetailHeaders(request, tok, "batchProblem");
+                        return request;
+                    },
+                    token, "NetworkSearch", _cts.Token).ConfigureAwait(true);
 
-                var body = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                if (!response.IsSuccessStatusCode)
+                if (!attempt.IsSuccess)
                 {
-                    AppLogger.Warning($"[NetworkSearch] HTTP {(int)response.StatusCode} for '{q}'");
+                    AppLogger.Warning($"[NetworkSearch] HTTP {attempt.StatusCode} for '{q}'");
                     return;
                 }
 
                 var results = new List<object>();
                 try
                 {
-                    using var doc = JsonDocument.Parse(body);
+                    using var doc = JsonDocument.Parse(attempt.Body);
                     if (doc.RootElement.TryGetProperty("data", out var data)
                         && data.ValueKind == JsonValueKind.Object
                         && data.TryGetProperty("records", out var recs)
@@ -1003,16 +1061,22 @@ namespace AutoJMS
                 AppLogger.Info("[IssueRegister] headers: Content-Type=application/json;charset=UTF-8, authToken=" + MaskToken(token) + ", lang=VN, langType=VN, routeName=batchProblem, timezone=GMT+0700");
                 AppLogger.Info("[IssueRegister] request body: " + bodyJson);
 
-                using var request = new HttpRequestMessage(HttpMethod.Post, ProblemRegistrationEndpoint);
-                ApplyWaybillDetailHeaders(request, token, "batchProblem");
-                request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                // This is the one WRITE among the waybill-detail calls, so the resend needs a
+                // safety argument: it fires only when the response classifies as auth-expired,
+                // and a rejected session means JMS refused the request without registering
+                // anything. No double-submit is possible. Any other failure is returned as-is.
+                var attempt = await SendWaybillRequestWithAuthRetryAsync(
+                    tok =>
+                    {
+                        var request = new HttpRequestMessage(HttpMethod.Post, ProblemRegistrationEndpoint);
+                        ApplyWaybillDetailHeaders(request, tok, "batchProblem");
+                        request.Content = new StringContent(bodyJson, System.Text.Encoding.UTF8, "application/json");
+                        return request;
+                    },
+                    token, "IssueRegister", _cts.Token).ConfigureAwait(true);
 
-                using var response = await _waybillDetailHttpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _cts.Token)
-                    .ConfigureAwait(true);
-
-                var respBody = await response.Content.ReadAsStringAsync(_cts.Token).ConfigureAwait(true);
-                AppLogger.Info($"[IssueRegister] response HTTP {(int)response.StatusCode}: {respBody}");
+                var respBody = attempt.Body;
+                AppLogger.Info($"[IssueRegister] response HTTP {attempt.StatusCode}: {respBody}");
 
                 bool success = false;
                 string msg = null;
@@ -1022,7 +1086,7 @@ namespace AutoJMS
                     var root = doc.RootElement;
                     bool succ = root.TryGetProperty("succ", out var sp) && sp.ValueKind == JsonValueKind.True;
                     bool codeOk = root.TryGetProperty("code", out var cp) && cp.ValueKind == JsonValueKind.Number && cp.GetInt32() == 1;
-                    success = response.IsSuccessStatusCode && (succ || codeOk);
+                    success = attempt.IsSuccess && (succ || codeOk);
                     if (root.TryGetProperty("msg", out var mp)) msg = mp.GetString();
                 }
                 catch (Exception ex)
