@@ -109,7 +109,8 @@ public sealed class PostgresDataSource : IAsyncDisposable
         "007_event_metadata",
         "008_terminal_tombstone",
         "009_terminal_index_notx",
-        "010_retention_scan_indexes_notx"
+        "010_retention_scan_indexes_notx",
+        "011_vacant_sites"
     ];
 
     /// <summary>

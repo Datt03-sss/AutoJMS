@@ -23,13 +23,16 @@ public sealed class RetentionHostedService(
                     // a tombstone count below the projection count is the signal that
                     // some site lost rows without being able to announce them.
                     logger.LogInformation(
-                        "DataHub retention removed {Events} events, {Changes} changes, {AuditLogs} audit logs, {Idempotency} idempotency records, and {Projections} projections ({Tombstones} tombstones published) at {UtcNow}.",
+                        "DataHub retention removed {Events} events, {Changes} changes, {AuditLogs} audit logs, {Idempotency} idempotency records, {Projections} projections ({Tombstones} tombstones published), and {VacantSites} vacant sites at {UtcNow}.",
                         result.DeletedEvents,
                         result.DeletedChanges,
                         result.DeletedAuditLogs,
                         result.DeletedIdempotencyRecords,
                         result.DeletedProjections,
                         result.EmittedTombstones,
+                        // A count, not the codes: the codes are in audit_logs under
+                        // site.vacant_delete, which survives log rotation and the site itself.
+                        result.DeletedVacantSites,
                         clock.GetUtcNow());
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

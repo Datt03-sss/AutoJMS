@@ -10,7 +10,8 @@ public sealed record RetentionRunResult(
     int DeletedAuditLogs,
     int DeletedIdempotencyRecords,
     int DeletedProjections = 0,
-    int EmittedTombstones = 0)
+    int EmittedTombstones = 0,
+    int DeletedVacantSites = 0)
 {
     public static RetentionRunResult Empty { get; } = new(0, 0, 0, 0);
 }
@@ -49,13 +50,19 @@ public sealed class RetentionRepository(PostgresDataSource dataSource)
             cancellationToken);
         var deletedEvents = await RunPartAsync(DeleteEventsAsync, 0, batchSize, cancellationToken);
         var deletedAudit = await RunPartAsync(DeleteAuditLogsAsync, 0, batchSize, cancellationToken);
+        // Last, because it is the only part that removes the row the other parts' rows
+        // point at. Nothing above can turn a site vacant that was not already vacant —
+        // vacancy is anchored on site_change_counters.change_seq, which no retention pass
+        // touches — so the order is about reading in a sane sequence, not correctness.
+        var deletedVacantSites = await RunPartAsync(DeleteVacantSitesAsync, 0, batchSize, cancellationToken);
         return new RetentionRunResult(
             deletedEvents,
             deletedChanges,
             deletedAudit,
             deletedIdempotency,
             projections.Deleted,
-            projections.Tombstones);
+            projections.Tombstones,
+            deletedVacantSites);
     }
 
     private async Task<T> RunPartAsync<T>(
@@ -431,6 +438,168 @@ public sealed class RetentionRepository(PostgresDataSource dataSource)
             """;
         return ExecuteDeleteAsync(connection, transaction, sql, null, batchSize, cancellationToken);
     }
+
+    /// <summary>
+    /// The predicate for "this site is junk", in one place so the candidate scan and the
+    /// re-check under lock cannot drift apart. <c>vacant_sites</c> (migration 011) supplies
+    /// the data half; the age half lives here because it belongs to the policy, not to the
+    /// view. <c>now()</c> is the transaction's start time, so both readings of this text
+    /// inside one transaction measure against the same instant.
+    ///
+    /// <c>last_device_seen_at</c> is null only for a site with no devices at all —
+    /// enrollment stamps <c>now()</c> into the column as it inserts the row — and a site
+    /// nobody ever enrolled into is as unused as one whose device stopped calling.
+    /// </summary>
+    private const string VacantSiteCandidateSql = """
+        SELECT v.site_id
+          FROM vacant_sites v
+          JOIN retention_policies p
+            ON p.site_id IS NULL
+           AND p.table_name = 'sites'
+           AND p.delete_after IS NOT NULL
+         WHERE v.created_at < now() - p.delete_after
+           AND (v.last_device_seen_at IS NULL OR v.last_device_seen_at < now() - p.delete_after)
+        """;
+
+    /// <summary>
+    /// Removes sites that hold nothing and that nothing has touched for the policy's
+    /// interval — the other half of enrollment's auto-provisioning. Because
+    /// <see cref="EnrollmentRepository"/> now creates a site whenever a signed assertion
+    /// names one that does not exist, a licence key carrying a mistyped middle code no
+    /// longer fails loudly: it leaves behind a site and a device that nothing will use
+    /// again, and staging accumulated six of them before this existed.
+    ///
+    /// Opt-in, like the projection pass and for a harder reason. Deleting a site takes its
+    /// devices with it, so a station returning from a long shutdown would find its
+    /// enrollment gone and have to re-enroll against the licence server. 011_vacant_sites
+    /// seeds no policy for <c>sites</c>, so this part stops at the probe and changes
+    /// nothing until an operator inserts one — after reading what
+    /// <c>scripts/cleanup-empty-sites.sh</c> says that interval would take.
+    ///
+    /// Only the global policy row is honoured: a per-site row excludes its own site from
+    /// <c>vacant_sites</c>, so a policy naming a single site could only contradict itself.
+    ///
+    /// Which sites went is recorded in <c>audit_logs</c> under a null site_id, because that
+    /// row has to outlive the site it names. The caller gets a count.
+    /// </summary>
+    private static async Task<int> DeleteVacantSitesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        // Probe before the scan, for the same reason DeleteProjectionsAsync does: with no
+        // policy the join below is satisfiable only by evaluating vacant_sites, and the
+        // planner is free to build that side first. One index lookup on
+        // ux_retention_policies_global_table answers it instead.
+        const string policyProbeSql = """
+            SELECT 1
+              FROM retention_policies
+             WHERE site_id IS NULL
+               AND table_name = 'sites'
+               AND delete_after IS NOT NULL
+             LIMIT 1;
+            """;
+        await using (var probeCommand = new NpgsqlCommand(policyProbeSql, connection, transaction))
+        {
+            var probe = await probeCommand.ExecuteScalarAsync(cancellationToken);
+            if (probe is null or DBNull) return 0;
+        }
+
+        const string candidatesSql = $"""
+            {VacantSiteCandidateSql}
+             ORDER BY v.created_at, v.site_id
+             LIMIT @batch_size;
+            """;
+        var candidates = new List<Guid>();
+        await using (var candidatesCommand = new NpgsqlCommand(candidatesSql, connection, transaction))
+        {
+            candidatesCommand.Parameters.AddWithValue("batch_size", batchSize);
+            await using var candidatesReader = await candidatesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await candidatesReader.ReadAsync(cancellationToken))
+                candidates.Add(candidatesReader.GetGuid(0));
+        }
+
+        if (candidates.Count == 0) return 0;
+
+        // Two locks, because two different paths can bring a site back to life and they
+        // take different rows: enrollment locks the site row before inserting a device,
+        // ingest locks the site's counter before writing anything. Sites first and
+        // counters second is an order no other path reverses — enrollment never touches a
+        // counter it did not just create, and ingest never touches sites — so this cannot
+        // deadlock against either.
+        var siteIds = candidates.ToArray();
+        const string lockSitesSql = "SELECT id FROM sites WHERE id = ANY(@site_ids) ORDER BY id FOR UPDATE;";
+        const string lockCountersSql = "SELECT site_id FROM site_change_counters WHERE site_id = ANY(@site_ids) ORDER BY site_id FOR UPDATE;";
+        foreach (var lockSql in new[] { lockSitesSql, lockCountersSql })
+        {
+            await using var lockCommand = new NpgsqlCommand(lockSql, connection, transaction);
+            lockCommand.Parameters.Add("site_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = siteIds;
+            await using var lockReader = await lockCommand.ExecuteReaderAsync(cancellationToken);
+            while (await lockReader.ReadAsync(cancellationToken)) { }
+        }
+
+        // Re-read vacancy now that the rows are held. Without this the whole check would
+        // be advisory: an enrollment that committed between the scan above and the locks
+        // above would have its brand-new device deleted out from under a station that has
+        // already been handed a token for it.
+        const string confirmSql = $"""
+            {VacantSiteCandidateSql}
+               AND v.site_id = ANY(@site_ids);
+            """;
+        var confirmed = new List<Guid>(candidates.Count);
+        await using (var confirmCommand = new NpgsqlCommand(confirmSql, connection, transaction))
+        {
+            confirmCommand.Parameters.Add("site_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = siteIds;
+            await using var confirmReader = await confirmCommand.ExecuteReaderAsync(cancellationToken);
+            while (await confirmReader.ReadAsync(cancellationToken))
+                confirmed.Add(confirmReader.GetGuid(0));
+        }
+
+        if (confirmed.Count == 0) return 0;
+        var victims = confirmed.ToArray();
+
+        // Separate statements in this exact order, not one multi-CTE delete: every foreign
+        // key into sites is NO ACTION so a bare DELETE FROM sites is refused, and
+        // site_fetch_leases.leader_device_id is RESTRICT, which PostgreSQL checks the moment
+        // the device row goes rather than at end of statement. Data-modifying CTEs have no
+        // defined execution order between them, so the one arrangement that works here
+        // cannot be expressed as a single statement.
+        //
+        // Tables the view proved empty — events, projections, changes, idempotency — are
+        // deliberately NOT deleted from. If one of them acquired a row despite the locks
+        // above, the final DELETE FROM sites fails its foreign key and rolls the whole pass
+        // back, which is the outcome worth having.
+        foreach (var sql in VacantSiteDeleteOrder)
+        {
+            await using var command = new NpgsqlCommand(sql, connection, transaction);
+            command.Parameters.Add("site_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = victims;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        const string deleteSitesSql = "DELETE FROM sites WHERE id = ANY(@site_ids);";
+        await using var deleteCommand = new NpgsqlCommand(deleteSitesSql, connection, transaction);
+        deleteCommand.Parameters.Add("site_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = victims;
+        return await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static readonly string[] VacantSiteDeleteOrder =
+    [
+        "DELETE FROM site_fetch_leases WHERE site_id = ANY(@site_ids);",
+        "DELETE FROM site_change_counters WHERE site_id = ANY(@site_ids);",
+        "DELETE FROM audit_logs WHERE site_id = ANY(@site_ids);",
+        "DELETE FROM devices WHERE site_id = ANY(@site_ids);",
+        // The trace, written after the site's own audit rows are gone and while the site
+        // row is still readable. site_id is null so the foreign key does not take this row
+        // away with everything else; the code it names is the part an operator searches for.
+        """
+        INSERT INTO audit_logs (site_id, actor, action, payload)
+        SELECT NULL, 'datahub-retention', 'site.vacant_delete',
+               jsonb_build_object('siteId', s.id, 'siteCode', s.site_code)
+          FROM sites s
+         WHERE s.id = ANY(@site_ids);
+        """
+    ];
 
     private static Task<int> DeleteExpiredIdempotencyAsync(
         NpgsqlConnection connection,
