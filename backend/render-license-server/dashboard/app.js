@@ -130,6 +130,34 @@
         return node;
     }
 
+    // Built node by node rather than through innerHTML: helmet's CSP is not what
+    // stops innerHTML here (it does not), but every other builder on this page
+    // is injection-proof by construction and this one has no reason not to be.
+    // el() cannot do the job — SVG children need createElementNS or the browser
+    // parses them as unknown HTML elements that render nothing.
+    function createSvg(pathD, viewBox = "0 0 20 20", fill = "currentColor") {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", viewBox);
+        svg.setAttribute("width", "15");
+        svg.setAttribute("height", "15");
+        svg.setAttribute("fill", fill);
+        // The button carries the name via title/aria-label; the drawing itself
+        // must stay out of the accessibility tree or it gets announced twice.
+        svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathD);
+        // evenodd, not the browser default of nonzero. Several icons below cut a
+        // shape out of a solid body — the tick inside the circle, the front sheet
+        // inside the copy glyph — by drawing an inner subpath. Under nonzero an
+        // inner subpath wound the same way as its outer one *adds* instead of
+        // subtracting, so the tick silently disappears and the check button ships
+        // as a plain green disc. Measured, not guessed: nonzero fills 50.3% of the
+        // active icon's box (a full disc), evenodd 45.2% (disc minus tick).
+        path.setAttribute("fill-rule", "evenodd");
+        svg.appendChild(path);
+        return svg;
+    }
+
     function toast(kind, title, detail) {
         const node = el("div", { class: `toast toast--${kind}` }, [
             el("strong", { text: title }),
@@ -485,22 +513,33 @@
     // TABLE
     // ==========================================
 
+    // Solid single-path shapes on a 20x20 grid. Vectors rather than emoji so the
+    // row looks the same on Windows, macOS and Android instead of inheriting
+    // whatever each OS decided a padlock looks like this year.
+    const ICON = Object.freeze({
+        copy: "M7 2a2 2 0 00-2 2v1H4a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-1h1a2 2 0 002-2V7a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7zm0 2h6v2H7V4zm-3 5h10v8H4V9zm12 0v5h1V7h-5v2h4z",
+        reset: "M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.047a1 1 0 011.885-.666A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.608-1.286z",
+        tierUp: "M10 3a1 1 0 01.707.293l5 5a1 1 0 01-1.414 1.414L11 6.414V16a1 1 0 11-2 0V6.414L5.707 9.707a1 1 0 01-1.414-1.414l5-5A1 1 0 0110 3z",
+        tierDown: "M10 17a1 1 0 01-.707-.293l-5-5a1 1 0 011.414-1.414L9 13.586V4a1 1 0 112 0v9.586l3.293-3.293a1 1 0 011.414 1.414l-5 5A1 1 0 0110 17z",
+        ban: "M10 18a8 8 0 100-16 8 8 0 000 16zM4.33 10a5.67 5.67 0 019.22-4.39l-7.83 7.83A5.64 5.64 0 014.33 10zm2.12 4.39l7.83-7.83A5.67 5.67 0 0110 15.67a5.64 5.64 0 01-3.55-1.28z",
+        active: "M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+    });
+
     function buildRow(license) {
         const bucket = bucketOf(license);
         const tier = String(license.tier || "BASE").toUpperCase();
         const otherTier = TIERS.find(candidate => candidate !== tier) || "BASE";
         const isClosed = bucket === "revoked";
 
+        // The dot answers "is this key alive?" without reading the status badge
+        // three columns away. It is decorative in the strict sense — the badge
+        // already says the same thing in words — so it only carries a tooltip.
         const keyCell = el("div", { class: "cell-key" }, [
-            el("span", { class: "cell-key__text", text: license.key }),
-            el("button", {
-                class: "icon-btn",
-                type: "button",
-                title: "Copy key",
-                "data-action": "copy",
-                "data-key": license.key,
-                text: "📋"
-            })
+            el("span", {
+                class: isClosed ? "status-dot status-dot--banned" : "status-dot status-dot--active",
+                title: isClosed ? "Đã bị khoá (Banned)" : "Đang hoạt động (Active)"
+            }),
+            el("span", { class: "cell-key__text", text: license.key })
         ]);
 
         const notes = String(license.notes || "").trim();
@@ -535,9 +574,10 @@
             ]),
 
             // Every action sits on the row itself: one tap each, no dropdown to
-            // open first. Only the renewal keeps a word label; the rest are
-            // square icons, so each needs an aria-label — a lone glyph tells a
-            // screen reader user nothing, and the emoji is not the name.
+            // open first. Only the renewal keeps a word label; the rest are SVG
+            // glyphs, so each carries both title (tooltip on hover) and
+            // aria-label (the button's real name — the drawing is aria-hidden,
+            // so without it a screen reader reads an unnamed button).
             el("td", { "data-label": "Thao tác" }, [
                 el("div", { class: "cell-actions" }, [
                     el("button", {
@@ -549,57 +589,64 @@
                         text: "+1 Tháng"
                     }),
                     el("button", {
-                        class: "btn--action-icon",
+                        class: "btn--icon-action",
                         type: "button",
                         "data-action": "copy",
                         "data-key": license.key,
-                        title: "Copy",
-                        "aria-label": "Copy",
-                        text: "📋"
-                    }),
+                        title: "Copy license key",
+                        "aria-label": "Copy license key"
+                    }, [createSvg(ICON.copy)]),
                     el("button", {
-                        class: "btn--action-icon",
+                        class: "btn--icon-action",
                         type: "button",
                         "data-action": "unbind",
                         "data-key": license.key,
-                        title: "Reset HWID",
-                        "aria-label": "Reset HWID",
-                        text: "🔄"
-                    }),
-                    el("button", {
-                        class: "btn--action-icon",
-                        type: "button",
-                        "data-action": "tier",
-                        "data-key": license.key,
-                        "data-tier": otherTier,
-                        title: `Đổi → ${otherTier}`,
-                        "aria-label": `Đổi → ${otherTier}`,
-                        text: "⚡"
-                    }),
+                        title: "Reset HWID (đổi máy)",
+                        "aria-label": "Reset HWID (đổi máy)"
+                    }, [createSvg(ICON.reset)]),
+                    // Arrow points the way the change goes, so the direction is
+                    // readable before the tooltip appears.
+                    tier === "BASE"
+                        ? el("button", {
+                            class: "btn--icon-action btn--icon-action--upgrade",
+                            type: "button",
+                            "data-action": "tier",
+                            "data-key": license.key,
+                            "data-tier": otherTier,
+                            title: "Nâng cấp lên ULTRA",
+                            "aria-label": "Nâng cấp lên ULTRA"
+                        }, [createSvg(ICON.tierUp)])
+                        : el("button", {
+                            class: "btn--icon-action btn--icon-action--downgrade",
+                            type: "button",
+                            "data-action": "tier",
+                            "data-key": license.key,
+                            "data-tier": otherTier,
+                            title: "Hạ cấp xuống BASE",
+                            "aria-label": "Hạ cấp xuống BASE"
+                        }, [createSvg(ICON.tierDown)]),
                     // data-closed is what onRowClick reads to pick the confirm
-                    // wording. It has to be an attribute, not the label: the
-                    // label is now a padlock glyph with no direction in it.
+                    // wording. It has to be an attribute, not the label: there
+                    // is no text on this button to read the direction from.
                     isClosed
                         ? el("button", {
-                            class: "btn--action-icon btn--action-icon--success",
+                            class: "btn--icon-action btn--icon-action--unban",
                             type: "button",
                             "data-action": "toggle",
                             "data-key": license.key,
                             "data-closed": "true",
-                            title: "Mở khoá",
-                            "aria-label": "Mở khoá key",
-                            text: "🔓"
-                        })
+                            title: "Mở khóa license (Active)",
+                            "aria-label": "Mở khóa license (Active)"
+                        }, [createSvg(ICON.active)])
                         : el("button", {
-                            class: "btn--action-icon btn--action-icon--danger",
+                            class: "btn--icon-action btn--icon-action--ban",
                             type: "button",
                             "data-action": "toggle",
                             "data-key": license.key,
                             "data-closed": "false",
-                            title: "Khoá key",
-                            "aria-label": "Khoá key",
-                            text: "🔒"
-                        })
+                            title: "Khóa license (Ban)",
+                            "aria-label": "Khóa license (Ban)"
+                        }, [createSvg(ICON.ban)])
                 ])
             ])
         ]);
@@ -690,12 +737,13 @@
         // The ones that change who can run the software. Extension is additive
         // and a tier change is one click to undo, so neither asks. Both
         // directions of toggle ask: unlocking a key is as much a decision as
-        // locking one, and the two buttons now differ by a single glyph.
+        // locking one, and the whole button is now a 30px square with no text
+        // on it — there is nothing to read on the way to clicking it.
         if (action === "toggle") {
             const isUnlocking = trigger.dataset.closed === "true";
             const message = isUnlocking
-                ? `Mở khoá license ${key}?\nMáy trạm sẽ có thể kích hoạt và hoạt động lại bình thường.`
-                : `Khoá license ${key}?\nMáy trạm đang dùng key này sẽ bị từ chối truy cập ngay lập tức.`;
+                ? `Xác nhận MỞ KHOÁ (Active) license ${key}?\nMáy trạm sẽ có thể kích hoạt và hoạt động bình thường.`
+                : `Xác nhận KHOÁ (Ban) license ${key}?\nMáy trạm đang dùng key này sẽ bị ngắt quyền truy cập ngay lập tức.`;
             if (!window.confirm(message)) return;
         }
 

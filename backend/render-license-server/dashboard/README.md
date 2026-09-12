@@ -116,40 +116,54 @@ xem `admin-routes.js`.
 ## 6. Thêm một thao tác vào cột Thao tác
 
 Cột Thao tác không có menu `⋯`: mọi nút nằm thẳng trên dòng để bấm một chạm.
-Chỉ `+1 Tháng` giữ chữ (`btn btn--mini`), còn lại là nút icon vuông 28px
-(`btn--action-icon`) để 5 nút không làm bảng rối.
+Chỉ `+1 Tháng` giữ chữ (`btn btn--mini`), còn lại là nút icon vuông 30px
+(`btn--icon-action`) để 5 nút không làm bảng rối.
+
+Icon là **SVG một path, tô đặc**, không phải emoji. Emoji do font hệ điều hành
+vẽ: cùng một ký tự ra ba hình khác nhau trên Windows / macOS / Android, và ổ
+khoá của Windows thì gần như không phân biệt được đóng với mở ở cỡ 15px. SVG
+thì mọi máy nhìn thấy đúng một hình.
 
 1. Thêm endpoint trong `admin-routes.js`.
-2. Trong `buildRow()`, thêm vào `el("div", { class: "cell-actions" }, [...])` một
+2. Thêm path mới vào hằng `ICON` trong `app.js` (lưới `0 0 20 20`, một `d` duy
+   nhất, tô đặc — đừng dùng path viền vì `createSvg()` không set `stroke`).
+3. Trong `buildRow()`, thêm vào `el("div", { class: "cell-actions" }, [...])` một
    nút nữa:
 
    ```js
    el("button", {
-       class: "btn--action-icon",
+       class: "btn--icon-action",
        type: "button",
        "data-action": "<action>",
        "data-key": license.key,
        title: "<Nhãn>",
-       "aria-label": "<Nhãn>",
-       text: "<icon>"
-   })
+       "aria-label": "<Nhãn>"
+   }, [createSvg(ICON.<tên>)])
    ```
 
    `title` **và** `aria-label` đều bắt buộc với nút icon: `title` là tooltip khi
-   di chuột, `aria-label` là tên thật của nút — thiếu nó thì trình đọc màn hình
-   chỉ đọc được emoji. Thêm `btn--action-icon--danger` (đỏ khi hover) cho thao
-   tác gây hậu quả nặng, `btn--action-icon--success` (xanh) cho thao tác khôi
-   phục.
-3. Trong `runAction()` thêm nhánh `else if (action === "<action>")` gọi `api(...)`
+   di chuột, `aria-label` là tên thật của nút. Bản thân `<svg>` mang
+   `aria-hidden="true"` — thiếu `aria-label` thì trình đọc màn hình chỉ đọc được
+   "button", không có gì khác.
+
+   Màu lấy theo `fill="currentColor"`, nên đổi màu icon là đổi `color` của nút:
+   `btn--icon-action--ban` (đỏ), `--unban` (xanh), `--upgrade` (màu chủ đạo),
+   `--downgrade` (xám, cố ý nhạt — không có gì đáng để mắt dừng lại).
+4. Trong `runAction()` thêm nhánh `else if (action === "<action>")` gọi `api(...)`
    rồi `toast(...)`.
+
+**Không dùng `innerHTML` để dựng SVG.** `createSvg()` tạo node bằng
+`createElementNS` vì `document.createElement("svg")` ra một phần tử HTML lạ,
+trình duyệt không vẽ gì cả — và vì mọi hàm dựng DOM khác trên trang này đều
+an toàn theo cấu trúc, hàm này không có lý do gì để là ngoại lệ.
 
 `runAction()` tự `reload()` sau khi thành công — trạng thái trên màn hình luôn là
 thứ server vừa xác nhận, không phải thứ frontend đoán.
 
 Thao tác nặng thì thêm một `window.confirm` trong `onRowClick()` trước khi gọi
 `runAction()` — `toggle` (cả Khoá lẫn Mở khoá) và `unbind` (Reset HWID) đang làm
-đúng như vậy. Nút nằm sẵn trên dòng và giờ chỉ còn là một glyph nên rất dễ bấm
-nhầm; hộp thoại đó là lớp chặn duy nhất.
+đúng như vậy. Nút nằm sẵn trên dòng và giờ chỉ còn là một ô vuông 30px không
+chữ nên rất dễ bấm nhầm; hộp thoại đó là lớp chặn duy nhất.
 
 Đừng phân biệt chiều của thao tác bằng `textContent` — nhãn giờ là icon, không
 có chữ để đọc. `toggle` dùng `data-closed="true|false"` và `onRowClick()` đọc
@@ -190,3 +204,10 @@ nói khác với thứ khách đang gặp. `app.js` gom thêm một bậc để 
 Thẻ "Sắp hết hạn" đếm cả `expiring` lẫn `grace`: cả hai đều cần xử lý ngay và
 chưa cái nào chết hẳn. Đổi ngưỡng 7 ngày ở hằng số `EXPIRING_SOON_DAYS` trong
 `app.js`.
+
+Chấm tròn trước license key (`.status-dot`) chỉ tách **hai** trạng thái: đỏ khi
+bucket là `revoked`, xanh với mọi bucket còn lại. Nó trả lời "key này còn bật
+không", không phải "còn mấy ngày" — hết hạn vẫn là chấm xanh, vì hết hạn là việc
+của cột Hạn dùng và badge trạng thái. Chấm chỉ mang `title`, không mang chữ:
+badge cách đó ba cột đã nói đúng điều ấy bằng lời rồi, lặp lại thì trình đọc màn
+hình phải đọc hai lần.

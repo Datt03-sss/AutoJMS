@@ -224,44 +224,71 @@ input, select, textarea, button { font: inherit; color: inherit; }
 }
 .btn--mini:hover:not([disabled]) { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 
-/* Square glyph buttons for the row actions. Fixed 28px so a row of them lines
-   up whatever glyph is inside, and so the tap target stays honest on a phone. */
-.btn--action-icon {
+/* Square SVG buttons for the row actions. Fixed 30px so a row of them lines up
+   whatever shape is inside, and so the tap target stays honest on a phone. The
+   icons are filled with currentColor, so every variant below recolours the
+   drawing just by setting `color`. */
+.btn--icon-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     padding: 0;
-    font-size: .88rem;
-    line-height: 1;
     border-radius: var(--radius-sm);
     background: var(--bg-sunken);
     border: 1px solid var(--border);
     color: var(--text-muted);
     cursor: pointer;
-    transition: all .12s ease;
+    transition: all .15s ease;
 }
 
-.btn--action-icon:hover:not([disabled]) {
+.btn--icon-action:hover:not([disabled]) {
     background: var(--brand-soft);
     color: var(--brand);
     border-color: var(--brand);
     transform: translateY(-1px);
 }
 
-/* Lock turns red, unlock turns green: the padlock glyphs differ by one shackle,
-   so colour is what tells the two apart at a glance. */
-.btn--action-icon--danger:hover:not([disabled]) {
-    background: var(--danger-soft);
-    color: var(--danger);
-    border-color: var(--danger);
+/* Upgrade and ban/unban are tinted at rest, not only on hover: these three are
+   the ones worth spotting while scanning a column of rows. Downgrade stays
+   neutral on purpose — nothing about it deserves the eye. */
+.btn--icon-action--upgrade {
+    color: var(--brand);
+    background: var(--brand-soft);
+    border-color: transparent;
 }
 
-.btn--action-icon--success:hover:not([disabled]) {
-    background: var(--ok-soft);
+.btn--icon-action--upgrade:hover:not([disabled]) {
+    background: var(--brand);
+    color: var(--on-brand);
+}
+
+.btn--icon-action--downgrade {
+    color: var(--text-muted);
+    background: var(--bg-sunken);
+}
+
+.btn--icon-action--ban {
+    color: var(--danger);
+    background: var(--danger-soft);
+    border-color: transparent;
+}
+
+.btn--icon-action--ban:hover:not([disabled]) {
+    background: var(--danger);
+    color: #fff;
+}
+
+.btn--icon-action--unban {
     color: var(--ok);
-    border-color: var(--ok);
+    background: var(--ok-soft);
+    border-color: transparent;
+}
+
+.btn--icon-action--unban:hover:not([disabled]) {
+    background: var(--ok);
+    color: #fff;
 }
 
 /* ==========================================
@@ -549,7 +576,28 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 
 .cell-code { font-family: var(--font-mono); font-weight: 700; letter-spacing: .04em; }
 
-.cell-key { display: flex; align-items: center; gap: 6px; }
+/* No gap: the cell used to hold a copy button that needed separating from the
+   key. That button moved to the action column, so the only spacing left is the
+   dot's own margin — otherwise the two would stack into a 14px gulf. */
+.cell-key { display: flex; align-items: center; }
+
+/* Says "alive or locked" right where the eye already is, instead of making it
+   travel to the status badge three columns over. Purely a second reading of
+   what the badge already states in words, so it carries a tooltip and nothing
+   else — no text for a screen reader to repeat. flex: none stops the dot from
+   being squashed into an ellipse when the key text runs long. */
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    margin-right: 8px;
+}
+
+.status-dot--active { background: var(--ok); box-shadow: 0 0 0 2px var(--ok-soft); }
+
+.status-dot--banned { background: var(--danger); box-shadow: 0 0 0 2px var(--danger-soft); }
 
 .cell-key__text {
     font-family: var(--font-mono);
@@ -568,22 +616,10 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .cell-days--danger { color: var(--danger); }
 .cell-days--none { color: var(--text-faint); font-weight: 400; }
 
-/* One word button plus four 28px icons. align-items centres the icons against
+/* One word button plus four 30px icons. align-items centres the icons against
    the taller text button, and wrapping keeps a narrow window from pushing the
    table into a sideways scroll. */
 .cell-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
-
-.icon-btn {
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-faint);
-    border-radius: var(--radius-sm);
-    padding: 3px 6px;
-    cursor: pointer;
-    line-height: 1;
-    transition: all .12s ease;
-}
-.icon-btn:hover { background: var(--brand-soft); color: var(--brand); }
 
 /* ==========================================
    BADGES
