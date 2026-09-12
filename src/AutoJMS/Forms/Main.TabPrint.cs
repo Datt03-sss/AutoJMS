@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -129,7 +130,7 @@ namespace AutoJMS
             panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _reprintChkReceiver = NewReprintCheckBox("tabPrint_reprintChkReceiver", "Sửa Người nhận & Địa chỉ");
-            _reprintTxtName = NewReprintTextBox("tabPrint_reprintTxtName", "Tên người nhận", false);
+            _reprintTxtName = NewReprintTextBox("tabPrint_reprintTxtName", "Tên người nhận + SĐT", false);
             _reprintTxtAddress = NewReprintTextBox("tabPrint_reprintTxtAddress", "Địa chỉ người nhận", true);
 
             panel.Controls.Add(_reprintChkReceiver, 0, 0);
@@ -676,6 +677,115 @@ namespace AutoJMS
             catch (Exception ex)
             {
                 AppLogger.Warning($"In lại đơn: không mở được preview: {ex.Message}");
+            }
+        }
+
+        // ==================================================================================
+        // Printing — chống lệch khi khổ giấy không phải 3"x3"
+        // ==================================================================================
+
+        /// <summary>
+        /// Bản in riêng cho "In lại đơn".
+        ///
+        /// <c>CreatePrintDocument()</c> mặc định chạy chế độ CutMargin: nó dịch gốc toạ độ ra
+        /// <c>-HardMargin</c> rồi canh giữa theo cả hai chiều. Trên máy in nhiệt có lề cứng, và
+        /// nhất là khi khổ giấy vật lý không phải 3"x3" (75x100mm, 76x130mm...), phần đè bị đẩy
+        /// lệch khỏi đúng vị trí trên nhãn.
+        ///
+        /// Bản này luôn:
+        ///   • vẽ trong vùng in được (đã trừ lề cứng), không tràn ra ngoài,
+        ///   • giữ nguyên tỷ lệ 210:227 của nhãn JMS — co theo cạnh chật hơn, không kéo giãn X/Y,
+        ///   • canh giữa theo chiều ngang và ghim sát mép trên (CenterTop).
+        /// </summary>
+        private PrintDocument CreateReprintPrintDocument(PdfiumViewer.PdfDocument pdf)
+        {
+            var document = new PrintDocument();
+            int page = 0;
+
+            document.BeginPrint += (_, _) => page = 0;
+            document.PrintPage += (_, e) =>
+            {
+                if (pdf == null || page >= pdf.PageCount)
+                {
+                    e.HasMorePages = false;
+                    return;
+                }
+
+                var pdfSize = pdf.PageSizes[page];
+                e.PageSettings.Landscape = pdfSize.Width > pdfSize.Height;
+
+                // Mọi phép tính dưới đây theo đơn vị 1/100 inch — đúng đơn vị của PageBounds.
+                double width = e.PageBounds.Width - e.PageSettings.HardMarginX * 2;
+                double height = e.PageBounds.Height - e.PageSettings.HardMarginY * 2;
+
+                // Driver báo trang nằm ngang trong khi nhãn dựng đứng (hoặc ngược lại).
+                bool pdfPortrait = pdfSize.Height > pdfSize.Width;
+                bool pagePortrait = height > width;
+                if (pdfPortrait != pagePortrait)
+                    (width, height) = (height, width);
+
+                if (width <= 0 || height <= 0 || pdfSize.Width <= 0 || pdfSize.Height <= 0)
+                {
+                    e.HasMorePages = false;
+                    return;
+                }
+
+                double pdfRatio = pdfSize.Height / pdfSize.Width;
+                double pageRatio = height / width;
+
+                double drawWidth = width;
+                double drawHeight = height;
+                if (pdfRatio > pageRatio) drawWidth = width * (pageRatio / pdfRatio);
+                else drawHeight = height * (pdfRatio / pageRatio);
+
+                double left = (width - drawWidth) / 2.0;   // canh giữa ngang
+                const double top = 0;                      // ghim mép trên
+
+                pdf.Render(
+                    page,
+                    e.Graphics,
+                    e.Graphics.DpiX,
+                    e.Graphics.DpiY,
+                    new Rectangle(
+                        ToPrinterDots(left, e.Graphics.DpiX),
+                        ToPrinterDots(top, e.Graphics.DpiY),
+                        ToPrinterDots(drawWidth, e.Graphics.DpiX),
+                        ToPrinterDots(drawHeight, e.Graphics.DpiY)),
+                    PdfiumViewer.PdfRenderFlags.ForPrinting | PdfiumViewer.PdfRenderFlags.Annotations);
+
+                page++;
+                e.HasMorePages = page < pdf.PageCount;
+            };
+
+            return document;
+        }
+
+        private static int ToPrinterDots(double hundredthsOfInch, float dpi) =>
+            (int)(hundredthsOfInch / 100.0 * dpi);
+
+        /// <summary>
+        /// Lề 0 cho "In lại đơn": phần canh lề do <see cref="CreateReprintPrintDocument"/> lo,
+        /// lề của driver chồng thêm chỉ làm nhãn tụt xuống.
+        /// </summary>
+        private void ApplyReprintPageSettings(PrintDocument printDocument, PdfiumViewer.PdfDocument pdf)
+        {
+            if (printDocument == null || !IsReprintModeActive) return;
+
+            try
+            {
+                printDocument.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
+                printDocument.PrinterSettings.DefaultPageSettings.Margins = new Margins(0, 0, 0, 0);
+
+                var pdfSize = pdf != null && pdf.PageCount > 0 ? pdf.PageSizes[0] : SizeF.Empty;
+                var paper = printDocument.DefaultPageSettings.PaperSize;
+                AppLogger.Info(
+                    $"[Reprint] margins=0 pdfPage={pdfSize.Width:0.#}x{pdfSize.Height:0.#}pt " +
+                    $"paper={paper?.Width ?? 0}x{paper?.Height ?? 0}(1/100in) " +
+                    $"landscape={printDocument.DefaultPageSettings.Landscape}");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[Reprint] không đặt được lề 0: {ex.Message}");
             }
         }
 

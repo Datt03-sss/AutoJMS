@@ -4361,7 +4361,11 @@ namespace AutoJMS
                             try
                             {
                                 pdfDocument = PdfiumViewer.PdfDocument.Load(pdfStream);
-                                printerDocument = pdfDocument.CreatePrintDocument();
+                                // "In lại đơn" dùng luồng vẽ riêng: giữ nguyên tỷ lệ trang PDF và
+                                // ghim sát mép trên, để nhãn không lệch khi cuộn giấy khác 3"x3".
+                                printerDocument = IsReprintModeActive
+                                    ? CreateReprintPrintDocument(pdfDocument)
+                                    : pdfDocument.CreatePrintDocument();
                                 printerDocument.DocumentName = documentName;
                                 if (!string.IsNullOrEmpty(printerName) && printerName != "-1")
                                 {
@@ -4369,6 +4373,7 @@ namespace AutoJMS
                                 }
 
                                 ApplyPrintPaperSettings(printerDocument);
+                                ApplyReprintPageSettings(printerDocument, pdfDocument);
                                 printerDocument.PrintController = new StandardPrintController();
                                 return (stream: pdfStream, document: pdfDocument, printDocument: printerDocument);
                             }

@@ -194,36 +194,53 @@ public static class PdfReprintModifier
         if (w <= 0 || h <= 0) return;
 
         var pen = new XPen(XColors.Black, layout.LineWidth);
+        var page = new XSize(w, h);
 
         if (content.EditReceiver)
-            DrawReceiver(gfx, pen, ToRect(layout.Receiver, w, h), content, layout);
+            DrawReceiver(gfx, pen, ToRect(layout.Receiver, w, h), page, content, layout);
 
         if (content.EditRoute)
-            DrawRoute(gfx, pen, ToRect(layout.Route, w, h), content, layout);
+            DrawRoute(gfx, pen, ToRect(layout.Route, w, h), page, content, layout);
 
         if (content.EditNotes)
-            DrawNotes(gfx, pen, ToRect(layout.Notes, w, h), content, layout);
+            DrawNotes(gfx, pen, ToRect(layout.Notes, w, h), page, content, layout);
     }
 
-    private static void DrawReceiver(XGraphics gfx, XPen pen, XRect rect, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    /// <summary>
+    /// Khung "Người nhận": che sạch chữ cũ + chữ mờ "COD", kẻ lại đủ 4 cạnh của ô bảng
+    /// (trên giáp Người gửi, dưới giáp Nội dung hàng, phải là vạch chung với Mã tuyến,
+    /// trái là viền nhãn) rồi in lại nhãn / tên / địa chỉ.
+    /// </summary>
+    private static void DrawReceiver(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
         gfx.DrawRectangle(XBrushes.White, rect);
-        if (layout.DrawReceiverBorder) DrawBorder(gfx, pen, rect, layout.LineWidth);
+        var frame = layout.DrawReceiverBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
 
-        var inner = Pad(rect, layout.Padding);
+        var inner = Pad(frame, layout.Padding);
         if (inner.Width <= 1 || inner.Height <= 1) return;
 
-        var header = "Người nhận :";
+        // Dòng 1: nhãn in đậm.
+        var labelFont = Font(layout, layout.ReceiverLabelFontSize, true);
+        double y = inner.Y;
+        double labelHeight = LineHeight(gfx, labelFont);
+        gfx.DrawString("Người nhận :", labelFont, XBrushes.Black,
+            new XRect(inner.X, y, inner.Width, labelHeight), XStringFormats.TopLeft);
+        y += labelHeight;
+
+        // Dòng 2: tên người nhận (+ SĐT nếu Owner nhập kèm).
         var name = Clean(c.ReceiverName);
-        if (name.Length > 0) header = header + " " + name;
+        if (name.Length > 0 && y < inner.Bottom)
+        {
+            var nameFont = FitFont(gfx, name, layout, layout.ReceiverLabelFontSize, true, inner.Width, 5.0);
+            double nameHeight = LineHeight(gfx, nameFont);
+            gfx.DrawString(name, nameFont, XBrushes.Black,
+                new XRect(inner.X, y, inner.Width, nameHeight), XStringFormats.TopLeft);
+            y += nameHeight;
+        }
 
-        var headerFont = FitFont(gfx, header, layout, layout.ReceiverLabelFontSize, true, inner.Width, 5.0);
-        double headerHeight = LineHeight(gfx, headerFont);
-        gfx.DrawString(header, headerFont, XBrushes.Black,
-            new XRect(inner.X, inner.Y, inner.Width, headerHeight), XStringFormats.TopLeft);
-
-        double addressTop = inner.Y + headerHeight + 1.0;
+        // Các dòng còn lại: địa chỉ, ngắt dòng theo bề ngang ô.
         var address = Clean(c.ReceiverAddress);
+        double addressTop = y + 1.0;
         if (address.Length == 0 || addressTop >= inner.Bottom) return;
 
         var bodyFont = Font(layout, layout.ReceiverBodyFontSize, false);
@@ -232,10 +249,11 @@ public static class PdfReprintModifier
             new XRect(inner.X, addressTop, inner.Width, inner.Bottom - addressTop), XStringFormats.TopLeft);
     }
 
-    private static void DrawRoute(XGraphics gfx, XPen pen, XRect rect, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    private static void DrawRoute(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
         gfx.DrawRectangle(XBrushes.White, rect);
-        if (layout.DrawRouteBorder) DrawBorder(gfx, pen, rect, layout.LineWidth);
+        // Mép trái đã được ReprintLayoutOptions.Normalize ghim trùng mép phải của Người nhận.
+        var frame = layout.DrawRouteBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
 
         var dividers = (layout.RouteDividers ?? Array.Empty<double>())
             .Where(d => d > 0 && d < 1)
@@ -246,7 +264,7 @@ public static class PdfReprintModifier
         foreach (var d in dividers)
         {
             double y = rect.Y + d * rect.Height;
-            gfx.DrawLine(pen, rect.X, y, rect.Right, y);
+            gfx.DrawLine(pen, frame.X, y, frame.Right, y);
         }
 
         // N dividers produce N+1 cells, numbered top-down from 0.
@@ -279,16 +297,16 @@ public static class PdfReprintModifier
         }
     }
 
-    private static void DrawNotes(XGraphics gfx, XPen pen, XRect rect, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    private static void DrawNotes(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
         gfx.DrawRectangle(XBrushes.White, rect);
-        if (layout.DrawNotesBorder) DrawBorder(gfx, pen, rect, layout.LineWidth);
+        var frame = layout.DrawNotesBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
 
         double splitX = rect.X + layout.NotesColumnSplit * rect.Width;
-        gfx.DrawLine(pen, splitX, rect.Y, splitX, rect.Bottom);
+        gfx.DrawLine(pen, splitX, frame.Y, splitX, frame.Bottom);
 
         double splitY = rect.Y + layout.NotesRightRowSplit * rect.Height;
-        gfx.DrawLine(pen, splitX, splitY, rect.Right, splitY);
+        gfx.DrawLine(pen, splitX, splitY, frame.Right, splitY);
 
         // Left column: "Ghi chú:" + content, waybill pinned to the bottom.
         var left = Pad(new XRect(rect.X, rect.Y, splitX - rect.X, rect.Height), layout.Padding);
@@ -381,16 +399,29 @@ public static class PdfReprintModifier
             Math.Max(0, rect.Width - 2 * pad), Math.Max(0, rect.Height - 2 * pad));
     }
 
-    private static void DrawBorder(XGraphics gfx, XPen pen, XRect rect, double lineWidth)
+    /// <summary>
+    /// Kẻ lại 4 cạnh của vùng vừa che trắng. Nét được vẽ *giữa* mép mask (không thụt vào)
+    /// để đè đúng chỗ đường kẻ bảng gốc bị miếng vá ăn mất — đó là thứ làm vết đè biến mất.
+    /// Cạnh nào chạm mép trang thì kéo vào nửa nét để không bị xén mất một nửa.
+    /// Trả về khung đã kẹp, dùng chung cho các vạch chia bên trong.
+    /// </summary>
+    private static XRect DrawFrame(XGraphics gfx, XPen pen, XRect rect, double lineWidth, XSize page)
     {
-        // Inset by half a stroke so a border sitting on the page edge is not clipped in half.
         double half = lineWidth / 2.0;
-        double width = rect.Width - lineWidth;
-        double height = rect.Height - lineWidth;
-        if (width <= 0 || height <= 0) return;
+        double left = ClampTo(rect.X, half, page.Width - half);
+        double right = ClampTo(rect.Right, half, page.Width - half);
+        double top = ClampTo(rect.Y, half, page.Height - half);
+        double bottom = ClampTo(rect.Bottom, half, page.Height - half);
 
-        gfx.DrawRectangle(pen, new XRect(rect.X + half, rect.Y + half, width, height));
+        var framed = new XRect(left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
+        if (framed.Width <= 0 || framed.Height <= 0) return rect;
+
+        gfx.DrawRectangle(pen, framed);
+        return framed;
     }
+
+    private static double ClampTo(double value, double min, double max) =>
+        max <= min ? value : Math.Min(Math.Max(value, min), max);
 
     private static XFont Font(ReprintLayoutOptions layout, double size, bool bold) =>
         new(layout.FontFamily, size, bold ? XFontStyleEx.Bold : XFontStyleEx.Regular);
