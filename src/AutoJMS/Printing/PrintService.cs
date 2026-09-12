@@ -1113,6 +1113,8 @@ namespace AutoJMS
             return list;
         }
 
+        public IReadOnlyList<TrackingRow> GetLoadedPrintRows() => _printRows.ToList();
+
         public PrintMode CurrentMode => _currentMode;
 
         private void ClearPrintableState(bool resetCurrent = false)

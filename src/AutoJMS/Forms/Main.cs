@@ -293,6 +293,7 @@ namespace AutoJMS
             tabPrint_inputWaybill.KeyDown += tabPrint_inputWaybill_KeyDown;
             tabPrint_btnSelectAll.CheckedChanged += tabPrint_btnSelectAll_CheckedChanged;
             tabPrint_printFunc.SelectedIndexChanged += TabPrint_printFunc_SelectedIndexChanged;
+            BuildTabPrintInLaiDonSection();
             tabHome_webView.NavigationCompleted += tabHome_WebView_NavigationCompleted;
 
             // DKCH buttons
@@ -3271,6 +3272,7 @@ namespace AutoJMS
             {
                 tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
             }
+            ResetTabPrintReprintState(clearInputs: true);
         }
 
         private void TabPrint_printFunc_SelectedIndexChanged(object sender, EventArgs e)
@@ -3278,6 +3280,7 @@ namespace AutoJMS
             if (_printService == null) return;
 
             ClearPrintJobCaches();
+            ResetTabPrintReprintState(clearInputs: true);
             if (tabPrint_printFunc.SelectedTab == tabPrint_inCH) _printService.SetMode(PrintMode.InHoan);
             else if (tabPrint_printFunc.SelectedTab == tabPrint_inCT) _printService.SetMode(PrintMode.InChuyenTiep);
             else if (tabPrint_printFunc.SelectedTab == tabPrint_inLaiDon) _printService.SetMode(PrintMode.InLaiDon);
@@ -3304,7 +3307,8 @@ namespace AutoJMS
             if (e.KeyCode == Keys.Enter)
             {
                 e.SuppressKeyPress = true;
-                if (tabPrint_AutoMode.Active)
+                // "In lại đơn" bắt buộc phải xem trước bản in, nên không cho AutoMode in thẳng.
+                if (tabPrint_AutoMode.Active && !IsReprintModeActive)
                 {
                     string input = tabPrint_inputWaybill.Text.Trim();
                     if (string.IsNullOrWhiteSpace(input)) return;
@@ -3349,6 +3353,8 @@ namespace AutoJMS
                 _printService.SelectAll(true);
                 tabPrint_btnSelectAll.Checked = true;
                 ShowPrintMessage("Đã xác minh, sẵn sàng in", false, 1500);
+                if (IsReprintModeActive)
+                    await PrepareReprintPreviewAsync();
             }
             finally
             {
@@ -3370,6 +3376,9 @@ namespace AutoJMS
                 if (!isAutoMode) ShowPrintMessage("Chưa chọn vận đơn nào!", true);
                 return;
             }
+
+            // "In lại đơn": chốt bản xem trước còn đang chờ vẽ lại, để in đúng cái đang nhìn thấy.
+            await FlushPendingReprintRenderAsync();
 
             int printType = 1;
             int applyTypeCode = (_printService.CurrentMode == PrintMode.InChuyenTiep) ? 2 : 4;
@@ -3482,6 +3491,7 @@ namespace AutoJMS
                 finishReason = "success";
                 ShowPrintMessage("Đã in, đang cập nhật trạng thái sau in...", false, 2500);
                 _printService.QueuePostPrintRefresh(selected, printType);
+                InvalidateReprintJobAfterPrint();
             }
             catch (PrintPipelineException ex)
             {

@@ -21,6 +21,8 @@ public interface IPrintService
     void SelectAll(bool isChecked);
     void ClearSelection();
     List<string> GetSelectedWaybills();
+    /// <summary>Rows behind the current grid — lets "In lại đơn" prefill its editor.</summary>
+    IReadOnlyList<TrackingRow> GetLoadedPrintRows();
     void SetMode(PrintMode mode);
     void Reset();
 }
