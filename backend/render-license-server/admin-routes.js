@@ -98,6 +98,9 @@ const MAX_TERMS = 120;
 /** Free-text the owner types; bounded so a paste cannot bloat the record. */
 const MAX_NOTES_LENGTH = 500;
 
+/** A Google Sheet id is 44 characters; the ceiling is slack, not a format. */
+const MAX_SPREADSHEET_ID_LENGTH = 200;
+
 // ==========================================
 // HELPERS
 // ==========================================
@@ -270,6 +273,23 @@ function sanitizeNotes(raw) {
     return String(raw).replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, MAX_NOTES_LENGTH);
 }
 
+/**
+ * The Google Sheet id the owner pastes for an ULTRA key.
+ *
+ * Same treatment as notes and for the same reason: free text that lands in a
+ * Firebase value and is read back by the desktop client, so it is scrubbed and
+ * bounded rather than trusted. Deliberately NOT matched against Google's id
+ * shape — the owner pastes whatever Google handed them, and a format guess
+ * here would refuse a real sale to enforce a rule nobody wrote down.
+ */
+function sanitizeSpreadsheetId(raw) {
+    if (typeof raw !== "string" && typeof raw !== "number") return "";
+    // Everything outside printable ASCII goes: a Google id is [A-Za-z0-9_-], so
+    // a control character or a Vietnamese letter arriving in this field is a
+    // paste accident rather than data worth storing.
+    return String(raw).replace(/[^ -~]/g, "").trim().slice(0, MAX_SPREADSHEET_ID_LENGTH);
+}
+
 /** Reads and validates :key, answering the client itself when it is unusable. */
 async function loadLicense(req, res) {
     const key = String(req.params.key || "");
@@ -292,6 +312,67 @@ async function loadLicense(req, res) {
     }
 
     return { key, record };
+}
+
+/**
+ * Decides the key the new record will be written at.
+ *
+ * The dashboard now shows a candidate key before the owner commits — the
+ * "General Key" button — so the client may send back the exact string it
+ * displayed. That is a convenience, not a trust boundary: the shape is
+ * re-checked here, the middle group has to be the middle code that was just
+ * validated, and the node has to be free. A bad one is refused rather than
+ * quietly corrected, because a key the dashboard already showed is a key the
+ * owner may already have pasted into a chat window.
+ *
+ * Answers the client itself on refusal and returns null — same contract as
+ * loadLicense() above.
+ */
+async function resolveLicenseKey(body, middleCode, res) {
+    // `customKey` is accepted as an alias so a caller that spells it the other
+    // way gets its key honoured instead of silently receiving a random one.
+    const requested = String(body?.key ?? body?.customKey ?? "").trim().toUpperCase();
+
+    if (requested) {
+        // Interpolating a request value into a RegExp is normally how a
+        // catastrophic backtrack gets in. It is safe exactly here: middleCode
+        // has already passed MIDDLE_CODE_PATTERN, so it is 2-32 characters of
+        // [A-Z0-9] — no metacharacter, no quantifier, no alternation.
+        const shape = new RegExp(`^[A-Z0-9]{${KEY_GROUP_LENGTH}}-${middleCode}-[A-Z0-9]{${KEY_GROUP_LENGTH}}$`);
+        if (!shape.test(requested)) {
+            fail(
+                res,
+                400,
+                "INVALID_LICENSE_KEY",
+                `Mã license phải đúng dạng XXXX-${middleCode}-XXXX (X là chữ in hoa hoặc số).`
+            );
+            return null;
+        }
+
+        const existing = await withTimeout(licenseRef(requested).once("value"), FIREBASE_TIMEOUT_MS, "FIREBASE");
+        if (existing.exists()) {
+            // The write below is a set(), so reusing a taken key would replace a
+            // live customer's record outright. Refused, never re-rolled behind
+            // the owner's back.
+            fail(res, 409, "LICENSE_KEY_TAKEN", "Mã license này đã tồn tại, bấm General Key để sinh mã khác.");
+            return null;
+        }
+
+        return requested;
+    }
+
+    // Four random characters per group is 36^8 ≈ 2.8e12 keys, so a collision is
+    // not a realistic event — but for the same set() reason, one read is a cheap
+    // price for making it impossible rather than improbable.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        const candidate = buildLicenseKey(middleCode);
+        const existing = await withTimeout(licenseRef(candidate).once("value"), FIREBASE_TIMEOUT_MS, "FIREBASE");
+        if (!existing.exists()) return candidate;
+    }
+
+    logEvent("error", "admin.key_generation_exhausted", { middleCode });
+    fail(res, 503, "KEY_GENERATION_FAILED", "Không sinh được mã license mới, thử lại.");
+    return null;
 }
 
 // ==========================================
@@ -480,38 +561,32 @@ router.post(
         }
 
         const notes = sanitizeNotes(req.body?.notes);
+        // Only ULTRA reads a sheet. Storing one on a BASE record would make the
+        // console show a key as provisioned while the client ignores the field.
+        const dataSpreadsheetId = tier === "ULTRA" ? sanitizeSpreadsheetId(req.body?.dataSpreadsheetId) : "";
         // Defaults to the spec's true: the fleet's records carry it, and an
         // omitted field must not silently turn hash checking back on for a key
         // the owner did not mean to lock down.
         const skipHashCheck = req.body?.skipHashCheck === undefined ? true : Boolean(req.body.skipHashCheck);
+        // Same default rule one level down, and the reason `!== false` rather
+        // than Boolean(): a body with no modulePolicy at all must leave all
+        // three switches ON, which is what every record already in the fleet
+        // carries. Only an explicit false turns one off.
+        const modulePolicy = {
+            autoUpdate: req.body?.modulePolicy?.autoUpdate !== false,
+            silentUpdate: req.body?.modulePolicy?.silentUpdate !== false,
+            applyOnNextStartup: req.body?.modulePolicy?.applyOnNextStartup !== false
+        };
 
         const createdAtMs = Date.now();
         const expiry = term.perpetual
             ? null
             : computeExpiry(createdAtMs, { terms: term.terms, anchorDay: ANCHOR_DAY });
 
-        // Four random characters per group is 36^8 ≈ 2.8e12 keys, so a collision
-        // is not a realistic event — but the write below is a set(), and landing
-        // on a live customer's key would replace their record outright. One read
-        // is a cheap price for making that impossible rather than improbable.
-        let licenseKey = null;
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-            const candidate = buildLicenseKey(middleCode);
-            const existing = await withTimeout(
-                licenseRef(candidate).once("value"),
-                FIREBASE_TIMEOUT_MS,
-                "FIREBASE"
-            );
-            if (!existing.exists()) {
-                licenseKey = candidate;
-                break;
-            }
-        }
-
-        if (!licenseKey) {
-            logEvent("error", "admin.key_generation_exhausted", { middleCode });
-            return fail(res, 503, "KEY_GENERATION_FAILED", "Không sinh được mã license mới, thử lại.");
-        }
+        // Either the key the dashboard previewed, or a fresh random one. Both
+        // paths confirm the node is free before the set() below.
+        const licenseKey = await resolveLicenseKey(req.body, middleCode, res);
+        if (!licenseKey) return undefined;
 
         const record = {
             createdAt: toVnLegacyStamp(createdAtMs),
@@ -520,12 +595,8 @@ router.post(
             hwid: "",
             middleCode,
             skipHashCheck,
-            modulePolicy: {
-                autoUpdate: true,
-                silentUpdate: true,
-                applyOnNextStartup: true
-            },
-            dataSpreadsheetId: "",
+            modulePolicy,
+            dataSpreadsheetId,
             // Realtime Database drops a null child rather than storing it, so a
             // perpetual key simply has no expiresAt — which is exactly the v1
             // record shape evaluateLicense() treats as never expiring.

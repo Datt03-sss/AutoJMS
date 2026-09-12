@@ -341,6 +341,202 @@ test("a malformed create body is refused and writes nothing", async () => {
     }
 });
 
+test("a key the dashboard previewed is written verbatim instead of being re-rolled", async () => {
+    const harness = await startServer({ env: adminEnv, seed: { Licenses: {} } });
+
+    try {
+        // The whole point of the General Key button: the string the owner read
+        // in the modal is the string that ends up in Firebase. A server that
+        // quietly minted a different one would leave the owner pasting a key
+        // that does not exist.
+        const response = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { key: "JMXS-214A03-22B1", middleCode: "214A03", tier: "ULTRA", terms: 1 } })
+        );
+
+        assert.equal(response.status, 201);
+        assert.equal(response.body.key, "JMXS-214A03-22B1");
+        assert.ok(harness.db.read("Licenses/JMXS-214A03-22B1"), "the previewed key must be the one written");
+
+        // Lowercase in, uppercase out — the owner types a post-office code, and
+        // a lowercase key would not match the shape the rest of the fleet has.
+        const lowercased = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { key: "abcd-214a03-ef12", middleCode: "214a03", tier: "BASE", terms: 1 } })
+        );
+        assert.equal(lowercased.status, 201);
+        assert.equal(lowercased.body.key, "ABCD-214A03-EF12");
+
+        // customKey is the documented alias. Spelling it the other way must
+        // honour the key, not silently fall back to a random one.
+        const aliased = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { customKey: "ZZZZ-214A03-9999", middleCode: "214A03", tier: "BASE", terms: 1 } })
+        );
+        assert.equal(aliased.status, 201);
+        assert.equal(aliased.body.key, "ZZZZ-214A03-9999");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("a client key that is not XXXX-middleCode-XXXX is refused and writes nothing", async () => {
+    const harness = await startServer({ env: adminEnv, seed: { Licenses: {} } });
+
+    try {
+        const cases = [
+            // Three characters in the first group.
+            "JMX-214A03-22B1",
+            // A middle group that is not the middle code just validated — the
+            // one that would produce a key the site code cannot be read off.
+            "JMXS-HN01-22B1",
+            // A character outside [A-Z0-9].
+            "JMXS-214A03-22B!",
+            // Missing a group entirely.
+            "JMXS-214A03",
+            // A slash would walk to a different Firebase node.
+            "JMXS-214A03-22/1"
+        ];
+
+        for (const key of cases) {
+            const response = await harness.post(
+                "/api/admin/licenses/create",
+                withAuth({ body: { key, middleCode: "214A03", tier: "ULTRA", terms: 1 } })
+            );
+            assert.equal(response.status, 400, `${key} should be refused`);
+            assert.equal(response.body.error, "INVALID_LICENSE_KEY", key);
+            // Refused, not corrected: a server that rolled a random key here
+            // would answer 201 with a key the owner never saw.
+            assert.ok(!("key" in response.body), `${key} must not come back with a substitute key`);
+        }
+
+        assert.deepEqual(harness.db.writes(), [], "a refused key must not leave a record behind");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("a client key that is already taken is refused rather than overwriting the record", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { "JMXS-214A03-22B1": licenseSeed({ notes: "khách cũ" }) } }
+    });
+
+    try {
+        const response = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { key: "JMXS-214A03-22B1", middleCode: "214A03", tier: "BASE", terms: 1 } })
+        );
+
+        // 409, because the write is a set(): honouring this would have replaced
+        // a paying customer's record with a blank one.
+        assert.equal(response.status, 409);
+        assert.equal(response.body.error, "LICENSE_KEY_TAKEN");
+
+        const stored = harness.db.read("Licenses/JMXS-214A03-22B1");
+        assert.equal(stored.notes, "khách cũ", "the live record must be untouched");
+        assert.equal(stored.tier, "ULTRA");
+        assert.deepEqual(harness.db.writes(), []);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("dataSpreadsheetId is stored for ULTRA and blanked for BASE", async () => {
+    const harness = await startServer({ env: adminEnv, seed: { Licenses: {} } });
+
+    try {
+        const ultra = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({
+                body: {
+                    middleCode: "214A03",
+                    tier: "ULTRA",
+                    terms: 1,
+                    dataSpreadsheetId: "  1AbCdEfGhIjKlMnOpQrStUvWxYz  "
+                }
+            })
+        );
+        assert.equal(ultra.status, 201);
+        assert.equal(harness.db.read(`Licenses/${ultra.body.key}`).dataSpreadsheetId, "1AbCdEfGhIjKlMnOpQrStUvWxYz");
+
+        // BASE has no sheet in the client, so a value sent for one is dropped
+        // rather than stored: a record that looks provisioned but is not is
+        // worse than an empty one.
+        const base = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({
+                body: { middleCode: "214A03", tier: "BASE", terms: 1, dataSpreadsheetId: "1AbCdEfGhIjKlMnOpQrStUvWxYz" }
+            })
+        );
+        assert.equal(base.status, 201);
+        assert.equal(harness.db.read(`Licenses/${base.body.key}`).dataSpreadsheetId, "");
+
+        // Anything that is not text becomes "", never "[object Object]".
+        const junk = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { middleCode: "214A03", tier: "ULTRA", terms: 1, dataSpreadsheetId: { id: 7 } } })
+        );
+        assert.equal(junk.status, 201);
+        assert.equal(harness.db.read(`Licenses/${junk.body.key}`).dataSpreadsheetId, "");
+
+        // Bounded, so a stray paste cannot write a novel into the record.
+        const huge = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { middleCode: "214A03", tier: "ULTRA", terms: 1, dataSpreadsheetId: "A".repeat(5000) } })
+        );
+        assert.equal(huge.status, 201);
+        assert.equal(harness.db.read(`Licenses/${huge.body.key}`).dataSpreadsheetId.length, 200);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("module switches default to on and only an explicit false turns one off", async () => {
+    const harness = await startServer({ env: adminEnv, seed: { Licenses: {} } });
+
+    try {
+        // No modulePolicy at all is the shape every hand-written record in the
+        // fleet has: all three on. Defaulting these to off would ship a key
+        // that never updates itself and looks like a broken build.
+        const omitted = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({ body: { middleCode: "214A03", tier: "ULTRA", terms: 1 } })
+        );
+        assert.equal(omitted.status, 201);
+        assert.deepEqual(harness.db.read(`Licenses/${omitted.body.key}`).modulePolicy, {
+            autoUpdate: true,
+            silentUpdate: true,
+            applyOnNextStartup: true
+        });
+
+        const partial = await harness.post(
+            "/api/admin/licenses/create",
+            withAuth({
+                body: {
+                    middleCode: "214A03",
+                    tier: "ULTRA",
+                    terms: 1,
+                    skipHashCheck: false,
+                    modulePolicy: { silentUpdate: false }
+                }
+            })
+        );
+        assert.equal(partial.status, 201);
+
+        const stored = harness.db.read(`Licenses/${partial.body.key}`);
+        assert.equal(stored.skipHashCheck, false);
+        // The two switches the body never mentioned stay on.
+        assert.deepEqual(stored.modulePolicy, {
+            autoUpdate: true,
+            silentUpdate: false,
+            applyOnNextStartup: true
+        });
+    } finally {
+        await harness.close();
+    }
+});
+
 // ==========================================================================
 // EXTEND
 // ==========================================================================

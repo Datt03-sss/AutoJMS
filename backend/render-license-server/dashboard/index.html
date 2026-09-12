@@ -187,47 +187,83 @@
     </header>
 
     <div class="modal__body">
-      <label class="field">
-        <span class="field__label">Mã bưu cục (MiddleCode)</span>
-        <input
-          id="create-middle-code"
-          class="field__input field__input--mono"
-          type="text"
-          placeholder="214A03"
-          maxlength="32"
-          spellcheck="false"
-          required>
-        <span class="field__hint">Chữ và số, tự động viết hoa. Sẽ nằm giữa key: <code>XXXX-214A03-XXXX</code>.</span>
-      </label>
 
-      <fieldset class="field">
-        <legend class="field__label">Tier</legend>
-        <div class="segmented" id="create-tier">
-          <label class="segmented__option">
-            <input type="radio" name="tier" value="BASE">
-            <span>BASE</span>
-          </label>
-          <label class="segmented__option">
-            <input type="radio" name="tier" value="ULTRA" checked>
-            <span>ULTRA</span>
-          </label>
+      <!-- Gói: một cặp pill, không phải hai radio. Chọn gói là thao tác đầu
+           tiên của Owner và nó đổi cả phần thân bên dưới, nên nó phải nhìn
+           như một cái công tắc chứ không như một trường nhập nữa. -->
+      <div class="toggle-wrapper">
+        <div class="grok-pill-toggle" role="group" aria-label="Chọn gói license">
+          <button type="button" class="toggle-btn" id="toggle-base" aria-pressed="false">BASE</button>
+          <button type="button" class="toggle-btn active-ultra" id="toggle-ultra" aria-pressed="true"><span aria-hidden="true">⚡</span> ULTRA</button>
         </div>
-      </fieldset>
+      </div>
+
+      <!-- Mã dự kiến: sinh trước, xem rồi mới tạo. app.js gán chữ vào
+           #key-display; ở đây để trống để không có mã giả nào nhìn như thật
+           trong lúc trang chưa chạy JS. -->
+      <div class="key-gen-box">
+        <div class="key-gen-box__text">
+          <span class="field__label">Mã License Dự Kiến</span>
+          <span class="key-preview-val" id="key-display"></span>
+        </div>
+        <button type="button" class="btn-general-key" id="btn-general-key" title="Sinh ngẫu nhiên một mã khác">
+          General Key
+        </button>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Mã bưu cục</span>
+          <input
+            id="create-middle-code"
+            class="field__input field__input--mono"
+            type="text"
+            placeholder="214A03"
+            maxlength="32"
+            spellcheck="false"
+            required>
+          <span class="field__hint">Chữ và số, tự động viết hoa.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Kỳ gia hạn</span>
+          <select id="create-terms" class="field__input">
+            <option value="1">1 tháng</option>
+            <option value="3">3 tháng</option>
+            <option value="6">6 tháng</option>
+            <option value="12">12 tháng</option>
+            <option value="0">Vĩnh viễn</option>
+          </select>
+          <span class="field__hint">Đáo hạn 00:00 ngày 16.</span>
+        </label>
+      </div>
+
+      <!-- Hai mặt của cùng một ô: ULTRA nhập được, BASE thì thấy ô bị khoá
+           kèm lý do. Ẩn hẳn sẽ làm modal nhảy chiều cao mỗi lần đổi gói, và
+           Owner sẽ không biết vì sao gói BASE không có chỗ điền Sheet. -->
+      <div class="field" id="panel-ultra">
+        <label class="field">
+          <span class="field__label">Google Sheet ID</span>
+          <input
+            id="create-sheet-id"
+            class="field__input field__input--mono"
+            type="text"
+            placeholder="1AbC…xyz"
+            maxlength="200"
+            spellcheck="false">
+          <span class="field__hint">Bảng dữ liệu riêng của khách (<code>dataSpreadsheetId</code>).</span>
+        </label>
+      </div>
+
+      <div class="field" id="panel-base" hidden>
+        <label class="field">
+          <span class="field__label">Google Sheet ID</span>
+          <input class="field__input" type="text" placeholder="Không hỗ trợ trên gói BASE" disabled>
+        </label>
+      </div>
 
       <label class="field">
-        <span class="field__label">Kỳ hạn</span>
-        <select id="create-terms" class="field__input">
-          <option value="1">1 tháng — neo ngày 16</option>
-          <option value="3">3 tháng</option>
-          <option value="6">6 tháng</option>
-          <option value="12">12 tháng (1 năm)</option>
-          <option value="0">Vĩnh viễn (không hạn)</option>
-        </select>
-        <span class="field__hint">Mọi kỳ hạn đều đáo hạn lúc 00:00 ngày 16, ít nhất 30 ngày kể từ hôm nay.</span>
-      </label>
-
-      <label class="field">
-        <span class="field__label">Ghi chú</span>
+        <span class="field__label">Ghi chú khách hàng</span>
         <textarea
           id="create-notes"
           class="field__input"
@@ -236,17 +272,34 @@
           placeholder="Tên khách, số điện thoại, ngày thu tiền…"></textarea>
       </label>
 
-      <label class="checkbox">
-        <input type="checkbox" id="create-skip-hash" checked>
-        <span>Bỏ qua kiểm tra hash file .exe (<code>skipHashCheck</code>)</span>
-      </label>
+      <fieldset class="config-section">
+        <legend class="config-section__title">Cấu hình Key &amp; Module Policy</legend>
+        <div class="config-switches">
+          <label class="switch-label">
+            <input type="checkbox" id="create-skip-hash" checked>
+            <span>Bỏ qua kiểm tra hash <code>skipHashCheck</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="create-auto-update" checked>
+            <span>Tự động cập nhật <code>autoUpdate</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="create-silent-update" checked>
+            <span>Cập nhật im lặng <code>silentUpdate</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="create-apply-startup" checked>
+            <span>Áp dụng lần mở sau <code>applyOnNextStartup</code></span>
+          </label>
+        </div>
+      </fieldset>
 
       <p class="modal__error" id="create-error" hidden></p>
     </div>
 
     <footer class="modal__foot">
       <button class="btn btn--ghost" type="button" id="create-cancel">Huỷ</button>
-      <button class="btn btn--primary" type="submit" id="create-submit">Tạo key</button>
+      <button class="btn btn--primary btn-submit btn-ultra" type="submit" id="create-submit">Tạo License ULTRA</button>
     </footer>
   </form>
 </div>

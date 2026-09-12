@@ -60,7 +60,16 @@
         licenses: [],
         search: "",
         tier: "all",
-        status: "all"
+        status: "all",
+
+        // Create-modal state. ULTRA is the default because it is what almost
+        // every sale is; BASE is the deliberate downgrade, so it should cost a
+        // click rather than be the thing you land on.
+        createTier: "ULTRA",
+        // The key shown in the preview box and sent to the server on submit.
+        // The server re-validates it and refuses a taken one, so this is a
+        // convenience, not a claim.
+        candidateKey: ""
     };
 
     const $ = id => document.getElementById(id);
@@ -103,7 +112,18 @@
         createMiddleCode: $("create-middle-code"),
         createTerms: $("create-terms"),
         createNotes: $("create-notes"),
+        createSheetId: $("create-sheet-id"),
         createSkipHash: $("create-skip-hash"),
+        createAutoUpdate: $("create-auto-update"),
+        createSilentUpdate: $("create-silent-update"),
+        createApplyStartup: $("create-apply-startup"),
+
+        toggleBase: $("toggle-base"),
+        toggleUltra: $("toggle-ultra"),
+        panelBase: $("panel-base"),
+        panelUltra: $("panel-ultra"),
+        keyDisplay: $("key-display"),
+        btnGeneralKey: $("btn-general-key"),
 
         toasts: $("toasts")
     };
@@ -758,10 +778,100 @@
     // CREATE
     // ==========================================
 
+    /** Mirrors admin-routes.js's KEY_ALPHABET: every character is Firebase-safe. */
+    const KEY_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const KEY_GROUP_LENGTH = 4;
+
+    /** Shown in the preview before the owner has typed a post-office code. */
+    const MIDDLE_CODE_PLACEHOLDER = "0000";
+
+    /**
+     * Four characters of KEY_ALPHABET, drawn without modulo bias.
+     *
+     * 256 is not a multiple of 36, so `byte % 36` would favour A-T over U-9 by
+     * about 14%. Bytes at or above 252 (the largest multiple of 36 that fits)
+     * are redrawn instead. This only produces a candidate — the server mints
+     * the real thing and refuses a collision — but a key generator that leans
+     * on some letters is not worth shipping when the fix is one comparison.
+     */
+    function randomKeyGroup() {
+        let group = "";
+        while (group.length < KEY_GROUP_LENGTH) {
+            const bytes = new Uint8Array(KEY_GROUP_LENGTH);
+            window.crypto.getRandomValues(bytes);
+            for (const byte of bytes) {
+                if (group.length === KEY_GROUP_LENGTH) break;
+                if (byte >= 252) continue;
+                group += KEY_ALPHABET[byte % KEY_ALPHABET.length];
+            }
+        }
+        return group;
+    }
+
+    function currentMiddleCode() {
+        return dom.createMiddleCode.value.trim().toUpperCase() || MIDDLE_CODE_PLACEHOLDER;
+    }
+
+    function paintCandidateKey() {
+        dom.keyDisplay.textContent = state.candidateKey;
+    }
+
+    /** New random outer groups, current middle code, straight onto the screen. */
+    function generateRandomKey() {
+        state.candidateKey = `${randomKeyGroup()}-${currentMiddleCode()}-${randomKeyGroup()}`;
+        paintCandidateKey();
+    }
+
+    /**
+     * Re-middles the candidate without re-rolling it.
+     *
+     * Typing "214A03" is six input events. Regenerating on each one would make
+     * the two random groups flicker through six values while the owner is
+     * reading the code they just typed, so only the middle segment moves.
+     */
+    function syncCandidateMiddle() {
+        if (!state.candidateKey) {
+            generateRandomKey();
+            return;
+        }
+
+        const groups = state.candidateKey.split("-");
+        state.candidateKey = `${groups[0]}-${currentMiddleCode()}-${groups[groups.length - 1]}`;
+        paintCandidateKey();
+    }
+
+    /**
+     * Flips the modal between the two packages.
+     *
+     * Everything tier-dependent is set here rather than in the click handlers,
+     * so opening the modal and clicking a pill go through exactly one code
+     * path and cannot drift apart.
+     */
+    function switchCreateTier(tier) {
+        const isUltra = tier === "ULTRA";
+        state.createTier = isUltra ? "ULTRA" : "BASE";
+
+        dom.toggleUltra.className = isUltra ? "toggle-btn active-ultra" : "toggle-btn";
+        dom.toggleBase.className = isUltra ? "toggle-btn" : "toggle-btn active-base";
+        dom.toggleUltra.setAttribute("aria-pressed", String(isUltra));
+        dom.toggleBase.setAttribute("aria-pressed", String(!isUltra));
+
+        dom.panelUltra.hidden = !isUltra;
+        dom.panelBase.hidden = isUltra;
+
+        dom.createSubmit.className = isUltra
+            ? "btn btn--primary btn-submit btn-ultra"
+            : "btn btn--primary btn-submit";
+        dom.createSubmit.textContent = isUltra ? "Tạo License ULTRA" : "Tạo License BASE";
+    }
+
     function openCreate() {
         dom.createError.hidden = true;
+        // reset() restores every checkbox to the `checked` in index.html, which
+        // is all four of them — the fleet's default policy.
         dom.createForm.reset();
-        dom.createSkipHash.checked = true;
+        switchCreateTier("ULTRA");
+        generateRandomKey();
         dom.createModal.hidden = false;
         dom.createMiddleCode.focus();
     }
@@ -774,20 +884,35 @@
         event.preventDefault();
 
         const middleCode = dom.createMiddleCode.value.trim().toUpperCase();
-        const tier = dom.createForm.querySelector('input[name="tier"]:checked')?.value || "ULTRA";
+        const tier = state.createTier;
         const terms = Number(dom.createTerms.value);
+
+        // The middle code may have changed after the last General Key press, so
+        // the key is re-middled one final time rather than sent as displayed.
+        syncCandidateMiddle();
 
         dom.createError.hidden = true;
         dom.createSubmit.disabled = true;
+        const submitLabel = dom.createSubmit.textContent;
         dom.createSubmit.textContent = "Đang tạo…";
 
         try {
             const result = await api("POST", "/licenses/create", {
+                key: state.candidateKey,
                 middleCode,
                 tier,
                 terms,
                 notes: dom.createNotes.value,
-                skipHashCheck: dom.createSkipHash.checked
+                // Sent only for ULTRA; the server blanks it for BASE anyway, and
+                // posting a value the server is about to discard would make the
+                // request read as though BASE keys could carry a sheet.
+                dataSpreadsheetId: tier === "ULTRA" ? dom.createSheetId.value.trim() : "",
+                skipHashCheck: dom.createSkipHash.checked,
+                modulePolicy: {
+                    autoUpdate: dom.createAutoUpdate.checked,
+                    silentUpdate: dom.createSilentUpdate.checked,
+                    applyOnNextStartup: dom.createApplyStartup.checked
+                }
             });
 
             closeCreate();
@@ -810,9 +935,15 @@
             }
             dom.createError.textContent = described.detail;
             dom.createError.hidden = false;
+            // A refused key is the one error the owner can clear without
+            // reading anything: roll another and the Tạo button works.
+            if (error.code === "LICENSE_KEY_TAKEN") generateRandomKey();
         } finally {
             dom.createSubmit.disabled = false;
-            dom.createSubmit.textContent = "Tạo key";
+            // Restored, not hard-coded: the label is "Tạo License ULTRA" or
+            // "Tạo License BASE" depending on the pill, and writing either one
+            // here would silently override the toggle after a failed attempt.
+            dom.createSubmit.textContent = submitLabel;
         }
     }
 
@@ -842,6 +973,14 @@
         dom.createCancel.addEventListener("click", closeCreate);
         dom.createBackdrop.addEventListener("click", closeCreate);
         dom.createForm.addEventListener("submit", submitCreate);
+
+        // type="button" on all three, so none of them submits the form. The
+        // pills sit inside <form id="create-form"> and a bare <button> there
+        // would default to submit and mint a key on the first click.
+        dom.toggleBase.addEventListener("click", () => switchCreateTier("BASE"));
+        dom.toggleUltra.addEventListener("click", () => switchCreateTier("ULTRA"));
+        dom.btnGeneralKey.addEventListener("click", generateRandomKey);
+        dom.createMiddleCode.addEventListener("input", syncCandidateMiddle);
 
         dom.searchInput.addEventListener("input", event => {
             state.search = event.target.value;

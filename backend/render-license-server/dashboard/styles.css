@@ -384,30 +384,10 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .checkbox { display: flex; align-items: center; gap: 9px; font-size: .84rem; color: var(--text-muted); }
 .checkbox input { width: 16px; height: 16px; accent-color: var(--brand); }
 
-.segmented { display: flex; gap: 8px; }
-
-.segmented__option { flex: 1; position: relative; cursor: pointer; }
-.segmented__option input { position: absolute; opacity: 0; pointer-events: none; }
-
-.segmented__option span {
-    display: block;
-    text-align: center;
-    padding: 9px 0;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    font-weight: 700;
-    font-size: .82rem;
-    color: var(--text-muted);
-    transition: all .15s ease;
-}
-
-.segmented__option input:checked + span {
-    background: var(--brand-soft);
-    border-color: var(--brand);
-    color: var(--brand);
-}
-
-.segmented__option input:focus-visible + span { outline: 2px solid var(--brand); outline-offset: 2px; }
+/* Two columns on the create form so the modal does not become a column of ten
+   stacked inputs. Collapses at 520px, where two columns would leave a month
+   selector 130px wide. */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 /* ==========================================
    TOPBAR
@@ -679,7 +659,10 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .modal__card {
     position: relative;
     width: 100%;
-    max-width: 440px;
+    /* 520, not the 440 this started at: the create form grew a second column
+       and a four-switch policy block, and at 440 the month selector and the
+       switch labels both wrapped. */
+    max-width: 520px;
     max-height: 90vh;
     overflow: auto;
     background: var(--bg-elevated);
@@ -717,6 +700,153 @@ textarea.field__input { resize: vertical; min-height: 56px; }
     padding: 14px 18px;
     border-top: 1px solid var(--border);
     background: var(--bg-sunken);
+}
+
+/* ==========================================
+   CREATE MODAL — PILL TOGGLE
+   ==========================================
+   The one element on this page that does NOT follow the theme variables, and
+   deliberately: a dark capsule with a bright active pill is the whole shape of
+   the control. Painted in --bg-sunken it would read as a disabled field on the
+   light theme and vanish into the card on the dark one. The two colours below
+   are fixed so BASE and ULTRA look identical on both themes. */
+
+.toggle-wrapper { display: flex; justify-content: center; }
+
+.grok-pill-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 999px;
+    background: #171b28;
+    border: 1px solid #262d42;
+}
+
+.toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 26px;
+    font-weight: 700;
+    font-size: .85rem;
+    line-height: 1;
+    background: transparent;
+    color: #9aa5bd;
+    cursor: pointer;
+    transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+
+.toggle-btn:hover:not(.active-base):not(.active-ultra) { color: #e9edf7; }
+
+/* White on black, the way a pill toggle reads "the plain one is selected". */
+.active-base { background: #ffffff; color: #0b1020; }
+
+/* The ULTRA identity, reused verbatim by the submit button below so the footer
+   agrees with the toggle instead of arguing with it. */
+.active-ultra {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(168, 85, 247, .55);
+}
+
+/* ==========================================
+   CREATE MODAL — KEY PREVIEW
+   ========================================== */
+
+.key-gen-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--bg-sunken);
+    border: 1px dashed var(--border-strong);
+}
+
+.key-gen-box__text { display: grid; gap: 3px; min-width: 0; }
+
+/* The only string on this page the owner is expected to read character by
+   character before committing to it, so it gets the largest mono on the page
+   and select-all on click. */
+.key-preview-val {
+    font-family: var(--font-mono);
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--text);
+    word-break: break-all;
+    user-select: all;
+    min-height: 1.3em;
+}
+
+.btn-general-key {
+    flex: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: .8rem;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.btn-general-key:hover { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
+
+/* ==========================================
+   CREATE MODAL — POLICY SWITCHES
+   ========================================== */
+
+.config-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px 14px;
+    margin: 0;
+    background: var(--bg-sunken);
+}
+
+.config-section__title {
+    padding: 0 6px;
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: var(--text-muted);
+}
+
+.config-switches { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+
+.switch-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.switch-label input { flex: none; width: 16px; height: 16px; accent-color: var(--brand); }
+.switch-label code { font-size: .74rem; }
+
+/* ==========================================
+   CREATE MODAL — SUBMIT
+   ========================================== */
+
+.btn-submit { min-width: 168px; justify-content: center; }
+
+/* Same gradient and glow as .active-ultra: the footer button is the toggle's
+   answer, so it must be the same colour, not a near miss. */
+.btn-submit.btn-ultra {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(168, 85, 247, .45);
+}
+
+.btn-submit.btn-ultra:hover:not([disabled]) {
+    background: linear-gradient(135deg, #9333ea, #db2777);
 }
 
 /* ==========================================
@@ -827,4 +957,16 @@ textarea.field__input { resize: vertical; min-height: 56px; }
     .topbar { padding: 10px 14px; }
     .topbar__sub { display: none; }
     .stat__value { font-size: 1.4rem; }
+
+    /* One column each: a 375px phone minus the modal's padding leaves ~150px
+       per column, which is narrower than the word "applyOnNextStartup". */
+    .form-grid, .config-switches { grid-template-columns: 1fr; }
+
+    /* The key and its button stop competing for the same row. */
+    .key-gen-box { flex-direction: column; align-items: stretch; }
+    .btn-general-key { width: 100%; }
+
+    .toggle-btn { padding: 8px 0; flex: 1; justify-content: center; }
+    .grok-pill-toggle { display: flex; width: 100%; }
+    .toggle-wrapper { display: block; }
 }

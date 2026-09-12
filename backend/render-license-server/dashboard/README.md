@@ -171,7 +171,84 @@ có chữ để đọc. `toggle` dùng `data-closed="true|false"` và `onRowClic
 
 ---
 
-## 7. Cách trang này hiểu lỗi
+## 7. Modal "Cấp License Mới"
+
+Một thẻ duy nhất, hai mặt cấu hình. Không có bước wizard, không có tab.
+
+### Cặp pill BASE / ULTRA
+
+Không phải hai `<input type="radio">`. Chọn gói là thao tác đầu tiên và nó đổi cả
+phần thân bên dưới, nên nó phải nhìn như công tắc chứ không như một trường nhập
+nữa. Mặc định là **ULTRA** — BASE là lựa chọn hạ cấp có chủ đích, đáng một cú
+bấm, không đáng là thứ mở ra đã thấy.
+
+`switchCreateTier(tier)` trong `app.js` là **nơi duy nhất** được phép đổi những
+thứ phụ thuộc gói. Thêm bất cứ thứ gì đổi theo tier thì thêm vào đúng hàm đó:
+
+| Đổi cái gì | Thành |
+|---|---|
+| `state.createTier` | `"ULTRA"` / `"BASE"` |
+| class hai pill | `active-ultra` (gradient tím-hồng) / `active-base` (nền trắng) |
+| `aria-pressed` hai pill | `true` / `false` — pill là nút, không phải radio, nên trạng thái chọn phải nói ra bằng thuộc tính này |
+| `#panel-ultra` / `#panel-base` | `hidden` đổi chiều |
+| `#create-submit` | chữ `Tạo License ULTRA` ↔ `Tạo License BASE`, class `btn-ultra` bật/tắt |
+
+`#panel-base` là ô Google Sheet ID **bị khoá** kèm placeholder "Không hỗ trợ trên
+gói BASE", không phải ô bị ẩn. Ẩn hẳn thì modal nhảy chiều cao mỗi lần đổi gói và
+Owner không bao giờ biết vì sao BASE không có chỗ điền Sheet.
+
+### Khung "Mã License Dự Kiến"
+
+Mã sinh ở client **trước** khi tạo, để Owner xem rồi mới bấm:
+
+- `generateRandomKey()` — quay cả hai nhóm 4 ký tự. Dùng `crypto.getRandomValues`
+  và **loại bỏ byte ≥ 252** trước khi `% 36`; thiếu bước đó thì 4 chữ cái đầu
+  bảng chữ ra thường hơn ~14% so với phần còn lại.
+- `syncCandidateMiddle()` — gõ vào ô Mã bưu cục thì **chỉ** đoạn giữa đổi, hai
+  nhóm ngẫu nhiên giữ nguyên. Quay lại cả mã trên mỗi phím gõ thì Owner thấy mã
+  nhấp nháy qua sáu giá trị trong lúc gõ một mã bưu cục sáu ký tự.
+- `submitCreate()` gọi `syncCandidateMiddle()` một lần nữa ngay trước khi POST,
+  phòng trường hợp ô mã bưu cục được sửa bằng cách không sinh ra sự kiện `input`.
+
+Mã đó được gửi lên trong trường `key`. **Đó là tiện lợi, không phải uỷ quyền**:
+`resolveLicenseKey()` trong `admin-routes.js` kiểm lại hình dạng, bắt buộc đoạn
+giữa đúng bằng mã bưu cục vừa validate, và bắt buộc node còn trống. Sai hình dạng
+→ **400 `INVALID_LICENSE_KEY`**; đã có người dùng → **409 `LICENSE_KEY_TAKEN`**.
+Server **từ chối chứ không tự sửa**, vì mã dashboard đã hiện lên là mã Owner có
+thể đã dán cho khách rồi. Gặp 409 thì `app.js` tự quay mã mới để bấm lại là được.
+
+Không gửi `key` (hoặc gửi rỗng) thì server tự sinh như trước.
+
+### Khối công tắc
+
+Bốn checkbox: `skipHashCheck`, `autoUpdate`, `silentUpdate`, `applyOnNextStartup`.
+
+Mặc định bật nằm ở thuộc tính `checked` trong `index.html`, **không** nằm trong
+`app.js` — `openCreate()` gọi `dom.createForm.reset()`, và `reset()` trả checkbox
+về đúng cái `checked` trong HTML. Muốn đổi mặc định thì sửa HTML.
+
+Ở server, ba công tắc module đọc bằng `!== false` chứ không bằng `Boolean()`: một
+body hoàn toàn không có `modulePolicy` phải để cả ba **bật**, vì đó là hình dạng
+mọi bản ghi đang có trong hệ thống. Chỉ `false` tường minh mới tắt.
+
+### Thêm một trường vào modal
+
+Bốn chỗ, đúng thứ tự:
+
+1. `index.html` — thêm `<label class="field">` (trong `.form-grid` nếu muốn nằm
+   hai cột, hoặc trong `#panel-ultra` nếu chỉ ULTRA mới có).
+2. `app.js` — thêm một dòng vào bản đồ `dom`.
+3. `app.js` — thêm vào body của `api("POST", "/licenses/create", { … })`.
+4. `admin-routes.js` — thêm hàm làm sạch (xem `sanitizeNotes` /
+   `sanitizeSpreadsheetId`) rồi thêm trường vào `record`.
+
+Ba nút `#toggle-base`, `#toggle-ultra`, `#btn-general-key` đều **bắt buộc** có
+`type="button"`. Chúng nằm trong `<form id="create-form">`, mà `<button>` không
+ghi `type` thì mặc định là `submit` — bấm pill để xem gói kia sẽ cấp luôn một key.
+
+---
+
+## 8. Cách trang này hiểu lỗi
 
 `describeError()` trong `app.js` tách ba trường hợp không phải "thử lại":
 
@@ -186,7 +263,7 @@ trong khi vấn đề thật là server chưa hề được cấu hình.
 
 ---
 
-## 8. Ánh xạ trạng thái
+## 9. Ánh xạ trạng thái
 
 `GET /api/admin/licenses` trả `effectiveStatus` do `evaluateLicense()` tính —
 cùng hàm mà `/api/verify-license` dùng cho máy trạm, nên bảng này không bao giờ
