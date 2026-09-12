@@ -485,17 +485,6 @@
     // TABLE
     // ==========================================
 
-    function menuItem(label, action, key, extra = {}) {
-        return el("button", {
-            class: `menu__item${extra.danger ? " menu__item--danger" : ""}`,
-            type: "button",
-            "data-action": action,
-            "data-key": key,
-            ...(extra.tier ? { "data-tier": extra.tier } : {}),
-            text: label
-        });
-    }
-
     function buildRow(license) {
         const bucket = bucketOf(license);
         const tier = String(license.tier || "BASE").toUpperCase();
@@ -545,6 +534,9 @@
                 })
             ]),
 
+            // Every action sits on the row itself: one tap each, no dropdown to
+            // open first. The labels carry the meaning, so only the anchored
+            // renewal still needs a tooltip to explain itself.
             el("td", { "data-label": "Thao tác" }, [
                 el("div", { class: "cell-actions" }, [
                     el("button", {
@@ -558,28 +550,32 @@
                     el("button", {
                         class: "btn btn--mini",
                         type: "button",
-                        "data-action": "extend-12",
+                        "data-action": "copy",
                         "data-key": license.key,
-                        title: "Gia hạn thêm 1 năm",
-                        text: "+1 Năm"
+                        text: "Copy key"
                     }),
-                    el("details", { class: "menu" }, [
-                        // The glyph alone announces as "⋯", which tells a screen
-                        // reader user nothing; name the control explicitly.
-                        el("summary", {
-                            text: "⋯",
-                            title: `Thao tác khác cho ${license.key}`,
-                            "aria-label": `Thao tác khác cho ${license.key}`
-                        }),
-                        el("div", { class: "menu__list" }, [
-                            menuItem("Reset HWID", "unbind", license.key),
-                            menuItem(isClosed ? "Mở khoá key" : "Khoá key", "toggle", license.key, {
-                                danger: !isClosed
-                            }),
-                            menuItem(`Đổi Tier → ${otherTier}`, "tier", license.key, { tier: otherTier }),
-                            menuItem("Copy key", "copy", license.key)
-                        ])
-                    ])
+                    el("button", {
+                        class: "btn btn--mini",
+                        type: "button",
+                        "data-action": "unbind",
+                        "data-key": license.key,
+                        text: "Reset HWID"
+                    }),
+                    el("button", {
+                        class: "btn btn--mini",
+                        type: "button",
+                        "data-action": "tier",
+                        "data-key": license.key,
+                        "data-tier": otherTier,
+                        text: `Đổi Tier → ${otherTier}`
+                    }),
+                    el("button", {
+                        class: isClosed ? "btn btn--mini" : "btn btn--mini btn--mini--danger",
+                        type: "button",
+                        "data-action": "toggle",
+                        "data-key": license.key,
+                        text: isClosed ? "Mở khoá" : "Khoá key"
+                    })
                 ])
             ])
         ]);
@@ -660,11 +656,6 @@
 
         const { action, key } = trigger.dataset;
         if (!action || !key) return;
-
-        // Close the row menu the click came from, so the page does not keep a
-        // dropdown open over the result of what it just did.
-        const menu = trigger.closest("details.menu");
-        if (menu) menu.open = false;
 
         if (action === "copy") {
             const copied = await copyText(key);
@@ -807,17 +798,9 @@
 
         dom.rows.addEventListener("click", onRowClick);
 
-        // One open dropdown at a time, and Esc closes whatever is open.
-        document.addEventListener("click", event => {
-            for (const menu of document.querySelectorAll("details.menu[open]")) {
-                if (!menu.contains(event.target)) menu.open = false;
-            }
-        });
-
         document.addEventListener("keydown", event => {
             if (event.key !== "Escape") return;
             if (!dom.createModal.hidden) closeCreate();
-            for (const menu of document.querySelectorAll("details.menu[open]")) menu.open = false;
         });
 
         const stored = readStoredToken();

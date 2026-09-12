@@ -113,15 +113,35 @@ xem `admin-routes.js`.
 
 ---
 
-## 6. Thêm một thao tác vào menu dòng
+## 6. Thêm một thao tác vào cột Thao tác
+
+Cột Thao tác không có menu `⋯`: mọi nút nằm thẳng trên dòng để bấm một chạm.
 
 1. Thêm endpoint trong `admin-routes.js`.
-2. Trong `buildRow()` thêm `menuItem("<Nhãn>", "<action>", license.key)`.
+2. Trong `buildRow()`, thêm vào `el("div", { class: "cell-actions" }, [...])` một
+   nút nữa:
+
+   ```js
+   el("button", {
+       class: "btn btn--mini",
+       type: "button",
+       "data-action": "<action>",
+       "data-key": license.key,
+       text: "<Nhãn>"
+   })
+   ```
+
+   Thêm `class: "btn btn--mini btn--mini--danger"` nếu thao tác gây hậu quả nặng.
 3. Trong `runAction()` thêm nhánh `else if (action === "<action>")` gọi `api(...)`
    rồi `toast(...)`.
 
 `runAction()` tự `reload()` sau khi thành công — trạng thái trên màn hình luôn là
 thứ server vừa xác nhận, không phải thứ frontend đoán.
+
+Thao tác không thể hoàn tác thì thêm một `window.confirm` trong `onRowClick()`
+trước khi gọi `runAction()` — `toggle` (Khoá key) và `unbind` (Reset HWID) đang
+làm đúng như vậy. Nút nằm sẵn trên dòng nên rất dễ bấm nhầm; hộp thoại đó là lớp
+chặn duy nhất.
 
 ---
 

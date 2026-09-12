@@ -224,6 +224,14 @@ input, select, textarea, button { font: inherit; color: inherit; }
 }
 .btn--mini:hover:not([disabled]) { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 
+/* Khoá key sits inline with four harmless actions, so it turns red on hover to
+   say "this one is different" before the confirm dialog does. */
+.btn--mini--danger:hover:not([disabled]) {
+    background: var(--danger-soft);
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
 /* ==========================================
    LOCK SCREEN
    ========================================== */
@@ -528,7 +536,9 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .cell-days--danger { color: var(--danger); }
 .cell-days--none { color: var(--text-faint); font-weight: 400; }
 
-.cell-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+/* Five inline buttons do not always fit one line on a narrow window, so the
+   row wraps instead of forcing the table to scroll sideways. */
+.cell-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
 
 .icon-btn {
     border: 1px solid transparent;
@@ -564,58 +574,6 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .badge--expired { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
 .badge--revoked { background: var(--neutral-soft); color: var(--text-muted); border-color: var(--border-strong); }
 .badge--perpetual { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
-
-/* ==========================================
-   ROW MENU (native <details>, so Esc and click-away cost no JS)
-   ========================================== */
-
-.menu { position: relative; }
-
-.menu > summary {
-    list-style: none;
-    cursor: pointer;
-    padding: 5px 9px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-sunken);
-    color: var(--text-muted);
-    font-size: .8rem;
-    user-select: none;
-}
-
-.menu > summary::-webkit-details-marker { display: none; }
-.menu > summary:hover { background: var(--bg-hover); color: var(--text); }
-
-.menu__list {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 5px);
-    z-index: 15;
-    min-width: 190px;
-    display: grid;
-    padding: 5px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    animation: rise .14s ease both;
-}
-
-.menu__item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: .83rem;
-    cursor: pointer;
-    color: var(--text);
-}
-
-.menu__item:hover { background: var(--bg-hover); }
-.menu__item--danger { color: var(--danger); }
 
 /* ==========================================
    EMPTY / LOADING
@@ -792,7 +750,6 @@ textarea.field__input { resize: vertical; min-height: 56px; }
         font-weight: 700;
     }
 
-    .cell-actions { flex-wrap: wrap; justify-content: flex-end; }
     .toolbar__count { margin-left: 0; width: 100%; }
 }
 
