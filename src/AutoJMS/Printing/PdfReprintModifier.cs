@@ -36,8 +36,6 @@ public sealed class ReprintOverlayContent
     public string Route3 { get; set; } = "";
 
     public string Note { get; set; } = "";
-    public string CodAmount { get; set; } = "";
-    public string Deadline { get; set; } = "";
     public string WaybillNo { get; set; } = "";
 
     // ── Vùng 4: dòng "{mã bưu cục} in lần {n}: {giờ} {ngày}" ──
@@ -342,18 +340,28 @@ public static class PdfReprintModifier
         }
     }
 
+    /// <summary>
+    /// Vùng "Ghi chú" của nhãn gốc gồm hai cột: trái là ghi chú + mã vận đơn, phải là
+    /// "Tiền thu người nhận" và "Giao trước".
+    ///
+    /// Owner đã bỏ hai ô nhập của cột phải, nên miếng vá KHÔNG được chạm tới cột đó nữa:
+    /// xoá trắng rồi vẽ lại bằng chuỗi rỗng chính là cách làm mất tiền thu hộ trên bill.
+    /// Vì vậy mặt nạ chỉ kéo từ mép trái tới vạch ngăn giữa hai cột — phần bên phải giữ
+    /// nguyên đúng những gì JMS đã in.
+    /// </summary>
     private static void DrawNotes(XGraphics gfx, XPen pen, XRect rect, XSize page, PdfLabelGrid grid, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
-        gfx.DrawRectangle(XBrushes.White, rect);
-        var frame = layout.DrawNotesBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
-
+        // Đọc vạch ngăn TRƯỚC khi xoá: sau khi đè trắng thì vẫn đọc được (grid dò từ nội
+        // dung gốc), nhưng tính trước cho rõ ràng vì nó quyết định bề rộng mặt nạ.
         var columns = grid.VerticalInside(rect.X, rect.Right, rect.Y, rect.Bottom);
         double splitX = columns.Count > 0 ? columns[0] : rect.X + layout.NotesColumnSplit * rect.Width;
-        gfx.DrawLine(pen, splitX, frame.Y, splitX, frame.Bottom);
+        if (splitX <= rect.X + 1) return;
 
-        var rightRows = grid.HorizontalInside(rect.Y, rect.Bottom, splitX, rect.Right);
-        double splitY = rightRows.Count > 0 ? rightRows[0] : rect.Y + layout.NotesRightRowSplit * rect.Height;
-        gfx.DrawLine(pen, splitX, splitY, frame.Right, splitY);
+        var masked = new XRect(rect.X, rect.Y, splitX - rect.X, rect.Height);
+        gfx.DrawRectangle(XBrushes.White, masked);
+
+        // Mép phải của khung chính là vạch ngăn hai cột, nên DrawFrame kẻ lại luôn vạch đó.
+        var frame = layout.DrawNotesBorder ? DrawFrame(gfx, pen, masked, layout.LineWidth, page) : masked;
 
         // Cột trái của nhãn gốc còn một vạch ngăn ô mã vận đơn ở đáy; miếng vá xoá mất nó,
         // nên kẻ lại đúng chỗ đọc được. Không đọc được thì thôi, giữ nguyên như trước.
@@ -396,13 +404,6 @@ public static class PdfReprintModifier
                     new XRect(left.X, noteTop, left.Width, noteBottom - noteTop), XStringFormats.TopLeft);
             }
         }
-
-        // Right column: COD on top, delivery deadline underneath.
-        DrawLabeledValue(gfx, Pad(new XRect(splitX, rect.Y, rect.Right - splitX, splitY - rect.Y), layout.Padding),
-            "Tiền thu người nhận:", c.CodAmount, layout);
-
-        DrawLabeledValue(gfx, Pad(new XRect(splitX, splitY, rect.Right - splitX, rect.Bottom - splitY), layout.Padding),
-            "Giao trước:", c.Deadline, layout);
     }
 
     /// <summary>
@@ -451,26 +452,6 @@ public static class PdfReprintModifier
         if (name.Length == 0) return phone;
         if (phone.Length == 0) return name;
         return $"{name} ,{phone}";
-    }
-
-    private static void DrawLabeledValue(XGraphics gfx, XRect area, string label, string? value, ReprintLayoutOptions layout)
-    {
-        if (area.Width <= 1 || area.Height <= 1) return;
-
-        var labelFont = FitFont(gfx, label, layout, layout.NotesLabelFontSize, false, area.Width, 4.5);
-        double labelHeight = LineHeight(gfx, labelFont);
-        gfx.DrawString(label, labelFont, XBrushes.Black,
-            new XRect(area.X, area.Y, area.Width, labelHeight), XStringFormats.TopLeft);
-
-        var text = Clean(value);
-        if (text.Length == 0) return;
-
-        double valueTop = area.Y + labelHeight + 1.0;
-        if (valueTop >= area.Bottom) return;
-
-        var valueFont = FitFont(gfx, text, layout, layout.NotesBodyFontSize, true, area.Width, 4.5);
-        gfx.DrawString(text, valueFont, XBrushes.Black,
-            new XRect(area.X, valueTop, area.Width, area.Bottom - valueTop), XStringFormats.TopLeft);
     }
 
     // ── helpers ──────────────────────────────────────────────

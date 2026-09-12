@@ -118,11 +118,12 @@ public sealed class ReprintLayoutOptions
     public bool DrawNotesBorder { get; set; } = true;
     public bool DrawPrintCountBorder { get; set; } = true;
 
-    /// <summary>Vertical divider inside the notes region, as a fraction of its width (x = 65.5pt).</summary>
+    /// <summary>
+    /// Vertical divider inside the notes region, as a fraction of its width (x = 65.5pt).
+    /// Cũng là mép phải của mặt nạ: cột phải ("Tiền thu người nhận" / "Giao trước") không
+    /// còn ô nhập nào nên miếng vá dừng lại ở đây và để nguyên phần JMS đã in.
+    /// </summary>
     public double NotesColumnSplit { get; set; } = 0.4471;
-
-    /// <summary>Horizontal divider in the notes region's right column, as a fraction of its height (y = 199.5pt).</summary>
-    public double NotesRightRowSplit { get; set; } = 0.4490;
 
     /// <summary>Divider stroke width in points.</summary>
     public double LineWidth { get; set; } = 0.9;
@@ -299,7 +300,6 @@ public sealed class ReprintLayoutOptions
             RouteCellIndexes = fallback.RouteCellIndexes;
 
         NotesColumnSplit = Clamp01(NotesColumnSplit, fallback.NotesColumnSplit);
-        NotesRightRowSplit = Clamp01(NotesRightRowSplit, fallback.NotesRightRowSplit);
 
         if (LineWidth <= 0 || LineWidth > 10) LineWidth = fallback.LineWidth;
         if (Padding < 0 || Padding > 40) Padding = fallback.Padding;

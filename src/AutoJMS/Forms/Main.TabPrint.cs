@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Printing;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -45,6 +44,11 @@ namespace AutoJMS
         private const int ReprintSymbolEyeOpen = 61550;
         private const int ReprintSymbolEyeClosed = 61552;
 
+        // Xám trung tính: đọc được cả trên nền ô sáng lẫn nền ô tối, nên không phải đổi lại
+        // mỗi lần AppTheme chuyển chủ đề. Mặc định của SunnyUI cũng là Gray nhưng chỉ đặt
+        // được một lần ở đây thì rõ ý hơn là dựa vào giá trị mặc định của thư viện.
+        private static readonly Color ReprintWatermarkColor = Color.FromArgb(140, 140, 140);
+
         // ── controls (all created in BuildTabPrintInLaiDonSection) ──
         private TableLayoutPanel _reprintRoot;
         private UICheckBox _reprintChkReceiver;
@@ -59,11 +63,10 @@ namespace AutoJMS
         private UITextBox _reprintTxtRoute2;
         private UITextBox _reprintTxtRoute3;
         private UITextBox _reprintTxtNote;
-        private UITextBox _reprintTxtCod;
-        private UITextBox _reprintTxtDeadline;
         private UITextBox _reprintTxtPrintCode;
         private UITextBox _reprintTxtPrintTimes;
-        private UITextBox _reprintTxtPrintTime;
+        private UITextBox _reprintTxtPrintClock;
+        private UITextBox _reprintTxtPrintDate;
         private UILabel _reprintStatus;
         private ToolTip _reprintTip;
 
@@ -198,30 +201,21 @@ namespace AutoJMS
             return card;
         }
 
-        /// <summary>Thẻ 3 — Ghi chú & COD.</summary>
+        /// <summary>
+        /// Thẻ 3 — Ghi chú. Owner đã bỏ hai ô "Tiền thu hộ" và "Giao trước", nên ô ghi chú
+        /// lấy trọn chiều cao của thẻ thay vì nhường 27px cho dòng dưới.
+        /// </summary>
         private Control BuildReprintNotesCard()
         {
-            var card = NewReprintCard("tabPrint_reprintCardNotes", 3, out var body);
+            var card = NewReprintCard("tabPrint_reprintCardNotes", 2, out var body);
             body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
 
-            _reprintChkNotes = NewReprintCheckBox("tabPrint_reprintChkNotes", "Sửa Ghi chú & COD");
+            _reprintChkNotes = NewReprintCheckBox("tabPrint_reprintChkNotes", "Sửa Ghi chú");
             _reprintTxtNote = NewReprintTextBox("tabPrint_reprintTxtNote", "Ghi chú", true);
-            _reprintTxtCod = NewReprintTextBox("tabPrint_reprintTxtCod", "Tiền thu hộ", false);
-            _reprintTxtDeadline = NewReprintTextBox("tabPrint_reprintTxtDeadline", "Giao trước", false);
-            _reprintTxtDeadline.Margin = new Padding(4, 1, 0, 2);
-
-            // Ô COD chứa "1,234,000" còn "Giao trước" chứa một mốc ngày: cả hai đều ngắn,
-            // nên khoá bề rộng thay vì để chúng kéo hết chiều ngang của thẻ.
-            var bottom = NewReprintFieldRow();
-            AddReprintCell(bottom, _reprintTxtCod, 108);
-            AddReprintCell(bottom, _reprintTxtDeadline, 108);
-            AddReprintCell(bottom, null, 0);
 
             body.Controls.Add(_reprintChkNotes, 0, 0);
             body.Controls.Add(_reprintTxtNote, 0, 1);
-            body.Controls.Add(bottom, 0, 2);
             return card;
         }
 
@@ -240,7 +234,12 @@ namespace AutoJMS
             _reprintTxtPrintCode = NewReprintTextBox("tabPrint_reprintTxtPrintCode", "Mã bưu cục", false);
             _reprintTxtPrintTimes = NewReprintTextBox("tabPrint_reprintTxtPrintTimes", "Lần in", false);
             _reprintTxtPrintTimes.Margin = new Padding(4, 1, 0, 2);
-            _reprintTxtPrintTime = NewReprintTextBox("tabPrint_reprintTxtPrintTime", "Giờ & ngày in", false);
+
+            // Owner chốt tách mốc thời gian thành hai ô rời: giờ và ngày sửa độc lập, khi in
+            // thì ghép lại bằng một dấu cách ("21:40" + "12-09-2026" → "21:40 12-09-2026").
+            _reprintTxtPrintClock = NewReprintTextBox("tabPrint_reprintTxtPrintClock", "HH:MM", false);
+            _reprintTxtPrintDate = NewReprintTextBox("tabPrint_reprintTxtPrintDate", "dd-MM-yyyy", false);
+            _reprintTxtPrintDate.Margin = new Padding(4, 1, 0, 2);
 
             var header = NewReprintFieldRow();
             AddReprintCell(header, _reprintTxtPrintCode, 96);
@@ -248,7 +247,8 @@ namespace AutoJMS
             AddReprintCell(header, null, 0);
 
             var stamp = NewReprintFieldRow();
-            AddReprintCell(stamp, _reprintTxtPrintTime, 162);
+            AddReprintCell(stamp, _reprintTxtPrintClock, 62);
+            AddReprintCell(stamp, _reprintTxtPrintDate, 96);
             AddReprintCell(stamp, null, 0);
 
             body.Controls.Add(_reprintChkPrintCount, 0, 0);
@@ -360,6 +360,8 @@ namespace AutoJMS
                 Dock = DockStyle.Fill,
                 Multiline = multiline,
                 Watermark = watermark,
+                WatermarkColor = ReprintWatermarkColor,
+                WatermarkActiveColor = ReprintWatermarkColor,
                 ShowText = false,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
                 Margin = new Padding(0, 1, 0, 2),
@@ -368,7 +370,36 @@ namespace AutoJMS
                 TextAlignment = multiline ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft
             };
             box.TextChanged += Reprint_FieldTextChanged;
+            box.HandleCreated += Reprint_FieldHandleCreated;
             return box;
+        }
+
+        /// <summary>
+        /// Bật chữ mờ gợi ý ngay khi ô vừa có handle.
+        ///
+        /// SunnyUI dựng tấm phủ chứa chữ mờ trong constructor của <c>UIEdit</c>, nhưng chỉ
+        /// cho nó hiện lên ở <c>OnInvalidated</c> — mà <c>Invalidate()</c> lúc control chưa
+        /// có handle thì không phát sự kiện đó. Gán Watermark trong object initializer vì
+        /// vậy không đủ: chữ mờ chỉ hiện sau khi Owner bấm vào ô (sự kiện Enter dựng lại
+        /// tấm phủ, lúc này handle đã có). Gán lại đúng giá trị cũ sau khi handle tồn tại là
+        /// chạy lại nhánh OnInvalidated đó — setter của SunnyUI không so sánh giá trị cũ.
+        ///
+        /// Hoãn bằng BeginInvoke vì sự kiện HandleCreated của control ngoài bắn TRƯỚC khi
+        /// WinForms tạo handle cho ô nhập con bên trong.
+        /// </summary>
+        private void Reprint_FieldHandleCreated(object sender, EventArgs e)
+        {
+            if (sender is not UITextBox box || box.IsDisposed) return;
+            box.BeginInvoke((MethodInvoker)(() => RefreshReprintWatermark(box)));
+        }
+
+        private static void RefreshReprintWatermark(UITextBox box)
+        {
+            if (box == null || box.IsDisposed || !box.IsHandleCreated) return;
+
+            string watermark = box.Watermark;
+            if (string.IsNullOrEmpty(watermark)) return;
+            box.Watermark = watermark;
         }
 
         // ==================================================================================
@@ -471,11 +502,10 @@ namespace AutoJMS
             SetReprintFieldEnabled(_reprintTxtRoute2, route);
             SetReprintFieldEnabled(_reprintTxtRoute3, route);
             SetReprintFieldEnabled(_reprintTxtNote, notes);
-            SetReprintFieldEnabled(_reprintTxtCod, notes);
-            SetReprintFieldEnabled(_reprintTxtDeadline, notes);
             SetReprintFieldEnabled(_reprintTxtPrintCode, printCount);
             SetReprintFieldEnabled(_reprintTxtPrintTimes, printCount);
-            SetReprintFieldEnabled(_reprintTxtPrintTime, printCount);
+            SetReprintFieldEnabled(_reprintTxtPrintClock, printCount);
+            SetReprintFieldEnabled(_reprintTxtPrintDate, printCount);
         }
 
         private static void SetReprintFieldEnabled(UITextBox box, bool enabled)
@@ -483,6 +513,9 @@ namespace AutoJMS
             if (box == null || box.IsDisposed) return;
             box.ReadOnly = !enabled;
             box.Enabled = enabled;
+
+            // Bật/tắt làm ô vẽ lại; gọi lại cho chắc để chữ mờ không biến mất theo.
+            RefreshReprintWatermark(box);
         }
 
         private static void SetReprintFieldReadOnly(UITextBox box)
@@ -490,6 +523,7 @@ namespace AutoJMS
             if (box == null || box.IsDisposed) return;
             box.ReadOnly = true;
             box.Enabled = true;
+            RefreshReprintWatermark(box);
         }
 
         private void SetReprintStatus(string message, bool isError = false)
@@ -536,11 +570,10 @@ namespace AutoJMS
                 SetReprintText(_reprintTxtRoute2, "");
                 SetReprintText(_reprintTxtRoute3, "");
                 SetReprintText(_reprintTxtNote, "");
-                SetReprintText(_reprintTxtCod, "");
-                SetReprintText(_reprintTxtDeadline, "");
                 SetReprintText(_reprintTxtPrintCode, "");
                 SetReprintText(_reprintTxtPrintTimes, "");
-                SetReprintText(_reprintTxtPrintTime, "");
+                SetReprintText(_reprintTxtPrintClock, "");
+                SetReprintText(_reprintTxtPrintDate, "");
             }
             finally
             {
@@ -687,13 +720,15 @@ namespace AutoJMS
                 SetReprintText(_reprintTxtRoute2, Dash2Empty(row?.MaDoan2));
                 SetReprintText(_reprintTxtRoute3, Dash2Empty(row?.MaDoan3));
                 SetReprintText(_reprintTxtNote, Dash2Empty(row?.NoiDungHangHoa));
-                SetReprintText(_reprintTxtCod, Dash2Empty(row?.CODThucTe));
-                SetReprintText(_reprintTxtDeadline, "");
                 SetReprintText(_reprintTxtPrintCode, ResolveReprintNetworkCode(row));
-                SetReprintText(_reprintTxtPrintTimes, ResolveReprintPrintCount(row));
+
+                // Owner chốt điền sẵn "1": tờ nhãn đang dựng là lần in đầu của nó, còn số
+                // JMS đang ghi nhận thì đếm cả những lần in trước đó. Ô vẫn sửa được.
+                SetReprintText(_reprintTxtPrintTimes, "1");
 
                 // Nhãn vừa được JMS sinh ra vài giây trước, nên "giữ như cũ" chính là lúc này.
-                SetReprintText(_reprintTxtPrintTime, DateTime.Now.ToString("HH:mm dd-MM-yyyy"));
+                SetReprintText(_reprintTxtPrintClock, DateTime.Now.ToString("HH:mm"));
+                SetReprintText(_reprintTxtPrintDate, DateTime.Now.ToString("dd-MM-yyyy"));
             }
             finally
             {
@@ -724,14 +759,18 @@ namespace AutoJMS
             return "";
         }
 
-        /// <summary>Số lần in JMS đang ghi nhận; cùng quy tắc với <c>PrintService.ResolvePrintCount</c>.</summary>
-        private static string ResolveReprintPrintCount(TrackingRow row)
+        /// <summary>
+        /// Ghép hai ô giờ và ngày thành đúng chuỗi nhãn gốc in ra ("21:40 12-09-2026").
+        /// Thiếu vế nào thì bỏ hẳn vế đó để không còn dấu cách thừa trên bản in.
+        /// </summary>
+        private static string JoinClockAndDate(string clock, string date)
         {
-            if (row == null) return "";
-            if (row.PrintApprovalPrintCount.HasValue)
-                return row.PrintApprovalPrintCount.Value.ToString(CultureInfo.InvariantCulture);
+            string time = (clock ?? "").Trim();
+            string day = (date ?? "").Trim();
 
-            return row.PrintCount > 0 ? row.PrintCount.ToString(CultureInfo.InvariantCulture) : "";
+            if (time.Length == 0) return day;
+            if (day.Length == 0) return time;
+            return time + " " + day;
         }
 
         private static string BuildReceiverAddress(TrackingRow row)
@@ -890,11 +929,10 @@ namespace AutoJMS
             Route2 = ReadReprintText(_reprintTxtRoute2),
             Route3 = ReadReprintText(_reprintTxtRoute3),
             Note = ReadReprintText(_reprintTxtNote),
-            CodAmount = ReadReprintText(_reprintTxtCod),
-            Deadline = ReadReprintText(_reprintTxtDeadline),
             PrintCountNetworkCode = ReadReprintText(_reprintTxtPrintCode),
             PrintCountTimes = ReadReprintText(_reprintTxtPrintTimes),
-            PrintCountTimestamp = ReadReprintText(_reprintTxtPrintTime),
+            PrintCountTimestamp = JoinClockAndDate(
+                ReadReprintText(_reprintTxtPrintClock), ReadReprintText(_reprintTxtPrintDate)),
             WaybillNo = _reprintFirstWaybill
         };
 
