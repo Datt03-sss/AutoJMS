@@ -561,9 +561,14 @@ router.post(
         }
 
         const notes = sanitizeNotes(req.body?.notes);
-        // Only ULTRA reads a sheet. Storing one on a BASE record would make the
-        // console show a key as provisioned while the client ignores the field.
-        const dataSpreadsheetId = tier === "ULTRA" ? sanitizeSpreadsheetId(req.body?.dataSpreadsheetId) : "";
+        // Not gated on tier. BASE uses Google Sheet too: the broker route
+        // (/api/google-sheets/grant) checks status and expiry and nothing else,
+        // CanUseGoogleSheetFeature() on the client never looks at the tier, and
+        // TierRuntimePolicy withholds exactly four things from BASE — inventory
+        // sync, database tracking, background auto-sync and FullStackOperation.
+        // Sheets is not one of them. Blanking it here left BASE customers with a
+        // key that could never be pointed at their own spreadsheet.
+        const dataSpreadsheetId = sanitizeSpreadsheetId(req.body?.dataSpreadsheetId);
         // Defaults to the spec's true: the fleet's records carry it, and an
         // omitted field must not silently turn hash checking back on for a key
         // the owner did not mean to lock down.

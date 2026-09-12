@@ -442,7 +442,7 @@ test("a client key that is already taken is refused rather than overwriting the 
     }
 });
 
-test("dataSpreadsheetId is stored for ULTRA and blanked for BASE", async () => {
+test("dataSpreadsheetId is stored for BASE exactly as it is for ULTRA", async () => {
     const harness = await startServer({ env: adminEnv, seed: { Licenses: {} } });
 
     try {
@@ -460,9 +460,11 @@ test("dataSpreadsheetId is stored for ULTRA and blanked for BASE", async () => {
         assert.equal(ultra.status, 201);
         assert.equal(harness.db.read(`Licenses/${ultra.body.key}`).dataSpreadsheetId, "1AbCdEfGhIjKlMnOpQrStUvWxYz");
 
-        // BASE has no sheet in the client, so a value sent for one is dropped
-        // rather than stored: a record that looks provisioned but is not is
-        // worse than an empty one.
+        // BASE uses Google Sheet too. /api/google-sheets/grant checks status and
+        // expiry and never reads the tier, and TierRuntimePolicy withholds only
+        // inventory sync, database tracking, background auto-sync and
+        // FullStackOperation from BASE. Blanking the field here would hand a BASE
+        // customer a key that can never reach their own spreadsheet.
         const base = await harness.post(
             "/api/admin/licenses/create",
             withAuth({
@@ -470,7 +472,7 @@ test("dataSpreadsheetId is stored for ULTRA and blanked for BASE", async () => {
             })
         );
         assert.equal(base.status, 201);
-        assert.equal(harness.db.read(`Licenses/${base.body.key}`).dataSpreadsheetId, "");
+        assert.equal(harness.db.read(`Licenses/${base.body.key}`).dataSpreadsheetId, "1AbCdEfGhIjKlMnOpQrStUvWxYz");
 
         // Anything that is not text becomes "", never "[object Object]".
         const junk = await harness.post(

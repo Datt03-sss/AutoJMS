@@ -214,12 +214,19 @@ thứ phụ thuộc gói. Thêm bất cứ thứ gì đổi theo tier thì thêm
 | `state.createTier` | `"ULTRA"` / `"BASE"` |
 | class hai pill | `active-ultra` (gradient tím-hồng) / `active-base` (nền trắng) |
 | `aria-pressed` hai pill | `true` / `false` — pill là nút, không phải radio, nên trạng thái chọn phải nói ra bằng thuộc tính này |
-| `#panel-ultra` / `#panel-base` | `hidden` đổi chiều |
 | `#create-submit` | chữ `Tạo License ULTRA` ↔ `Tạo License BASE`, class `btn-ultra` bật/tắt |
 
-`#panel-base` là ô Google Sheet ID **bị khoá** kèm placeholder "Không hỗ trợ trên
-gói BASE", không phải ô bị ẩn. Ẩn hẳn thì modal nhảy chiều cao mỗi lần đổi gói và
-Owner không bao giờ biết vì sao BASE không có chỗ điền Sheet.
+Ngoài bảng trên, **không có trường nào trong modal đổi theo gói**. Cụ thể, ô
+Google Sheet ID dùng chung cho cả hai: **Google Sheet không phải tính năng riêng
+của ULTRA**. Route cấp token `/api/google-sheets/grant` chỉ kiểm tra trạng thái
+và hạn dùng, `CanUseGoogleSheetFeature()` phía client không đọc tier, còn
+`TierRuntimePolicy` chỉ giữ lại của BASE đúng bốn thứ — inventory sync, database
+tracking, auto-sync nền, và form FullStackOperation.
+
+Trước đây ô này bị khoá khi chọn BASE và server cũng xoá trắng
+`dataSpreadsheetId` cho key BASE. **Đó là lỗi**: khách BASE khi đó cầm một key
+không bao giờ trỏ được vào bảng tính của chính mình, dù mọi đường chạy lúc chạy
+thật đều phục vụ họ bình thường. Đừng dựng lại rào đó.
 
 ### Khung "Mã License Dự Kiến"
 
@@ -260,7 +267,9 @@ mọi bản ghi đang có trong hệ thống. Chỉ `false` tường minh mới 
 Bốn chỗ, đúng thứ tự:
 
 1. `index.html` — thêm `<label class="field">` (trong `.form-grid` nếu muốn nằm
-   hai cột, hoặc trong `#panel-ultra` nếu chỉ ULTRA mới có).
+   hai cột). Trường chỉ dành cho một gói thì ẩn/hiện trong `switchCreateTier()` —
+   nhưng kiểm tra thật kỹ rằng tier có gác tính năng đó không, đừng suy từ tên
+   gói ra.
 2. `app.js` — thêm một dòng vào bản đồ `dom`.
 3. `app.js` — thêm vào body của `api("POST", "/licenses/create", { … })`.
 4. `admin-routes.js` — thêm hàm làm sạch (xem `sanitizeNotes` /

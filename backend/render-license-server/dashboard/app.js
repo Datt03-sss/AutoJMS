@@ -120,8 +120,6 @@
 
         toggleBase: $("toggle-base"),
         toggleUltra: $("toggle-ultra"),
-        panelBase: $("panel-base"),
-        panelUltra: $("panel-ultra"),
         keyDisplay: $("key-display"),
         btnGeneralKey: $("btn-general-key"),
 
@@ -947,9 +945,6 @@
         dom.toggleUltra.setAttribute("aria-pressed", String(isUltra));
         dom.toggleBase.setAttribute("aria-pressed", String(!isUltra));
 
-        dom.panelUltra.hidden = !isUltra;
-        dom.panelBase.hidden = isUltra;
-
         dom.createSubmit.className = isUltra
             ? "btn btn--primary btn-submit btn-ultra"
             : "btn btn--primary btn-submit";
@@ -994,10 +989,10 @@
                 tier,
                 terms,
                 notes: dom.createNotes.value,
-                // Sent only for ULTRA; the server blanks it for BASE anyway, and
-                // posting a value the server is about to discard would make the
-                // request read as though BASE keys could carry a sheet.
-                dataSpreadsheetId: tier === "ULTRA" ? dom.createSheetId.value.trim() : "",
+                // Sent for both gói. Google Sheet is not an ULTRA feature — the
+                // token broker checks status and expiry only, and BASE loses
+                // exactly four background capabilities, none of them Sheets.
+                dataSpreadsheetId: dom.createSheetId.value.trim(),
                 skipHashCheck: dom.createSkipHash.checked,
                 modulePolicy: {
                     autoUpdate: dom.createAutoUpdate.checked,
