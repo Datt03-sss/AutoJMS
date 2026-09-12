@@ -535,8 +535,9 @@
             ]),
 
             // Every action sits on the row itself: one tap each, no dropdown to
-            // open first. The labels carry the meaning, so only the anchored
-            // renewal still needs a tooltip to explain itself.
+            // open first. Only the renewal keeps a word label; the rest are
+            // square icons, so each needs an aria-label — a lone glyph tells a
+            // screen reader user nothing, and the emoji is not the name.
             el("td", { "data-label": "Thao tác" }, [
                 el("div", { class: "cell-actions" }, [
                     el("button", {
@@ -548,34 +549,57 @@
                         text: "+1 Tháng"
                     }),
                     el("button", {
-                        class: "btn btn--mini",
+                        class: "btn--action-icon",
                         type: "button",
                         "data-action": "copy",
                         "data-key": license.key,
-                        text: "Copy key"
+                        title: "Copy",
+                        "aria-label": "Copy",
+                        text: "📋"
                     }),
                     el("button", {
-                        class: "btn btn--mini",
+                        class: "btn--action-icon",
                         type: "button",
                         "data-action": "unbind",
                         "data-key": license.key,
-                        text: "Reset HWID"
+                        title: "Reset HWID",
+                        "aria-label": "Reset HWID",
+                        text: "🔄"
                     }),
                     el("button", {
-                        class: "btn btn--mini",
+                        class: "btn--action-icon",
                         type: "button",
                         "data-action": "tier",
                         "data-key": license.key,
                         "data-tier": otherTier,
-                        text: `Đổi Tier → ${otherTier}`
+                        title: `Đổi → ${otherTier}`,
+                        "aria-label": `Đổi → ${otherTier}`,
+                        text: "⚡"
                     }),
-                    el("button", {
-                        class: isClosed ? "btn btn--mini" : "btn btn--mini btn--mini--danger",
-                        type: "button",
-                        "data-action": "toggle",
-                        "data-key": license.key,
-                        text: isClosed ? "Mở khoá" : "Khoá key"
-                    })
+                    // data-closed is what onRowClick reads to pick the confirm
+                    // wording. It has to be an attribute, not the label: the
+                    // label is now a padlock glyph with no direction in it.
+                    isClosed
+                        ? el("button", {
+                            class: "btn--action-icon btn--action-icon--success",
+                            type: "button",
+                            "data-action": "toggle",
+                            "data-key": license.key,
+                            "data-closed": "true",
+                            title: "Mở khoá",
+                            "aria-label": "Mở khoá key",
+                            text: "🔓"
+                        })
+                        : el("button", {
+                            class: "btn--action-icon btn--action-icon--danger",
+                            type: "button",
+                            "data-action": "toggle",
+                            "data-key": license.key,
+                            "data-closed": "false",
+                            title: "Khoá key",
+                            "aria-label": "Khoá key",
+                            text: "🔒"
+                        })
                 ])
             ])
         ]);
@@ -663,12 +687,16 @@
             return;
         }
 
-        // The two irreversible-feeling ones. Extension is additive and a tier
-        // change is one click to undo, so neither asks.
-        if (action === "toggle" && !trigger.textContent.startsWith("Mở")) {
-            if (!window.confirm(`Khoá license ${key}?\nMáy trạm đang dùng key này sẽ bị từ chối ở lần kiểm tra tiếp theo.`)) {
-                return;
-            }
+        // The ones that change who can run the software. Extension is additive
+        // and a tier change is one click to undo, so neither asks. Both
+        // directions of toggle ask: unlocking a key is as much a decision as
+        // locking one, and the two buttons now differ by a single glyph.
+        if (action === "toggle") {
+            const isUnlocking = trigger.dataset.closed === "true";
+            const message = isUnlocking
+                ? `Mở khoá license ${key}?\nMáy trạm sẽ có thể kích hoạt và hoạt động lại bình thường.`
+                : `Khoá license ${key}?\nMáy trạm đang dùng key này sẽ bị từ chối truy cập ngay lập tức.`;
+            if (!window.confirm(message)) return;
         }
 
         if (action === "unbind") {

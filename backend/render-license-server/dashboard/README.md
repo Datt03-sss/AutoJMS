@@ -116,6 +116,8 @@ xem `admin-routes.js`.
 ## 6. Thêm một thao tác vào cột Thao tác
 
 Cột Thao tác không có menu `⋯`: mọi nút nằm thẳng trên dòng để bấm một chạm.
+Chỉ `+1 Tháng` giữ chữ (`btn btn--mini`), còn lại là nút icon vuông 28px
+(`btn--action-icon`) để 5 nút không làm bảng rối.
 
 1. Thêm endpoint trong `admin-routes.js`.
 2. Trong `buildRow()`, thêm vào `el("div", { class: "cell-actions" }, [...])` một
@@ -123,25 +125,35 @@ Cột Thao tác không có menu `⋯`: mọi nút nằm thẳng trên dòng đ�
 
    ```js
    el("button", {
-       class: "btn btn--mini",
+       class: "btn--action-icon",
        type: "button",
        "data-action": "<action>",
        "data-key": license.key,
-       text: "<Nhãn>"
+       title: "<Nhãn>",
+       "aria-label": "<Nhãn>",
+       text: "<icon>"
    })
    ```
 
-   Thêm `class: "btn btn--mini btn--mini--danger"` nếu thao tác gây hậu quả nặng.
+   `title` **và** `aria-label` đều bắt buộc với nút icon: `title` là tooltip khi
+   di chuột, `aria-label` là tên thật của nút — thiếu nó thì trình đọc màn hình
+   chỉ đọc được emoji. Thêm `btn--action-icon--danger` (đỏ khi hover) cho thao
+   tác gây hậu quả nặng, `btn--action-icon--success` (xanh) cho thao tác khôi
+   phục.
 3. Trong `runAction()` thêm nhánh `else if (action === "<action>")` gọi `api(...)`
    rồi `toast(...)`.
 
 `runAction()` tự `reload()` sau khi thành công — trạng thái trên màn hình luôn là
 thứ server vừa xác nhận, không phải thứ frontend đoán.
 
-Thao tác không thể hoàn tác thì thêm một `window.confirm` trong `onRowClick()`
-trước khi gọi `runAction()` — `toggle` (Khoá key) và `unbind` (Reset HWID) đang
-làm đúng như vậy. Nút nằm sẵn trên dòng nên rất dễ bấm nhầm; hộp thoại đó là lớp
-chặn duy nhất.
+Thao tác nặng thì thêm một `window.confirm` trong `onRowClick()` trước khi gọi
+`runAction()` — `toggle` (cả Khoá lẫn Mở khoá) và `unbind` (Reset HWID) đang làm
+đúng như vậy. Nút nằm sẵn trên dòng và giờ chỉ còn là một glyph nên rất dễ bấm
+nhầm; hộp thoại đó là lớp chặn duy nhất.
+
+Đừng phân biệt chiều của thao tác bằng `textContent` — nhãn giờ là icon, không
+có chữ để đọc. `toggle` dùng `data-closed="true|false"` và `onRowClick()` đọc
+`trigger.dataset.closed` để chọn câu hỏi xác nhận.
 
 ---
 

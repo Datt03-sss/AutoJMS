@@ -224,12 +224,44 @@ input, select, textarea, button { font: inherit; color: inherit; }
 }
 .btn--mini:hover:not([disabled]) { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 
-/* Khoá key sits inline with four harmless actions, so it turns red on hover to
-   say "this one is different" before the confirm dialog does. */
-.btn--mini--danger:hover:not([disabled]) {
+/* Square glyph buttons for the row actions. Fixed 28px so a row of them lines
+   up whatever glyph is inside, and so the tap target stays honest on a phone. */
+.btn--action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: .88rem;
+    line-height: 1;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all .12s ease;
+}
+
+.btn--action-icon:hover:not([disabled]) {
+    background: var(--brand-soft);
+    color: var(--brand);
+    border-color: var(--brand);
+    transform: translateY(-1px);
+}
+
+/* Lock turns red, unlock turns green: the padlock glyphs differ by one shackle,
+   so colour is what tells the two apart at a glance. */
+.btn--action-icon--danger:hover:not([disabled]) {
     background: var(--danger-soft);
     color: var(--danger);
     border-color: var(--danger);
+}
+
+.btn--action-icon--success:hover:not([disabled]) {
+    background: var(--ok-soft);
+    color: var(--ok);
+    border-color: var(--ok);
 }
 
 /* ==========================================
@@ -536,8 +568,9 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .cell-days--danger { color: var(--danger); }
 .cell-days--none { color: var(--text-faint); font-weight: 400; }
 
-/* Five inline buttons do not always fit one line on a narrow window, so the
-   row wraps instead of forcing the table to scroll sideways. */
+/* One word button plus four 28px icons. align-items centres the icons against
+   the taller text button, and wrapping keeps a narrow window from pushing the
+   table into a sideways scroll. */
 .cell-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
 
 .icon-btn {
