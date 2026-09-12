@@ -20,8 +20,15 @@ public sealed class ReprintOverlayContent
     public bool EditReceiver { get; set; }
     public bool EditRoute { get; set; }
     public bool EditNotes { get; set; }
+    public bool EditPrintCount { get; set; }
 
     public string ReceiverName { get; set; } = "";
+
+    /// <summary>
+    /// Số điện thoại in kèm tên, đúng dạng Owner đang thấy trên app: bản che
+    /// (<c>******1886</c>) khi chưa bấm nút con mắt, bản đầy đủ khi đã bấm.
+    /// </summary>
+    public string ReceiverPhone { get; set; } = "";
     public string ReceiverAddress { get; set; } = "";
 
     public string Route1 { get; set; } = "";
@@ -33,7 +40,12 @@ public sealed class ReprintOverlayContent
     public string Deadline { get; set; } = "";
     public string WaybillNo { get; set; } = "";
 
-    public bool HasAnyEdit => EditReceiver || EditRoute || EditNotes;
+    // ── Vùng 4: dòng "{mã bưu cục} in lần {n}: {giờ} {ngày}" ──
+    public string PrintCountNetworkCode { get; set; } = "";
+    public string PrintCountTimes { get; set; } = "";
+    public string PrintCountTimestamp { get; set; } = "";
+
+    public bool HasAnyEdit => EditReceiver || EditRoute || EditNotes || EditPrintCount;
 }
 
 /// <summary>
@@ -112,7 +124,7 @@ internal sealed class WindowsFontResolver : IFontResolver
 }
 
 /// <summary>
-/// Stamps the three editable regions onto a JMS label PDF while keeping the file vector.
+/// Stamps the four editable regions onto a JMS label PDF while keeping the file vector.
 /// Everything is drawn with PDFsharp path/text operators appended to the existing content
 /// stream, so the 1D barcode and the QR code are never rasterized.
 /// </summary>
@@ -215,6 +227,9 @@ public static class PdfReprintModifier
 
         if (content.EditNotes)
             DrawNotes(gfx, pen, Snap(ToRect(layout.Notes, w, h), grid, tolerance), page, grid, content, layout);
+
+        if (content.EditPrintCount)
+            DrawPrintCount(gfx, pen, Snap(ToRect(layout.PrintCount, w, h), grid, tolerance), page, content, layout);
     }
 
     /// <summary>
@@ -257,8 +272,9 @@ public static class PdfReprintModifier
             new XRect(inner.X, y, inner.Width, labelHeight), XStringFormats.TopLeft);
         y += labelHeight;
 
-        // Dòng 2: tên người nhận (+ SĐT nếu Owner nhập kèm).
-        var name = Clean(c.ReceiverName);
+        // Dòng 2: tên người nhận + SĐT, ghép đúng dạng nhãn gốc in ("Tên ,******1886")
+        // để miếng vá không lộ ra khác kiểu so với những đơn không sửa.
+        var name = JoinNameAndPhone(Clean(c.ReceiverName), Clean(c.ReceiverPhone));
         if (name.Length > 0 && y < inner.Bottom)
         {
             var nameFont = FitFont(gfx, name, layout, layout.ReceiverLabelFontSize, true, inner.Width, 5.0);
@@ -387,6 +403,54 @@ public static class PdfReprintModifier
 
         DrawLabeledValue(gfx, Pad(new XRect(splitX, splitY, rect.Right - splitX, rect.Bottom - splitY), layout.Padding),
             "Giao trước:", c.Deadline, layout);
+    }
+
+    /// <summary>
+    /// Khung "đếm lần in" — ô nằm ngay dưới "Trọng lượng tính" ở cột phải, nhãn gốc in
+    /// hai dòng: <c>214A03 in lần 11:</c> rồi <c>22:17 12-09-2026</c>. Ô này cao khoảng 21pt
+    /// nên chỉ chừa 1pt trên/dưới, còn bề ngang vẫn theo Padding chung.
+    /// </summary>
+    private static void DrawPrintCount(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    {
+        gfx.DrawRectangle(XBrushes.White, rect);
+        var frame = layout.DrawPrintCountBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
+
+        var inner = new XRect(frame.X + layout.Padding, frame.Y + 1.0,
+            Math.Max(0, frame.Width - 2 * layout.Padding),
+            Math.Max(0, frame.Height - 2.0));
+        if (inner.Width <= 1 || inner.Height <= 1) return;
+
+        double y = inner.Y;
+        foreach (var line in new[] { BuildPrintCountHeader(c), Clean(c.PrintCountTimestamp) })
+        {
+            if (line.Length == 0 || y >= inner.Bottom) continue;
+
+            var font = FitFont(gfx, line, layout, layout.PrintCountFontSize, false, inner.Width, 4.0);
+            double height = LineHeight(gfx, font);
+            gfx.DrawString(line, font, XBrushes.Black,
+                new XRect(inner.X, y, inner.Width, height), XStringFormats.TopLeft);
+            y += height;
+        }
+    }
+
+    /// <summary>Dòng "{mã bưu cục} in lần {n}:", bỏ gọn phần nào Owner để trống.</summary>
+    private static string BuildPrintCountHeader(ReprintOverlayContent c)
+    {
+        var code = Clean(c.PrintCountNetworkCode);
+        var times = Clean(c.PrintCountTimes);
+
+        if (code.Length > 0 && times.Length > 0) return $"{code} in lần {times}:";
+        if (code.Length > 0) return $"{code} in lần:";
+        if (times.Length > 0) return $"in lần {times}:";
+        return "";
+    }
+
+    /// <summary>Ghép tên + SĐT theo đúng dấu phân cách nhãn JMS dùng (" ,").</summary>
+    private static string JoinNameAndPhone(string name, string phone)
+    {
+        if (name.Length == 0) return phone;
+        if (phone.Length == 0) return name;
+        return $"{name} ,{phone}";
     }
 
     private static void DrawLabeledValue(XGraphics gfx, XRect area, string label, string? value, ReprintLayoutOptions layout)

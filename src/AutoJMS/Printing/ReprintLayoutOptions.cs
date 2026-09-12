@@ -50,7 +50,7 @@ public sealed class ReprintLayoutOptions
     /// Bumped whenever the built-in geometry changes. A template on disk carrying an older
     /// version is archived and regenerated, otherwise stale coordinates would shadow the fix.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -91,6 +91,11 @@ public sealed class ReprintLayoutOptions
     // Từ đường kẻ dưới "Nội dung hàng hoá" (y=177.5pt) xuống đáy nhãn.
     public ReprintRegionBox Notes { get; set; } = new(0.00, 0.7819, 0.6976, 1.00);
 
+    // ── Region 4: dòng đếm lần in ("214A03 in lần 11: 22:17 12-09-2026") ──
+    // Cột phải, nằm giữa ô "Trọng lượng tính" (đáy y=135.5pt) và ô "Nội dung hàng hoá"
+    // (đỉnh y=177.5pt). Dải 42pt đó chứa đúng hai ô hai dòng nên vạch ngăn ở y=156.5pt.
+    public ReprintRegionBox PrintCount { get; set; } = new(0.6976, 0.6894, 1.00, 0.7819);
+
     /// <summary>
     /// Horizontal dividers inside the route region, as a fraction of its height.
     /// Đo từ nhãn thật: y = 65.5 / 89.5 / 112.5pt trong dải 42.5–135.5pt.
@@ -111,6 +116,7 @@ public sealed class ReprintLayoutOptions
     public bool DrawReceiverBorder { get; set; } = true;
     public bool DrawRouteBorder { get; set; } = true;
     public bool DrawNotesBorder { get; set; } = true;
+    public bool DrawPrintCountBorder { get; set; } = true;
 
     /// <summary>Vertical divider inside the notes region, as a fraction of its width (x = 65.5pt).</summary>
     public double NotesColumnSplit { get; set; } = 0.4471;
@@ -131,6 +137,9 @@ public sealed class ReprintLayoutOptions
     public double NotesLabelFontSize { get; set; } = 7.5;
     public double NotesBodyFontSize { get; set; } = 8.0;
     public double WaybillFontSize { get; set; } = 8.5;
+
+    /// <summary>Ô đếm lần in chỉ cao ~21pt mà phải chứa hai dòng, nên chữ nhỏ hơn hẳn.</summary>
+    public double PrintCountFontSize { get; set; } = 7.0;
 
     // ── loading ──────────────────────────────────────────────
 
@@ -263,13 +272,15 @@ public sealed class ReprintLayoutOptions
         if (Receiver == null || !Receiver.IsUsable) Receiver = fallback.Receiver;
         if (Route == null || !Route.IsUsable) Route = fallback.Route;
         if (Notes == null || !Notes.IsUsable) Notes = fallback.Notes;
+        if (PrintCount == null || !PrintCount.IsUsable) PrintCount = fallback.PrintCount;
 
-        // One vertical rule for all three masks: no hairline gap, no double-stroked border.
+        // One vertical rule for all four masks: no hairline gap, no double-stroked border.
         SplitColumnX = Clamp01(SplitColumnX, fallback.SplitColumnX);
         if (SplitColumnX > Receiver.X0 && SplitColumnX < Route.X1)
         {
             Receiver.X1 = SplitColumnX;
             Route.X0 = SplitColumnX;
+            PrintCount.X0 = SplitColumnX;
             if (SplitColumnX > Notes.X0) Notes.X1 = SplitColumnX;
         }
         else
@@ -277,6 +288,7 @@ public sealed class ReprintLayoutOptions
             SplitColumnX = fallback.SplitColumnX;
             Receiver.X1 = SplitColumnX;
             Route.X0 = SplitColumnX;
+            PrintCount.X0 = SplitColumnX;
             Notes.X1 = SplitColumnX;
         }
 
@@ -300,6 +312,7 @@ public sealed class ReprintLayoutOptions
         NotesLabelFontSize = ClampFont(NotesLabelFontSize, fallback.NotesLabelFontSize);
         NotesBodyFontSize = ClampFont(NotesBodyFontSize, fallback.NotesBodyFontSize);
         WaybillFontSize = ClampFont(WaybillFontSize, fallback.WaybillFontSize);
+        PrintCountFontSize = ClampFont(PrintCountFontSize, fallback.PrintCountFontSize);
     }
 
     private static double Clamp01(double value, double fallback) =>

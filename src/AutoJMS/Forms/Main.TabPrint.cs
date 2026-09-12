@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -40,12 +41,19 @@ namespace AutoJMS
         private const int ReprintDebounceMs = 600;
         private const int ReprintPreviewFilesKept = 5;
 
+        // FontAwesome: con mắt mở / con mắt gạch chéo.
+        private const int ReprintSymbolEyeOpen = 61550;
+        private const int ReprintSymbolEyeClosed = 61552;
+
         // ── controls (all created in BuildTabPrintInLaiDonSection) ──
         private TableLayoutPanel _reprintRoot;
         private UICheckBox _reprintChkReceiver;
         private UICheckBox _reprintChkRoute;
         private UICheckBox _reprintChkNotes;
+        private UICheckBox _reprintChkPrintCount;
         private UITextBox _reprintTxtName;
+        private UITextBox _reprintTxtPhone;
+        private UISymbolButton _reprintBtnRevealPhone;
         private UITextBox _reprintTxtAddress;
         private UITextBox _reprintTxtRoute1;
         private UITextBox _reprintTxtRoute2;
@@ -53,7 +61,11 @@ namespace AutoJMS
         private UITextBox _reprintTxtNote;
         private UITextBox _reprintTxtCod;
         private UITextBox _reprintTxtDeadline;
+        private UITextBox _reprintTxtPrintCode;
+        private UITextBox _reprintTxtPrintTimes;
+        private UITextBox _reprintTxtPrintTime;
         private UILabel _reprintStatus;
+        private ToolTip _reprintTip;
 
         // ── state ──
         private byte[] _reprintOriginalPdf;
@@ -64,6 +76,12 @@ namespace AutoJMS
         private readonly SemaphoreSlim _reprintGate = new(1, 1);
         private bool _reprintSuppressEvents;
         private int _reprintPreviewSeq;
+
+        /// <summary>Tên + SĐT người nhận vừa lấy từ JMS cho đơn đang xem trước.</summary>
+        private ReceiverContact _reprintReceiver;
+
+        /// <summary>Owner đã bấm nút con mắt: ô SĐT — và bản in — dùng số đầy đủ.</summary>
+        private bool _reprintPhoneRevealed;
 
         private bool IsReprintModeActive =>
             _printService != null && _printService.CurrentMode == PrintMode.InLaiDon;
@@ -82,25 +100,29 @@ namespace AutoJMS
             if (tabPrint_inLaiDon == null || tabPrint_inLaiDon.IsDisposed) return;
             if (tabPrint_inLaiDon.Controls.Find("tabPrint_reprintRoot", false).Length > 0) return;
 
+            _reprintTip = new ToolTip { InitialDelay = 350, ReshowDelay = 120 };
+
             _reprintRoot = new TableLayoutPanel
             {
                 Name = "tabPrint_reprintRoot",
                 Dock = DockStyle.Fill,
-                ColumnCount = 3,
+                ColumnCount = 4,
                 RowCount = 2,
                 Margin = new Padding(0),
                 Padding = new Padding(4, 2, 4, 2),
                 BackColor = Color.Transparent
             };
-            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36F));
-            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
-            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42F));
+            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 15F));
+            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
+            _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 27F));
             _reprintRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             _reprintRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
 
-            _reprintRoot.Controls.Add(BuildReprintReceiverColumn(), 0, 0);
-            _reprintRoot.Controls.Add(BuildReprintRouteColumn(), 1, 0);
-            _reprintRoot.Controls.Add(BuildReprintNotesColumn(), 2, 0);
+            _reprintRoot.Controls.Add(BuildReprintReceiverCard(), 0, 0);
+            _reprintRoot.Controls.Add(BuildReprintRouteCard(), 1, 0);
+            _reprintRoot.Controls.Add(BuildReprintNotesCard(), 2, 0);
+            _reprintRoot.Controls.Add(BuildReprintPrintCountCard(), 3, 0);
 
             _reprintStatus = new UILabel
             {
@@ -112,7 +134,7 @@ namespace AutoJMS
                 Margin = new Padding(2, 0, 2, 0)
             };
             _reprintRoot.Controls.Add(_reprintStatus, 0, 1);
-            _reprintRoot.SetColumnSpan(_reprintStatus, 3);
+            _reprintRoot.SetColumnSpan(_reprintStatus, 4);
 
             tabPrint_inLaiDon.Controls.Add(_reprintRoot);
 
@@ -120,89 +142,199 @@ namespace AutoJMS
             _reprintDebounce.Tick += ReprintDebounce_Tick;
 
             ApplyReprintEditingState();
+            ApplyReprintPhoneVisibility();
         }
 
-        private Control BuildReprintReceiverColumn()
+        /// <summary>
+        /// Thẻ 1 — Người nhận: tên (chỉ đọc), SĐT + nút con mắt, địa chỉ.
+        /// </summary>
+        private Control BuildReprintReceiverCard()
         {
-            var panel = NewReprintColumn(3);
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            var card = NewReprintCard("tabPrint_reprintCardReceiver", 3, out var body);
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            _reprintChkReceiver = NewReprintCheckBox("tabPrint_reprintChkReceiver", "Sửa Người nhận & Địa chỉ");
-            _reprintTxtName = NewReprintTextBox("tabPrint_reprintTxtName", "Tên người nhận + SĐT", false);
+            _reprintChkReceiver = NewReprintCheckBox("tabPrint_reprintChkReceiver", "Sửa Người nhận");
+
+            // Tên lấy thẳng từ JMS và cố ý KHÔNG cho sửa: nó chỉ có mặt để miếng vá in lại
+            // đúng tên của nhãn gốc. Trước đây ô này luôn rỗng nên tick "Sửa" là mất tên.
+            _reprintTxtName = NewReprintTextBox("tabPrint_reprintTxtName", "Tên người nhận", false);
+            _reprintTxtPhone = NewReprintTextBox("tabPrint_reprintTxtPhone", "Số điện thoại", false);
+            _reprintTxtPhone.Margin = new Padding(4, 1, 0, 2);
+            _reprintBtnRevealPhone = NewReprintRevealButton();
             _reprintTxtAddress = NewReprintTextBox("tabPrint_reprintTxtAddress", "Địa chỉ người nhận", true);
 
-            panel.Controls.Add(_reprintChkReceiver, 0, 0);
-            panel.Controls.Add(_reprintTxtName, 0, 1);
-            panel.Controls.Add(_reprintTxtAddress, 0, 2);
-            return panel;
+            var contact = NewReprintFieldRow();
+            AddReprintCell(contact, _reprintTxtName, 0);
+            AddReprintCell(contact, _reprintTxtPhone, 104);
+            AddReprintCell(contact, _reprintBtnRevealPhone, 30);
+
+            body.Controls.Add(_reprintChkReceiver, 0, 0);
+            body.Controls.Add(contact, 0, 1);
+            body.Controls.Add(_reprintTxtAddress, 0, 2);
+            return card;
         }
 
-        private Control BuildReprintRouteColumn()
+        /// <summary>Thẻ 2 — Mã tuyến: ba dòng ngắn, không cần rộng.</summary>
+        private Control BuildReprintRouteCard()
         {
-            var panel = NewReprintColumn(5);
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            var card = NewReprintCard("tabPrint_reprintCardRoute", 5, out var body);
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _reprintChkRoute = NewReprintCheckBox("tabPrint_reprintChkRoute", "Sửa Mã tuyến");
             _reprintTxtRoute1 = NewReprintTextBox("tabPrint_reprintTxtRoute1", "Mã tuyến 1", false);
             _reprintTxtRoute2 = NewReprintTextBox("tabPrint_reprintTxtRoute2", "Mã tuyến 2", false);
             _reprintTxtRoute3 = NewReprintTextBox("tabPrint_reprintTxtRoute3", "Mã tuyến 3", false);
 
-            panel.Controls.Add(_reprintChkRoute, 0, 0);
-            panel.Controls.Add(_reprintTxtRoute1, 0, 1);
-            panel.Controls.Add(_reprintTxtRoute2, 0, 2);
-            panel.Controls.Add(_reprintTxtRoute3, 0, 3);
-            return panel;
+            body.Controls.Add(_reprintChkRoute, 0, 0);
+            body.Controls.Add(_reprintTxtRoute1, 0, 1);
+            body.Controls.Add(_reprintTxtRoute2, 0, 2);
+            body.Controls.Add(_reprintTxtRoute3, 0, 3);
+            return card;
         }
 
-        private Control BuildReprintNotesColumn()
+        /// <summary>Thẻ 3 — Ghi chú & COD.</summary>
+        private Control BuildReprintNotesCard()
         {
-            var panel = NewReprintColumn(3);
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
+            var card = NewReprintCard("tabPrint_reprintCardNotes", 3, out var body);
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
 
             _reprintChkNotes = NewReprintCheckBox("tabPrint_reprintChkNotes", "Sửa Ghi chú & COD");
             _reprintTxtNote = NewReprintTextBox("tabPrint_reprintTxtNote", "Ghi chú", true);
-            _reprintTxtCod = NewReprintTextBox("tabPrint_reprintTxtCod", "Tiền thu người nhận", false);
+            _reprintTxtCod = NewReprintTextBox("tabPrint_reprintTxtCod", "Tiền thu hộ", false);
             _reprintTxtDeadline = NewReprintTextBox("tabPrint_reprintTxtDeadline", "Giao trước", false);
+            _reprintTxtDeadline.Margin = new Padding(4, 1, 0, 2);
 
-            var bottom = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2,
-                RowCount = 1,
-                Margin = new Padding(0),
-                BackColor = Color.Transparent
-            };
-            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
-            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
-            bottom.Controls.Add(_reprintTxtCod, 0, 0);
-            bottom.Controls.Add(_reprintTxtDeadline, 1, 0);
+            // Ô COD chứa "1,234,000" còn "Giao trước" chứa một mốc ngày: cả hai đều ngắn,
+            // nên khoá bề rộng thay vì để chúng kéo hết chiều ngang của thẻ.
+            var bottom = NewReprintFieldRow();
+            AddReprintCell(bottom, _reprintTxtCod, 108);
+            AddReprintCell(bottom, _reprintTxtDeadline, 108);
+            AddReprintCell(bottom, null, 0);
 
-            panel.Controls.Add(_reprintChkNotes, 0, 0);
-            panel.Controls.Add(_reprintTxtNote, 0, 1);
-            panel.Controls.Add(bottom, 0, 2);
-            return panel;
+            body.Controls.Add(_reprintChkNotes, 0, 0);
+            body.Controls.Add(_reprintTxtNote, 0, 1);
+            body.Controls.Add(bottom, 0, 2);
+            return card;
         }
 
-        private static TableLayoutPanel NewReprintColumn(int rowCount)
+        /// <summary>
+        /// Thẻ 4 — dòng đếm lần in ở cột phải của nhãn: "214A03 in lần 11:" rồi "22:17 12-09-2026".
+        /// </summary>
+        private Control BuildReprintPrintCountCard()
         {
-            var panel = new TableLayoutPanel
+            var card = NewReprintCard("tabPrint_reprintCardPrintCount", 4, out var body);
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            _reprintChkPrintCount = NewReprintCheckBox("tabPrint_reprintChkPrintCount", "Sửa dòng đếm lần in");
+            _reprintTxtPrintCode = NewReprintTextBox("tabPrint_reprintTxtPrintCode", "Mã bưu cục", false);
+            _reprintTxtPrintTimes = NewReprintTextBox("tabPrint_reprintTxtPrintTimes", "Lần in", false);
+            _reprintTxtPrintTimes.Margin = new Padding(4, 1, 0, 2);
+            _reprintTxtPrintTime = NewReprintTextBox("tabPrint_reprintTxtPrintTime", "Giờ & ngày in", false);
+
+            var header = NewReprintFieldRow();
+            AddReprintCell(header, _reprintTxtPrintCode, 96);
+            AddReprintCell(header, _reprintTxtPrintTimes, 62);
+            AddReprintCell(header, null, 0);
+
+            var stamp = NewReprintFieldRow();
+            AddReprintCell(stamp, _reprintTxtPrintTime, 162);
+            AddReprintCell(stamp, null, 0);
+
+            body.Controls.Add(_reprintChkPrintCount, 0, 0);
+            body.Controls.Add(header, 0, 1);
+            body.Controls.Add(stamp, 0, 2);
+            return card;
+        }
+
+        /// <summary>
+        /// Một "thẻ": khung bo góc do AppTheme tô (nhánh <c>UIPanel</c>) bọc một bảng dọc.
+        /// Ô tick nằm ở dòng đầu và đóng luôn vai tiêu đề, nên không tốn thêm dòng cho chữ
+        /// tiêu đề riêng — chiều cao khả dụng của dải này chỉ khoảng 120px.
+        /// </summary>
+        private static UIPanel NewReprintCard(string name, int rowCount, out TableLayoutPanel body)
+        {
+            var card = new UIPanel
+            {
+                Name = name,
+                Dock = DockStyle.Fill,
+                Margin = new Padding(3, 0, 3, 0),
+                Padding = new Padding(6, 4, 6, 4),
+                Radius = 8
+            };
+
+            body = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
                 RowCount = rowCount,
-                Margin = new Padding(3, 0, 3, 0),
+                Margin = new Padding(0),
                 BackColor = Color.Transparent
             };
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            return panel;
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+            card.Controls.Add(body);
+            return card;
+        }
+
+        /// <summary>
+        /// Dòng ngang trong thẻ. Các ô được nhồi bằng <see cref="AddReprintCell"/> theo bề rộng
+        /// cố định, đúng yêu cầu "thu gọn các trường đang quá rộng so với dữ liệu".
+        /// </summary>
+        private static TableLayoutPanel NewReprintFieldRow()
+        {
+            var row = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 0,
+                RowCount = 1,
+                Margin = new Padding(0),
+                BackColor = Color.Transparent
+            };
+            row.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            return row;
+        }
+
+        /// <summary>
+        /// Thêm một cột vào <paramref name="row"/>. <paramref name="fixedWidth"/> ≤ 0 nghĩa là
+        /// cột co giãn; <paramref name="control"/> null tạo cột đệm để đẩy phần dư sang phải.
+        /// </summary>
+        private static void AddReprintCell(TableLayoutPanel row, Control control, int fixedWidth)
+        {
+            int index = row.ColumnCount;
+            row.ColumnCount = index + 1;
+            row.ColumnStyles.Add(fixedWidth > 0
+                ? new ColumnStyle(SizeType.Absolute, fixedWidth)
+                : new ColumnStyle(SizeType.Percent, 100F));
+
+            if (control != null) row.Controls.Add(control, index, 0);
+        }
+
+        private UISymbolButton NewReprintRevealButton()
+        {
+            var button = new UISymbolButton
+            {
+                Name = "tabPrint_reprintBtnRevealPhone",
+                Text = "",
+                Dock = DockStyle.Fill,
+                Symbol = ReprintSymbolEyeOpen,
+                SymbolSize = 16,
+                Radius = 6,
+                Margin = new Padding(4, 1, 0, 2),
+                MinimumSize = new Size(1, 1)
+            };
+            button.Click += Reprint_RevealPhoneClicked;
+            return button;
         }
 
         private UICheckBox NewReprintCheckBox(string name, string text)
@@ -268,16 +400,72 @@ namespace AutoJMS
         }
 
         /// <summary>
+        /// Bấm con mắt: đổi giữa bản che và số đầy đủ. Owner đã chốt là nút này vừa lộ số trên
+        /// app vừa đưa chính số đó lên bản in, nên phải dựng lại preview ngay sau khi đổi.
+        /// </summary>
+        private void Reprint_RevealPhoneClicked(object sender, EventArgs e)
+        {
+            if (_reprintReceiver == null || !_reprintReceiver.HasUnmaskedPhone)
+            {
+                SetReprintStatus("JMS không trả số điện thoại đầy đủ cho đơn này.", true);
+                return;
+            }
+
+            _reprintPhoneRevealed = !_reprintPhoneRevealed;
+            ApplyReprintPhoneVisibility();
+
+            _reprintDebounce?.Stop();
+            _ = RenderReprintPreviewAsync();
+        }
+
+        /// <summary>
+        /// Đồng bộ ô SĐT + biểu tượng nút theo <see cref="_reprintPhoneRevealed"/>. Nút chỉ sáng
+        /// khi thực sự có số đầy đủ để lộ — không có thì bấm cũng chẳng đổi được gì.
+        /// </summary>
+        private void ApplyReprintPhoneVisibility()
+        {
+            var contact = _reprintReceiver;
+            bool canReveal = contact != null && contact.HasUnmaskedPhone;
+            bool revealed = canReveal && _reprintPhoneRevealed;
+
+            if (_reprintBtnRevealPhone != null && !_reprintBtnRevealPhone.IsDisposed)
+            {
+                _reprintBtnRevealPhone.Enabled = canReveal;
+                _reprintBtnRevealPhone.Symbol = revealed ? ReprintSymbolEyeClosed : ReprintSymbolEyeOpen;
+                _reprintTip?.SetToolTip(_reprintBtnRevealPhone, canReveal
+                    ? (revealed ? "Ẩn lại số điện thoại (in bản che)" : "Hiện số điện thoại đầy đủ (in cả số)")
+                    : "Đơn này JMS chỉ trả số đã che");
+            }
+
+            if (contact == null) return;
+
+            _reprintSuppressEvents = true;
+            try
+            {
+                SetReprintText(_reprintTxtPhone, revealed ? contact.Phone : contact.MaskedPhone);
+            }
+            finally
+            {
+                _reprintSuppressEvents = false;
+            }
+        }
+
+        /// <summary>
         /// Fields stay locked until their checkbox is ticked — the owner asked for
-        /// "mặc định không bật sửa" on all three regions.
+        /// "mặc định không bật sửa" on every region.
         /// </summary>
         private void ApplyReprintEditingState()
         {
             bool receiver = _reprintChkReceiver?.Checked == true;
             bool route = _reprintChkRoute?.Checked == true;
             bool notes = _reprintChkNotes?.Checked == true;
+            bool printCount = _reprintChkPrintCount?.Checked == true;
 
-            SetReprintFieldEnabled(_reprintTxtName, receiver);
+            // "Tên người nhận" chỉ để hiển thị: Owner chốt là không bật sửa. Vẫn giữ Enabled
+            // để đọc và copy được, chỉ chặn gõ.
+            SetReprintFieldReadOnly(_reprintTxtName);
+
+            SetReprintFieldEnabled(_reprintTxtPhone, receiver);
             SetReprintFieldEnabled(_reprintTxtAddress, receiver);
             SetReprintFieldEnabled(_reprintTxtRoute1, route);
             SetReprintFieldEnabled(_reprintTxtRoute2, route);
@@ -285,6 +473,9 @@ namespace AutoJMS
             SetReprintFieldEnabled(_reprintTxtNote, notes);
             SetReprintFieldEnabled(_reprintTxtCod, notes);
             SetReprintFieldEnabled(_reprintTxtDeadline, notes);
+            SetReprintFieldEnabled(_reprintTxtPrintCode, printCount);
+            SetReprintFieldEnabled(_reprintTxtPrintTimes, printCount);
+            SetReprintFieldEnabled(_reprintTxtPrintTime, printCount);
         }
 
         private static void SetReprintFieldEnabled(UITextBox box, bool enabled)
@@ -292,6 +483,13 @@ namespace AutoJMS
             if (box == null || box.IsDisposed) return;
             box.ReadOnly = !enabled;
             box.Enabled = enabled;
+        }
+
+        private static void SetReprintFieldReadOnly(UITextBox box)
+        {
+            if (box == null || box.IsDisposed) return;
+            box.ReadOnly = true;
+            box.Enabled = true;
         }
 
         private void SetReprintStatus(string message, bool isError = false)
@@ -325,10 +523,14 @@ namespace AutoJMS
 
             if (!clearInputs) return;
 
+            _reprintReceiver = null;
+            _reprintPhoneRevealed = false;
+
             _reprintSuppressEvents = true;
             try
             {
                 SetReprintText(_reprintTxtName, "");
+                SetReprintText(_reprintTxtPhone, "");
                 SetReprintText(_reprintTxtAddress, "");
                 SetReprintText(_reprintTxtRoute1, "");
                 SetReprintText(_reprintTxtRoute2, "");
@@ -336,12 +538,16 @@ namespace AutoJMS
                 SetReprintText(_reprintTxtNote, "");
                 SetReprintText(_reprintTxtCod, "");
                 SetReprintText(_reprintTxtDeadline, "");
+                SetReprintText(_reprintTxtPrintCode, "");
+                SetReprintText(_reprintTxtPrintTimes, "");
+                SetReprintText(_reprintTxtPrintTime, "");
             }
             finally
             {
                 _reprintSuppressEvents = false;
             }
 
+            ApplyReprintPhoneVisibility();
             SetReprintStatus("Nhập mã vận đơn rồi bấm Tìm kiếm để xem trước bản in.");
         }
 
@@ -408,6 +614,11 @@ namespace AutoJMS
                 }
 
                 _reprintOriginalPdf = pdf;
+
+                // Lấy sau khi có PDF, trước lần dựng preview đầu tiên: bảng TRACKING không có
+                // tên/SĐT người nhận nên phải hỏi JMS, và vá lại lượt sau thì preview sẽ nháy.
+                await LoadReprintReceiverAsync().ConfigureAwait(true);
+
                 await RenderReprintPreviewAsync().ConfigureAwait(true);
             }
             catch (Exception ex)
@@ -415,6 +626,39 @@ namespace AutoJMS
                 AppLogger.Error($"In lại đơn: chuẩn bị preview thất bại waybill={_reprintFirstWaybill}", ex);
                 SetReprintStatus($"Lỗi lấy bản in: {ex.Message}", true);
             }
+        }
+
+        /// <summary>
+        /// Hỏi JMS tên + SĐT người nhận rồi đổ vào hai ô của thẻ "Người nhận". Không ném:
+        /// thiếu dữ liệu chỉ làm mất tiện lợi, còn bản in thì vẫn dựng được.
+        /// </summary>
+        private async Task LoadReprintReceiverAsync()
+        {
+            SetReprintStatus("Đang lấy thông tin người nhận...");
+
+            ReceiverContact contact;
+            using (var timeoutCts = new CancellationTokenSource(ReprintApiTimeout))
+            {
+                contact = await ReceiverContactService
+                    .FetchAsync(_reprintFirstWaybill, timeoutCts.Token)
+                    .ConfigureAwait(true);
+            }
+
+            _reprintReceiver = contact;
+            _reprintPhoneRevealed = false;
+
+            _reprintSuppressEvents = true;
+            try
+            {
+                SetReprintText(_reprintTxtName, contact?.Name ?? "");
+                SetReprintText(_reprintTxtPhone, contact?.MaskedPhone ?? "");
+            }
+            finally
+            {
+                _reprintSuppressEvents = false;
+            }
+
+            ApplyReprintPhoneVisibility();
         }
 
         /// <summary>Fills the editor from the tracking row behind the first selected waybill.</summary>
@@ -429,10 +673,15 @@ namespace AutoJMS
                       ?? rows[0];
             }
 
+            // Tên/SĐT do LoadReprintReceiverAsync điền — ở đây chỉ dọn sạch phần của đơn trước.
+            _reprintReceiver = null;
+            _reprintPhoneRevealed = false;
+
             _reprintSuppressEvents = true;
             try
             {
                 SetReprintText(_reprintTxtName, "");
+                SetReprintText(_reprintTxtPhone, "");
                 SetReprintText(_reprintTxtAddress, BuildReceiverAddress(row));
                 SetReprintText(_reprintTxtRoute1, Dash2Empty(row?.MaDoan1));
                 SetReprintText(_reprintTxtRoute2, Dash2Empty(row?.MaDoan2));
@@ -440,11 +689,49 @@ namespace AutoJMS
                 SetReprintText(_reprintTxtNote, Dash2Empty(row?.NoiDungHangHoa));
                 SetReprintText(_reprintTxtCod, Dash2Empty(row?.CODThucTe));
                 SetReprintText(_reprintTxtDeadline, "");
+                SetReprintText(_reprintTxtPrintCode, ResolveReprintNetworkCode(row));
+                SetReprintText(_reprintTxtPrintTimes, ResolveReprintPrintCount(row));
+
+                // Nhãn vừa được JMS sinh ra vài giây trước, nên "giữ như cũ" chính là lúc này.
+                SetReprintText(_reprintTxtPrintTime, DateTime.Now.ToString("HH:mm dd-MM-yyyy"));
             }
             finally
             {
                 _reprintSuppressEvents = false;
             }
+
+            ApplyReprintPhoneVisibility();
+        }
+
+        /// <summary>
+        /// Mã bưu cục mở đầu dòng đếm lần in. Cùng thứ tự ưu tiên với
+        /// <c>PrintService.ResolveSenderNetworkCode</c> — hàm đó private nên chép lại tại đây
+        /// thay vì nới rộng bề mặt public của PrintService cho một ô nhập liệu.
+        /// </summary>
+        private static string ResolveReprintNetworkCode(TrackingRow row)
+        {
+            if (row == null) return "";
+
+            foreach (var candidate in new[]
+                     {
+                         row.PrintSenderNetworkCode, row.NewTerminalDispatchCode,
+                         row.MaDoanFull, row.MaDoan2
+                     })
+            {
+                string text = Dash2Empty(candidate);
+                if (text.Length > 0) return text;
+            }
+            return "";
+        }
+
+        /// <summary>Số lần in JMS đang ghi nhận; cùng quy tắc với <c>PrintService.ResolvePrintCount</c>.</summary>
+        private static string ResolveReprintPrintCount(TrackingRow row)
+        {
+            if (row == null) return "";
+            if (row.PrintApprovalPrintCount.HasValue)
+                return row.PrintApprovalPrintCount.Value.ToString(CultureInfo.InvariantCulture);
+
+            return row.PrintCount > 0 ? row.PrintCount.ToString(CultureInfo.InvariantCulture) : "";
         }
 
         private static string BuildReceiverAddress(TrackingRow row)
@@ -568,6 +855,10 @@ namespace AutoJMS
 
                 if (!string.IsNullOrEmpty(appliedError))
                     SetReprintStatus($"Không đè được nội dung ({appliedError}) — đang xem bản gốc.", true);
+                else if (content.EditReceiver && content.ReceiverName.Length == 0)
+                    SetReprintStatus(
+                        $"Đã xem trước bản sửa cho {_reprintFirstWaybill}, NHƯNG không lấy được tên người nhận " +
+                        "— vùng này sẽ in thiếu tên. Bỏ tick \"Sửa Người nhận\" nếu không muốn vậy.", true);
                 else if (content.HasAnyEdit)
                     SetReprintStatus($"Đã xem trước bản sửa cho {_reprintFirstWaybill}. Bấm IN để in đúng bản này.");
                 else
@@ -589,7 +880,11 @@ namespace AutoJMS
             EditReceiver = _reprintChkReceiver?.Checked == true,
             EditRoute = _reprintChkRoute?.Checked == true,
             EditNotes = _reprintChkNotes?.Checked == true,
+            EditPrintCount = _reprintChkPrintCount?.Checked == true,
             ReceiverName = ReadReprintText(_reprintTxtName),
+
+            // Đúng thứ đang hiển thị: bản che khi chưa bấm con mắt, số đầy đủ khi đã bấm.
+            ReceiverPhone = ReadReprintText(_reprintTxtPhone),
             ReceiverAddress = ReadReprintText(_reprintTxtAddress),
             Route1 = ReadReprintText(_reprintTxtRoute1),
             Route2 = ReadReprintText(_reprintTxtRoute2),
@@ -597,6 +892,9 @@ namespace AutoJMS
             Note = ReadReprintText(_reprintTxtNote),
             CodAmount = ReadReprintText(_reprintTxtCod),
             Deadline = ReadReprintText(_reprintTxtDeadline),
+            PrintCountNetworkCode = ReadReprintText(_reprintTxtPrintCode),
+            PrintCountTimes = ReadReprintText(_reprintTxtPrintTimes),
+            PrintCountTimestamp = ReadReprintText(_reprintTxtPrintTime),
             WaybillNo = _reprintFirstWaybill
         };
 
