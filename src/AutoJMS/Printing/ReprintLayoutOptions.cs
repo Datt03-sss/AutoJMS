@@ -50,31 +50,52 @@ public sealed class ReprintLayoutOptions
     /// Bumped whenever the built-in geometry changes. A template on disk carrying an older
     /// version is archived and regenerated, otherwise stale coordinates would shadow the fix.
     /// </summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public int Version { get; set; } = CurrentVersion;
+
+    /// <summary>
+    /// Ghim mép vùng đè vào đúng đường kẻ thật đọc được từ PDF (<see cref="PdfLabelGrid"/>).
+    /// Tỷ lệ bên dưới dù đo kỹ tới đâu vẫn lệch vài point trên khổ nhãn khác; bật cái này thì
+    /// miếng vá luôn trùng khít khung bảng. Tắt đi là quay về dùng nguyên tỷ lệ.
+    /// </summary>
+    public bool SnapToGrid { get; set; } = true;
+
+    /// <summary>
+    /// Bán kính tìm đường kẻ để ghim, tính bằng point. Ghim luôn chọn đường kẻ GẦN NHẤT, nên
+    /// bán kính rộng chỉ cứu được nhiều tỷ lệ lệch hơn chứ không kéo mép sang nhầm đường kẻ
+    /// khác. 10pt đủ phủ cả trường hợp mép vùng đè lệch hẳn một dòng so với nhãn thật.
+    /// </summary>
+    public double SnapTolerance { get; set; } = 10.0;
 
     /// <summary>
     /// The single vertical rule that separates the left content column from the narrow right
     /// column, as a fraction of page width. <see cref="Receiver"/>.X1, <see cref="Route"/>.X0
     /// and <see cref="Notes"/>.X1 are all snapped onto it in <see cref="Normalize"/>, so the
     /// three masks share one continuous line with no gap and no double stroke.
+    ///
+    /// Đo từ nhãn thật 210x227pt: vạch nằm ở x = 146.5pt.
     /// </summary>
-    public double SplitColumnX { get; set; } = 0.68;
+    public double SplitColumnX { get; set; } = 0.6976;
 
     // ── Region 1: Người nhận & Địa chỉ (khung đỏ) ──
-    // Y bao trọn từ đường kẻ dưới "Người gửi" xuống đường kẻ trên "Nội dung hàng hoá".
-    public ReprintRegionBox Receiver { get; set; } = new(0.00, 0.335, 0.68, 0.655);
+    // Từ đường kẻ dưới "Người gửi" (y=79.5pt) xuống đường kẻ dưới khối người nhận (y=138.5pt).
+    // KHÔNG lấn xuống 147.5pt — giữa hai vạch đó là dòng phường/xã của nhãn gốc.
+    public ReprintRegionBox Receiver { get; set; } = new(0.00, 0.3502, 0.6976, 0.6101);
 
-    // ── Region 2: Mã tuyến, 3 ô (khung xanh dương) ──
-    // Y nằm khít từ đường kẻ dưới barcode 1D xuống đường kẻ trên ô "Trọng lượng tính".
-    public ReprintRegionBox Route { get; set; } = new(0.68, 0.160, 1.00, 0.605);
+    // ── Region 2: Mã tuyến, 4 ô (khung xanh dương) ──
+    // Từ đường kẻ dưới barcode 1D (y=42.5pt) xuống đường kẻ trên ô "Trọng lượng tính" (y=135.5pt).
+    public ReprintRegionBox Route { get; set; } = new(0.6976, 0.1872, 1.00, 0.5969);
 
     // ── Region 3: Ghi chú & COD (khung xanh lá) ──
-    public ReprintRegionBox Notes { get; set; } = new(0.00, 0.774, 0.68, 1.00);
+    // Từ đường kẻ dưới "Nội dung hàng hoá" (y=177.5pt) xuống đáy nhãn.
+    public ReprintRegionBox Notes { get; set; } = new(0.00, 0.7819, 0.6976, 1.00);
 
-    /// <summary>Horizontal dividers inside the route region, as a fraction of its height.</summary>
-    public double[] RouteDividers { get; set; } = { 0.25, 0.50, 0.78 };
+    /// <summary>
+    /// Horizontal dividers inside the route region, as a fraction of its height.
+    /// Đo từ nhãn thật: y = 65.5 / 89.5 / 112.5pt trong dải 42.5–135.5pt.
+    /// </summary>
+    public double[] RouteDividers { get; set; } = { 0.2472, 0.5055, 0.7527 };
 
     /// <summary>
     /// Which of the cells produced by <see cref="RouteDividers"/> receive the 3 route codes.
@@ -91,11 +112,11 @@ public sealed class ReprintLayoutOptions
     public bool DrawRouteBorder { get; set; } = true;
     public bool DrawNotesBorder { get; set; } = true;
 
-    /// <summary>Vertical divider inside the notes region, as a fraction of its width.</summary>
-    public double NotesColumnSplit { get; set; } = 0.45;
+    /// <summary>Vertical divider inside the notes region, as a fraction of its width (x = 65.5pt).</summary>
+    public double NotesColumnSplit { get; set; } = 0.4471;
 
-    /// <summary>Horizontal divider in the notes region's right column, as a fraction of its height.</summary>
-    public double NotesRightRowSplit { get; set; } = 0.50;
+    /// <summary>Horizontal divider in the notes region's right column, as a fraction of its height (y = 199.5pt).</summary>
+    public double NotesRightRowSplit { get; set; } = 0.4490;
 
     /// <summary>Divider stroke width in points.</summary>
     public double LineWidth { get; set; } = 0.9;
@@ -270,6 +291,7 @@ public sealed class ReprintLayoutOptions
 
         if (LineWidth <= 0 || LineWidth > 10) LineWidth = fallback.LineWidth;
         if (Padding < 0 || Padding > 40) Padding = fallback.Padding;
+        if (SnapTolerance < 0 || SnapTolerance > 30) SnapTolerance = fallback.SnapTolerance;
         if (string.IsNullOrWhiteSpace(FontFamily)) FontFamily = fallback.FontFamily;
 
         ReceiverLabelFontSize = ClampFont(ReceiverLabelFontSize, fallback.ReceiverLabelFontSize);

@@ -157,8 +157,15 @@ public static class PdfReprintModifier
             if (page.Rotate % 360 != 0)
                 AppLogger.Warning($"In lại đơn: trang {i + 1} xoay {page.Rotate} độ — toạ độ đè có thể lệch.");
 
+            // Lưới kẻ phải đọc TRƯỚC khi mở XGraphics: FromPdfPage(Append) nối thêm một
+            // content stream rỗng vào trang, và ContentReader gộp stream đó lại thì ném
+            // NullReferenceException — đọc sau sẽ luôn hỏng và âm thầm rơi về toạ độ tỷ lệ.
+            var grid = layout.SnapToGrid
+                ? PdfLabelGrid.Detect(page, page.Width.Point, page.Height.Point)
+                : PdfLabelGrid.Empty;
+
             using var gfx = XGraphics.FromPdfPage(page, XGraphicsPdfPageOptions.Append);
-            DrawOverlay(gfx, content, layout);
+            DrawOverlay(gfx, grid, content, layout);
         }
 
         using var output = new MemoryStream();
@@ -187,7 +194,7 @@ public static class PdfReprintModifier
 
     // ── drawing ──────────────────────────────────────────────
 
-    private static void DrawOverlay(XGraphics gfx, ReprintOverlayContent content, ReprintLayoutOptions layout)
+    private static void DrawOverlay(XGraphics gfx, PdfLabelGrid grid, ReprintOverlayContent content, ReprintLayoutOptions layout)
     {
         var pageSize = gfx.PageSize;
         double w = pageSize.Width, h = pageSize.Height;
@@ -196,14 +203,37 @@ public static class PdfReprintModifier
         var pen = new XPen(XColors.Black, layout.LineWidth);
         var page = new XSize(w, h);
 
+        // Tỷ lệ trong layout chỉ là điểm khởi đầu; mép thật lấy từ chính đường kẻ của nhãn.
+        if (!grid.IsUsable) grid = PdfLabelGrid.Empty;
+        double tolerance = layout.SnapTolerance;
+
         if (content.EditReceiver)
-            DrawReceiver(gfx, pen, ToRect(layout.Receiver, w, h), page, content, layout);
+            DrawReceiver(gfx, pen, Snap(ToRect(layout.Receiver, w, h), grid, tolerance), page, content, layout);
 
         if (content.EditRoute)
-            DrawRoute(gfx, pen, ToRect(layout.Route, w, h), page, content, layout);
+            DrawRoute(gfx, pen, Snap(ToRect(layout.Route, w, h), grid, tolerance), page, grid, content, layout);
 
         if (content.EditNotes)
-            DrawNotes(gfx, pen, ToRect(layout.Notes, w, h), page, content, layout);
+            DrawNotes(gfx, pen, Snap(ToRect(layout.Notes, w, h), grid, tolerance), page, grid, content, layout);
+    }
+
+    /// <summary>
+    /// Kéo cả 4 mép vùng đè về đường kẻ thật gần nhất. Vùng 1 và Vùng 2 có cùng toạ độ X ở
+    /// vạch chung (<see cref="ReprintLayoutOptions.Normalize"/> ép vậy) nên chúng luôn ghim
+    /// vào cùng một đường — vạch dọc vẫn liền một nét sau khi ghim.
+    /// </summary>
+    private static XRect Snap(XRect rect, PdfLabelGrid grid, double tolerance)
+    {
+        if (grid.Vertical.Count == 0 && grid.Horizontal.Count == 0) return rect;
+
+        double left = grid.SnapX(rect.X, tolerance);
+        double right = grid.SnapX(rect.Right, tolerance);
+        double top = grid.SnapY(rect.Y, tolerance);
+        double bottom = grid.SnapY(rect.Bottom, tolerance);
+
+        // Hai mép ghim trúng cùng một vạch thì vùng bị bẹp — thà giữ nguyên tỷ lệ.
+        if (right - left <= 1 || bottom - top <= 1) return rect;
+        return new XRect(left, top, right - left, bottom - top);
     }
 
     /// <summary>
@@ -249,28 +279,31 @@ public static class PdfReprintModifier
             new XRect(inner.X, addressTop, inner.Width, inner.Bottom - addressTop), XStringFormats.TopLeft);
     }
 
-    private static void DrawRoute(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    private static void DrawRoute(XGraphics gfx, XPen pen, XRect rect, XSize page, PdfLabelGrid grid, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
         gfx.DrawRectangle(XBrushes.White, rect);
         // Mép trái đã được ReprintLayoutOptions.Normalize ghim trùng mép phải của Người nhận.
         var frame = layout.DrawRouteBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
 
-        var dividers = (layout.RouteDividers ?? Array.Empty<double>())
-            .Where(d => d > 0 && d < 1)
-            .Distinct()
-            .OrderBy(d => d)
-            .ToList();
-
-        foreach (var d in dividers)
+        // Vạch chia ô: lấy đúng vạch của nhãn nếu đọc được, không thì mới quy ra từ tỷ lệ.
+        var dividers = grid.HorizontalInside(rect.Y, rect.Bottom, rect.X, rect.Right).ToList();
+        if (dividers.Count == 0)
         {
-            double y = rect.Y + d * rect.Height;
-            gfx.DrawLine(pen, frame.X, y, frame.Right, y);
+            dividers = (layout.RouteDividers ?? Array.Empty<double>())
+                .Where(d => d > 0 && d < 1)
+                .Distinct()
+                .OrderBy(d => d)
+                .Select(d => rect.Y + d * rect.Height)
+                .ToList();
         }
 
-        // N dividers produce N+1 cells, numbered top-down from 0.
-        var bounds = new List<double> { 0.0 };
+        foreach (var y in dividers)
+            gfx.DrawLine(pen, frame.X, y, frame.Right, y);
+
+        // N vạch chia tạo N+1 ô, đánh số từ 0 từ trên xuống.
+        var bounds = new List<double> { rect.Y };
         bounds.AddRange(dividers);
-        bounds.Add(1.0);
+        bounds.Add(rect.Bottom);
 
         var codes = new[] { c.Route1, c.Route2, c.Route3 };
         var cellIndexes = layout.RouteCellIndexes ?? Array.Empty<int>();
@@ -283,11 +316,7 @@ public static class PdfReprintModifier
             int cell = cellIndexes[i];
             if (cell < 0 || cell >= bounds.Count - 1) continue;
 
-            var cellRect = new XRect(
-                rect.X,
-                rect.Y + bounds[cell] * rect.Height,
-                rect.Width,
-                (bounds[cell + 1] - bounds[cell]) * rect.Height);
+            var cellRect = new XRect(rect.X, bounds[cell], rect.Width, bounds[cell + 1] - bounds[cell]);
 
             var padded = Pad(cellRect, layout.Padding);
             if (padded.Width <= 1 || padded.Height <= 1) continue;
@@ -297,16 +326,24 @@ public static class PdfReprintModifier
         }
     }
 
-    private static void DrawNotes(XGraphics gfx, XPen pen, XRect rect, XSize page, ReprintOverlayContent c, ReprintLayoutOptions layout)
+    private static void DrawNotes(XGraphics gfx, XPen pen, XRect rect, XSize page, PdfLabelGrid grid, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
         gfx.DrawRectangle(XBrushes.White, rect);
         var frame = layout.DrawNotesBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
 
-        double splitX = rect.X + layout.NotesColumnSplit * rect.Width;
+        var columns = grid.VerticalInside(rect.X, rect.Right, rect.Y, rect.Bottom);
+        double splitX = columns.Count > 0 ? columns[0] : rect.X + layout.NotesColumnSplit * rect.Width;
         gfx.DrawLine(pen, splitX, frame.Y, splitX, frame.Bottom);
 
-        double splitY = rect.Y + layout.NotesRightRowSplit * rect.Height;
+        var rightRows = grid.HorizontalInside(rect.Y, rect.Bottom, splitX, rect.Right);
+        double splitY = rightRows.Count > 0 ? rightRows[0] : rect.Y + layout.NotesRightRowSplit * rect.Height;
         gfx.DrawLine(pen, splitX, splitY, frame.Right, splitY);
+
+        // Cột trái của nhãn gốc còn một vạch ngăn ô mã vận đơn ở đáy; miếng vá xoá mất nó,
+        // nên kẻ lại đúng chỗ đọc được. Không đọc được thì thôi, giữ nguyên như trước.
+        var leftRows = grid.HorizontalInside(rect.Y, rect.Bottom, rect.X, splitX);
+        foreach (var y in leftRows)
+            gfx.DrawLine(pen, frame.X, y, splitX, y);
 
         // Left column: "Ghi chú:" + content, waybill pinned to the bottom.
         var left = Pad(new XRect(rect.X, rect.Y, splitX - rect.X, rect.Height), layout.Padding);
@@ -317,18 +354,23 @@ public static class PdfReprintModifier
             gfx.DrawString("Ghi chú:", labelFont, XBrushes.Black,
                 new XRect(left.X, left.Y, left.Width, labelHeight), XStringFormats.TopLeft);
 
+            // Ô mã vận đơn ở đáy cột trái: có vạch thật thì đặt gọn trong ô đó, không thì
+            // chừa đúng một dòng ở đáy như trước.
             var waybill = Clean(c.WaybillNo);
-            double waybillHeight = 0;
+            double waybillTop = left.Bottom;
             if (waybill.Length > 0)
             {
                 var waybillFont = FitFont(gfx, waybill, layout, layout.WaybillFontSize, true, left.Width, 5.0);
-                waybillHeight = LineHeight(gfx, waybillFont);
+                double waybillHeight = LineHeight(gfx, waybillFont);
+                waybillTop = leftRows.Count > 0 ? leftRows[^1] : left.Bottom - waybillHeight;
+
                 gfx.DrawString(waybill, waybillFont, XBrushes.Black,
-                    new XRect(left.X, left.Bottom - waybillHeight, left.Width, waybillHeight), XStringFormats.TopLeft);
+                    new XRect(left.X, waybillTop, left.Width, Math.Max(waybillHeight, rect.Bottom - waybillTop)),
+                    XStringFormats.CenterLeft);
             }
 
             double noteTop = left.Y + labelHeight + 1.0;
-            double noteBottom = left.Bottom - waybillHeight;
+            double noteBottom = waybillTop - 1.0;
             var note = Clean(c.Note);
             if (note.Length > 0 && noteBottom > noteTop)
             {
@@ -407,11 +449,15 @@ public static class PdfReprintModifier
     /// </summary>
     private static XRect DrawFrame(XGraphics gfx, XPen pen, XRect rect, double lineWidth, XSize page)
     {
-        double half = lineWidth / 2.0;
-        double left = ClampTo(rect.X, half, page.Width - half);
-        double right = ClampTo(rect.Right, half, page.Width - half);
-        double top = ClampTo(rect.Y, half, page.Height - half);
-        double bottom = ClampTo(rect.Bottom, half, page.Height - half);
+        // Khung ngoài của nhãn JMS nằm ở x=0.5 và x=210.5 trên trang rộng 210pt — tức mép phải
+        // vốn đã nhô ra ngoài page box. Kẹp nét vào hẳn trong trang sẽ kéo cạnh phải lùi ~1pt
+        // và hiện vạch đôi, nên cho phép nhô ra tối đa một bề rộng nét: phần thừa bị page box
+        // cắt đúng như nhãn gốc, mà rect rác thì vẫn không thể chạy đi đâu xa.
+        double slack = Math.Max(lineWidth, 0.5);
+        double left = ClampTo(rect.X, -slack, page.Width + slack);
+        double right = ClampTo(rect.Right, -slack, page.Width + slack);
+        double top = ClampTo(rect.Y, -slack, page.Height + slack);
+        double bottom = ClampTo(rect.Bottom, -slack, page.Height + slack);
 
         var framed = new XRect(left, top, Math.Max(0, right - left), Math.Max(0, bottom - top));
         if (framed.Width <= 0 || framed.Height <= 0) return rect;
