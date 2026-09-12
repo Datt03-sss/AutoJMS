@@ -304,6 +304,38 @@
   </form>
 </div>
 
+<!-- ====================================================================
+     MODAL — Xác nhận thao tác
+     ====================================================================
+     Thay cho window.confirm(). Hộp thoại của trình duyệt chặn cả luồng JS,
+     không theo theme, và trên mỗi trình duyệt lại là một hình khác nhau —
+     trong khi đây là lớp chặn duy nhất trước bốn thao tác đổi quyền chạy
+     phần mềm của khách.
+
+     role/aria-modal/aria-labelledby là bắt buộc chứ không phải trang trí:
+     window.confirm được trình đọc màn hình công bố sẵn là hộp thoại, nên
+     một div thay thế mà thiếu ba thuộc tính này là đi lùi.
+     ==================================================================== -->
+<div class="modal" id="confirm-modal" hidden>
+  <div class="modal__backdrop" id="confirm-backdrop"></div>
+
+  <div class="modal__card modal__card--confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <header class="modal__head">
+      <h2 id="confirm-title">Xác nhận thao tác</h2>
+      <button class="modal__close" type="button" id="confirm-close" title="Đóng">✕</button>
+    </header>
+
+    <div class="modal__body">
+      <p class="confirm__message" id="confirm-message"></p>
+    </div>
+
+    <footer class="modal__foot">
+      <button class="btn btn--ghost" type="button" id="confirm-cancel">Huỷ</button>
+      <button class="btn btn--primary" type="button" id="confirm-ok">Xác nhận</button>
+    </footer>
+  </div>
+</div>
+
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script src="app.js" defer></script>

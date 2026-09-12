@@ -160,10 +160,34 @@ an toàn theo cấu trúc, hàm này không có lý do gì để là ngoại l�
 `runAction()` tự `reload()` sau khi thành công — trạng thái trên màn hình luôn là
 thứ server vừa xác nhận, không phải thứ frontend đoán.
 
-Thao tác nặng thì thêm một `window.confirm` trong `onRowClick()` trước khi gọi
-`runAction()` — `toggle` (cả Khoá lẫn Mở khoá) và `unbind` (Reset HWID) đang làm
-đúng như vậy. Nút nằm sẵn trên dòng và giờ chỉ còn là một ô vuông 30px không
-chữ nên rất dễ bấm nhầm; hộp thoại đó là lớp chặn duy nhất.
+Thao tác nặng thì thêm một `await confirmAction({...})` trong `onRowClick()` trước
+khi gọi `runAction()`; trả về `false` thì `return` ngay, không gọi API. Bốn thao
+tác đang làm đúng như vậy: `unbind` (Reset HWID), `tier` (Đổi gói), và `toggle`
+cả hai chiều (Khoá / Mở khoá). Nút nằm sẵn trên dòng và giờ chỉ còn là một ô
+vuông 30px không chữ nên rất dễ bấm nhầm; hộp thoại đó là lớp chặn duy nhất.
+Chỉ `extend-1` đi thẳng — cộng thêm hạn là thao tác cộng dồn, bấm nhầm chỉ mất
+một tháng.
+
+```js
+const ok = await confirmAction({
+    title: "Xác nhận …",       // tiêu đề trên đầu hộp thoại
+    message: `… ${key}?\n…`,   // "\n" thật sự xuống dòng: .confirm__message dùng white-space: pre-line
+    okText: "…",               // nhãn nút đồng ý; mặc định "Xác nhận"
+    danger: true               // nút đồng ý thành btn--danger (đỏ) + focus rơi vào Huỷ
+});
+if (!ok) return;
+```
+
+**Đừng quay lại `window.confirm`.** Nó chặn cả luồng JS, không theo theme, và mỗi
+trình duyệt vẽ một kiểu. `confirmAction()` giữ đủ mọi thứ bản gốc cho không:
+`Esc`, nút `✕`, click nền đều là Huỷ, và focus trả về đúng nút vừa bấm. Nó cũng
+từ chối mở chồng — gọi lần hai khi hộp thoại đang mở sẽ trả `false` ngay, vì hai
+lần gọi sẽ gắn hai listener lên cùng một nút OK và một cú bấm bắn API hai lần.
+
+`danger: true` chỉ dành cho BAN. Đỏ ở đây không phải trang trí: đó là thao tác duy
+nhất trên trang cắt quyền chạy phần mềm của khách đang trả tiền, nên nút đồng ý
+phải khác hẳn, và focus phải nằm ở `Huỷ` chứ không phải ở nút đỏ — một phím Enter
+theo phản xạ không được phép khoá key của ai.
 
 Đừng phân biệt chiều của thao tác bằng `textContent` — nhãn giờ là icon, không
 có chữ để đọc. `toggle` dùng `data-closed="true|false"` và `onRowClick()` đọc

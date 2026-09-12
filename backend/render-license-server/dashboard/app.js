@@ -125,6 +125,14 @@
         keyDisplay: $("key-display"),
         btnGeneralKey: $("btn-general-key"),
 
+        confirmModal: $("confirm-modal"),
+        confirmBackdrop: $("confirm-backdrop"),
+        confirmClose: $("confirm-close"),
+        confirmTitle: $("confirm-title"),
+        confirmMessage: $("confirm-message"),
+        confirmCancel: $("confirm-cancel"),
+        confirmOk: $("confirm-ok"),
+
         toasts: $("toasts")
     };
 
@@ -741,6 +749,66 @@
         }
     }
 
+    /**
+     * The in-app replacement for window.confirm().
+     *
+     * Same contract — resolves true only when the owner actively agreed — but the
+     * page keeps running while it is open, and the box follows the theme instead
+     * of looking like a different piece of software on every browser.
+     *
+     * Esc, the ✕ and the backdrop all cancel, and focus returns to whatever
+     * opened the dialog. None of that is polish: window.confirm did all three for
+     * free, so a replacement without them is a downgrade.
+     *
+     * @param {{title: string, message: string, okText?: string, cancelText?: string, danger?: boolean}} options
+     * @returns {Promise<boolean>} true only on an explicit confirm.
+     */
+    function confirmAction({ title, message, okText = "Xác nhận", cancelText = "Huỷ", danger = false }) {
+        // A second dialog on top of the first would overwrite the text and hang a
+        // second listener on the same OK button — one click would resolve both
+        // promises and fire the API twice. Refuse rather than stack.
+        if (!dom.confirmModal.hidden) return Promise.resolve(false);
+
+        return new Promise(resolve => {
+            const opener = document.activeElement;
+
+            dom.confirmTitle.textContent = title;
+            dom.confirmMessage.textContent = message;
+            dom.confirmOk.textContent = okText;
+            dom.confirmOk.className = danger ? "btn btn--danger" : "btn btn--primary";
+            dom.confirmCancel.textContent = cancelText;
+
+            const cleanup = confirmed => {
+                dom.confirmModal.hidden = true;
+                dom.confirmOk.removeEventListener("click", onOk);
+                dom.confirmCancel.removeEventListener("click", onCancel);
+                dom.confirmClose.removeEventListener("click", onCancel);
+                dom.confirmBackdrop.removeEventListener("click", onCancel);
+                document.removeEventListener("keydown", onKey);
+                if (opener && typeof opener.focus === "function") opener.focus();
+                resolve(confirmed);
+            };
+            const onOk = () => cleanup(true);
+            const onCancel = () => cleanup(false);
+            const onKey = event => {
+                if (event.key === "Escape") cleanup(false);
+            };
+
+            dom.confirmOk.addEventListener("click", onOk);
+            dom.confirmCancel.addEventListener("click", onCancel);
+            dom.confirmClose.addEventListener("click", onCancel);
+            dom.confirmBackdrop.addEventListener("click", onCancel);
+            document.addEventListener("keydown", onKey);
+
+            dom.confirmModal.hidden = false;
+            // The destructive dialog focuses Huỷ. With focus on OK, one reflex
+            // Enter — the owner was typing in the search box a second ago — bans a
+            // paying customer's key, which is the exact accident this dialog is
+            // here to prevent.
+            (danger ? dom.confirmCancel : dom.confirmOk).focus();
+        });
+    }
+
     async function onRowClick(event) {
         const trigger = event.target.closest("[data-action]");
         if (!trigger) return;
@@ -754,21 +822,44 @@
             return;
         }
 
-        // The ones that change who can run the software. Extension is additive
-        // and a tier change is one click to undo, so neither asks. Both
-        // directions of toggle ask: unlocking a key is as much a decision as
-        // locking one, and the whole button is now a 30px square with no text
-        // on it — there is nothing to read on the way to clicking it.
-        if (action === "toggle") {
-            const isUnlocking = trigger.dataset.closed === "true";
-            const message = isUnlocking
-                ? `Xác nhận MỞ KHOÁ (Active) license ${key}?\nMáy trạm sẽ có thể kích hoạt và hoạt động bình thường.`
-                : `Xác nhận KHOÁ (Ban) license ${key}?\nMáy trạm đang dùng key này sẽ bị ngắt quyền truy cập ngay lập tức.`;
-            if (!window.confirm(message)) return;
+        // Everything past this point changes who can run the software, and every
+        // button in the column is a 30px square with no text on it — there is
+        // nothing to read on the way to clicking one. Only +1 Tháng goes straight
+        // through: it is additive, so the worst case is a free month.
+        if (action === "unbind") {
+            const ok = await confirmAction({
+                title: "Xác nhận Reset HWID",
+                message: `Xác nhận reset HWID cho key ${key}?\nKey sẽ được giải phóng để liên kết với máy trạm kích hoạt tiếp theo.`,
+                okText: "Reset HWID"
+            });
+            if (!ok) return;
         }
 
-        if (action === "unbind") {
-            if (!window.confirm(`Reset HWID của ${key}?\nKey sẽ gắn vào máy nào kích hoạt tiếp theo.`)) return;
+        if (action === "tier") {
+            const nextTier = trigger.dataset.tier;
+            const ok = await confirmAction({
+                title: `Xác nhận Đổi sang ${nextTier}`,
+                message: `Xác nhận chuyển license ${key} sang gói ${nextTier}?`,
+                okText: `Đổi sang ${nextTier}`
+            });
+            if (!ok) return;
+        }
+
+        if (action === "toggle") {
+            const isUnlocking = trigger.dataset.closed === "true";
+            const ok = isUnlocking
+                ? await confirmAction({
+                    title: "Xác nhận Mở Khóa (UNBAN)",
+                    message: `Xác nhận MỞ KHÓA (Active) license ${key}?\nMáy trạm sẽ có thể kích hoạt và hoạt động bình thường.`,
+                    okText: "Mở Khóa"
+                })
+                : await confirmAction({
+                    title: "Xác nhận Khóa License (BAN)",
+                    message: `Xác nhận KHÓA (Ban) license ${key}?\nMáy trạm đang dùng key này sẽ bị ngắt quyền truy cập ngay lập tức.`,
+                    okText: "Khóa License",
+                    danger: true
+                });
+            if (!ok) return;
         }
 
         await runAction(action, key, trigger.dataset);

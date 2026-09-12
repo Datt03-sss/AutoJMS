@@ -703,6 +703,40 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 }
 
 /* ==========================================
+   CONFIRM MODAL
+   ==========================================
+   Narrower than the create card on purpose: it holds two sentences and two
+   buttons, and a 520px box around that much text reads as a form the owner is
+   supposed to fill in rather than a question to answer. */
+
+.modal__card--confirm { max-width: 420px; }
+
+.confirm__message {
+    font-size: .92rem;
+    line-height: 1.55;
+    color: var(--text);
+    /* The messages carry a real line break between the question and its
+       consequence. Without pre-line both sentences run together into one
+       paragraph and the second one — the part that says what actually breaks
+       — stops standing out. */
+    white-space: pre-line;
+    margin: 0;
+}
+
+/* Only the BAN dialog uses this. Red is not decoration here: it is the one
+   action on the page that cuts off a paying customer mid-session. */
+.btn--danger {
+    background: var(--danger);
+    color: #ffffff;
+    border-color: transparent;
+}
+.btn--danger:hover:not([disabled]) {
+    opacity: .9;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, .4);
+    transform: translateY(-1px);
+}
+
+/* ==========================================
    CREATE MODAL — PILL TOGGLE
    ==========================================
    The one element on this page that does NOT follow the theme variables, and
