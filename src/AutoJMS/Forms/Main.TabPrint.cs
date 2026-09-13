@@ -228,11 +228,14 @@ namespace AutoJMS
         /// </summary>
         private Control BuildReprintPrintCountCard()
         {
-            var card = NewReprintCard("tabPrint_reprintCardPrintCount", 4, out var body);
+            var card = NewReprintCard("tabPrint_reprintCardPrintCount", 3, out var body);
             body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
-            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            // Hai dòng ô chia đôi phần còn lại, giống thẻ Mã tuyến: hai hàng cao cố định 27px
+            // cộng một hàng đệm ở đáy chính là dải trống ~34px Owner thấy dưới ô ngày in.
+            // Hai hàng cùng Percent 50F nghĩa là mỗi hàng một nửa — chia hết, không dôi dư.
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
 
             _reprintChkPrintCount = NewReprintCheckBox("tabPrint_reprintChkPrintCount", "Sửa dòng đếm lần in");
             _reprintTxtPrintCode = NewReprintTextBox("tabPrint_reprintTxtPrintCode", "Mã bưu cục", false);
