@@ -20,6 +20,33 @@ namespace AutoJMS
     public enum HeartbeatOutcome { Continue, ServerKill, TransientFailure, Fatal }
     public enum VerifyFailureKind { None, Transient, Denied, InvalidResponse }
 
+    /// <summary>
+    /// The "everyone update now" command the owner switches on from /admin.
+    /// </summary>
+    /// <remarks>
+    /// Sent by both /api/verify-license and /api/heartbeat, in the same shape, and
+    /// only while it is switched on — an absent block means there is no broadcast,
+    /// so the station never has to interpret an empty one.
+    ///
+    /// It is a request, not an order: the station still compares Version against
+    /// its own build and still asks the user. A directive naming a version this
+    /// machine already has, or an older one, is silently ignored.
+    /// </remarks>
+    public class BroadcastUpdateDirective
+    {
+        /// <summary>Target version WITHOUT a leading "v", e.g. "1.26.12" or "1.26.12-beta.1".</summary>
+        public string Version { get; set; } = "";
+
+        /// <summary>"stable" or "beta" — which Velopack feed to pull from.</summary>
+        public string Channel { get; set; } = "stable";
+
+        /// <summary>Owner's note, shown in the prompt. May be empty.</summary>
+        public string Message { get; set; } = "";
+
+        /// <summary>Unix milliseconds the directive was last switched on; 0 when unknown.</summary>
+        public long UpdatedAt { get; set; }
+    }
+
     public class VerifyResult
     {
         public bool Success { get; set; }
@@ -70,6 +97,9 @@ namespace AutoJMS
         public int? DaysRemaining { get; set; }
         public string ExpiresAt { get; set; } = "";
         public string GraceUntil { get; set; } = "";
+
+        /// <summary>The fleet-wide update command, or null when none is active.</summary>
+        public BroadcastUpdateDirective BroadcastUpdate { get; set; }
     }
 
     public class HeartbeatResult
@@ -126,6 +156,18 @@ eQIDAQAB
         /// <summary>Last lifecycle state written to the log; null until the first one is.
         /// See RememberLicenseLifecycle for why the comparison is not on the warning alone.</summary>
         private static string _lastLoggedLifecycleState;
+
+        /// <summary>
+        /// The fleet-wide update command the server last sent, or null when there is none.
+        /// </summary>
+        /// <remarks>
+        /// Kept here rather than passed to the UI because both routes that can carry it
+        /// — activation and the heartbeat — live in this class, and only one of them
+        /// returns anything to the form. Set on every verify and every beat, INCLUDING
+        /// to null: a broadcast the owner switched off has to stop existing on the
+        /// station too, or the next prompt would fire on a cancelled command.
+        /// </remarks>
+        public static BroadcastUpdateDirective CurrentBroadcastUpdate { get; private set; }
         private static string ApiBase =>
             (Environment.GetEnvironmentVariable("AUTOJMS_LICENSE_API_BASE_URL") ?? DEFAULT_API_BASE)
                 .Trim()
@@ -149,7 +191,17 @@ eQIDAQAB
         {
             try
             {
-                var payload = new { licenseKey = licenseKey, hwid = hwid, exeHash = Program.ExecutableHash };
+                // appVersion is telemetry, not a credential: the server records it on
+                // the licence record so the admin table can show which build each
+                // station is running. The server drops anything that is not a plain
+                // version token, so sending it costs nothing when it is wrong.
+                var payload = new
+                {
+                    licenseKey = licenseKey,
+                    hwid = hwid,
+                    exeHash = Program.ExecutableHash,
+                    appVersion = AppVersion.Current
+                };
                 string json = JsonSerializer.Serialize(payload);
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, ApiVerify);
@@ -265,6 +317,11 @@ eQIDAQAB
                         graceUntil = ReadInstantAsText(licLifecycleProp, "graceUntil");
                     }
                     RememberLicenseLifecycle(effectiveStatus, daysRemaining, expiresAt, graceUntil);
+
+                    // The fleet-wide update command, if one is switched on. Read here
+                    // rather than in Main so the heartbeat can keep it current from the
+                    // same parser — the two routes send an identical block.
+                    var broadcastUpdate = RememberBroadcastUpdate(root);
 
                     // Parse skipHashCheck from root or integrity sub-object
                     bool skipHashCheck = false;
@@ -430,7 +487,8 @@ eQIDAQAB
                         EffectiveStatus = effectiveStatus,
                         DaysRemaining = daysRemaining,
                         ExpiresAt = expiresAt,
-                        GraceUntil = graceUntil
+                        GraceUntil = graceUntil,
+                        BroadcastUpdate = broadcastUpdate
                     };
                 }
             }
@@ -546,6 +604,65 @@ eQIDAQAB
                     (string.IsNullOrWhiteSpace(effectiveStatus) ? "<unknown>" : effectiveStatus) +
                     ", daysRemaining=" + (daysRemaining.HasValue ? daysRemaining.Value.ToString() : "<none>") +
                     ", expiresAt=" + (string.IsNullOrWhiteSpace(expiresAt) ? "<none>" : expiresAt));
+        }
+
+        /// <summary>
+        /// Reads the broadcastUpdate block off a verify or heartbeat response and stores
+        /// it in <see cref="CurrentBroadcastUpdate"/>. Returns what it stored.
+        /// </summary>
+        /// <remarks>
+        /// An absent block, a block that is not an object, and a block with no usable
+        /// version all mean the same thing — no broadcast — and all clear the stored
+        /// one. That last case matters: a directive whose version the station cannot
+        /// compare against would be a prompt nobody could act on correctly.
+        ///
+        /// A version that fails to parse is NOT rejected here. That comparison belongs
+        /// to the caller (UpdateChannelDialog.IsUpgrade), which knows how this app's
+        /// versions are shaped; this method only refuses the empty case.
+        /// </remarks>
+        private static BroadcastUpdateDirective RememberBroadcastUpdate(JsonElement root)
+        {
+            BroadcastUpdateDirective directive = null;
+
+            if (root.ValueKind == JsonValueKind.Object &&
+                root.TryGetProperty("broadcastUpdate", out var block) &&
+                block.ValueKind == JsonValueKind.Object)
+            {
+                string version = block.TryGetProperty("version", out var versionProp) &&
+                                 versionProp.ValueKind == JsonValueKind.String
+                    ? (versionProp.GetString() ?? "").Trim()
+                    : "";
+
+                if (version.Length > 0)
+                {
+                    string channel = block.TryGetProperty("channel", out var channelProp) &&
+                                     channelProp.ValueKind == JsonValueKind.String
+                        ? (channelProp.GetString() ?? "").Trim().ToLowerInvariant()
+                        : "";
+
+                    directive = new BroadcastUpdateDirective
+                    {
+                        Version = version,
+                        // Anything the update stack does not have a feed for falls back
+                        // to stable rather than being passed through: Velopack would
+                        // simply fail to resolve an unknown channel, and the station
+                        // would report "no update available" for a broadcast that was on.
+                        Channel = channel == "beta" ? "beta" : "stable",
+                        Message = block.TryGetProperty("message", out var messageProp) &&
+                                  messageProp.ValueKind == JsonValueKind.String
+                            ? messageProp.GetString() ?? ""
+                            : "",
+                        UpdatedAt = block.TryGetProperty("updatedAt", out var updatedProp) &&
+                                    updatedProp.ValueKind == JsonValueKind.Number &&
+                                    updatedProp.TryGetInt64(out long updatedAt)
+                            ? updatedAt
+                            : 0
+                    };
+                }
+            }
+
+            CurrentBroadcastUpdate = directive;
+            return directive;
         }
 
         private static string RedactVerifyResponseForLog(string body)
@@ -976,7 +1093,16 @@ eQIDAQAB
         {
             try
             {
-                var payload = new { clientHwid = hwid, exeHash = Program.ExecutableHash };
+                // Sent on every beat, not only at activation: a station can be
+                // upgraded while it is running, and a customer who installs a build
+                // by hand never re-activates. The server rations the write, so a
+                // version that has not changed costs nothing.
+                var payload = new
+                {
+                    clientHwid = hwid,
+                    exeHash = Program.ExecutableHash,
+                    appVersion = AppVersion.Current
+                };
                 string json = JsonSerializer.Serialize(payload);
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, ApiHeartbeat);
@@ -1024,6 +1150,12 @@ eQIDAQAB
                                 : (int?)null,
                             ReadInstantAsText(root, "expiresAt"),
                             ReadInstantAsText(root, "graceUntil"));
+
+                        // Same block, same parser as verify-license. This is the only
+                        // route that can see a broadcast switched on AFTER the station
+                        // launched — and, just as importantly, one switched off: an
+                        // owner who cancels a bad broadcast needs it to stop here too.
+                        RememberBroadcastUpdate(root);
 
                         return new HeartbeatResult(HeartbeatOutcome.Continue, newToken, null);
                     }

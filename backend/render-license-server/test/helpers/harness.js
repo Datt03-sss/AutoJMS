@@ -192,6 +192,18 @@ async function startServer(options = {}) {
         // the only limiter that runs before the body parser, so a value leaked in
         // from another test would show up as unexplained 429s anywhere in the suite.
         GLOBAL_RATE_LIMIT_PER_MINUTE: undefined,
+        // Broadcast update + version telemetry. The two cache/interval knobs matter
+        // here more than most: both default to "several minutes", so a test that
+        // forgets to zero them reads a stale directive from the previous test and
+        // fails somewhere else entirely. The three release-source ones are listed
+        // because leaving them unset is what sends the /releases test at the real
+        // GitHub — a suite that needs the network is a suite that fails for reasons
+        // unrelated to the change being tested.
+        BROADCAST_UPDATE_CACHE_MS: undefined,
+        LICENSE_ACTIVITY_WRITE_INTERVAL_MS: undefined,
+        GITHUB_RELEASES_API_URL: undefined,
+        UPDATE_XML_URL: undefined,
+        RELEASES_FETCH_TIMEOUT_MS: undefined,
         ...(options.env || {})
     };
 

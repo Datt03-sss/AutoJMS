@@ -504,6 +504,158 @@ function getClientIp(req) {
     );
 }
 
+// ==========================================
+// APP VERSION TELEMETRY + BROADCAST UPDATE
+// ==========================================
+
+/**
+ * The build a station claims to be running, reduced to something safe to store.
+ *
+ * It is a claim, not a fact — it comes off the wire — and it ends up in the admin
+ * table and in a version comparison, so anything that is not a plain version
+ * token is dropped rather than written. Wide enough for "1.26.12", for the
+ * 4-part assembly fallback AppVersion.cs uses, and for a "-beta.1" suffix.
+ */
+const APP_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
+
+function sanitizeAppVersion(raw) {
+    const value = String(raw ?? "").trim();
+    return APP_VERSION_PATTERN.test(value) ? value : "";
+}
+
+/**
+ * How stale `lastActiveAt` may get before a heartbeat refreshes it.
+ *
+ * The heartbeat runs once a minute per station, and the licence record is not
+ * session state: writing it on every beat would make a presence indicator the
+ * busiest write in the system without carrying any more information than a
+ * ten-minute-old one. A version CHANGE is always written immediately — the clock
+ * alone is what waits.
+ */
+const LICENSE_ACTIVITY_WRITE_INTERVAL_MS = numericEnv(
+    process.env.LICENSE_ACTIVITY_WRITE_INTERVAL_MS,
+    600_000,
+    0
+);
+
+/**
+ * Records which build this licence is running, and when it was last seen.
+ *
+ * Written on the LICENCE record and not only on the session row, because the
+ * dashboard lists licences: a station that closed cleanly leaves no session
+ * behind, and its version would vanish with it — which is exactly the moment an
+ * owner wants to know what it was running.
+ *
+ * Failures are logged and swallowed. This is telemetry; it must never be the
+ * reason a station cannot activate or cannot stay alive.
+ *
+ * @param {boolean} [options.force] activation, which always writes
+ */
+async function recordLicenseActivity(licenseKey, record, appVersion, { force = false } = {}) {
+    const version = sanitizeAppVersion(appVersion);
+    const now = Date.now();
+
+    const storedVersion = sanitizeAppVersion(record?.appVersion);
+    const lastActiveAt = sessionTimestamp(record?.lastActiveAt) ?? 0;
+    const versionChanged = version !== "" && version !== storedVersion;
+
+    if (!force && !versionChanged && now - lastActiveAt < LICENSE_ACTIVITY_WRITE_INTERVAL_MS) {
+        return;
+    }
+
+    // An unreadable version leaves the stored one alone rather than blanking it:
+    // the last known build is better information than none, and a client too old
+    // to report a version is precisely the one worth still seeing in the table.
+    const patch = { lastActiveAt: now };
+    if (version !== "") patch.appVersion = version;
+
+    try {
+        await withTimeout(
+            admin.database().ref(`Licenses/${licenseKey}`).update(patch),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_LICENSE_ACTIVITY"
+        );
+    } catch (e) {
+        logEvent("warn", "license.activity_write_failed", {
+            license: maskLicenseKey(licenseKey),
+            message: e.message
+        });
+    }
+}
+
+/**
+ * How long a read of config/broadcastUpdate is reused.
+ *
+ * Every verify-license AND every heartbeat in the fleet consults this node —
+ * once a minute per station — while it changes only when the owner presses a
+ * button in /admin. The TTL is therefore the delay between switching a broadcast
+ * on and the fleet noticing, which is why it is seconds rather than minutes.
+ */
+const BROADCAST_CACHE_TTL_MS = numericEnv(process.env.BROADCAST_UPDATE_CACHE_MS, 20_000, 0);
+
+let broadcastCache = { directive: null, readAtMs: 0 };
+
+/** Shared with admin-routes.js's validator so neither half can store what the other truncates. */
+const BROADCAST_MESSAGE_MAX_LENGTH = 300;
+
+/**
+ * The stored node reduced to what a client is allowed to act on, or null.
+ *
+ * null covers every "there is no broadcast" case there is: no node, the switch
+ * off, or a version string that would not survive sanitizeAppVersion. The last
+ * one matters — a directive with an unusable version would have every station in
+ * the fleet compare against garbage and either all update or none, decided by a
+ * typo in a form field.
+ */
+function normalizeBroadcastUpdate(raw) {
+    if (!raw || typeof raw !== "object" || raw.active !== true) return null;
+
+    const version = sanitizeAppVersion(raw.version);
+    if (!version) return null;
+
+    const channel = String(raw.channel || "").trim().toLowerCase();
+
+    return {
+        version,
+        channel: channel === "beta" ? "beta" : "stable",
+        message: String(raw.message || "").slice(0, BROADCAST_MESSAGE_MAX_LENGTH),
+        updatedAt: Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : 0
+    };
+}
+
+/**
+ * The fleet-wide "everyone update now" directive, or null when there is none.
+ *
+ * Never throws: a broadcast that cannot be read is a broadcast that was not
+ * sent, and it must not take an activation or a heartbeat down with it. A failed
+ * read is cached like a successful one so a broken Firebase costs one attempt
+ * per TTL rather than one per request.
+ */
+async function readBroadcastUpdate() {
+    const now = Date.now();
+
+    if (broadcastCache.readAtMs !== 0 && now - broadcastCache.readAtMs < BROADCAST_CACHE_TTL_MS) {
+        return broadcastCache.directive;
+    }
+
+    let directive = null;
+
+    try {
+        const snapshot = await withTimeout(
+            admin.database().ref("config/broadcastUpdate").once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE_BROADCAST_READ"
+        );
+        directive = normalizeBroadcastUpdate(snapshot.val());
+    } catch (e) {
+        logEvent("warn", "broadcast_update.read_failed", { message: e.message });
+        directive = null;
+    }
+
+    broadcastCache = { directive, readAtMs: now };
+    return directive;
+}
+
 // Named rather than inlined because a second piece of logic now depends on it: the
 // stale-session threshold below is DERIVED from this number, not chosen next to it.
 // Change the TTL and the reaper follows; leave them independent and the reaper
@@ -1248,6 +1400,12 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             tier
         });
 
+        // Activation is the one moment the reported build is certainly current,
+        // so it writes unconditionally; the heartbeat is the one that rations.
+        await recordLicenseActivity(licenseKey, data, appVersion, { force: true });
+
+        const broadcastUpdate = await readBroadcastUpdate();
+
         // Enrollment credential for the DataHub API. Minted here because Render is the only
         // component that has just proven the license is active and bound to this machine.
         const datahubAssertion = issueDataHubAssertion(data, middleCode);
@@ -1275,6 +1433,11 @@ app.post("/api/verify-license", limiter, async (req, res) => {
             middleCode,
             skipHashCheck,
             modulePolicy,
+
+            // Present only while a broadcast is switched on, so a client that
+            // never sees the key is a client with nothing to do. An empty object
+            // here would be a directive the station has to reason about.
+            ...(broadcastUpdate ? { broadcastUpdate } : {}),
 
             license: {
                 status: data.status || "active",
@@ -1459,6 +1622,7 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
 
     try {
         const auth = req.headers.authorization;
+        const { appVersion } = req.body || {};
 
         if (!auth || !auth.startsWith("Bearer ")) {
             return res.status(401).json({
@@ -1625,6 +1789,14 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             "FIREBASE_SESSION_UPDATE"
         );
 
+        // A station can be upgraded while it is running — the update restarts the
+        // app, but a customer who installs a build by hand does not re-activate.
+        // Rationed by recordLicenseActivity so this costs one write per version
+        // change, not one per beat.
+        await recordLicenseActivity(decoded.key, licenseData, appVersion);
+
+        const broadcastUpdate = await readBroadcastUpdate();
+
         // The tier still comes from the token, not from the record just read: a tier
         // change takes effect on restart by owner decision (2026-08-24), and the
         // client caches its entitlement at launch. Reading it here would make the
@@ -1650,7 +1822,11 @@ app.post("/api/heartbeat", heartbeatLimiter, async (req, res) => {
             effectiveStatus: lifecycle.effectiveStatus,
             expiresAt: lifecycle.expiresAt,
             graceUntil: lifecycle.graceUntil,
-            daysRemaining: lifecycle.daysRemaining
+            daysRemaining: lifecycle.daysRemaining,
+
+            // Same key and same shape as verify-license's, so the client parses
+            // one block rather than two. Absent means "no broadcast".
+            ...(broadcastUpdate ? { broadcastUpdate } : {})
         });
     } catch (e) {
         logEvent("error", "heartbeat.error", { requestId, elapsedMs: Date.now() - started, message: e.message });

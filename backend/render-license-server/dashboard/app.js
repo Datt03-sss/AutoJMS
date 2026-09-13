@@ -97,6 +97,7 @@
         themeIcon: $("theme-icon"),
         refreshButton: $("refresh-button"),
         lockButton: $("lock-button"),
+        broadcastButton: $("broadcast-update-button"),
         createButton: $("create-button"),
 
         statTotal: $("stat-total"),
@@ -171,6 +172,20 @@
         editSiteCodes: $("edit-site-codes"),
         editSiteCode: $("edit-site-code"),
         editSiteId: $("edit-site-id"),
+
+        broadcastModal: $("broadcast-modal"),
+        broadcastBackdrop: $("broadcast-backdrop"),
+        broadcastForm: $("broadcast-form"),
+        broadcastClose: $("broadcast-close"),
+        broadcastState: $("broadcast-state"),
+        broadcastVersion: $("broadcast-version"),
+        broadcastChannel: $("broadcast-channel"),
+        broadcastMessage: $("broadcast-message"),
+        broadcastReleaseList: $("broadcast-release-list"),
+        broadcastReleaseHint: $("broadcast-release-hint"),
+        broadcastDisable: $("broadcast-disable"),
+        broadcastSubmit: $("broadcast-submit"),
+        broadcastError: $("broadcast-error"),
 
         confirmModal: $("confirm-modal"),
         confirmBackdrop: $("confirm-backdrop"),
@@ -584,6 +599,35 @@
         return el("span", { class: `cell-days${tone}`, text: `${days} ngày` });
     }
 
+    /**
+     * The build a station reported, and when it last reported it.
+     *
+     * Read off the string for the same reason formatDate is — `lastActiveAt`
+     * already carries +07:00 and re-rendering it through Date would move it.
+     *
+     * "chưa rõ" rather than "—": an empty value does not mean the station is
+     * running nothing, it means no station holding this key has reached the
+     * server since the build that reports versions went out. Those are different
+     * facts and the owner acts differently on each.
+     */
+    function versionCell(license) {
+        const version = String(license.appVersion || "").trim();
+
+        if (!version) {
+            return el("span", { class: "badge badge--version badge--version-unknown", text: "chưa rõ" });
+        }
+
+        const seen = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(license.lastActiveAt || ""));
+
+        return el("span", {
+            class: "badge badge--version",
+            text: version,
+            title: seen
+                ? `Máy trạm báo về lần cuối: ${seen[3]}/${seen[2]}/${seen[1]} ${seen[4]}:${seen[5]}`
+                : "Phiên bản do máy trạm tự báo về"
+        });
+    }
+
     // ==========================================
     // TABLE
     // ==========================================
@@ -650,6 +694,8 @@
                     text: STATUS_LABELS[bucket] || bucket
                 })
             ]),
+
+            el("td", { "data-label": "Phiên bản" }, [versionCell(license)]),
 
             // Every action sits on the row itself: one tap each, no dropdown to
             // open first. Only the renewal keeps a word label; the rest are SVG
@@ -1456,6 +1502,158 @@
     }
 
     // ==========================================
+    // BROADCAST UPDATE
+    // ==========================================
+    //
+    // One directive, stored once on the server, read by every station at its next
+    // verify-license or heartbeat. There is no per-machine targeting here on
+    // purpose — see the modal's comment in index.html.
+
+    function setBroadcastState(directive) {
+        const active = directive?.active === true;
+        const version = String(directive?.version || "");
+
+        dom.broadcastState.className = active ? "broadcast-state broadcast-state--on" : "broadcast-state";
+        dom.broadcastState.textContent = active
+            ? `Đang BẬT · ${version} · kênh ${directive.channel || "stable"}`
+            : version
+              ? `Đang TẮT · lệnh gần nhất: ${version}`
+              : "Đang TẮT · chưa từng phát lệnh nào.";
+    }
+
+    /**
+     * Fills the version dropdown, and says where the list came from.
+     *
+     * A failure here is deliberately not fatal to the modal: the version box is a
+     * plain text input with a datalist attached, so an owner who cannot reach
+     * GitHub types "1.26.12" and carries on. Hiding that the list failed would be
+     * worse than an empty dropdown — the owner would read "no releases" as a fact
+     * about the repository.
+     */
+    async function loadBroadcastReleases() {
+        dom.broadcastReleaseList.replaceChildren();
+        dom.broadcastReleaseHint.textContent = "Đang đọc danh sách bản phát hành…";
+
+        try {
+            const result = await api("GET", "/releases");
+            const releases = Array.isArray(result?.releases) ? result.releases : [];
+
+            dom.broadcastReleaseList.replaceChildren(
+                ...releases.map(release =>
+                    el("option", {
+                        value: release.version,
+                        label: `${release.version} · ${release.channel}`
+                    })
+                )
+            );
+
+            dom.broadcastReleaseHint.textContent = releases.length
+                ? `${releases.length} bản phát hành (nguồn: ${result.source || "github"}). Có thể gõ tay.`
+                : "Không có bản phát hành nào trong danh sách. Nhập phiên bản thủ công.";
+        } catch (error) {
+            dom.broadcastReleaseHint.textContent = `${describeError(error).detail} Nhập phiên bản thủ công.`;
+        }
+    }
+
+    async function openBroadcast() {
+        dom.broadcastError.hidden = true;
+        dom.broadcastState.className = "broadcast-state";
+        dom.broadcastState.textContent = "Đang đọc trạng thái…";
+        dom.broadcastModal.hidden = false;
+
+        try {
+            const result = await api("GET", "/broadcast-update");
+            const directive = result?.broadcastUpdate || {};
+
+            // Prefilled from the stored directive, including when it is switched
+            // off: re-sending the same broadcast is then one click, and the owner
+            // can read what the last one said before deciding.
+            dom.broadcastVersion.value = String(directive.version || "");
+            dom.broadcastChannel.value = directive.channel === "beta" ? "beta" : "stable";
+            dom.broadcastMessage.value = String(directive.message || "");
+            setBroadcastState(directive);
+        } catch (error) {
+            const described = describeError(error);
+            if (described.fatal) {
+                closeBroadcast();
+                forgetToken();
+                showLock(`${described.title}. ${described.detail}`);
+                return;
+            }
+            dom.broadcastState.textContent = "Không đọc được trạng thái hiện tại.";
+            dom.broadcastError.textContent = described.detail;
+            dom.broadcastError.hidden = false;
+        }
+
+        // Started after the state call rather than beside it, so a slow GitHub
+        // cannot delay the one line the owner opened this box to read.
+        loadBroadcastReleases();
+        dom.broadcastVersion.focus();
+    }
+
+    function closeBroadcast() {
+        dom.broadcastModal.hidden = true;
+    }
+
+    async function sendBroadcast(payload, busyLabel) {
+        dom.broadcastError.hidden = true;
+        dom.broadcastSubmit.disabled = true;
+        dom.broadcastDisable.disabled = true;
+
+        const submitLabel = dom.broadcastSubmit.textContent;
+        dom.broadcastSubmit.textContent = busyLabel;
+
+        try {
+            const result = await api("POST", "/broadcast-update", payload);
+
+            setBroadcastState(result);
+            closeBroadcast();
+
+            if (result?.active === true) {
+                toast("ok", "Đã bật lệnh cập nhật đồng loạt", `${result.version} · kênh ${result.channel}`);
+            } else {
+                toast("info", "Đã tắt lệnh cập nhật đồng loạt", "Máy trạm sẽ không còn được hỏi cập nhật.");
+            }
+        } catch (error) {
+            const described = describeError(error);
+            if (described.fatal) {
+                closeBroadcast();
+                forgetToken();
+                showLock(`${described.title}. ${described.detail}`);
+                return;
+            }
+            dom.broadcastError.textContent = described.detail;
+            dom.broadcastError.hidden = false;
+        } finally {
+            dom.broadcastSubmit.disabled = false;
+            dom.broadcastDisable.disabled = false;
+            dom.broadcastSubmit.textContent = submitLabel;
+        }
+    }
+
+    function submitBroadcast(event) {
+        event.preventDefault();
+
+        const version = dom.broadcastVersion.value.trim();
+        if (!version) {
+            dom.broadcastError.textContent = "Nhập phiên bản muốn đẩy, ví dụ 1.26.12.";
+            dom.broadcastError.hidden = false;
+            dom.broadcastVersion.focus();
+            return;
+        }
+
+        return sendBroadcast(
+            {
+                active: true,
+                version,
+                channel: dom.broadcastChannel.value,
+                message: dom.broadcastMessage.value
+            },
+            "Đang bật…"
+        );
+    }
+
+    // ==========================================
     // WIRING
     // ==========================================
 
@@ -1475,6 +1673,15 @@
             forgetToken();
             showLock("Đã xoá token khỏi tab này.");
         });
+
+        dom.broadcastButton.addEventListener("click", openBroadcast);
+        dom.broadcastClose.addEventListener("click", closeBroadcast);
+        dom.broadcastBackdrop.addEventListener("click", closeBroadcast);
+        dom.broadcastForm.addEventListener("submit", submitBroadcast);
+        // Only `active:false` goes up: the server keeps the version and message
+        // it already holds, so turning the broadcast back on later reopens on the
+        // same text instead of a blank form.
+        dom.broadcastDisable.addEventListener("click", () => sendBroadcast({ active: false }, "Đang tắt…"));
 
         dom.createButton.addEventListener("click", openCreate);
         dom.createClose.addEventListener("click", closeCreate);
@@ -1558,6 +1765,7 @@
             if (!dom.confirmModal.hidden) return;
             if (!dom.editModal.hidden) closeEdit();
             else if (!dom.createModal.hidden) closeCreate();
+            else if (!dom.broadcastModal.hidden) closeBroadcast();
         });
 
         const stored = readStoredToken();

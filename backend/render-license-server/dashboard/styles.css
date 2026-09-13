@@ -648,6 +648,20 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 .badge--revoked { background: var(--neutral-soft); color: var(--text-muted); border-color: var(--border-strong); }
 .badge--perpetual { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 
+/* Version is the one badge that carries a value rather than a category, so it
+   is monospace and unweighted: "1.26.12" and "1.26.9" have to line up when the
+   owner scans the column looking for the machines left behind. */
+.badge--version {
+    background: var(--neutral-soft);
+    color: var(--text);
+    border-color: var(--border-strong);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
+.badge--version-unknown { color: var(--text-faint); font-family: inherit; font-weight: 600; }
+
 /* ==========================================
    EMPTY / LOADING
    ========================================== */
@@ -745,6 +759,22 @@ textarea.field__input { resize: vertical; min-height: 56px; }
    create card went from 440 to 520. */
 
 .modal__card--edit { max-width: 680px; }
+
+/* The first line of the broadcast modal: is a fleet-wide command live right now?
+   Neutral while it is off and green while it is on, because "on" is the state
+   that keeps acting on its own after the box is closed. */
+.broadcast-state {
+    margin: 0;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--neutral-soft);
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+    font-size: .84rem;
+    font-weight: 600;
+}
+
+.broadcast-state--on { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 
 .confirm__message {
     font-size: .92rem;

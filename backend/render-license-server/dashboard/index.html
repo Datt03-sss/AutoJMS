@@ -84,6 +84,10 @@
         <span aria-hidden="true">⎋</span>
         <span class="btn__text">Khoá</span>
       </button>
+      <button class="btn btn--ghost" type="button" id="broadcast-update-button" title="Bật/tắt lệnh cập nhật cho toàn bộ máy trạm">
+        <span aria-hidden="true">📢</span>
+        <span class="btn__text">Cập nhật đồng loạt</span>
+      </button>
       <button class="btn btn--primary" type="button" id="create-button">
         <span aria-hidden="true">＋</span>
         <span class="btn__text">Cấp License Mới</span>
@@ -161,6 +165,7 @@
             <th scope="col">Hạn dùng</th>
             <th scope="col">Còn lại</th>
             <th scope="col">Trạng thái</th>
+            <th scope="col">Phiên bản</th>
             <th scope="col" class="table__actions-head">Thao tác</th>
           </tr>
         </thead>
@@ -544,6 +549,80 @@
     <footer class="modal__foot">
       <button class="btn btn--ghost" type="button" id="edit-cancel">Huỷ</button>
       <button class="btn btn--primary btn-submit" type="submit" id="edit-submit">Lưu thay đổi</button>
+    </footer>
+  </form>
+</div>
+
+<!-- ====================================================================
+     MODAL — Cập nhật đồng loạt
+     ====================================================================
+     Một lệnh duy nhất, đọc bởi MỌI máy trạm ở lần verify-license hoặc
+     heartbeat kế tiếp. Không có ô chọn máy nào nhận: đúng cái tên của nó,
+     đây là lệnh cho cả đội, và một danh sách chọn máy sẽ biến nó thành
+     công cụ khác hẳn với đường dữ liệu khác hẳn.
+
+     Danh sách phiên bản lấy từ GitHub Releases, nhưng ô nhập vẫn để gõ tay
+     được: bản phát hành vừa đẩy xong có thể chưa kịp hiện trong danh sách,
+     và khi đó Owner không nên bị chặn.
+     ==================================================================== -->
+<div class="modal" id="broadcast-modal" hidden>
+  <div class="modal__backdrop" id="broadcast-backdrop"></div>
+
+  <form class="modal__card" id="broadcast-form" autocomplete="off">
+    <header class="modal__head">
+      <h2>Cập nhật đồng loạt</h2>
+      <button class="modal__close" type="button" id="broadcast-close" title="Đóng">✕</button>
+    </header>
+
+    <div class="modal__body">
+
+      <!-- Trạng thái hiện tại đọc từ config/broadcastUpdate. Đây là thứ đầu
+           tiên Owner cần biết khi mở hộp thoại: lệnh cũ còn bật hay không. -->
+      <p class="broadcast-state" id="broadcast-state">Đang đọc trạng thái…</p>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Phiên bản</span>
+          <input
+            id="broadcast-version"
+            class="field__input field__input--mono"
+            type="text"
+            list="broadcast-release-list"
+            placeholder="1.26.12"
+            maxlength="64"
+            spellcheck="false">
+          <span class="field__hint" id="broadcast-release-hint">Chọn từ danh sách hoặc gõ tay.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Kênh cập nhật</span>
+          <select id="broadcast-channel" class="field__input">
+            <option value="stable">stable</option>
+            <option value="beta">beta</option>
+          </select>
+          <span class="field__hint">Máy trạm sẽ tải từ đúng kênh này.</span>
+        </label>
+      </div>
+
+      <datalist id="broadcast-release-list"></datalist>
+
+      <label class="field">
+        <span class="field__label">Lời nhắn hiển thị trên máy trạm</span>
+        <textarea
+          id="broadcast-message"
+          class="field__input"
+          rows="3"
+          maxlength="300"
+          placeholder="Bản 1.26.12 sửa lỗi in đơn. Vui lòng cập nhật trước ca chiều."></textarea>
+        <span class="field__hint">Hiện trong hộp thoại hỏi cập nhật, tối đa 300 ký tự.</span>
+      </label>
+
+      <p class="modal__error" id="broadcast-error" hidden></p>
+    </div>
+
+    <footer class="modal__foot">
+      <button class="btn btn--ghost" type="button" id="broadcast-disable">Tắt lệnh</button>
+      <button class="btn btn--primary btn-submit" type="submit" id="broadcast-submit">Bật lệnh cập nhật</button>
     </footer>
   </form>
 </div>

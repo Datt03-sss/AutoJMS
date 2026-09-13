@@ -157,6 +157,48 @@ const MAX_HWID_LENGTH = 128;
 const PLACEHOLDER_SITE_CODES = new Set(["", "0000", "00000", "0", "DEFAULT", "NONE", "TBD"]);
 
 // ==========================================
+// BROADCAST UPDATE
+// ==========================================
+
+/**
+ * Where the fleet-wide update directive lives.
+ *
+ * A single node, not a per-key field: "everyone on 1.26.12" is one decision, and
+ * spreading it across every licence record would mean an owner could half-apply
+ * it and a new key could be created without it.
+ */
+const BROADCAST_UPDATE_PATH = "config/broadcastUpdate";
+
+/**
+ * Mirrors APP_VERSION_PATTERN in server.js.
+ *
+ * It has to: server.js runs the stored version through its own copy before the
+ * fleet ever sees the directive, so a version this router accepted but that one
+ * drops would be a broadcast switched on in the dashboard and silently never
+ * sent. Accepts "1.26.12" and "1.26.12-beta.1".
+ */
+const BROADCAST_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
+
+/** Mirrors BROADCAST_MESSAGE_MAX_LENGTH in server.js, which truncates at the same number. */
+const BROADCAST_MESSAGE_MAX_LENGTH = 300;
+
+/**
+ * Where the release list comes from, and how long the dropdown is willing to wait.
+ *
+ * Both are overridable so the tests can point them at a local server instead of
+ * reaching GitHub — a suite that needs the network is a suite that fails for
+ * reasons that have nothing to do with the change being tested.
+ */
+const RELEASES_API_URL =
+    process.env.GITHUB_RELEASES_API_URL || "https://api.github.com/repos/Datt03-sss/AutoJMS-Update/releases";
+const UPDATE_XML_URL =
+    process.env.UPDATE_XML_URL || "https://raw.githubusercontent.com/Datt03-sss/AutoJMS-Update/main/update.xml";
+const RELEASES_FETCH_TIMEOUT_MS = Number(process.env.RELEASES_FETCH_TIMEOUT_MS || 6000);
+
+/** Enough to fill a dropdown; the owner is picking a recent build, not browsing history. */
+const MAX_RELEASES = 30;
+
+// ==========================================
 // HELPERS
 // ==========================================
 
@@ -546,6 +588,17 @@ function describeLicense(key, record, now = Date.now()) {
         // from, so rewriting it would re-date a sale that already happened.
         createdAt: String(record.createdAt || ""),
 
+        // Reported by the station itself on verify-license and heartbeat
+        // (server.js's recordLicenseActivity), never set from this router — an
+        // owner editing the version field would be editing an observation.
+        // Empty means no station running a build new enough to report one has
+        // reached the server since this key existed.
+        appVersion: String(record.appVersion || ""),
+        lastActiveAt:
+            typeof record.lastActiveAt === "number" && Number.isFinite(record.lastActiveAt) && record.lastActiveAt > 0
+                ? toVnIso(record.lastActiveAt)
+                : null,
+
         dataSpreadsheetId: String(record.dataSpreadsheetId || ""),
         updateChannel: String(record.updateChannel || ""),
         // server.js:1018 reads `data.skipHashCheck === true`, so an absent field is
@@ -783,7 +836,12 @@ router.get(
                     expiresAt: full.expiresAt,
                     daysRemaining: full.daysRemaining,
                     hwid: full.hwid,
-                    notes: full.notes
+                    notes: full.notes,
+                    // Both belong to the table itself — the "Phiên bản" column is
+                    // read across the whole fleet at once, which is the entire
+                    // point of it, so it cannot wait for the per-row detail call.
+                    appVersion: full.appVersion,
+                    lastActiveAt: full.lastActiveAt
                 };
             });
 
@@ -1388,6 +1446,290 @@ router.post(
         });
 
         return res.json({ success: true, key: loaded.key, tier });
+    })
+);
+
+// ==========================================
+// RELEASE SOURCES
+// ==========================================
+
+/**
+ * A release tag reduced to the version string the desktop client reports.
+ *
+ * AutoJMS tags are `v1.26.12` / `v1.26.12-beta.1`; AppVersion.Current reports
+ * them without the `v`. They have to end up in the same shape or the broadcast
+ * comparison on the station would find every release newer than itself.
+ */
+function versionFromTag(tag) {
+    return String(tag || "").trim().replace(/^[vV]/, "");
+}
+
+/** One release, in the only shape the dropdown and the POST body care about. */
+function toReleaseEntry({ tag, name, prerelease, publishedAt }) {
+    const version = versionFromTag(tag);
+    if (!BROADCAST_VERSION_PATTERN.test(version)) return null;
+
+    return {
+        tag: String(tag || ""),
+        version,
+        name: String(name || "").slice(0, 200),
+        // The channel is derived, never read from a field: Velopack publishes a
+        // prerelease to `beta` and everything else to `stable`, and a release
+        // whose flag and tag disagreed would send a station to a feed that has
+        // no such version.
+        channel: prerelease === true ? "beta" : "stable",
+        prerelease: prerelease === true,
+        publishedAt: String(publishedAt || "")
+    };
+}
+
+async function fetchWithTimeout(url, accept) {
+    const response = await fetch(url, {
+        headers: {
+            accept,
+            // GitHub refuses an API request that does not identify itself.
+            "user-agent": "AutoJMS-License-Dashboard"
+        },
+        signal: AbortSignal.timeout(RELEASES_FETCH_TIMEOUT_MS)
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response;
+}
+
+async function fetchGithubReleases() {
+    const response = await fetchWithTimeout(RELEASES_API_URL, "application/vnd.github+json");
+    const payload = await response.json();
+
+    if (!Array.isArray(payload)) throw new Error("RELEASES_NOT_AN_ARRAY");
+
+    return payload
+        // A draft is not downloadable, so offering it would produce a broadcast
+        // the fleet cannot satisfy.
+        .filter(item => item && typeof item === "object" && item.draft !== true)
+        .map(item =>
+            toReleaseEntry({
+                tag: item.tag_name,
+                name: item.name,
+                prerelease: item.prerelease,
+                publishedAt: item.published_at
+            })
+        )
+        .filter(Boolean)
+        .slice(0, MAX_RELEASES);
+}
+
+/**
+ * The same list, read off the manifest the desktop client itself uses.
+ *
+ * Parsed with regular expressions rather than an XML library, deliberately: this
+ * is a fallback for one small document with a known shape, and adding a parser
+ * dependency to a server that signs licence assertions is a worse trade than
+ * two regexes that fail closed. Anything they cannot read is skipped, and a
+ * document they cannot read at all produces an empty list, which the route turns
+ * into a 502 rather than a silent "no releases".
+ */
+async function fetchUpdateXmlReleases() {
+    const response = await fetchWithTimeout(UPDATE_XML_URL, "application/xml,text/xml");
+    const xml = await response.text();
+
+    const releases = [];
+
+    for (const match of xml.matchAll(/<channel\b([^>]*)>([\s\S]*?)<\/channel>/g)) {
+        const attributes = match[1];
+        const body = match[2];
+
+        const enabled = /enabled\s*=\s*"(?<value>[^"]*)"/.exec(attributes)?.groups?.value;
+        if (String(enabled).toLowerCase() === "false") continue;
+
+        const name = /name\s*=\s*"(?<value>[^"]*)"/.exec(attributes)?.groups?.value || "";
+        const prerelease = String(
+            /prerelease\s*=\s*"(?<value>[^"]*)"/.exec(attributes)?.groups?.value || ""
+        ).toLowerCase() === "true";
+
+        const readTag = tagName =>
+            new RegExp(`<${tagName}>(?<value>[^<]*)</${tagName}>`).exec(body)?.groups?.value?.trim() || "";
+
+        const tag = readTag("releaseTag") || readTag("tag");
+        const version = readTag("velopackVersion") || versionFromTag(tag);
+
+        const entry = toReleaseEntry({
+            tag: tag || version,
+            name: readTag("displayVersion") || name,
+            // `name` is the authority here and the attribute is the tie-breaker:
+            // update.xml names its channels "stable" and "beta" outright, which
+            // is more direct evidence than a flag that may be absent.
+            prerelease: name.trim().toLowerCase() === "beta" ? true : prerelease,
+            publishedAt: ""
+        });
+
+        // toReleaseEntry works off the tag; a channel whose tag is missing but
+        // whose velopackVersion is present still has everything needed.
+        if (entry) {
+            releases.push({ ...entry, version });
+            continue;
+        }
+
+        const fallback = toReleaseEntry({
+            tag: version,
+            name: readTag("displayVersion") || name,
+            prerelease: name.trim().toLowerCase() === "beta" ? true : prerelease,
+            publishedAt: ""
+        });
+
+        if (fallback) releases.push(fallback);
+    }
+
+    if (releases.length === 0) throw new Error("UPDATE_XML_NO_CHANNELS");
+
+    return releases.slice(0, MAX_RELEASES);
+}
+
+// ==========================================
+// GET /api/admin/broadcast-update
+// ==========================================
+/**
+ * The directive as stored, switched on or off.
+ *
+ * `active: false` is returned WITH the version and message it last carried, on
+ * purpose: the modal reopens on the previous broadcast rather than on a blank
+ * form, so re-sending the same one is a single click and the owner can see what
+ * the last one said.
+ */
+router.get(
+    "/broadcast-update",
+    asyncRoute(async (req, res) => {
+        const snapshot = await withTimeout(
+            admin.database().ref(BROADCAST_UPDATE_PATH).once("value"),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE"
+        );
+
+        const stored = snapshot.val();
+        const record = stored && typeof stored === "object" ? stored : {};
+
+        return res.json({
+            success: true,
+            broadcastUpdate: {
+                active: record.active === true,
+                version: String(record.version || ""),
+                channel: KNOWN_CHANNELS.has(String(record.channel || "")) ? String(record.channel) : DEFAULT_CHANNEL,
+                message: String(record.message || ""),
+                updatedAt: Number.isFinite(Number(record.updatedAt)) ? Number(record.updatedAt) : 0
+            }
+        });
+    })
+);
+
+// ==========================================
+// POST /api/admin/broadcast-update
+// ==========================================
+/**
+ * Switches the fleet-wide update prompt on or off.
+ *
+ * Switching OFF takes no other field and keeps the ones already stored — see the
+ * GET above for why. Switching ON re-validates the version and the channel here
+ * rather than trusting the dropdown, because a version string server.js's own
+ * sanitiser would drop becomes a broadcast that reads as "on" in the dashboard
+ * and reaches nobody: the most expensive possible failure for this feature,
+ * since the owner's next move is to wait.
+ *
+ * It does NOT verify that the version actually exists as a release. The station
+ * decides that for itself — it compares against its own build and then asks
+ * Velopack, which refuses a version that is not published. Refusing here as well
+ * would mean a broadcast could not be prepared before the release goes out.
+ */
+router.post(
+    "/broadcast-update",
+    asyncRoute(async (req, res) => {
+        const active = req.body?.active === true;
+        const now = Date.now();
+
+        if (!active) {
+            await withTimeout(
+                admin.database().ref(BROADCAST_UPDATE_PATH).update({ active: false, updatedAt: now }),
+                FIREBASE_TIMEOUT_MS,
+                "FIREBASE"
+            );
+
+            logEvent("info", "admin.broadcast_update_disabled", {});
+
+            return res.json({ success: true, active: false, updatedAt: now });
+        }
+
+        const version = String(req.body?.version || "").trim();
+        if (!BROADCAST_VERSION_PATTERN.test(version)) {
+            return fail(
+                res,
+                400,
+                "INVALID_BROADCAST_VERSION",
+                "Phiên bản chỉ nhận chữ, số và . + - (ví dụ 1.26.12 hoặc 1.26.12-beta.1)."
+            );
+        }
+
+        const channel = String(req.body?.channel || "").trim().toLowerCase();
+        if (!KNOWN_CHANNELS.has(channel)) {
+            return fail(res, 400, "INVALID_UPDATE_CHANNEL", "Kênh cập nhật chỉ nhận stable hoặc beta.");
+        }
+
+        // Same treatment as notes: this string is typed by the owner and shown in
+        // a MessageBox on every station in the fleet.
+        const message = sanitizeNotes(req.body?.message).slice(0, BROADCAST_MESSAGE_MAX_LENGTH);
+
+        const directive = { active: true, version, channel, message, updatedAt: now };
+
+        await withTimeout(
+            admin.database().ref(BROADCAST_UPDATE_PATH).update(directive),
+            FIREBASE_TIMEOUT_MS,
+            "FIREBASE"
+        );
+
+        logEvent("info", "admin.broadcast_update_enabled", { version, channel, hasMessage: message !== "" });
+
+        return res.json({ success: true, ...directive });
+    })
+);
+
+// ==========================================
+// GET /api/admin/releases
+// ==========================================
+/**
+ * The versions the broadcast dropdown may offer.
+ *
+ * GitHub first, update.xml second. The fallback is not decoration: the releases
+ * API is unauthenticated here and rate-limited per IP, and Render's egress
+ * address is shared — so "60 requests an hour, for everyone on this host" is a
+ * limit the dashboard can genuinely hit. update.xml is a raw file with no such
+ * limit, and it is the same manifest the desktop client itself reads, so the two
+ * sources cannot disagree about what "stable" means.
+ *
+ * A failure of BOTH is a 502 and not an empty list: an empty dropdown looks
+ * exactly like "no releases have been published", and the owner would go looking
+ * at the wrong repository.
+ */
+router.get(
+    "/releases",
+    asyncRoute(async (req, res) => {
+        try {
+            const releases = await fetchGithubReleases();
+            return res.json({ success: true, source: "github", count: releases.length, releases });
+        } catch (githubError) {
+            logEvent("warn", "admin.releases_github_failed", { message: githubError?.message });
+        }
+
+        try {
+            const releases = await fetchUpdateXmlReleases();
+            return res.json({ success: true, source: "update.xml", count: releases.length, releases });
+        } catch (xmlError) {
+            logEvent("error", "admin.releases_unavailable", { message: xmlError?.message });
+
+            return fail(
+                res,
+                502,
+                "RELEASES_UNAVAILABLE",
+                "Không đọc được danh sách bản phát hành từ GitHub hoặc update.xml. Nhập phiên bản thủ công."
+            );
+        }
     })
 );
 

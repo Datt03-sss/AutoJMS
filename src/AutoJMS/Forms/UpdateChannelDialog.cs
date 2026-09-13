@@ -363,6 +363,19 @@ namespace AutoJMS
             return TryCompareVersions(targetVersion, currentVersion, out var compare) && compare < 0;
         }
 
+        // The mirror of IsDowngrade, and it lives here for the same reason that one
+        // does: TryCompareVersions already handles the leading "v", the "+build"
+        // suffix, the 4-segment assembly form and "-beta.1" ranking below its own
+        // release. The broadcast prompt needs exactly that comparison, and a second
+        // copy of it somewhere else would be the copy that gets the beta case wrong.
+        //
+        // A version this station cannot parse returns false, so it is not offered an
+        // update it has no way to evaluate.
+        internal static bool IsUpgrade(string currentVersion, string targetVersion)
+        {
+            return TryCompareVersions(targetVersion, currentVersion, out var compare) && compare > 0;
+        }
+
         private static bool TryCompareVersions(string leftVersion, string rightVersion, out int compare)
         {
             compare = 0;

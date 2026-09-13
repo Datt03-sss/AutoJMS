@@ -42,6 +42,11 @@ namespace AutoJMS
         private FullStackOperation _fullStackForm;
         private bool _ultraLaunched;
         private bool _isShowingFullStackForm;
+        /// <summary>
+        /// Lệnh cập nhật đồng loạt chỉ được hỏi MỘT lần cho mỗi phiên chạy. Người dùng
+        /// từ chối thì thôi, đừng hỏi lại giữa ca làm việc.
+        /// </summary>
+        private bool _broadcastUpdatePromptedThisSession;
         private bool _isSyncingZoomFactor;
         private CancellationTokenSource _zoomSaveCts;
 
@@ -1406,6 +1411,95 @@ namespace AutoJMS
             }
         }
 
+        /// <summary>
+        /// Hỏi người dùng có chạy lệnh cập nhật đồng loạt mà Owner bật trên dashboard hay không.
+        /// Directive đi kèm phản hồi verify-license/heartbeat và nằm ở
+        /// <see cref="LicenseApiService.CurrentBroadcastUpdate"/>; không có lệnh, hoặc máy đã ở
+        /// bản bằng/mới hơn, thì hàm im lặng thoát.
+        /// </summary>
+        /// <remarks>
+        /// Nuốt mọi lỗi: một lệnh cập nhật hỏng không bao giờ được phép chặn app khởi động.
+        /// Chỉ hỏi một lần mỗi phiên — lệnh bật giữa ca sẽ được nhận ở lần mở app kế tiếp.
+        /// </remarks>
+        private async Task CheckAndPromptBroadcastUpdateAsync()
+        {
+            try
+            {
+                if (_broadcastUpdatePromptedThisSession) return;
+
+                var directive = LicenseApiService.CurrentBroadcastUpdate;
+                if (directive == null || string.IsNullOrWhiteSpace(directive.Version)) return;
+
+                string currentVersion = AppVersion.Current;
+                if (!UpdateChannelDialog.IsUpgrade(currentVersion, directive.Version))
+                {
+                    AppLogger.Info(
+                        $"[BroadcastUpdate] bỏ qua: current={currentVersion}, " +
+                        $"target={directive.Version} (không phải bản mới hơn).");
+                    return;
+                }
+
+                // Đánh dấu trước khi hiện hộp thoại: người dùng bấm "Để sau" thì cũng
+                // không bị hỏi lại nếu heartbeat kế tiếp lại mang về đúng lệnh đó.
+                _broadcastUpdatePromptedThisSession = true;
+
+                string channel = string.Equals(directive.Channel, "beta", StringComparison.OrdinalIgnoreCase)
+                    ? "beta"
+                    : "stable";
+
+                AppLogger.Action(
+                    $"[BroadcastUpdate] prompt: current={currentVersion}, " +
+                    $"target={directive.Version}, channel={channel}");
+
+                var text = new StringBuilder();
+                text.AppendLine($"Đã có bản cập nhật {directive.Version} ({channel}).");
+                text.AppendLine($"Phiên bản hiện tại: {currentVersion}");
+                if (!string.IsNullOrWhiteSpace(directive.Message))
+                {
+                    text.AppendLine();
+                    text.AppendLine(directive.Message.Trim());
+                }
+                text.AppendLine();
+                text.Append("Cập nhật ngay bây giờ? Ứng dụng sẽ tự khởi động lại sau khi tải xong.");
+
+                var answer = MessageBox.Show(
+                    this,
+                    text.ToString(),
+                    "Cập nhật AutoJMS",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information,
+                    MessageBoxDefaultButton.Button1);
+
+                if (answer != DialogResult.Yes)
+                {
+                    AppLogger.Action("[BroadcastUpdate] người dùng chọn để sau.");
+                    return;
+                }
+
+                var updateSvc = new VelopackUpdateService(
+                    channel,
+                    PrepareForUpdateAsync,
+                    (installedVersion, targetVersion, selectedChannel) =>
+                    {
+                        // Lệnh đồng loạt chỉ đẩy tới, không bao giờ kéo lùi phiên bản.
+                        AppLogger.Warning(
+                            $"[BroadcastUpdate] từ chối hạ cấp: installed={installedVersion ?? "UNKNOWN"}, " +
+                            $"target={targetVersion ?? "UNKNOWN"}, channel={selectedChannel}");
+                        return false;
+                    });
+
+                await updateSvc.CheckAndUpdateAsync(null, _appCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // App đang đóng — không có gì để báo.
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[BroadcastUpdate] thất bại: {ex.Message}");
+            }
+        }
+
         private static async Task<VersionLatest> FetchUpdateManifestForDialogAsync(CancellationToken token)
         {
             try
@@ -1629,6 +1723,10 @@ namespace AutoJMS
                     PreCreateFullStackForm();
                 }
             }));
+
+            // Lệnh cập nhật đồng loạt từ dashboard. Xếp hàng SAU phần pre-create ở trên
+            // để hộp thoại không chen ngang lúc form vừa hiện.
+            this.BeginInvoke(new Action(() => _ = CheckAndPromptBroadcastUpdateAsync()));
         }
 
         // ======================================================================================
