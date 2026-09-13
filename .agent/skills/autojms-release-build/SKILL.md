@@ -106,10 +106,21 @@ the log rather than blocking on a single long call.
 ### 5. Verify
 
 ```bash
-gh release view v1.26.12-Release        --repo Datt03-sss/AutoJMS-Update
-gh release view v1.26.12-beta.1-Release --repo Datt03-sss/AutoJMS-Update
-curl -s https://raw.githubusercontent.com/Datt03-sss/AutoJMS-Update/main/update.xml | head -40
+gh release view v1.26.12-Release --repo Datt03-sss/AutoJMS-Update \
+  --json tagName,isPrerelease,isDraft -q '.tagName+"  prerelease="+(.isPrerelease|tostring)'
+gh release view v1.26.12-Release --repo Datt03-sss/AutoJMS-Update --json assets -q '.assets[].name'
+# update.xml — read the blob, NOT the raw CDN (see note below)
+gh api repos/Datt03-sss/AutoJMS-Update/contents/update.xml -q '.content' | base64 -d \
+  | grep -E "channel name|velopackVersion|releaseTag"
 ```
+
+`gh release view` has no `isLatest` field — asking for it errors out. Check "Latest" with
+`gh release list` instead.
+
+**raw.githubusercontent lags ~5–10 minutes behind the commit.** Right after a build it will still
+serve the *previous* version, which looks exactly like a failed upload. Confirm through the
+contents API first; only treat a stale raw response as a real failure if it is still stale ten
+minutes later.
 
 Each release must carry exactly these 5 assets:
 
