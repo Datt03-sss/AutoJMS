@@ -182,11 +182,15 @@ namespace AutoJMS
         /// <summary>Thẻ 2 — Mã tuyến: ba dòng ngắn, không cần rộng.</summary>
         private Control BuildReprintRouteCard()
         {
-            var card = NewReprintCard("tabPrint_reprintCardRoute", 5, out var body);
+            var card = NewReprintCard("tabPrint_reprintCardRoute", 4, out var body);
             body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 25F));
+
+            // Ba ô chia đều phần còn lại thay vì cao cố định 25px rồi nhường chỗ thừa cho một
+            // hàng đệm ở đáy: hàng đệm ấy chính là dải trống Owner thấy dưới ô "Mã tuyến 3".
+            // Ba hàng cùng Percent 100F nghĩa là mỗi hàng một phần ba — chia hết, không dôi dư.
+            // Thẻ Người nhận và Ghi chú vốn đã chạm đáy theo đúng cách này.
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _reprintChkRoute = NewReprintCheckBox("tabPrint_reprintChkRoute", "Sửa Mã tuyến");
