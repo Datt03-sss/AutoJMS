@@ -662,8 +662,8 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Hỏi JMS tên + SĐT người nhận rồi đổ vào hai ô của thẻ "Người nhận". Không ném:
-        /// thiếu dữ liệu chỉ làm mất tiện lợi, còn bản in thì vẫn dựng được.
+        /// Hỏi JMS tên + SĐT + địa chỉ người nhận rồi đổ vào các ô của thẻ "Người nhận".
+        /// Không ném: thiếu dữ liệu chỉ làm mất tiện lợi, còn bản in thì vẫn dựng được.
         /// </summary>
         private async Task LoadReprintReceiverAsync()
         {
@@ -685,6 +685,13 @@ namespace AutoJMS
             {
                 SetReprintText(_reprintTxtName, contact?.Name ?? "");
                 SetReprintText(_reprintTxtPhone, contact?.MaskedPhone ?? "");
+
+                // Địa chỉ: JMS là nguồn khớp nhãn gốc nhất, nhưng PrefillReprintEditor đã điền
+                // sẵn bản ghép từ bảng TRACKING (DiaChiNhanHang + Phuong). Chỉ ghi đè khi JMS
+                // trả về thật — ghi đè bằng chuỗi rỗng chính là xoá trắng ô, mà "Sửa Người nhận"
+                // thì đè cả vùng rồi vẽ lại, nên ô trống là mất địa chỉ trên bản in.
+                string address = contact?.Address ?? "";
+                if (address.Length > 0) SetReprintText(_reprintTxtAddress, address);
             }
             finally
             {
@@ -892,12 +899,14 @@ namespace AutoJMS
                 CacheReprintPrintJob(finalPdf, previewPath);
                 NavigatePreviewTo(previewPath);
 
+                string missingReceiver = content.EditReceiver ? DescribeMissingReceiverParts(content) : "";
+
                 if (!string.IsNullOrEmpty(appliedError))
                     SetReprintStatus($"Không đè được nội dung ({appliedError}) — đang xem bản gốc.", true);
-                else if (content.EditReceiver && content.ReceiverName.Length == 0)
+                else if (missingReceiver.Length > 0)
                     SetReprintStatus(
-                        $"Đã xem trước bản sửa cho {_reprintFirstWaybill}, NHƯNG không lấy được tên người nhận " +
-                        "— vùng này sẽ in thiếu tên. Bỏ tick \"Sửa Người nhận\" nếu không muốn vậy.", true);
+                        $"Đã xem trước bản sửa cho {_reprintFirstWaybill}, NHƯNG không lấy được {missingReceiver} " +
+                        $"— vùng này sẽ in thiếu {missingReceiver}. Bỏ tick \"Sửa Người nhận\" nếu không muốn vậy.", true);
                 else if (content.HasAnyEdit)
                     SetReprintStatus($"Đã xem trước bản sửa cho {_reprintFirstWaybill}. Bấm IN để in đúng bản này.");
                 else
@@ -912,6 +921,19 @@ namespace AutoJMS
             {
                 _reprintGate.Release();
             }
+        }
+
+        /// <summary>
+        /// Liệt kê những phần của thẻ "Người nhận" đang trống, để ghép vào dòng cảnh báo đỏ.
+        /// Vùng này bị đè trắng rồi vẽ lại nguyên khối, nên ô trống KHÔNG phải là "giữ như cũ"
+        /// mà là xoá hẳn phần đó khỏi bản in — Owner phải biết trước khi bấm IN.
+        /// </summary>
+        private static string DescribeMissingReceiverParts(ReprintOverlayContent content)
+        {
+            var missing = new List<string>();
+            if (content.ReceiverName.Length == 0) missing.Add("tên người nhận");
+            if (content.ReceiverAddress.Length == 0) missing.Add("địa chỉ người nhận");
+            return string.Join(" và ", missing);
         }
 
         private ReprintOverlayContent BuildReprintOverlayContent() => new()

@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace AutoJMS
 {
-    /// <summary>Tên + số điện thoại người nhận của một vận đơn, lấy thẳng từ JMS.</summary>
+    /// <summary>Tên + số điện thoại + địa chỉ người nhận của một vận đơn, lấy thẳng từ JMS.</summary>
     public sealed class ReceiverContact
     {
         public string Name { get; init; } = "";
@@ -19,11 +19,14 @@ namespace AutoJMS
         /// <summary>Dạng che đúng như nhãn gốc in ra, ví dụ <c>******1886</c>.</summary>
         public string MaskedPhone { get; init; } = "";
 
+        /// <summary>Địa chỉ nhận hàng đầy đủ như nhãn gốc in; rỗng nếu JMS không trả.</summary>
+        public string Address { get; init; } = "";
+
         public bool HasUnmaskedPhone => !string.IsNullOrEmpty(Phone);
     }
 
     /// <summary>
-    /// Kéo tên + SĐT người nhận cho "In lại đơn".
+    /// Kéo tên + SĐT + địa chỉ người nhận cho "In lại đơn".
     ///
     /// Cố tình KHÔNG gọi lại code trong <c>FullStackOperation.WaybillDetail</c>: form đó bị
     /// khoá theo tier ULTRA, còn tab IN ĐƠN thì BASE cũng dùng được — phụ thuộc sang đó là
@@ -60,7 +63,7 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Trả về tên + SĐT của người nhận, hoặc <c>null</c> khi không lấy được.
+        /// Trả về tên + SĐT + địa chỉ của người nhận, hoặc <c>null</c> khi không lấy được.
         /// Không bao giờ ném: preview bản in vẫn phải dựng được dù JMS im lặng.
         /// </summary>
         public static async Task<ReceiverContact> FetchAsync(string waybillNo, CancellationToken ct)
@@ -81,26 +84,36 @@ namespace AutoJMS
                 string name = "";
                 string phone = "";
                 string maskedPhone = "";
+                string address = "";
 
                 string reverseJson = await GetJsonAsync(ReverseEndpoint + encoded, token, ct).ConfigureAwait(false);
-                MergeFrom(reverseJson, isOrderDetail: false, ref name, ref phone, ref maskedPhone);
+                MergeFrom(reverseJson, isOrderDetail: false, ref name, ref phone, ref maskedPhone, ref address);
 
                 // Chỉ gọi thêm khi vẫn thiếu — mỗi request thừa là một lần chạm rate-limit JMS.
-                if (name.Length == 0 || phone.Length == 0)
+                if (name.Length == 0 || phone.Length == 0 || address.Length == 0)
                 {
                     string orderJson = await PostOrderDetailAsync(code, token, ct).ConfigureAwait(false);
-                    MergeFrom(orderJson, isOrderDetail: true, ref name, ref phone, ref maskedPhone);
+                    MergeFrom(orderJson, isOrderDetail: true, ref name, ref phone, ref maskedPhone, ref address);
                 }
 
-                if (name.Length == 0 && phone.Length == 0 && maskedPhone.Length == 0) return null;
+                if (name.Length == 0 && phone.Length == 0 && maskedPhone.Length == 0 && address.Length == 0)
+                    return null;
 
                 if (maskedPhone.Length == 0 && phone.Length > 0) maskedPhone = Mask(phone);
 
+                // Không ghi giá trị địa chỉ vào log: đó là dữ liệu cá nhân của người nhận.
                 AppLogger.Info(
                     $"[ReceiverContact] waybill={code} name={(name.Length > 0 ? "có" : "trống")} " +
-                    $"phone={(phone.Length > 0 ? "đầy đủ" : "chỉ bản che")}");
+                    $"phone={(phone.Length > 0 ? "đầy đủ" : "chỉ bản che")} " +
+                    $"address={(address.Length > 0 ? "có" : "trống")}");
 
-                return new ReceiverContact { Name = name, Phone = phone, MaskedPhone = maskedPhone };
+                return new ReceiverContact
+                {
+                    Name = name,
+                    Phone = phone,
+                    MaskedPhone = maskedPhone,
+                    Address = address
+                };
             }
             catch (OperationCanceledException)
             {
@@ -114,10 +127,12 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Đọc tên/SĐT từ một phản hồi và điền vào chỗ còn trống. Ưu tiên giá trị chưa bị che:
-        /// một bản đầy đủ đến sau vẫn thay được bản che đã nhận trước đó.
+        /// Đọc tên/SĐT/địa chỉ từ một phản hồi và điền vào chỗ còn trống. Ưu tiên giá trị chưa
+        /// bị che: một bản đầy đủ đến sau vẫn thay được bản che đã nhận trước đó.
         /// </summary>
-        private static void MergeFrom(string json, bool isOrderDetail, ref string name, ref string phone, ref string maskedPhone)
+        private static void MergeFrom(
+            string json, bool isOrderDetail,
+            ref string name, ref string phone, ref string maskedPhone, ref string address)
         {
             if (string.IsNullOrWhiteSpace(json)) return;
 
@@ -143,6 +158,16 @@ namespace AutoJMS
                 string foundName = Field(node, "receiverName");
                 if (foundName.Length > 0 && (name.Length == 0 || (IsMasked(name) && !IsMasked(foundName))))
                     name = foundName;
+
+                // Tên trường lấy đúng bộ mà FullStackOperation.WaybillDetail đang dùng thật
+                // (receiverDetailedAddress), thêm hai biến thể ArrivalMonitor từng gặp.
+                string foundAddress = FirstNonEmpty(
+                    Field(node, "receiverDetailedAddress"),
+                    Field(node, "receiverFullAddress"),
+                    Field(node, "receiverAddress"));
+                if (foundAddress.Length > 0
+                    && (address.Length == 0 || (IsMasked(address) && !IsMasked(foundAddress))))
+                    address = foundAddress;
 
                 string foundPhone = FirstNonEmpty(Field(node, "receiverMobilePhone"), Field(node, "receiverTelphone"));
                 if (foundPhone.Length == 0) return;
@@ -267,6 +292,11 @@ namespace AutoJMS
             }
         }
 
-        private static string FirstNonEmpty(string a, string b) => a.Length > 0 ? a : b;
+        private static string FirstNonEmpty(params string[] values)
+        {
+            foreach (var value in values)
+                if (!string.IsNullOrEmpty(value)) return value;
+            return "";
+        }
     }
 }
