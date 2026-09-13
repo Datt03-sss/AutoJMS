@@ -1631,6 +1631,95 @@ namespace AutoJMS
             }));
         }
 
+        // ======================================================================================
+        // LUÔN GIỮ CỬA SỔ Ở TRẠNG THÁI MAXIMIZE
+        // ======================================================================================
+
+        /// <summary>
+        /// Nhớ rằng đã phải bỏ qua một lần maximize lại vì lúc đó cửa sổ đang thu nhỏ xuống
+        /// taskbar. Bung lên là phải áp dụng ngay, nếu không Windows trả cửa sổ về đúng
+        /// khung cũ đã sai.
+        /// </summary>
+        private bool _pendingReapplyMaximize;
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += Main_DisplaySettingsChanged;
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            // SystemEvents giữ tham chiếu TĨNH tới handler. Không gỡ thì form không bao giờ được
+            // thu hồi, và một lần đổi màn hình sau khi đóng app là gọi vào form đã dispose.
+            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= Main_DisplaySettingsChanged;
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (_pendingReapplyMaximize && WindowState != FormWindowState.Minimized)
+            {
+                _pendingReapplyMaximize = false;
+                ReapplyMaximize();
+            }
+        }
+
+        private void Main_DisplaySettingsChanged(object sender, EventArgs e) => ReapplyMaximize();
+
+        /// <summary>
+        /// Ép cửa sổ maximize lại theo màn hình đang chứa nó.
+        ///
+        /// UIForm của SunnyUI là form borderless: nó tự tính khung maximize MỘT LẦN rồi giữ
+        /// nguyên, và trong SunnyUI.dll 3.9.6 không có chỗ nào lắng nghe sự kiện đổi màn hình.
+        /// Nên đổi độ phân giải LÚC APP ĐANG CHẠY (1366x768 lên 1920x1080) thì cửa sổ giữ
+        /// nguyên khung 1366x768, nằm gọn góc trên trái. Mở app mới ở 1920x1080 thì lại đúng —
+        /// đó là lý do lỗi này không lộ ra lúc khởi động.
+        ///
+        /// Vòng Normal -> gán Bounds -> Maximized là BẮT BUỘC: đã đo được rằng WinForms bỏ
+        /// qua hoàn toàn lệnh gán Bounds khi cửa sổ đang ở trạng thái Maximized.
+        /// </summary>
+        private void ReapplyMaximize()
+        {
+            if (IsDisposed || !IsHandleCreated) return;
+
+            // DisplaySettingsChanged bắn trên thread riêng của SystemEvents, không phải thread UI.
+            if (InvokeRequired) { BeginInvoke(new Action(ReapplyMaximize)); return; }
+
+            // Đang thu nhỏ dưới taskbar thì không được tự bung lên trước mặt Owner.
+            if (WindowState == FormWindowState.Minimized)
+            {
+                _pendingReapplyMaximize = true;
+                return;
+            }
+
+            try
+            {
+                Rectangle target = Screen.FromHandle(Handle).WorkingArea;
+
+                SuspendLayout();
+                try
+                {
+                    WindowState = FormWindowState.Normal;
+                    Bounds = target;
+                }
+                finally
+                {
+                    // ResumeLayout(false): để chính lệnh Maximized ngay dưới gánh một lượt
+                    // layout duy nhất, thay vì bắt hơn 2000 control xếp lại hai lần.
+                    ResumeLayout(false);
+                }
+
+                WindowState = FormWindowState.Maximized;
+                AppLogger.Info($"[Display] Đã maximize lại theo màn hình {target.Width}x{target.Height}.");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[Display] Không maximize lại được sau khi đổi màn hình", ex);
+            }
+        }
+
         /// <summary>
         /// ULTRA gate for FullStackOperation. This check used to be commented out "temporarily for
         /// owner to test from tabHome", which let any BASE machine open the ULTRA window.
