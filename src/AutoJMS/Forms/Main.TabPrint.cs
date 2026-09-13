@@ -49,6 +49,11 @@ namespace AutoJMS
         // được một lần ở đây thì rõ ý hơn là dựa vào giá trị mặc định của thư viện.
         private static readonly Color ReprintWatermarkColor = Color.FromArgb(140, 140, 140);
 
+        // Bề rộng một đầu tab con của "IN ĐƠN" (xem FitPrintTabHeaders).
+        private const int PrintTabDesignItemWidth = 150;   // giá trị designer chốt cho màn rộng
+        private const int PrintTabMinItemWidth = 84;       // dưới mức này chữ không còn đọc được
+        private const int PrintTabItemTextPadding = 16;    // đệm hai bên chữ trong một đầu tab
+
         // ── controls (all created in BuildTabPrintInLaiDonSection) ──
         private TableLayoutPanel _reprintRoot;
         private UICheckBox _reprintChkReceiver;
@@ -94,12 +99,70 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
+        /// Giữ cho cả 4 tab con của "IN ĐƠN" luôn hiện đủ, ở mọi bề rộng.
+        ///
+        /// Designer chốt cứng <c>ItemSize.Width = 150</c> kèm <see cref="TabSizeMode.Fixed"/>
+        /// (Main.Designer.cs:707, :716), nên dải đầu tab luôn ngốn đúng 4 × 150 = 600 px bất kể
+        /// còn bao nhiêu chỗ. Cột trái của tab IN ĐƠN lại chiếm 250 px cứng
+        /// (Main.Designer.cs:641), nên khi bề rộng logic của form tụt xuống dưới ~850 px —
+        /// màn hẹp, hoặc màn thường nhưng scaling Windows cao — SunnyUI bắt đầu giấu bớt tab
+        /// sau cặp mũi tên ‹ ›, và "In Reverse" là tab biến mất đầu tiên.
+        ///
+        /// Chiều ngược lại cũng hỏng: chữ 12pt nở ra theo DPI, còn 150 px thì không, nên ở
+        /// scaling cao chữ "In chuyển hoàn" bị cắt cụt ngay trong đầu tab.
+        ///
+        /// Hàm này đo chữ thật ở DPI hiện tại rồi kẹp bề rộng đầu tab giữa hai giới hạn: rộng
+        /// bằng designer (hoặc hơn, nếu chữ cần) khi còn chỗ, và co lại vừa khít khi không.
+        /// Ở 1920×1080/100% phép tính ra đúng 150 px — bố cục màn rộng không đổi một pixel.
+        /// </summary>
+        private void FitPrintTabHeaders()
+        {
+            var tabs = tabPrint_printFunc;
+            if (tabs == null || tabs.IsDisposed) return;
+
+            int count = tabs.TabPages.Count;
+            if (count == 0 || tabs.Width <= 0) return;
+
+            int widestText = 0;
+            foreach (TabPage page in tabs.TabPages)
+            {
+                int w = TextRenderer.MeasureText(page.Text, tabs.Font).Width;
+                if (w > widestText) widestText = w;
+            }
+
+            int wanted = Math.Max(PrintTabDesignItemWidth, widestText + PrintTabItemTextPadding);
+            int affordable = Math.Max(PrintTabMinItemWidth, tabs.Width / count);
+            int width = Math.Min(wanted, affordable);
+
+            // ItemSize gán lại sẽ kích hoạt layout -> SizeChanged -> vào lại đây; chỉ gán khi
+            // giá trị thật sự đổi thì vòng lặp tự dừng ngay nhịp thứ hai.
+            if (tabs.ItemSize.Width == width) return;
+            tabs.ItemSize = new Size(width, tabs.ItemSize.Height);
+        }
+
+        /// <summary>
+        /// Đặt ở đây (không phải Main.Designer.cs) vì dải đầu tab là thứ duy nhất của tab
+        /// IN ĐƠN cần logic lúc chạy; designer chỉ biết một con số cứng.
+        /// </summary>
+        private void HookPrintTabHeaderAutoFit()
+        {
+            if (tabPrint_printFunc == null || tabPrint_printFunc.IsDisposed) return;
+
+            tabPrint_printFunc.SizeChanged += (_, __) => FitPrintTabHeaders();
+            tabPrint_printFunc.FontChanged += (_, __) => FitPrintTabHeaders();
+            FitPrintTabHeaders();
+        }
+
+        /// <summary>
         /// Builds the whole "In lại đơn" editor inside the (empty) designer tab page.
         /// Called from the Main constructor, before AppTheme re-applies, so the controls
         /// pick up the current theme like every other dynamically created control.
         /// </summary>
         private void BuildTabPrintInLaiDonSection()
         {
+            // Trước mọi guard bên dưới: dải đầu tab thuộc về cả tab IN ĐƠN, không riêng "In lại đơn".
+            HookPrintTabHeaderAutoFit();
+
             if (tabPrint_inLaiDon == null || tabPrint_inLaiDon.IsDisposed) return;
             if (tabPrint_inLaiDon.Controls.Find("tabPrint_reprintRoot", false).Length > 0) return;
 
