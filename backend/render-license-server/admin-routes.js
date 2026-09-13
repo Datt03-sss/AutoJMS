@@ -29,6 +29,7 @@ const {
     TZ_OFFSET_MINUTES,
     BILLING_ANCHOR_DAY,
     DEFAULT_GRACE_DAYS,
+    DEFAULT_OFFLINE_GRACE_HOURS,
     computeExpiry,
     evaluateLicense,
     parseInstant,
@@ -89,8 +90,33 @@ const FIREBASE_TIMEOUT_MS = Number(process.env.FIREBASE_OPERATION_TIMEOUT_MS || 
 const GRACE_DAYS = Number(process.env.LICENSE_GRACE_DAYS || DEFAULT_GRACE_DAYS);
 const ANCHOR_DAY = Number(process.env.LICENSE_BILLING_ANCHOR_DAY || BILLING_ANCHOR_DAY);
 
+/**
+ * The rest of the fleet defaults, mirrored from server.js for the same reason
+ * GRACE_DAYS is: the edit modal shows an empty field as "inherits <default>", and
+ * a dashboard that named a different number than /api/verify-license applies
+ * would have the owner tuning against a value the station never sees.
+ *
+ * Each one is read from the same environment variable its sibling in server.js
+ * reads, so a Render override moves both halves together.
+ */
+const OFFLINE_GRACE_HOURS = Number(process.env.LICENSE_OFFLINE_GRACE_HOURS || DEFAULT_OFFLINE_GRACE_HOURS);
+const DEFAULT_CHANNEL = process.env.DEFAULT_UPDATE_CHANNEL || "stable";
+const DEFAULT_SEATS = (() => {
+    // Same bounding server.js:198 applies, so a typo'd DATAHUB_DEFAULT_SEATS is
+    // reported here as the number the assertion will really carry.
+    const parsed = Number(process.env.DATAHUB_DEFAULT_SEATS);
+    if (!Number.isFinite(parsed)) return 3;
+    return Math.min(Math.max(Math.trunc(parsed), 1), 500);
+})();
+
 /** The two tiers the desktop client knows how to enforce (server.js:409). */
 const KNOWN_TIERS = new Set(["BASE", "ULTRA"]);
+
+/** The two lifecycle states verify-license distinguishes: active, or not. */
+const KNOWN_STATUSES = new Set(["active", "revoked"]);
+
+/** Velopack channels `release/build-release.ps1` actually publishes. */
+const KNOWN_CHANNELS = new Set(["stable", "beta"]);
 
 /** Ten years of monthly terms. A bound, so a fat-fingered 10000 cannot be sold. */
 const MAX_TERMS = 120;
@@ -100,6 +126,35 @@ const MAX_NOTES_LENGTH = 500;
 
 /** A Google Sheet id is 44 characters; the ceiling is slack, not a format. */
 const MAX_SPREADSHEET_ID_LENGTH = 200;
+
+/**
+ * Bounds for the per-key overrides the edit modal exposes.
+ *
+ * seats and tokenVersion are NOT free choices: server.js runs both through
+ * boundedNumber() before they reach a DataHub assertion, so 9999 seats is
+ * silently clamped to 500. These refuse instead of clamping — a dashboard that
+ * stored a number the fleet quietly rewrites is showing the owner a fiction.
+ */
+const MIN_SEATS = 1;
+const MAX_SEATS = 500;                  // server.js:255, server.js:1301
+const MIN_TOKEN_VERSION = 1;
+const MAX_TOKEN_VERSION = 1_000_000;    // server.js:256
+const MAX_GRACE_DAYS = 365;
+const MAX_OFFLINE_GRACE_HOURS = 8760;   // one year, in hours
+const MAX_SITE_CODES = 20;
+const MAX_SITE_ID_LENGTH = 128;
+const MAX_HWID_LENGTH = 128;
+
+/**
+ * Mirrors PLACEHOLDER_SITE_CODES at server.js:125.
+ *
+ * Not a duplicate for convenience: resolveLicenseSiteCodes() drops every one of
+ * these before it signs a DataHub assertion, so a site list made only of
+ * placeholders leaves the key unable to enrol at all. Refusing them here means
+ * the owner finds out while the modal is open rather than when the station
+ * fails to reach the data plane.
+ */
+const PLACEHOLDER_SITE_CODES = new Set(["", "0000", "00000", "0", "DEFAULT", "NONE", "TBD"]);
 
 // ==========================================
 // HELPERS
@@ -138,6 +193,26 @@ function withTimeout(promise, ms, label) {
 
 function isTimeoutError(error) {
     return typeof error?.message === "string" && error.message.endsWith("_TIMEOUT");
+}
+
+/**
+ * JSON with object keys sorted, used to ask "did this field actually move?".
+ *
+ * Plain JSON.stringify would answer yes every time for modulePolicy: Firebase
+ * hands `val()` back with its children in the database's own order, which is not
+ * the order this file writes them in, so `{a,s,p}` and `{p,a,s}` would compare
+ * unequal and every save would rewrite an unchanged policy — and report it as a
+ * change in the audit log. Array order is preserved on purpose: siteCodes[0] is
+ * the site an assertion is minted for, so reordering that list is a real change.
+ */
+function stableJson(value) {
+    if (value === undefined) return "null";
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+    return `{${Object.keys(value)
+        .sort()
+        .map(name => `${JSON.stringify(name)}:${stableJson(value[name])}`)
+        .join(",")}}`;
 }
 
 /**
@@ -288,6 +363,216 @@ function sanitizeSpreadsheetId(raw) {
     // a control character or a Vietnamese letter arriving in this field is a
     // paste accident rather than data worth storing.
     return String(raw).replace(/[^ -~]/g, "").trim().slice(0, MAX_SPREADSHEET_ID_LENGTH);
+}
+
+/**
+ * A hardware id or a DataHub site GUID: an opaque identifier the client produced.
+ *
+ * Same treatment as the spreadsheet id — printable ASCII only and bounded —
+ * because both are values the owner pastes rather than types, and a stray
+ * newline from a copied log line would otherwise reach the record.
+ */
+function sanitizeOpaqueId(raw, maxLength) {
+    if (typeof raw !== "string" && typeof raw !== "number") return "";
+    return String(raw).replace(/[^ -~]/g, "").trim().slice(0, maxLength);
+}
+
+/**
+ * An optional whole-number override.
+ *
+ * Three outcomes, and the middle one is the point: null/"" is the owner asking
+ * the key to follow the fleet default, which is a DIFFERENT record from one
+ * pinned to the same number — the pinned one stops moving when the fleet default
+ * is retuned on Render. It is spelled as a Firebase delete, not as a stored zero.
+ *
+ * Returns null when the value is present but unusable, so a typo is refused
+ * rather than rounded into something plausible.
+ */
+function parseOptionalWhole(raw, { min, max }) {
+    if (raw === null || (typeof raw === "string" && raw.trim() === "")) return { inherit: true };
+    if (typeof raw !== "number" && typeof raw !== "string") return null;
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+    return { inherit: false, value: parsed };
+}
+
+/**
+ * The list of DataHub sites a key may enrol against.
+ *
+ * Accepts the array the record stores or the one-per-line text the modal sends.
+ * An empty result is spelled as a delete: with no siteCodes child,
+ * resolveLicenseSiteCodes() falls back to siteCode / siteId / middleCode, which
+ * is how every single-site key in the fleet already works.
+ */
+function parseSiteCodes(raw) {
+    const entries = Array.isArray(raw) ? raw : String(raw ?? "").split(/[\s,;]+/);
+    if (entries.length > MAX_SITE_CODES * 4) return null;
+
+    const codes = [];
+    for (const entry of entries) {
+        const code = String(entry ?? "").trim().toUpperCase();
+        if (!code) continue;
+        if (!MIDDLE_CODE_PATTERN.test(code)) return null;
+        if (PLACEHOLDER_SITE_CODES.has(code) || /^0+$/.test(code)) return null;
+        if (!codes.includes(code)) codes.push(code);
+    }
+
+    return codes.length > MAX_SITE_CODES ? null : codes;
+}
+
+/** "YYYY-MM-DD" as a VN calendar day, or null. */
+function parseVnDate(raw) {
+    const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(raw ?? "").trim());
+    if (!matched) return null;
+
+    const iso = `${matched[1]}-${matched[2]}-${matched[3]}T00:00:00+07:00`;
+    const ms = parseInstant(iso);
+    if (ms === null) return null;
+
+    // Date.parse() rolls 2026-02-31 forward into March rather than refusing it,
+    // so the round trip IS the calendar check: a date that comes back as a
+    // different day was never a real one.
+    return toVnIso(ms) === iso ? { iso, ms } : null;
+}
+
+/**
+ * Resolves what the edit modal's "Hạn dùng" control asked for.
+ *
+ * Four modes, because a key's expiry is edited for four different reasons
+ * (owner decision, 2026-09-13):
+ *
+ *   keep       leave the stored expiry exactly as it is — the default, so a save
+ *              that only touched the notes cannot move a renewal date
+ *   perpetual  drop the expiry; the v1 record shape evaluateLicense() never expires
+ *   anchor     the existing sale mechanism: N whole anchor-to-anchor months from
+ *              a start day, with the 30-day floor. terms 0 is the short form the
+ *              owner asked for — run from the chosen day to the 16th of that
+ *              month, rolling into the next month once the 16th has passed
+ *   date       a designated day, 00:00 +07:00, the same instant of day every
+ *              anchored expiry in the fleet already lands on
+ *
+ * Returns { change: false } for "keep", or null when the request is unusable.
+ */
+function parseExpiryChange(raw, nowMs) {
+    if (raw === null || raw === undefined) return { change: false };
+    if (typeof raw !== "object" || Array.isArray(raw)) return null;
+
+    const mode = String(raw.mode || "keep").trim().toLowerCase();
+
+    if (mode === "keep") return { change: false };
+    if (mode === "perpetual") return { change: true, expiresAt: null, expiresAtMs: null };
+
+    if (mode === "date") {
+        const parsed = parseVnDate(raw.date);
+        return parsed ? { change: true, expiresAt: parsed.iso, expiresAtMs: parsed.ms } : null;
+    }
+
+    if (mode === "anchor") {
+        // An absent start day means "from today", which is what a renewal bought
+        // right now means — and what the create route already does.
+        const start =
+            raw.startAt === null || raw.startAt === undefined || raw.startAt === ""
+                ? { ms: nowMs }
+                : parseVnDate(raw.startAt);
+        if (!start) return null;
+
+        const rawTerms = raw.terms === null || raw.terms === undefined || raw.terms === "" ? 1 : raw.terms;
+        if (typeof rawTerms !== "number" && typeof rawTerms !== "string") return null;
+
+        const terms = Number(rawTerms);
+        if (!Number.isInteger(terms) || terms < 0 || terms > MAX_TERMS) return null;
+
+        // 0 is free to mean "next anchor, no 30-day floor" here precisely because
+        // perpetual has a mode of its own — unlike parseTerms(), where an empty
+        // term selector is the only way to spell a lifetime key.
+        const computed =
+            terms === 0
+                ? computeExpiry(start.ms, { terms: 1, minTermDays: 0, anchorDay: ANCHOR_DAY })
+                : computeExpiry(start.ms, { terms, anchorDay: ANCHOR_DAY });
+
+        return { change: true, expiresAt: computed.expiresAt, expiresAtMs: computed.expiresAtMs };
+    }
+
+    return null;
+}
+
+/**
+ * Every field of a record the licence server reads, normalised for the dashboard.
+ *
+ * The table shows nine of them; the edit modal needs all of them, and it needs to
+ * tell "not set" from "set to the fleet default" — so an override that is absent
+ * comes back as null here, never as the number it would inherit. The defaults
+ * themselves travel separately, on the detail route.
+ *
+ * Where a field is absent, this reports what /api/verify-license would actually
+ * hand the station rather than a blank: a record with no modulePolicy is read by
+ * server.js:1060 as autoUpdate off and the other two on, and a modal that drew
+ * three empty checkboxes would be describing a record that does not exist.
+ */
+function describeLicense(key, record, now = Date.now()) {
+    const evaluation = evaluateLicense(
+        {
+            status: record.status,
+            expiresAt: record.expiresAt,
+            graceDays: record.graceDays ?? GRACE_DAYS
+        },
+        now
+    );
+
+    // `expiresAt` is the STORED value normalised, not evaluateLicense's — that one
+    // is null for anything revoked, which would blank the expiry column for exactly
+    // the keys an owner is most likely to be inspecting.
+    const storedExpiryMs = parseInstant(record.expiresAt);
+
+    const optionalNumber = value => {
+        if (value === null || value === undefined || value === "") return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    return {
+        key,
+        middleCode: String(record.middleCode || ""),
+        tier: normalizeTier(record.tier) || "BASE",
+        status: String(record.status || "unknown"),
+        effectiveStatus: evaluation.effectiveStatus,
+        expiresAt: storedExpiryMs === null ? null : toVnIso(storedExpiryMs),
+        daysRemaining: evaluation.daysRemaining,
+        hwid: String(record.hwid || ""),
+        notes: String(record.notes || ""),
+
+        // Shown but not editable: createdAt is where an anchored term was counted
+        // from, so rewriting it would re-date a sale that already happened.
+        createdAt: String(record.createdAt || ""),
+
+        dataSpreadsheetId: String(record.dataSpreadsheetId || ""),
+        updateChannel: String(record.updateChannel || ""),
+        // server.js:1018 reads `data.skipHashCheck === true`, so an absent field is
+        // hash checking ON at verify time no matter what the create route defaults to.
+        skipHashCheck: record.skipHashCheck === true,
+        modulePolicy:
+            record.modulePolicy && typeof record.modulePolicy === "object"
+                ? {
+                    autoUpdate: record.modulePolicy.autoUpdate === true,
+                    silentUpdate: record.modulePolicy.silentUpdate === true,
+                    applyOnNextStartup: record.modulePolicy.applyOnNextStartup === true
+                }
+                : { autoUpdate: false, silentUpdate: true, applyOnNextStartup: true },
+
+        graceDays: optionalNumber(record.graceDays),
+        offlineGraceHours: optionalNumber(record.offlineGraceHours),
+        seats: optionalNumber(record.seats),
+        tokenVersion: optionalNumber(record.tokenVersion),
+
+        // null, not [], so the modal can tell "no list, falls back to middleCode"
+        // from "an explicitly empty list" — the second one cannot be stored.
+        siteCodes: Array.isArray(record.siteCodes)
+            ? record.siteCodes.map(code => String(code || "").trim().toUpperCase()).filter(Boolean)
+            : null,
+        siteCode: String(record.siteCode || ""),
+        siteId: String(record.siteId || "")
+    };
 }
 
 /** Reads and validates :key, answering the client itself when it is unusable. */
@@ -482,27 +767,23 @@ router.get(
         const licenses = entries
             .filter(([, record]) => record && typeof record === "object")
             .map(([key, record]) => {
-                const evaluation = evaluateLicense(
-                    {
-                        status: record.status,
-                        expiresAt: record.expiresAt,
-                        graceDays: record.graceDays ?? GRACE_DAYS
-                    },
-                    now
-                );
-
-                const storedExpiryMs = parseInstant(record.expiresAt);
+                // Evaluated through describeLicense() rather than inline, so the
+                // table and the edit modal can never end up reading a record with
+                // two different grace windows. Narrowed back down afterwards
+                // because this is the page-load payload for the WHOLE fleet: the
+                // remaining fields travel one row at a time on the detail route.
+                const full = describeLicense(key, record, now);
 
                 return {
-                    key,
-                    middleCode: String(record.middleCode || ""),
-                    tier: normalizeTier(record.tier) || "BASE",
-                    status: String(record.status || "unknown"),
-                    effectiveStatus: evaluation.effectiveStatus,
-                    expiresAt: storedExpiryMs === null ? null : toVnIso(storedExpiryMs),
-                    daysRemaining: evaluation.daysRemaining,
-                    hwid: String(record.hwid || ""),
-                    notes: String(record.notes || "")
+                    key: full.key,
+                    middleCode: full.middleCode,
+                    tier: full.tier,
+                    status: full.status,
+                    effectiveStatus: full.effectiveStatus,
+                    expiresAt: full.expiresAt,
+                    daysRemaining: full.daysRemaining,
+                    hwid: full.hwid,
+                    notes: full.notes
                 };
             });
 
@@ -518,6 +799,40 @@ router.get(
         });
 
         return res.json({ success: true, count: licenses.length, licenses });
+    })
+);
+
+// ==========================================
+// GET /api/admin/licenses/:key
+// ==========================================
+/**
+ * One record, every field, plus the defaults the blanks inherit.
+ *
+ * The edit modal opens on this rather than on the row it was clicked from. The
+ * row is a snapshot from the last refresh, and an owner who leaves the dashboard
+ * open all morning would otherwise be editing — and saving back — a record that
+ * moved underneath them.
+ */
+router.get(
+    "/licenses/:key",
+    asyncRoute(async (req, res) => {
+        const loaded = await loadLicense(req, res);
+        if (!loaded) return undefined;
+
+        return res.json({
+            success: true,
+            license: describeLicense(loaded.key, loaded.record),
+            // What an empty field on the form actually means, named by the server
+            // that applies them rather than hard-coded into the page.
+            defaults: {
+                graceDays: GRACE_DAYS,
+                offlineGraceHours: OFFLINE_GRACE_HOURS,
+                seats: DEFAULT_SEATS,
+                tokenVersion: 1,
+                updateChannel: DEFAULT_CHANNEL,
+                anchorDay: ANCHOR_DAY
+            }
+        });
     })
 );
 
@@ -633,6 +948,292 @@ router.post(
                 hwid: "",
                 notes
             }
+        });
+    })
+);
+
+// ==========================================
+// POST /api/admin/licenses/:key/update
+// ==========================================
+/**
+ * Edits an existing key in place — every field the licence server reads.
+ *
+ * The four single-purpose routes below it stay: they are one click each from the
+ * table and they are what the owner reaches for ninety times out of a hundred.
+ * This one exists for the tenth case, where a correction spans several fields at
+ * once (a station moved office, so middleCode, siteCodes and hwid all move
+ * together) and doing it as four separate writes would leave the record
+ * incoherent in between.
+ *
+ * Two properties it has that the single-purpose routes do not need:
+ *
+ *   PATCH semantics. A field absent from the body is left alone. The modal posts
+ *   the whole form, but a caller that sends only `notes` must not blank the
+ *   tier — this route can write every field, so "not mentioned" has to mean
+ *   "not touched" rather than "not wanted".
+ *
+ *   Only real changes are written. The modal posts every field on every save, so
+ *   without the diff a notes edit would rewrite status, tier and middleCode with
+ *   their own values, and the log line would claim all of them moved — the
+ *   opposite of an audit trail on the one surface that can revoke a customer.
+ *
+ * The key itself is not editable and there is deliberately no route that makes it
+ * so: the key IS the Firebase node id, so renaming it is a copy to a new node and
+ * a delete of the old one, which would strand every station already carrying the
+ * old string. Issue a new key and revoke the old one instead.
+ */
+router.post(
+    "/licenses/:key/update",
+    asyncRoute(async (req, res) => {
+        const loaded = await loadLicense(req, res);
+        if (!loaded) return undefined;
+
+        const body = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+        const current = loaded.record;
+        const now = Date.now();
+
+        const patch = {};
+        const changed = [];
+
+        /**
+         * Stages one field, and only when it actually moves.
+         *
+         * null is a Firebase delete, which is how an override goes back to
+         * inheriting the fleet default — so an absent child and an explicit null
+         * have to compare equal here, or every save would rewrite the same
+         * delete forever.
+         */
+        const put = (name, next, before) => {
+            if (stableJson(before) === stableJson(next)) return;
+            patch[name] = next;
+            changed.push(name);
+        };
+
+        // ---- Identity -------------------------------------------------------
+
+        if (body.middleCode !== undefined) {
+            const middleCode = String(body.middleCode || "").trim().toUpperCase();
+            if (!MIDDLE_CODE_PATTERN.test(middleCode)) {
+                return fail(res, 400, "INVALID_MIDDLE_CODE", "Mã bưu cục chỉ gồm chữ và số (A-Z, 0-9), dài 2-32 ký tự.");
+            }
+            if (/^0+$/.test(middleCode)) {
+                return fail(
+                    res,
+                    400,
+                    "PLACEHOLDER_MIDDLE_CODE",
+                    "Mã bưu cục toàn số 0 bị verify-license từ chối; nhập mã bưu cục thật."
+                );
+            }
+            put("middleCode", middleCode, current.middleCode);
+        }
+
+        if (body.tier !== undefined) {
+            const tier = normalizeTier(body.tier);
+            if (!KNOWN_TIERS.has(tier)) {
+                return fail(res, 400, "INVALID_TIER", "Tier chỉ nhận BASE hoặc ULTRA.");
+            }
+            put("tier", tier, normalizeTier(current.tier) || undefined);
+        }
+
+        if (body.status !== undefined) {
+            const status = String(body.status || "").trim().toLowerCase();
+            if (!KNOWN_STATUSES.has(status)) {
+                return fail(res, 400, "INVALID_STATUS", "Trạng thái chỉ nhận active hoặc revoked.");
+            }
+            put("status", status, String(current.status || "").trim().toLowerCase() || undefined);
+        }
+
+        if (body.hwid !== undefined) {
+            put("hwid", sanitizeOpaqueId(body.hwid, MAX_HWID_LENGTH), String(current.hwid || ""));
+        }
+
+        if (body.notes !== undefined) {
+            put("notes", sanitizeNotes(body.notes), String(current.notes || ""));
+        }
+
+        // ---- Client configuration -------------------------------------------
+
+        if (body.dataSpreadsheetId !== undefined) {
+            put(
+                "dataSpreadsheetId",
+                sanitizeSpreadsheetId(body.dataSpreadsheetId),
+                String(current.dataSpreadsheetId || "")
+            );
+        }
+
+        if (body.updateChannel !== undefined) {
+            const channel = String(body.updateChannel || "").trim().toLowerCase();
+            if (channel && !KNOWN_CHANNELS.has(channel)) {
+                return fail(res, 400, "INVALID_UPDATE_CHANNEL", "Kênh cập nhật chỉ nhận stable hoặc beta, hoặc bỏ trống.");
+            }
+            // Blank deletes the child rather than storing "", because server.js
+            // falls back on `data.updateChannel || CONFIG.DEFAULT_CHANNEL` and an
+            // empty string there is the same fallback said twice.
+            put("updateChannel", channel || null, String(current.updateChannel || "") || undefined);
+        }
+
+        if (body.skipHashCheck !== undefined) {
+            put("skipHashCheck", Boolean(body.skipHashCheck), current.skipHashCheck === true);
+        }
+
+        if (body.modulePolicy !== undefined) {
+            const requested = body.modulePolicy;
+            if (requested === null || typeof requested !== "object" || Array.isArray(requested)) {
+                return fail(res, 400, "INVALID_MODULE_POLICY", "modulePolicy phải là object gồm ba công tắc true/false.");
+            }
+
+            // Merged onto what is stored, not onto the fleet default: a caller
+            // sending only { autoUpdate: false } is turning one switch off, not
+            // resetting the other two.
+            const before = describeLicense(loaded.key, current, now).modulePolicy;
+            const next = {
+                // Anything else already under modulePolicy is carried through:
+                // update() replaces the whole child, so building the object from
+                // the three switches alone would silently delete a field some
+                // future client reads.
+                ...(current.modulePolicy && typeof current.modulePolicy === "object" ? current.modulePolicy : {}),
+                autoUpdate: requested.autoUpdate === undefined ? before.autoUpdate : requested.autoUpdate === true,
+                silentUpdate: requested.silentUpdate === undefined ? before.silentUpdate : requested.silentUpdate === true,
+                applyOnNextStartup:
+                    requested.applyOnNextStartup === undefined
+                        ? before.applyOnNextStartup
+                        : requested.applyOnNextStartup === true
+            };
+            put("modulePolicy", next, current.modulePolicy);
+        }
+
+        // ---- Lifecycle overrides --------------------------------------------
+
+        const overrides = [
+            {
+                name: "graceDays",
+                code: "INVALID_GRACE_DAYS",
+                bounds: { min: 0, max: MAX_GRACE_DAYS },
+                message: `Số ngày ân hạn phải là số nguyên 0-${MAX_GRACE_DAYS}, hoặc bỏ trống để theo mặc định (${GRACE_DAYS}).`
+            },
+            {
+                name: "offlineGraceHours",
+                code: "INVALID_OFFLINE_GRACE_HOURS",
+                bounds: { min: 0, max: MAX_OFFLINE_GRACE_HOURS },
+                message: `Số giờ chạy offline phải là số nguyên 0-${MAX_OFFLINE_GRACE_HOURS}, hoặc bỏ trống để theo mặc định (${OFFLINE_GRACE_HOURS}).`
+            },
+            {
+                name: "seats",
+                code: "INVALID_SEATS",
+                bounds: { min: MIN_SEATS, max: MAX_SEATS },
+                message: `Số máy trạm phải là số nguyên ${MIN_SEATS}-${MAX_SEATS}, hoặc bỏ trống để theo mặc định (${DEFAULT_SEATS}).`
+            },
+            {
+                name: "tokenVersion",
+                code: "INVALID_TOKEN_VERSION",
+                bounds: { min: MIN_TOKEN_VERSION, max: MAX_TOKEN_VERSION },
+                message: `Token version phải là số nguyên ${MIN_TOKEN_VERSION}-${MAX_TOKEN_VERSION}, hoặc bỏ trống để theo mặc định (1).`
+            }
+        ];
+
+        for (const { name, code, bounds, message } of overrides) {
+            if (body[name] === undefined) continue;
+
+            const parsed = parseOptionalWhole(body[name], bounds);
+            if (parsed === null) return fail(res, 400, code, message);
+
+            const stored = Number(current[name]);
+            const before =
+                current[name] === null || current[name] === undefined || current[name] === "" || !Number.isFinite(stored)
+                    ? undefined
+                    : stored;
+            put(name, parsed.inherit ? null : parsed.value, before);
+        }
+
+        // ---- DataHub tenancy ------------------------------------------------
+
+        if (body.siteCodes !== undefined) {
+            const codes = parseSiteCodes(body.siteCodes);
+            if (codes === null) {
+                return fail(
+                    res,
+                    400,
+                    "INVALID_SITE_CODES",
+                    `Danh sách site code chỉ gồm chữ và số, tối đa ${MAX_SITE_CODES} mã, không nhận mã placeholder (0000, NONE, TBD…).`
+                );
+            }
+            const before = Array.isArray(current.siteCodes)
+                ? current.siteCodes.map(code => String(code || "").trim().toUpperCase()).filter(Boolean)
+                : undefined;
+            put("siteCodes", codes.length > 0 ? codes : null, before && before.length > 0 ? before : undefined);
+        }
+
+        if (body.siteCode !== undefined) {
+            const siteCode = String(body.siteCode || "").trim().toUpperCase();
+            if (siteCode && (!MIDDLE_CODE_PATTERN.test(siteCode) || PLACEHOLDER_SITE_CODES.has(siteCode) || /^0+$/.test(siteCode))) {
+                return fail(res, 400, "INVALID_SITE_CODE", "Site code chỉ gồm chữ và số, và không được là mã placeholder.");
+            }
+            put("siteCode", siteCode || null, String(current.siteCode || "") || undefined);
+        }
+
+        if (body.siteId !== undefined) {
+            // Not pattern-checked: this is the GUID the enrolment response hands
+            // back, and older records carry a middleCode here instead. Guessing a
+            // shape would refuse real data that is already in the fleet.
+            const siteId = sanitizeOpaqueId(body.siteId, MAX_SITE_ID_LENGTH);
+            put("siteId", siteId || null, String(current.siteId || "") || undefined);
+        }
+
+        // ---- Expiry ---------------------------------------------------------
+
+        const expiry = parseExpiryChange(body.expiry, now);
+        if (expiry === null) {
+            return fail(
+                res,
+                400,
+                "INVALID_EXPIRY",
+                "Hạn dùng không hợp lệ: chọn giữ nguyên, vĩnh viễn, theo kỳ hạn (neo ngày 16), hoặc một ngày có thật dạng YYYY-MM-DD."
+            );
+        }
+        if (expiry.change) {
+            const before = parseInstant(current.expiresAt);
+            put("expiresAt", expiry.expiresAt, before === null ? undefined : toVnIso(before));
+        }
+
+        // ---- Write ----------------------------------------------------------
+
+        if (changed.length === 0) {
+            // Not an error the owner caused, but saying "đã lưu" for a write that
+            // never happened is how a dashboard teaches someone to trust a toast
+            // that means nothing.
+            return res.json({
+                success: true,
+                key: loaded.key,
+                changed: [],
+                license: describeLicense(loaded.key, current, now)
+            });
+        }
+
+        await withTimeout(licenseRef(loaded.key).update(patch), FIREBASE_TIMEOUT_MS, "FIREBASE");
+
+        logEvent("info", "admin.license_updated", {
+            key: maskLicenseKey(loaded.key),
+            changed,
+            // Named individually because these three are the ones that change who
+            // can run the software and which DataHub tenant they land in — a
+            // reader scanning the log should not have to diff two records to see it.
+            status: patch.status,
+            tier: patch.tier,
+            middleCode: patch.middleCode,
+            expiresAt: changed.includes("expiresAt") ? patch.expiresAt : undefined
+        });
+
+        const merged = { ...current };
+        for (const [name, value] of Object.entries(patch)) {
+            if (value === null) delete merged[name];
+            else merged[name] = value;
+        }
+
+        return res.json({
+            success: true,
+            key: loaded.key,
+            changed,
+            license: describeLicense(loaded.key, merged, now)
         });
     })
 );

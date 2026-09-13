@@ -362,6 +362,23 @@ input, select, textarea, button { font: inherit; color: inherit; }
 
 .field__hint { font-size: .76rem; color: var(--text-faint); }
 
+/* "chỉ đọc" beside the key label in the edit modal. A chip rather than a
+   sentence in the hint below: the first question anyone has on seeing a licence
+   key inside an edit form is whether they are allowed to change it, and that
+   answer should land before they click into the box, not after. */
+.field__tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+}
+
 .field__input {
     width: 100%;
     background: var(--bg);
@@ -378,6 +395,13 @@ input, select, textarea, button { font: inherit; color: inherit; }
 }
 
 .field__input--mono { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .06em; }
+
+/* Mono, but shown exactly as stored. text-transform only repaints the glyphs —
+   the value keeps whatever case was typed — so on a field the owner READS BACK
+   (a Sheet ID, a HWID, a site GUID, all case-sensitive) the uppercasing turns
+   into a lie you cannot compare against the real thing. Post-office codes keep
+   it, because the server uppercases those for real. */
+.field__input--as-typed { text-transform: none; }
 
 textarea.field__input { resize: vertical; min-height: 56px; }
 
@@ -711,6 +735,17 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 
 .modal__card--confirm { max-width: 420px; }
 
+/* ==========================================
+   EDIT MODAL
+   ==========================================
+   Wider than the create card because it carries roughly twice the fields — the
+   whole DataHub group the create form never had. At 520 the two-column rows
+   inside the fieldsets ended up narrower than their own labels
+   (`offlineGraceHours`, "Số máy trạm seats"), which is the same reason the
+   create card went from 440 to 520. */
+
+.modal__card--edit { max-width: 680px; }
+
 .confirm__message {
     font-size: .92rem;
     line-height: 1.55;
@@ -864,6 +899,20 @@ textarea.field__input { resize: vertical; min-height: 56px; }
 
 .switch-label input { flex: none; width: 16px; height: 16px; accent-color: var(--brand); }
 .switch-label code { font-size: .74rem; }
+
+/* The edit modal's Hạn dùng and DataHub blocks stack several rows inside one
+   fieldset, unlike the policy block above which holds a single switch grid.
+   The fieldset is NOT turned into a grid container: <legend> is laid out
+   specially and browsers disagree about where it lands once display changes,
+   so the rows are spaced with a sibling margin instead. */
+.config-section--rows > * + * { margin-top: 12px; }
+
+.config-section__note { margin: 0; font-size: .8rem; color: var(--text-muted); }
+
+/* The computed expiry. Tinted because it is the one line in the block that
+   answers "what date will this actually become?" — the reason the owner opened
+   Hạn dùng at all. */
+.config-section__note--result { color: var(--brand); font-weight: 600; }
 
 /* ==========================================
    CREATE MODAL — SUBMIT

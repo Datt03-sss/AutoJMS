@@ -299,6 +299,256 @@
 </div>
 
 <!-- ====================================================================
+     MODAL — Sửa License
+     ====================================================================
+     Cùng bố cục với "Cấp License Mới" để Owner không phải học lại chỗ nào
+     nằm ở đâu, nhưng phủ HẾT các trường mà license server đọc được — kể cả
+     nhóm DataHub (siteCodes / siteCode / siteId / seats / tokenVersion) mà
+     modal cấp key không có.
+
+     License key chỉ đọc, vì nó là ID của node trên Firebase: đổi tên key là
+     chép sang node mới rồi xoá node cũ, và mọi máy trạm đang giữ chuỗi cũ
+     sẽ mất quyền chạy. Cần đổi thì cấp key mới rồi khoá key cũ.
+     ==================================================================== -->
+<div class="modal" id="edit-modal" hidden>
+  <div class="modal__backdrop" id="edit-backdrop"></div>
+
+  <form class="modal__card modal__card--edit" id="edit-form" autocomplete="off">
+    <header class="modal__head">
+      <h2>Sửa License</h2>
+      <button class="modal__close" type="button" id="edit-close" title="Đóng">✕</button>
+    </header>
+
+    <div class="modal__body">
+
+      <div class="toggle-wrapper">
+        <div class="grok-pill-toggle" role="group" aria-label="Chọn gói license">
+          <button type="button" class="toggle-btn" id="edit-toggle-base" aria-pressed="false">BASE</button>
+          <button type="button" class="toggle-btn active-ultra" id="edit-toggle-ultra" aria-pressed="true"><span aria-hidden="true">⚡</span> ULTRA</button>
+        </div>
+      </div>
+
+      <!-- Chỉ đọc, nhưng vẫn có nút copy: đây là chuỗi Owner hay phải gửi
+           lại cho khách nhất. -->
+      <div class="key-gen-box">
+        <div class="key-gen-box__text">
+          <span class="field__label">License Key <span class="field__tag">chỉ đọc</span></span>
+          <span class="key-preview-val" id="edit-key-display"></span>
+          <span class="field__hint" id="edit-created-at"></span>
+        </div>
+        <button type="button" class="btn-general-key" id="edit-copy-key" title="Copy license key">
+          Copy Key
+        </button>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">Mã bưu cục</span>
+          <input
+            id="edit-middle-code"
+            class="field__input field__input--mono"
+            type="text"
+            placeholder="214A03"
+            maxlength="32"
+            spellcheck="false"
+            required>
+          <span class="field__hint">Đây cũng là site code của DataHub — đổi là chuyển khách sang tenant khác.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Trạng thái</span>
+          <select id="edit-status" class="field__input">
+            <option value="active">Đang chạy (active)</option>
+            <option value="revoked">Đã khoá (revoked)</option>
+          </select>
+          <span class="field__hint">Khoá là cắt quyền chạy ngay ở lần kiểm tra kế tiếp.</span>
+        </label>
+      </div>
+
+      <!-- Hạn dùng: bốn chế độ, vì một cái hạn bị sửa vì bốn lý do khác nhau.
+           Mặc định là "Giữ nguyên" để một lần sửa ghi chú không vô tình dời
+           ngày đáo hạn của khách. -->
+      <fieldset class="config-section config-section--rows">
+        <legend class="config-section__title">Hạn dùng</legend>
+
+        <p class="config-section__note" id="edit-expiry-current"></p>
+
+        <label class="field">
+          <span class="field__label">Cách đặt hạn</span>
+          <select id="edit-expiry-mode" class="field__input">
+            <option value="keep">Giữ nguyên hạn hiện tại</option>
+            <option value="anchor">Theo kỳ hạn (đáo hạn ngày 16)</option>
+            <option value="date">Đến một ngày chỉ định</option>
+            <option value="perpetual">Vĩnh viễn (xoá hạn)</option>
+          </select>
+        </label>
+
+        <div class="form-grid" id="edit-expiry-anchor-row" hidden>
+          <label class="field">
+            <span class="field__label">Tính từ ngày</span>
+            <input id="edit-expiry-start" class="field__input" type="date">
+            <span class="field__hint">Bỏ trống = tính từ hôm nay.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Kỳ hạn</span>
+            <select id="edit-expiry-terms" class="field__input">
+              <option value="0">Tới ngày 16 gần nhất</option>
+              <option value="1" selected>1 tháng</option>
+              <option value="3">3 tháng</option>
+              <option value="6">6 tháng</option>
+              <option value="12">12 tháng</option>
+              <option value="24">24 tháng</option>
+            </select>
+            <span class="field__hint">“Tới ngày 16 gần nhất” bỏ sàn 30 ngày: qua ngày 16 thì sang tháng sau.</span>
+          </label>
+        </div>
+
+        <label class="field" id="edit-expiry-date-row" hidden>
+          <span class="field__label">Ngày hết hạn</span>
+          <input id="edit-expiry-date" class="field__input" type="date">
+          <span class="field__hint">Hết hạn lúc 00:00 ngày này, đúng như mọi hạn đáo ngày 16 khác.</span>
+        </label>
+
+        <p class="config-section__note config-section__note--result" id="edit-expiry-preview" hidden></p>
+      </fieldset>
+
+      <div class="form-grid">
+        <label class="field">
+          <span class="field__label">HWID đang gắn</span>
+          <input
+            id="edit-hwid"
+            class="field__input field__input--mono field__input--as-typed"
+            type="text"
+            placeholder="chưa gắn máy nào"
+            maxlength="128"
+            spellcheck="false">
+          <span class="field__hint">Xoá trống = reset HWID, máy kế tiếp kích hoạt sẽ chiếm chỗ.</span>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Kênh cập nhật</span>
+          <select id="edit-update-channel" class="field__input">
+            <option value="">Theo mặc định máy chủ</option>
+            <option value="stable">stable</option>
+            <option value="beta">beta</option>
+          </select>
+          <span class="field__hint"><code>updateChannel</code> — bản beta có thể chưa ổn định.</span>
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="field__label">Google Sheet ID</span>
+        <input
+          id="edit-sheet-id"
+          class="field__input field__input--mono field__input--as-typed"
+          type="text"
+          placeholder="1AbC…xyz"
+          maxlength="200"
+          spellcheck="false">
+        <span class="field__hint">Bảng dữ liệu riêng của khách (<code>dataSpreadsheetId</code>) — dùng được cho cả BASE lẫn ULTRA.</span>
+      </label>
+
+      <label class="field">
+        <span class="field__label">Ghi chú khách hàng</span>
+        <textarea
+          id="edit-notes"
+          class="field__input"
+          rows="2"
+          maxlength="500"
+          placeholder="Tên khách, số điện thoại, ngày thu tiền…"></textarea>
+      </label>
+
+      <fieldset class="config-section">
+        <legend class="config-section__title">Cấu hình Key &amp; Module Policy</legend>
+        <div class="config-switches">
+          <label class="switch-label">
+            <input type="checkbox" id="edit-skip-hash">
+            <span>Bỏ qua kiểm tra hash <code>skipHashCheck</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="edit-auto-update">
+            <span>Tự động cập nhật <code>autoUpdate</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="edit-silent-update">
+            <span>Cập nhật im lặng <code>silentUpdate</code></span>
+          </label>
+          <label class="switch-label">
+            <input type="checkbox" id="edit-apply-startup">
+            <span>Áp dụng lần mở sau <code>applyOnNextStartup</code></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <!-- Bốn ô số ở đây đều là override theo từng key: để TRỐNG là đi theo
+           mặc định của máy chủ, khác hẳn với việc gõ đúng con số mặc định —
+           số gõ tay sẽ đứng yên khi mặc định của fleet được chỉnh lại. -->
+      <fieldset class="config-section config-section--rows">
+        <legend class="config-section__title">DataHub &amp; vòng đời</legend>
+
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Số máy trạm <code>seats</code></span>
+            <input id="edit-seats" class="field__input" type="number" min="1" max="500" step="1" placeholder="mặc định">
+          </label>
+
+          <label class="field">
+            <span class="field__label">Token version</span>
+            <input id="edit-token-version" class="field__input" type="number" min="1" max="1000000" step="1" placeholder="mặc định">
+            <span class="field__hint">Tăng số này để vô hiệu hoá các assertion đã phát.</span>
+          </label>
+        </div>
+
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Ân hạn <code>graceDays</code></span>
+            <input id="edit-grace-days" class="field__input" type="number" min="0" max="365" step="1" placeholder="mặc định">
+            <span class="field__hint">Số ngày vẫn chạy được sau khi hết hạn.</span>
+          </label>
+
+          <label class="field">
+            <span class="field__label">Offline <code>offlineGraceHours</code></span>
+            <input id="edit-offline-hours" class="field__input" type="number" min="0" max="8760" step="1" placeholder="mặc định">
+            <span class="field__hint">Số giờ chạy được khi không gọi tới máy chủ.</span>
+          </label>
+        </div>
+
+        <label class="field">
+          <span class="field__label">Danh sách site code <code>siteCodes</code></span>
+          <textarea
+            id="edit-site-codes"
+            class="field__input field__input--mono"
+            rows="2"
+            spellcheck="false"
+            placeholder="Bỏ trống = dùng mã bưu cục"></textarea>
+          <span class="field__hint">Mỗi dòng một mã. Mã đầu tiên là site mà assertion được ký cho.</span>
+        </label>
+
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Site code chính</span>
+            <input id="edit-site-code" class="field__input field__input--mono" type="text" maxlength="32" spellcheck="false" placeholder="theo mã bưu cục">
+          </label>
+
+          <label class="field">
+            <span class="field__label">Site ID (GUID)</span>
+            <input id="edit-site-id" class="field__input field__input--mono field__input--as-typed" type="text" maxlength="128" spellcheck="false" placeholder="do DataHub cấp">
+          </label>
+        </div>
+      </fieldset>
+
+      <p class="modal__error" id="edit-error" hidden></p>
+    </div>
+
+    <footer class="modal__foot">
+      <button class="btn btn--ghost" type="button" id="edit-cancel">Huỷ</button>
+      <button class="btn btn--primary btn-submit" type="submit" id="edit-submit">Lưu thay đổi</button>
+    </footer>
+  </form>
+</div>
+
+<!-- ====================================================================
      MODAL — Xác nhận thao tác
      ====================================================================
      Thay cho window.confirm(). Hộp thoại của trình duyệt chặn cả luồng JS,

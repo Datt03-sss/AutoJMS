@@ -19,7 +19,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { startServer } = require("./helpers/harness");
-const { computeExpiry, parseInstant } = require("../license-expiry");
+const {
+    computeExpiry,
+    parseInstant,
+    BILLING_ANCHOR_DAY,
+    DEFAULT_GRACE_DAYS,
+    DEFAULT_OFFLINE_GRACE_HOURS
+} = require("../license-expiry");
 
 // server.js registers one uncaughtException and one unhandledRejection logger in
 // its module body — correct for a process that boots it once, and the reason this
@@ -785,7 +791,8 @@ test("a mutation on an unknown key answers 404 and creates no ghost record", asy
             [`/api/admin/licenses/${missing}/extend`, { terms: 1 }],
             [`/api/admin/licenses/${missing}/toggle-status`, undefined],
             [`/api/admin/licenses/${missing}/unbind-hwid`, undefined],
-            [`/api/admin/licenses/${missing}/tier`, { tier: "ULTRA" }]
+            [`/api/admin/licenses/${missing}/tier`, { tier: "ULTRA" }],
+            [`/api/admin/licenses/${missing}/update`, { notes: "sửa nhầm key" }]
         ];
 
         for (const [route, body] of routes) {
@@ -793,6 +800,13 @@ test("a mutation on an unknown key answers 404 and creates no ghost record", asy
             assert.equal(response.status, 404, `${route} should be a 404`);
             assert.equal(response.body.error, "LICENSE_NOT_FOUND");
         }
+
+        // The edit modal opens on the detail route, so a stale row in a dashboard
+        // left open all morning has to be told the record is gone rather than
+        // handed a blank form that would write one back.
+        const detail = await harness.get(`/api/admin/licenses/${missing}`, auth());
+        assert.equal(detail.status, 404);
+        assert.equal(detail.body.error, "LICENSE_NOT_FOUND");
 
         assert.equal(harness.db.read(`Licenses/${missing}`), null);
         assert.deepEqual(harness.db.writes(), []);
@@ -815,6 +829,550 @@ test("a key that would break the Firebase path is refused before ref() sees it",
         assert.equal(response.status, 400);
         assert.equal(response.body.error, "INVALID_LICENSE_KEY");
         assert.deepEqual(harness.db.reads(), [], "an illegal key must not reach Firebase");
+    } finally {
+        await harness.close();
+    }
+});
+
+// ==========================================================================
+// DETAIL + FULL UPDATE — the edit modal
+// ==========================================================================
+// The four routes above are one click each and touch one field. This pair is the
+// modal that can move every field at once, so the properties under test are
+// different in kind: that an absent field is left alone, that an unchanged field
+// is not rewritten, and that a refusal aborts the whole save rather than leaving
+// the record half-edited.
+// ==========================================================================
+
+const EDIT_KEY = "JMXS-214A03-22B1";
+
+/** A record with every optional child populated — the awkward half to round-trip. */
+const richSeed = (overrides = {}) =>
+    licenseSeed({
+        expiresAt: "2026-10-16T00:00:00+07:00",
+        updateChannel: "beta",
+        graceDays: 14,
+        offlineGraceHours: 48,
+        seats: 5,
+        tokenVersion: 2,
+        siteCodes: ["214A03", "HN01"],
+        siteCode: "214A03",
+        siteId: "3f2b9c1e-0000-4a7d-9c11-abcdefabcdef",
+        dataSpreadsheetId: "sheet-abc-123",
+        notes: "Bưu cục Hà Nội",
+        ...overrides
+    });
+
+/**
+ * The body the edit modal posts for a form it has just filled from `license`.
+ *
+ * Mirrors dashboard/app.js collectEditPayload(): the modal posts every field on
+ * every save, and a number the record does not carry is posted as "" because an
+ * empty input is how the owner spells "theo mặc định". Reproducing that shape
+ * here is the point — it is what makes "open the modal and press save" a case
+ * the suite actually covers.
+ */
+const payloadFrom = (license, overrides = {}) => ({
+    middleCode: license.middleCode,
+    tier: license.tier,
+    status: license.status,
+    hwid: license.hwid,
+    notes: license.notes,
+    dataSpreadsheetId: license.dataSpreadsheetId,
+    updateChannel: license.updateChannel,
+    skipHashCheck: license.skipHashCheck,
+    modulePolicy: license.modulePolicy,
+    seats: license.seats === null ? "" : String(license.seats),
+    tokenVersion: license.tokenVersion === null ? "" : String(license.tokenVersion),
+    graceDays: license.graceDays === null ? "" : String(license.graceDays),
+    offlineGraceHours: license.offlineGraceHours === null ? "" : String(license.offlineGraceHours),
+    siteCodes: (license.siteCodes || []).join("\n"),
+    siteCode: license.siteCode,
+    siteId: license.siteId,
+    expiry: { mode: "keep" },
+    ...overrides
+});
+
+test("the detail route reports every field, and names the defaults a blank inherits", async () => {
+    // Seeded WITHOUT modulePolicy and without a single override, because that is
+    // the shape most of the fleet is actually in — and the shape where a modal
+    // that guessed would describe a record that does not exist.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: {
+            Licenses: {
+                [EDIT_KEY]: {
+                    createdAt: "01-08-2026 09:00",
+                    status: "active",
+                    tier: "ultra",
+                    middleCode: "214A03",
+                    hwid: "0123456789abcdef0123456789abcdef",
+                    expiresAt: new Date(Date.now() + 40 * DAY_MS).toISOString()
+                }
+            }
+        }
+    });
+
+    try {
+        const response = await harness.get(`/api/admin/licenses/${EDIT_KEY}`, auth());
+        assert.equal(response.status, 200);
+
+        const { license, defaults } = response.body;
+
+        assert.equal(license.key, EDIT_KEY);
+        assert.equal(license.middleCode, "214A03");
+        assert.equal(license.tier, "ULTRA", "a lower-case stored tier is normalised for the form");
+        assert.equal(license.status, "active");
+        assert.equal(license.effectiveStatus, "active");
+        assert.equal(license.createdAt, "01-08-2026 09:00");
+        assert.equal(license.daysRemaining, 40);
+        vnParts(license.expiresAt);
+
+        // Absent means absent: null, never the number the key would inherit, or
+        // the owner could not tell a pinned value from a followed default.
+        assert.equal(license.graceDays, null);
+        assert.equal(license.offlineGraceHours, null);
+        assert.equal(license.seats, null);
+        assert.equal(license.tokenVersion, null);
+        assert.equal(license.siteCodes, null);
+        assert.equal(license.siteCode, "");
+        assert.equal(license.siteId, "");
+        assert.equal(license.updateChannel, "");
+        assert.equal(license.dataSpreadsheetId, "");
+        assert.equal(license.notes, "");
+
+        // Not the create route's defaults — what /api/verify-license reads off a
+        // record that has no modulePolicy and no skipHashCheck.
+        assert.equal(license.skipHashCheck, false);
+        assert.deepEqual(license.modulePolicy, {
+            autoUpdate: false,
+            silentUpdate: true,
+            applyOnNextStartup: true
+        });
+
+        assert.deepEqual(defaults, {
+            graceDays: DEFAULT_GRACE_DAYS,
+            offlineGraceHours: DEFAULT_OFFLINE_GRACE_HOURS,
+            seats: 3,
+            tokenVersion: 1,
+            updateChannel: "stable",
+            anchorDay: BILLING_ANCHOR_DAY
+        });
+
+        assert.deepEqual(harness.db.writes(), [], "reading a record must not write one");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("the form's own values posted straight back are recognised as no change", async () => {
+    // The property the whole diff exists for. Without it, an owner who opened the
+    // modal to read a note and pressed save would rewrite status, tier and
+    // middleCode with their own values — and the audit log would say so.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const detail = await harness.get(`/api/admin/licenses/${EDIT_KEY}`, auth());
+        assert.equal(detail.status, 200);
+
+        const response = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: payloadFrom(detail.body.license) })
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.body.changed, []);
+        assert.deepEqual(harness.db.writes(), [], "an unchanged save must not reach Firebase");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("a save that touched one field writes that field and nothing else", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const detail = await harness.get(`/api/admin/licenses/${EDIT_KEY}`, auth());
+
+        const response = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: payloadFrom(detail.body.license, { notes: "Đổi chủ 13-09-2026" }) })
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.body.changed, ["notes"]);
+
+        const writes = harness.db.writes();
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].op, "update");
+        assert.equal(writes[0].path, `Licenses/${EDIT_KEY}`);
+        assert.deepEqual(writes[0].value, { notes: "Đổi chủ 13-09-2026" });
+
+        const stored = harness.db.read(`Licenses/${EDIT_KEY}`);
+        assert.equal(stored.notes, "Đổi chủ 13-09-2026");
+        assert.equal(stored.expiresAt, "2026-10-16T00:00:00+07:00", "a notes edit must not move a renewal");
+        assert.equal(stored.status, "active");
+        assert.equal(stored.tier, "ULTRA");
+        assert.equal(stored.middleCode, "214A03");
+        assert.equal(stored.seats, 5);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("a field left out of the body is left alone rather than blanked", async () => {
+    // PATCH semantics, tested from the other side: a caller that is not the modal
+    // (curl, a future script) sends two fields and must not lose the other twenty.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const response = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { tier: "base", hwid: "" } })
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.body.changed.sort(), ["hwid", "tier"]);
+
+        const stored = harness.db.read(`Licenses/${EDIT_KEY}`);
+        assert.equal(stored.tier, "BASE");
+        assert.equal(stored.hwid, "");
+        assert.equal(stored.siteCodes.length, 2);
+        assert.equal(stored.graceDays, 14);
+        assert.equal(stored.notes, "Bưu cục Hà Nội");
+        assert.equal(stored.updateChannel, "beta");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("blanking an override deletes the child instead of storing a zero", async () => {
+    // A stored 0 and an absent child read very differently at verify time: the
+    // first pins the key forever, the second follows whatever Render is retuned
+    // to. An empty input in the modal means the second one.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const response = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({
+                body: { graceDays: "", offlineGraceHours: "", seats: "", tokenVersion: "", updateChannel: "" }
+            })
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.body.changed.sort(), [
+            "graceDays",
+            "offlineGraceHours",
+            "seats",
+            "tokenVersion",
+            "updateChannel"
+        ]);
+
+        const writes = harness.db.writes();
+        assert.equal(writes.length, 1);
+        assert.deepEqual(writes[0].value, {
+            graceDays: null,
+            offlineGraceHours: null,
+            seats: null,
+            tokenVersion: null,
+            updateChannel: null
+        });
+
+        const stored = harness.db.read(`Licenses/${EDIT_KEY}`);
+        for (const name of ["graceDays", "offlineGraceHours", "seats", "tokenVersion", "updateChannel"]) {
+            assert.equal(Object.hasOwn(stored, name), false, `${name} should be gone, not zeroed`);
+        }
+
+        assert.equal(response.body.license.seats, null);
+        assert.equal(response.body.license.updateChannel, "");
+
+        // And the same save again is now a no-op: an absent child and an explicit
+        // null have to compare equal, or every save would rewrite the same delete.
+        const again = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { graceDays: "", seats: "", updateChannel: "" } })
+        );
+        assert.deepEqual(again.body.changed, []);
+        assert.equal(harness.db.writes().length, 1);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("each rejected field refuses the whole save rather than writing part of it", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const rejected = [
+            [{ middleCode: "HA 01" }, "INVALID_MIDDLE_CODE"],
+            [{ middleCode: "0000" }, "PLACEHOLDER_MIDDLE_CODE"],
+            [{ tier: "GOLD" }, "INVALID_TIER"],
+            [{ status: "suspended" }, "INVALID_STATUS"],
+            [{ updateChannel: "nightly" }, "INVALID_UPDATE_CHANNEL"],
+            [{ modulePolicy: "tất cả bật" }, "INVALID_MODULE_POLICY"],
+            [{ graceDays: 400 }, "INVALID_GRACE_DAYS"],
+            [{ offlineGraceHours: -1 }, "INVALID_OFFLINE_GRACE_HOURS"],
+            // Not clamped to 500: server.js would rewrite it at verify time, and a
+            // record that disagrees with the assertion it mints is a fiction.
+            [{ seats: 9999 }, "INVALID_SEATS"],
+            [{ tokenVersion: 0 }, "INVALID_TOKEN_VERSION"],
+            [{ siteCodes: "214A03, NONE" }, "INVALID_SITE_CODES"],
+            [{ siteCode: "0000" }, "INVALID_SITE_CODE"],
+            [{ expiry: { mode: "forever" } }, "INVALID_EXPIRY"],
+            [{ expiry: { mode: "date", date: "2026-02-31" } }, "INVALID_EXPIRY"],
+            [{ expiry: { mode: "anchor", terms: 999 } }, "INVALID_EXPIRY"]
+        ];
+
+        for (const [body, code] of rejected) {
+            // Paired with a legitimate edit: the bad field has to take the good one
+            // down with it, or a refused save would still have moved the notes.
+            const response = await harness.post(
+                `/api/admin/licenses/${EDIT_KEY}/update`,
+                withAuth({ body: { notes: "ghi chú mới", ...body } })
+            );
+
+            assert.equal(response.status, 400, `${code} should be a 400`);
+            assert.equal(response.body.error, code);
+        }
+
+        assert.deepEqual(harness.db.writes(), [], "a refused save must write nothing at all");
+        assert.equal(harness.db.read(`Licenses/${EDIT_KEY}`).notes, "Bưu cục Hà Nội");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("a status the route does not know is left alone, never silently reactivated", async () => {
+    // "suspended" is not one of the two states this route writes, and the modal
+    // shows it as a read-only choice for exactly this reason: a key someone
+    // stopped by hand must not come back on because the owner saved a notes edit.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: licenseSeed({ status: "suspended" }) } }
+    });
+
+    try {
+        const kept = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { notes: "khách hẹn thanh toán" } })
+        );
+        assert.equal(kept.status, 200);
+        assert.deepEqual(kept.body.changed, ["notes"]);
+        assert.equal(harness.db.read(`Licenses/${EDIT_KEY}`).status, "suspended");
+
+        // Posting it back explicitly is refused rather than stored, so the modal
+        // omitting the field is the only way through — and the only safe one.
+        const echoed = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { status: "suspended" } })
+        );
+        assert.equal(echoed.status, 400);
+        assert.equal(echoed.body.error, "INVALID_STATUS");
+
+        const opened = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { status: "active" } })
+        );
+        assert.equal(opened.status, 200);
+        assert.deepEqual(opened.body.changed, ["status"]);
+        assert.equal(harness.db.read(`Licenses/${EDIT_KEY}`).status, "active");
+    } finally {
+        await harness.close();
+    }
+});
+
+test("one module switch moves without disturbing the others", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: {
+            Licenses: {
+                [EDIT_KEY]: licenseSeed({
+                    modulePolicy: {
+                        autoUpdate: true,
+                        silentUpdate: true,
+                        applyOnNextStartup: true,
+                        // A child no current client reads. update() replaces the
+                        // whole modulePolicy node, so it has to be carried through
+                        // rather than dropped by a save that never mentioned it.
+                        legacyChannelPin: "stable"
+                    }
+                })
+            }
+        }
+    });
+
+    try {
+        const response = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { modulePolicy: { autoUpdate: false } } })
+        );
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.body.changed, ["modulePolicy"]);
+        assert.deepEqual(harness.db.read(`Licenses/${EDIT_KEY}`).modulePolicy, {
+            autoUpdate: false,
+            silentUpdate: true,
+            applyOnNextStartup: true,
+            legacyChannelPin: "stable"
+        });
+    } finally {
+        await harness.close();
+    }
+});
+
+test("site codes are uppercased, de-duplicated, and clearable", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: licenseSeed() } }
+    });
+
+    try {
+        // The modal posts a textarea, one code per line — and the owner pastes
+        // whatever the enrolment reply gave them, case and all.
+        const set = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { siteCodes: "214a03\nhn01\n214A03\n" } })
+        );
+        assert.equal(set.status, 200);
+        assert.deepEqual(harness.db.read(`Licenses/${EDIT_KEY}`).siteCodes, ["214A03", "HN01"]);
+        assert.deepEqual(set.body.license.siteCodes, ["214A03", "HN01"]);
+
+        // Emptying the box removes the list, which is not the same as storing an
+        // empty one: with no siteCodes child the key falls back to middleCode,
+        // which is how every single-site key in the fleet already enrols.
+        const cleared = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { siteCodes: "" } })
+        );
+        assert.equal(cleared.status, 200);
+        assert.deepEqual(cleared.body.changed, ["siteCodes"]);
+        assert.equal(Object.hasOwn(harness.db.read(`Licenses/${EDIT_KEY}`), "siteCodes"), false);
+        assert.equal(cleared.body.license.siteCodes, null);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("an expiry can be set to a chosen day, and dropped back to perpetual", async () => {
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        // A designated day, at the same instant of day every anchored expiry in
+        // the fleet already lands on.
+        const dated = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { expiry: { mode: "date", date: "2027-01-05" } } })
+        );
+        assert.equal(dated.status, 200);
+        assert.deepEqual(dated.body.changed, ["expiresAt"]);
+        assert.equal(harness.db.read(`Licenses/${EDIT_KEY}`).expiresAt, "2027-01-05T00:00:00+07:00");
+
+        // Perpetual is a delete, not an empty string: evaluateLicense() reads a
+        // record with no expiresAt as the v1 shape that never expires.
+        const perpetual = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { expiry: { mode: "perpetual" } } })
+        );
+        assert.equal(perpetual.status, 200);
+        assert.deepEqual(perpetual.body.changed, ["expiresAt"]);
+        assert.equal(Object.hasOwn(harness.db.read(`Licenses/${EDIT_KEY}`), "expiresAt"), false);
+        assert.equal(perpetual.body.license.expiresAt, null);
+        assert.equal(perpetual.body.license.daysRemaining, null);
+
+        // Perpetual again changes nothing, so the audit log does not fill up with
+        // a delete that was already done.
+        const again = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { expiry: { mode: "perpetual" } } })
+        );
+        assert.deepEqual(again.body.changed, []);
+
+        // And a perpetual key can be given a term again — the direction the
+        // single-purpose extend route deliberately refuses.
+        const anchored = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { expiry: { mode: "anchor", terms: 1 } } })
+        );
+        assert.equal(anchored.status, 200);
+        const parts = assertAnchored(harness.db.read(`Licenses/${EDIT_KEY}`).expiresAt);
+        assert.ok(
+            parseInstant(anchored.body.license.expiresAt) - Date.now() >= 30 * DAY_MS,
+            "an anchored term still honours the 30-day floor"
+        );
+        assert.ok(parts.year >= 2026);
+    } finally {
+        await harness.close();
+    }
+});
+
+test("term 0 runs to the 16th of the start month, and past the 16th to the next", async () => {
+    // The short sale the owner asked for: a key sold mid-month runs to the next
+    // billing anchor only, with no 30-day floor — which is the one case the
+    // create and extend routes cannot express.
+    const harness = await startServer({
+        env: adminEnv,
+        seed: { Licenses: { [EDIT_KEY]: richSeed() } }
+    });
+
+    try {
+        const cases = [
+            ["2026-03-01", "2026-03-16T00:00:00+07:00"],
+            // The anchor day itself is not "past" it.
+            ["2026-03-16", "2026-03-16T00:00:00+07:00"],
+            ["2026-03-17", "2026-04-16T00:00:00+07:00"],
+            ["2026-12-20", "2027-01-16T00:00:00+07:00"]
+        ];
+
+        for (const [startAt, expected] of cases) {
+            const response = await harness.post(
+                `/api/admin/licenses/${EDIT_KEY}/update`,
+                withAuth({ body: { expiry: { mode: "anchor", startAt, terms: 0 } } })
+            );
+
+            assert.equal(response.status, 200, `${startAt} should be accepted`);
+            assert.equal(response.body.license.expiresAt, expected, `term 0 from ${startAt}`);
+            assertAnchored(response.body.license.expiresAt);
+        }
+
+        // A back-dated multi-month term lands where computeExpiry says it does,
+        // so the modal's preview and the stored value cannot drift apart.
+        const twelve = await harness.post(
+            `/api/admin/licenses/${EDIT_KEY}/update`,
+            withAuth({ body: { expiry: { mode: "anchor", startAt: "2026-03-17", terms: 12 } } })
+        );
+        assert.equal(twelve.status, 200);
+
+        const start = parseInstant("2026-03-17T00:00:00+07:00");
+        const expected = computeExpiry(start, { terms: 12, anchorDay: BILLING_ANCHOR_DAY });
+        assert.equal(twelve.body.license.expiresAt, expected.expiresAt);
+
+        // Spelled out because the off-by-one is easy to argue either way: the
+        // 30-day floor puts term one on 2026-04-16, and the eleven that follow it
+        // make twelve — a year of service from the April anchor, not from March.
+        assert.equal(twelve.body.license.expiresAt, "2027-03-16T00:00:00+07:00");
+        assert.equal(
+            monthIndex(vnParts(twelve.body.license.expiresAt)) - monthIndex(vnParts("2026-04-16T00:00:00+07:00")),
+            11
+        );
     } finally {
         await harness.close();
     }

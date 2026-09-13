@@ -69,7 +69,18 @@
         // The key shown in the preview box and sent to the server on submit.
         // The server re-validates it and refuses a taken one, so this is a
         // convenience, not a claim.
-        candidateKey: ""
+        candidateKey: "",
+
+        // Edit-modal state.
+        editKey: "",
+        editTier: "ULTRA",
+        // The record as the DETAIL route just returned it — not the table row.
+        // Re-fetching on open is what stops a tab left open since this morning
+        // from saving yesterday's values back over a key someone already fixed.
+        editSnapshot: null,
+        // Fleet defaults from the same response, so a blank override field can
+        // say which number it inherits instead of just "mặc định".
+        editDefaults: { graceDays: null, offlineGraceHours: null, seats: null, tokenVersion: 1, anchorDay: 16 }
     };
 
     const $ = id => document.getElementById(id);
@@ -122,6 +133,44 @@
         toggleUltra: $("toggle-ultra"),
         keyDisplay: $("key-display"),
         btnGeneralKey: $("btn-general-key"),
+
+        editModal: $("edit-modal"),
+        editBackdrop: $("edit-backdrop"),
+        editForm: $("edit-form"),
+        editClose: $("edit-close"),
+        editCancel: $("edit-cancel"),
+        editSubmit: $("edit-submit"),
+        editError: $("edit-error"),
+        editToggleBase: $("edit-toggle-base"),
+        editToggleUltra: $("edit-toggle-ultra"),
+        editKeyDisplay: $("edit-key-display"),
+        editCreatedAt: $("edit-created-at"),
+        editCopyKey: $("edit-copy-key"),
+        editMiddleCode: $("edit-middle-code"),
+        editStatus: $("edit-status"),
+        editExpiryCurrent: $("edit-expiry-current"),
+        editExpiryMode: $("edit-expiry-mode"),
+        editExpiryAnchorRow: $("edit-expiry-anchor-row"),
+        editExpiryStart: $("edit-expiry-start"),
+        editExpiryTerms: $("edit-expiry-terms"),
+        editExpiryDateRow: $("edit-expiry-date-row"),
+        editExpiryDate: $("edit-expiry-date"),
+        editExpiryPreview: $("edit-expiry-preview"),
+        editHwid: $("edit-hwid"),
+        editUpdateChannel: $("edit-update-channel"),
+        editSheetId: $("edit-sheet-id"),
+        editNotes: $("edit-notes"),
+        editSkipHash: $("edit-skip-hash"),
+        editAutoUpdate: $("edit-auto-update"),
+        editSilentUpdate: $("edit-silent-update"),
+        editApplyStartup: $("edit-apply-startup"),
+        editSeats: $("edit-seats"),
+        editTokenVersion: $("edit-token-version"),
+        editGraceDays: $("edit-grace-days"),
+        editOfflineHours: $("edit-offline-hours"),
+        editSiteCodes: $("edit-site-codes"),
+        editSiteCode: $("edit-site-code"),
+        editSiteId: $("edit-site-id"),
 
         confirmModal: $("confirm-modal"),
         confirmBackdrop: $("confirm-backdrop"),
@@ -543,6 +592,9 @@
     // row looks the same on Windows, macOS and Android instead of inheriting
     // whatever each OS decided a padlock looks like this year.
     const ICON = Object.freeze({
+        // Two subpaths that do not overlap — the eraser cap and the body — so
+        // evenodd fills both rather than cutting one out of the other.
+        edit: "M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z",
         copy: "M7 2a2 2 0 00-2 2v1H4a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-1h1a2 2 0 002-2V7a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7zm0 2h6v2H7V4zm-3 5h10v8H4V9zm12 0v5h1V7h-5v2h4z",
         reset: "M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.047a1 1 0 011.885-.666A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.608-1.286z",
         tierUp: "M10 3a1 1 0 01.707.293l5 5a1 1 0 01-1.414 1.414L11 6.414V16a1 1 0 11-2 0V6.414L5.707 9.707a1 1 0 01-1.414-1.414l5-5A1 1 0 0110 3z",
@@ -606,6 +658,17 @@
             // so without it a screen reader reads an unnamed button).
             el("td", { "data-label": "Thao tác" }, [
                 el("div", { class: "cell-actions" }, [
+                    // First in the row because it is the only button here that
+                    // opens something instead of doing something: the other five
+                    // commit a change on one click, this one asks first.
+                    el("button", {
+                        class: "btn--icon-action",
+                        type: "button",
+                        "data-action": "edit",
+                        "data-key": license.key,
+                        title: "Sửa license (toàn bộ thuộc tính)",
+                        "aria-label": "Sửa license (toàn bộ thuộc tính)"
+                    }, [createSvg(ICON.edit)]),
                     el("button", {
                         class: "btn btn--mini",
                         type: "button",
@@ -817,6 +880,13 @@
         if (action === "copy") {
             const copied = await copyText(key);
             toast(copied ? "ok" : "error", copied ? "Đã copy key" : "Không copy được", key);
+            return;
+        }
+
+        // Opens a form; nothing is written until the owner submits it, so it
+        // skips both the confirm chain and runAction entirely.
+        if (action === "edit") {
+            await openEdit(key);
             return;
         }
 
@@ -1034,6 +1104,358 @@
     }
 
     // ==========================================
+    // EDIT
+    // ==========================================
+    //
+    // The pencil in each row opens this. Unlike the five single-purpose buttons
+    // beside it, it can move every field the licence server reads — including
+    // the DataHub group (siteCodes / siteCode / siteId / seats / tokenVersion)
+    // that the create modal never exposed, so until now the only way to fix one
+    // was the Firebase console.
+    //
+    // Three rules the form obeys, all of them from the route it posts to:
+    //
+    //   1. The key is read-only. It is the Firebase node id, so renaming it
+    //      means a new node plus a delete, stranding every station holding the
+    //      old string. Issue a new key and revoke the old one instead.
+    //   2. A blank override means "inherit the fleet default", which is NOT the
+    //      same as typing today's default number — the typed one stops tracking
+    //      when the fleet default moves. Hence the placeholders.
+    //   3. Hạn dùng defaults to "giữ nguyên". The form posts every field on
+    //      every save, so any other default would let a one-word notes fix
+    //      quietly shift a paying customer's renewal date.
+
+    /** Asia/Ho_Chi_Minh is a fixed +07:00 — same constant as license-expiry.js. */
+    const VN_OFFSET_MS = 420 * 60_000;
+    const MS_PER_DAY = 86_400_000;
+
+    function vnPartsOf(ms) {
+        const shifted = new Date(ms + VN_OFFSET_MS);
+        return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth(), day: shifted.getUTCDate() };
+    }
+
+    /** `month` may overflow (12 -> January of year+1), which is what makes "next anchor" one line. */
+    function vnMidnightMs(year, month, day) {
+        return Date.UTC(year, month, day, 0, 0, 0, 0) - VN_OFFSET_MS;
+    }
+
+    /** "YYYY-MM-DD" (what <input type="date"> gives) -> VN midnight in epoch ms. */
+    function vnDateToMs(value) {
+        const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+        if (!matched) return null;
+        return vnMidnightMs(Number(matched[1]), Number(matched[2]) - 1, Number(matched[3]));
+    }
+
+    /** epoch ms -> "YYYY-MM-DD", the value shape <input type="date"> wants back. */
+    function msToVnDate(ms) {
+        const p = vnPartsOf(ms);
+        const pad = n => String(n).padStart(2, "0");
+        return `${p.year}-${pad(p.month + 1)}-${pad(p.day)}`;
+    }
+
+    /**
+     * Mirrors computeExpiry() from license-expiry.js, for the preview line only.
+     *
+     * The server recomputes this on save and its answer is the one that gets
+     * stored — this exists so the owner can see what "3 tháng from the 20th"
+     * lands on before committing, rather than saving and reading the toast.
+     * Kept deliberately identical, including the `< floorMs` comparison: a
+     * preview that disagrees with the server by one day is worse than no
+     * preview, because it would look like the save went wrong.
+     */
+    function previewAnchorMs(startMs, terms) {
+        const anchorDay = Number(state.editDefaults.anchorDay) || 16;
+        // terms 0 is "tới ngày 16 gần nhất": one anchor step, no 30-day floor.
+        const minTermDays = terms === 0 ? 0 : 30;
+        const rounds = terms === 0 ? 1 : terms;
+
+        const start = vnPartsOf(startMs);
+        const floorMs = vnMidnightMs(start.year, start.month, start.day) + minTermDays * MS_PER_DAY;
+
+        const floor = vnPartsOf(floorMs);
+        let expiresAtMs = vnMidnightMs(floor.year, floor.month, anchorDay);
+        if (expiresAtMs < floorMs) {
+            expiresAtMs = vnMidnightMs(floor.year, floor.month + 1, anchorDay);
+        }
+
+        for (let round = 1; round < rounds; round += 1) {
+            const at = vnPartsOf(expiresAtMs);
+            expiresAtMs = vnMidnightMs(at.year, at.month + 1, anchorDay);
+        }
+
+        return expiresAtMs;
+    }
+
+    function switchEditTier(tier) {
+        const isUltra = String(tier || "").toUpperCase() === "ULTRA";
+        state.editTier = isUltra ? "ULTRA" : "BASE";
+
+        dom.editToggleUltra.className = isUltra ? "toggle-btn active-ultra" : "toggle-btn";
+        dom.editToggleBase.className = isUltra ? "toggle-btn" : "toggle-btn active-base";
+        dom.editToggleUltra.setAttribute("aria-pressed", String(isUltra));
+        dom.editToggleBase.setAttribute("aria-pressed", String(!isUltra));
+    }
+
+    /** Shows the row the chosen mode needs, and the date that mode will produce. */
+    function syncExpiryRows() {
+        const mode = dom.editExpiryMode.value;
+
+        dom.editExpiryAnchorRow.hidden = mode !== "anchor";
+        dom.editExpiryDateRow.hidden = mode !== "date";
+
+        let preview = "";
+
+        if (mode === "anchor") {
+            const startMs = dom.editExpiryStart.value ? vnDateToMs(dom.editExpiryStart.value) : Date.now();
+            if (startMs !== null) {
+                const expiry = previewAnchorMs(startMs, Number(dom.editExpiryTerms.value));
+                preview = `→ Hết hạn 00:00 ngày ${formatDate(msToVnDate(expiry))} (máy chủ tính lại khi lưu).`;
+            }
+        } else if (mode === "date") {
+            const ms = vnDateToMs(dom.editExpiryDate.value);
+            if (ms !== null) preview = `→ Hết hạn 00:00 ngày ${formatDate(msToVnDate(ms))}.`;
+        } else if (mode === "perpetual") {
+            preview = "→ Xoá hạn: key chạy vĩnh viễn cho tới khi bị khoá.";
+        }
+
+        dom.editExpiryPreview.textContent = preview;
+        dom.editExpiryPreview.hidden = !preview;
+    }
+
+    /**
+     * A status neither active nor revoked — an older "suspended", or a typo
+     * someone left in the console — gets a throwaway option so the select opens
+     * on what is really stored. Without it the box would open reading "active",
+     * and saving would put a deliberately-stopped key back to work. The payload
+     * builder drops the field entirely while that option is the one selected.
+     */
+    function paintStatusOptions(status) {
+        const stored = String(status || "").trim().toLowerCase();
+        const foreign = dom.editStatus.querySelector("option[data-foreign]");
+        if (foreign) foreign.remove();
+
+        if (stored !== "active" && stored !== "revoked") {
+            dom.editStatus.append(
+                el("option", { value: stored, "data-foreign": "true", text: `${status} (giữ nguyên)` })
+            );
+        }
+
+        dom.editStatus.value = stored;
+    }
+
+    function fillEditForm(license, defaults) {
+        const numberOrBlank = value => (value === null || value === undefined ? "" : String(value));
+        const placeholder = value => (value === null || value === undefined ? "mặc định" : `mặc định (${value})`);
+
+        dom.editKeyDisplay.textContent = license.key;
+        dom.editCreatedAt.textContent = license.createdAt ? `Ngày tạo: ${license.createdAt}` : "";
+        dom.editCreatedAt.hidden = !license.createdAt;
+
+        switchEditTier(license.tier);
+        dom.editMiddleCode.value = license.middleCode;
+        paintStatusOptions(license.status);
+
+        dom.editExpiryCurrent.textContent = license.expiresAt
+            ? `Hiện tại: hết hạn ${formatDate(license.expiresAt)}` +
+              (license.daysRemaining === null ? "" : ` · còn ${license.daysRemaining} ngày`)
+            : "Hiện tại: vĩnh viễn, không có ngày đáo hạn.";
+
+        dom.editExpiryMode.value = "keep";
+        dom.editExpiryStart.value = msToVnDate(Date.now());
+        dom.editExpiryTerms.value = "1";
+        // Opens on the date already stored, so "dời thêm hai ngày" is two
+        // keystrokes rather than typing the whole date from scratch.
+        dom.editExpiryDate.value = license.expiresAt ? String(license.expiresAt).slice(0, 10) : msToVnDate(Date.now());
+        syncExpiryRows();
+
+        dom.editHwid.value = license.hwid;
+        dom.editUpdateChannel.value = license.updateChannel || "";
+        dom.editSheetId.value = license.dataSpreadsheetId;
+        dom.editNotes.value = license.notes;
+
+        dom.editSkipHash.checked = license.skipHashCheck === true;
+        dom.editAutoUpdate.checked = license.modulePolicy.autoUpdate === true;
+        dom.editSilentUpdate.checked = license.modulePolicy.silentUpdate === true;
+        dom.editApplyStartup.checked = license.modulePolicy.applyOnNextStartup === true;
+
+        dom.editSeats.value = numberOrBlank(license.seats);
+        dom.editTokenVersion.value = numberOrBlank(license.tokenVersion);
+        dom.editGraceDays.value = numberOrBlank(license.graceDays);
+        dom.editOfflineHours.value = numberOrBlank(license.offlineGraceHours);
+
+        dom.editSeats.placeholder = placeholder(defaults.seats);
+        dom.editTokenVersion.placeholder = placeholder(defaults.tokenVersion);
+        dom.editGraceDays.placeholder = placeholder(defaults.graceDays);
+        dom.editOfflineHours.placeholder = placeholder(defaults.offlineGraceHours);
+
+        dom.editSiteCodes.value = (license.siteCodes || []).join("\n");
+        dom.editSiteCodes.placeholder = `Bỏ trống = dùng mã bưu cục (${license.middleCode || "—"})`;
+        dom.editSiteCode.value = license.siteCode;
+        dom.editSiteId.value = license.siteId;
+    }
+
+    async function openEdit(key) {
+        if (!dom.editModal.hidden) return;
+
+        const row = dom.rows.querySelector(`tr[data-row-key="${CSS.escape(key)}"]`);
+        if (row) row.classList.add("is-busy");
+
+        try {
+            // Fetched, never read off the cached row: a tab left open since this
+            // morning would otherwise post stale values back over a record
+            // someone already corrected, and every field here is one this route
+            // is allowed to write.
+            const payload = await api("GET", `/licenses/${encodeURIComponent(key)}`);
+
+            state.editKey = payload.license.key;
+            state.editSnapshot = payload.license;
+            if (payload.defaults && typeof payload.defaults === "object") state.editDefaults = payload.defaults;
+
+            dom.editError.hidden = true;
+            fillEditForm(payload.license, state.editDefaults);
+
+            dom.editModal.hidden = false;
+            dom.editMiddleCode.focus();
+        } catch (error) {
+            const described = describeError(error);
+            if (described.fatal) {
+                forgetToken();
+                showLock(`${described.title}. ${described.detail}`);
+                return;
+            }
+            toast("error", described.title, described.detail);
+        } finally {
+            if (row) row.classList.remove("is-busy");
+        }
+    }
+
+    function closeEdit() {
+        dom.editModal.hidden = true;
+        state.editKey = "";
+        state.editSnapshot = null;
+    }
+
+    /**
+     * The form as the update route wants it.
+     *
+     * Every field is sent on every save — the route diffs against what is stored
+     * and writes only what actually moved, so posting the whole form costs one
+     * comparison per field and keeps this builder free of its own change
+     * tracking. The one field deliberately omitted is a foreign status, which
+     * the route would refuse outright; omitting it is how PATCH spells
+     * "leave it alone".
+     */
+    function collectEditPayload() {
+        const stored = String(state.editSnapshot?.status || "").trim().toLowerCase();
+        const chosen = dom.editStatus.value;
+        const statusIsForeign = chosen === stored && chosen !== "active" && chosen !== "revoked";
+
+        const expiryMode = dom.editExpiryMode.value;
+        const expiry =
+            expiryMode === "anchor"
+                ? { mode: "anchor", startAt: dom.editExpiryStart.value, terms: Number(dom.editExpiryTerms.value) }
+                : expiryMode === "date"
+                    ? { mode: "date", date: dom.editExpiryDate.value }
+                    : { mode: expiryMode };
+
+        return {
+            middleCode: dom.editMiddleCode.value.trim().toUpperCase(),
+            tier: state.editTier,
+            ...(statusIsForeign ? {} : { status: chosen }),
+            hwid: dom.editHwid.value.trim(),
+            notes: dom.editNotes.value,
+            dataSpreadsheetId: dom.editSheetId.value.trim(),
+            updateChannel: dom.editUpdateChannel.value,
+            skipHashCheck: dom.editSkipHash.checked,
+            modulePolicy: {
+                autoUpdate: dom.editAutoUpdate.checked,
+                silentUpdate: dom.editSilentUpdate.checked,
+                applyOnNextStartup: dom.editApplyStartup.checked
+            },
+            // "" is the wire spelling of "bỏ trống": the route reads it as
+            // inherit-the-default and deletes the child.
+            seats: dom.editSeats.value.trim(),
+            tokenVersion: dom.editTokenVersion.value.trim(),
+            graceDays: dom.editGraceDays.value.trim(),
+            offlineGraceHours: dom.editOfflineHours.value.trim(),
+            siteCodes: dom.editSiteCodes.value,
+            siteCode: dom.editSiteCode.value.trim().toUpperCase(),
+            siteId: dom.editSiteId.value.trim(),
+            expiry
+        };
+    }
+
+    async function submitEdit(event) {
+        event.preventDefault();
+
+        const key = state.editKey;
+        const before = state.editSnapshot;
+        if (!key || !before) return;
+
+        // Two changes cost a customer their working software, and neither is
+        // obvious from a form the owner came to for something else. The rest of
+        // the fields go straight through — this dialog is a brake, not a habit.
+        if (dom.editStatus.value === "revoked" && before.status !== "revoked") {
+            const ok = await confirmAction({
+                title: "Xác nhận Khóa License (BAN)",
+                message: `Xác nhận KHÓA (Ban) license ${key}?\nMáy trạm đang dùng key này sẽ bị ngắt quyền truy cập ngay lập tức.`,
+                okText: "Khóa License",
+                danger: true
+            });
+            if (!ok) return;
+        }
+
+        const middleCode = dom.editMiddleCode.value.trim().toUpperCase();
+        if (middleCode && before.middleCode && middleCode !== before.middleCode) {
+            const ok = await confirmAction({
+                title: "Xác nhận đổi mã bưu cục",
+                message:
+                    `Đổi mã bưu cục của ${key} từ ${before.middleCode} sang ${middleCode}?\n` +
+                    "Đây cũng là site code của DataHub, nên máy trạm sẽ chuyển sang tenant khác ở lần enroll tiếp theo.",
+                okText: "Đổi mã bưu cục",
+                danger: true
+            });
+            if (!ok) return;
+        }
+
+        dom.editError.hidden = true;
+        dom.editSubmit.disabled = true;
+        const submitLabel = dom.editSubmit.textContent;
+        dom.editSubmit.textContent = "Đang lưu…";
+
+        try {
+            const result = await api("POST", `/licenses/${encodeURIComponent(key)}/update`, collectEditPayload());
+            const changed = Array.isArray(result.changed) ? result.changed : [];
+
+            closeEdit();
+
+            // "Đã lưu" on a save that wrote nothing is how a dashboard teaches
+            // someone to stop reading its toasts, so the two cases say different
+            // things — and the changed list names what actually moved.
+            if (changed.length === 0) {
+                toast("info", "Không có gì thay đổi", `${key} giữ nguyên toàn bộ thuộc tính.`);
+            } else {
+                toast("ok", `Đã lưu ${changed.length} thay đổi`, `${key} · ${changed.join(", ")}`);
+            }
+
+            await reload();
+        } catch (error) {
+            const described = describeError(error);
+            if (described.fatal) {
+                closeEdit();
+                forgetToken();
+                showLock(`${described.title}. ${described.detail}`);
+                return;
+            }
+            dom.editError.textContent = described.detail;
+            dom.editError.hidden = false;
+        } finally {
+            dom.editSubmit.disabled = false;
+            dom.editSubmit.textContent = submitLabel;
+        }
+    }
+
+    // ==========================================
     // WIRING
     // ==========================================
 
@@ -1068,6 +1490,34 @@
         dom.btnGeneralKey.addEventListener("click", generateRandomKey);
         dom.createMiddleCode.addEventListener("input", syncCandidateMiddle);
 
+        dom.editClose.addEventListener("click", closeEdit);
+        dom.editCancel.addEventListener("click", closeEdit);
+        dom.editBackdrop.addEventListener("click", closeEdit);
+        dom.editForm.addEventListener("submit", submitEdit);
+
+        dom.editToggleBase.addEventListener("click", () => switchEditTier("BASE"));
+        dom.editToggleUltra.addEventListener("click", () => switchEditTier("ULTRA"));
+
+        dom.editCopyKey.addEventListener("click", async () => {
+            const copied = await copyText(state.editKey);
+            toast(copied ? "ok" : "error", copied ? "Đã copy key" : "Không copy được", state.editKey);
+        });
+
+        // All three feed the same preview line, so the computed expiry follows
+        // the form instead of appearing only after a save.
+        dom.editExpiryMode.addEventListener("change", syncExpiryRows);
+        dom.editExpiryStart.addEventListener("input", syncExpiryRows);
+        dom.editExpiryTerms.addEventListener("change", syncExpiryRows);
+        dom.editExpiryDate.addEventListener("input", syncExpiryRows);
+
+        // Keeps the siteCodes placeholder honest while the code is being typed:
+        // a blank list falls back to whatever sits in this box, not to the value
+        // that was there when the modal opened.
+        dom.editMiddleCode.addEventListener("input", () => {
+            const code = dom.editMiddleCode.value.trim().toUpperCase();
+            dom.editSiteCodes.placeholder = `Bỏ trống = dùng mã bưu cục (${code || "—"})`;
+        });
+
         dom.searchInput.addEventListener("input", event => {
             state.search = event.target.value;
             render();
@@ -1101,7 +1551,13 @@
 
         document.addEventListener("keydown", event => {
             if (event.key !== "Escape") return;
-            if (!dom.createModal.hidden) closeCreate();
+            // confirmAction() runs its own Escape listener and its box sits on
+            // top of these two. Without this guard, one Escape would cancel the
+            // ban confirm AND close the edit form underneath it, throwing away
+            // everything typed on the way there.
+            if (!dom.confirmModal.hidden) return;
+            if (!dom.editModal.hidden) closeEdit();
+            else if (!dom.createModal.hidden) closeCreate();
         });
 
         const stored = readStoredToken();
