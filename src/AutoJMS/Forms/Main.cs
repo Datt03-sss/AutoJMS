@@ -3474,7 +3474,6 @@ namespace AutoJMS
             else if (tabPrint_printFunc.SelectedTab == tabPrint_inRV) _printService.SetMode(PrintMode.InReverse);
 
             tabPrint_btnSelectAll.Checked = false;
-            tabPrint_inputWaybill.Text = "";
         }
 
         private void print_InChuyenHoan_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InHoan);

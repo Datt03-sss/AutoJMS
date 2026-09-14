@@ -398,24 +398,37 @@ namespace AutoJMS
                     .ToList();
 
                 var trackingWatch = Stopwatch.StartNew();
-                var printInfoWatch = Stopwatch.StartNew();
-                var trackingTask = FetchTrackingRowsDirectAsync(requestedWaybills, token)
-                    .ContinueWith(t =>
-                    {
-                        trackingWatch.Stop();
-                        return t.GetAwaiter().GetResult();
-                    }, token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-                var printInfoTask = FetchPrintApprovalInfoSafeAsync(trackingWaybills, printType, PrintStatusRefreshReason.Search.ToString())
-                    .ContinueWith(t =>
-                    {
-                        printInfoWatch.Stop();
-                        return t.GetAwaiter().GetResult();
-                    }, token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                var printInfoWatch = new Stopwatch();
+                IReadOnlyList<TrackingRow> directRows;
+                IReadOnlyList<PrintApprovalInfo> approvals;
 
-                await Task.WhenAll(trackingTask, printInfoTask).ConfigureAwait(true);
+                if (mode == PrintMode.InLaiDon)
+                {
+                    // InLaiDon (reprint): chỉ cần tracking, bỏ qua PrintApprovalInfo và SafetyGuard
+                    directRows = await FetchTrackingRowsDirectAsync(requestedWaybills, token).ConfigureAwait(true);
+                    trackingWatch.Stop();
+                    approvals = Array.Empty<PrintApprovalInfo>();
+                }
+                else
+                {
+                    printInfoWatch.Start();
+                    var trackingTask = FetchTrackingRowsDirectAsync(requestedWaybills, token)
+                        .ContinueWith(t =>
+                        {
+                            trackingWatch.Stop();
+                            return t.GetAwaiter().GetResult();
+                        }, token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                    var printInfoTask = FetchPrintApprovalInfoSafeAsync(trackingWaybills, printType, PrintStatusRefreshReason.Search.ToString())
+                        .ContinueWith(t =>
+                        {
+                            printInfoWatch.Stop();
+                            return t.GetAwaiter().GetResult();
+                        }, token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
-                IReadOnlyList<TrackingRow> directRows = trackingTask.Result;
-                IReadOnlyList<PrintApprovalInfo> approvals = printInfoTask.Result;
+                    await Task.WhenAll(trackingTask, printInfoTask).ConfigureAwait(true);
+                    directRows = trackingTask.Result;
+                    approvals = printInfoTask.Result;
+                }
 
                 if (_currentPrintWaybill != requestedWaybills[0] || token.IsCancellationRequested)
                     return;
@@ -427,52 +440,85 @@ namespace AutoJMS
 
                 var allowedRows = new List<TrackingRow>();
                 var snapshots = new List<PrintStatusSnapshot>();
-                var approvalByBase = approvals
-                    .GroupBy(x => NormalizeBaseWaybill(x.WaybillNo), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-                bool blocked = false;
 
-                foreach (string waybill in requestedWaybills)
+                if (mode == PrintMode.InLaiDon)
                 {
-                    token.ThrowIfCancellationRequested();
-                    rowsByBase.TryGetValue(NormalizeBaseWaybill(waybill), out var trackingRow);
-                    var guard = _printSafetyGuard.ValidateBeforePrint(waybill, siteContext, trackingRow);
-
-                    if (_currentPrintWaybill != requestedWaybills[0] || token.IsCancellationRequested)
-                        return;
-
-                    if (guard.CanPrint)
+                    // InLaiDon: bỏ qua SafetyGuard, chấp nhận tất cả waybill có tracking
+                    foreach (string waybill in requestedWaybills)
                     {
-                        _lastAllowedSafetyByWaybill[NormalizeBaseWaybill(waybill)] = guard;
-                        var printableRow = CloneTrackingRow(trackingRow);
+                        token.ThrowIfCancellationRequested();
+                        rowsByBase.TryGetValue(NormalizeBaseWaybill(waybill), out var trackingRow);
+
+                        // Tạo row cho waybill — nếu không có tracking thì tạo row rỗng (cho phép reprint vẫn hoạt động)
+                        var printableRow = trackingRow != null ? CloneTrackingRow(trackingRow) : new TrackingRow();
                         printableRow.WaybillNo = waybill;
                         allowedRows.Add(printableRow);
 
                         string trackingWaybill = NormalizeTrackingWaybillNo(waybill);
-                        approvalByBase.TryGetValue(trackingWaybill, out var approval);
-                        var snapshot = BuildPrintStatusSnapshot(waybill, trackingWaybill, printableRow, approval, PrintStatusRefreshReason.Search);
+                        var snapshot = BuildPrintStatusSnapshot(waybill, trackingWaybill, printableRow, null, PrintStatusRefreshReason.Search);
                         snapshots.Add(snapshot);
+
+                        var syntheticGuard = new PrintSafetyResult { CanPrint = true, ReasonCode = "INLAIDON_BYPASS" };
+                        _lastAllowedSafetyByWaybill[NormalizeBaseWaybill(waybill)] = syntheticGuard;
                         _readinessByWaybill[NormalizeBaseWaybill(waybill)] = new PrintReadinessContext
                         {
                             InputWaybillNo = NormalizeWaybill(waybill),
                             TrackingWaybillNo = trackingWaybill,
                             VerifiedAt = DateTime.Now,
-                            SafetyResult = guard,
+                            SafetyResult = syntheticGuard,
                             StatusSnapshot = snapshot
                         };
                     }
-                    else
-                    {
-                        NotifyBlocked(guard);
-                        blocked = true;
-                        break;
-                    }
                 }
-
-                if (blocked || allowedRows.Count == 0)
+                else
                 {
-                    ClearPrintableState(resetCurrent: true);
-                    return;
+                    var approvalByBase = approvals
+                        .GroupBy(x => NormalizeBaseWaybill(x.WaybillNo), StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                    bool blocked = false;
+
+                    foreach (string waybill in requestedWaybills)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        rowsByBase.TryGetValue(NormalizeBaseWaybill(waybill), out var trackingRow);
+                        var guard = _printSafetyGuard.ValidateBeforePrint(waybill, siteContext, trackingRow);
+
+                        if (_currentPrintWaybill != requestedWaybills[0] || token.IsCancellationRequested)
+                            return;
+
+                        if (guard.CanPrint)
+                        {
+                            _lastAllowedSafetyByWaybill[NormalizeBaseWaybill(waybill)] = guard;
+                            var printableRow = CloneTrackingRow(trackingRow);
+                            printableRow.WaybillNo = waybill;
+                            allowedRows.Add(printableRow);
+
+                            string trackingWaybill = NormalizeTrackingWaybillNo(waybill);
+                            approvalByBase.TryGetValue(trackingWaybill, out var approval);
+                            var snapshot = BuildPrintStatusSnapshot(waybill, trackingWaybill, printableRow, approval, PrintStatusRefreshReason.Search);
+                            snapshots.Add(snapshot);
+                            _readinessByWaybill[NormalizeBaseWaybill(waybill)] = new PrintReadinessContext
+                            {
+                                InputWaybillNo = NormalizeWaybill(waybill),
+                                TrackingWaybillNo = trackingWaybill,
+                                VerifiedAt = DateTime.Now,
+                                SafetyResult = guard,
+                                StatusSnapshot = snapshot
+                            };
+                        }
+                        else
+                        {
+                            NotifyBlocked(guard);
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    if (blocked || allowedRows.Count == 0)
+                    {
+                        ClearPrintableState(resetCurrent: true);
+                        return;
+                    }
                 }
 
                 _printRows.Clear();
@@ -528,6 +574,15 @@ namespace AutoJMS
             if (TryUseFreshReadiness(selected, out long readinessAgeMs))
             {
                 AppLogger.Info($"[PrintPerf] phase=Print usingFreshReadiness=true waybill={selected.FirstOrDefault()} readinessAgeMs={readinessAgeMs} totalMs={totalWatch.ElapsedMilliseconds}");
+                return true;
+            }
+
+            // InLaiDon: đã bypass SafetyGuard khi Search, không cần re-validate lại.
+            // Readiness đã được set bởi SearchAndLoadAsync nên TryUseFreshReadiness thường đã trả true ở trên.
+            // Nếu readiness hết hạn, vẫn cho phép in (reprint không cần kiểm tra bưu cục).
+            if (_currentMode == PrintMode.InLaiDon)
+            {
+                AppLogger.Info($"[PrintPerf] phase=Print InLaiDon bypass validation waybill={selected.FirstOrDefault()} totalMs={totalWatch.ElapsedMilliseconds}");
                 return true;
             }
 
