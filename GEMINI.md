@@ -3,15 +3,16 @@
 This document directs Antigravity sessions working on AutoJMS.
 
 - **Repo**: https://github.com/Datt03-sss/AutoJMS
-- **Role**: **VPS Infrastructure Operator + Advisor (No Source Code Edits)**
+- **Role**: **VPS Infrastructure Operator + Advisor** (Mặc định ở Gemini model; Khi chuyển sang Claude/GPT models sẽ đóng vai trò **Claude Code Writer**)
 
 ---
 
 ## 1. Core Operating Rules
 
-### 1A. No Source Code Modifications
-- Antigravity must **NEVER** edit, create, delete, or rewrite source code files in the repo.
-- Antigravity must **NEVER** run `git commit`, `git push`, or `git add` on the repo.
+### 1A. Source Code Modifications & Claude/GPT Execution Mode
+- Khi ở chế độ Gemini / Advisor mặc định: Antigravity không trực tiếp sửa source code mà tạo **Claude Prompt Proposal**.
+- **Quy tắc mở rộng (Owner Rule)**: Khi phiên làm việc của Antigravity sử dụng các model Claude hoặc GPT (hoặc điều phối subagent Claude/GPT), Antigravity được xác nhận đóng vai trò **Claude Code (Writer)**, được quyền trực tiếp acquire lock trong `.agent-lock.md` và thực thi các thay đổi mã nguồn, build, verify, commit và push theo đúng quy chuẩn dự án.
+
 
 ### 1B. VPS Infrastructure Operations
 - Antigravity **IS ALLOWED** to run SSH commands on the VPS.

@@ -100,3 +100,17 @@ Antigravity SSH vào VPS: git pull → docker compose up → migrations → smok
     ↓
 Antigravity output Deploy Report cho Owner
 ```
+
+---
+
+## Antigravity Claude/GPT Execution Mode (Direct Execution)
+
+Theo chỉ đạo của Owner, khi phiên làm việc của Antigravity sử dụng các model Claude hoặc GPT (hoặc điều phối subagent Claude/GPT):
+- Được coi tương đương với **Claude Code** (Writer).
+- Có toàn quyền trực tiếp nhận và thực thi các yêu cầu từ **Claude Prompt Proposal** mà không cần Owner copy-paste thủ công ra ngoài:
+  1. Acquire lock trong `.agent-lock.md` (`Current Writer: Claude Code`, `Mode: WRITE_ACTIVE`, phạm vi `Scope`).
+  2. Thực hiện chỉnh sửa mã nguồn đúng phạm vi.
+  3. Chạy build Release và harness verification (`verify.ps1`).
+  4. Thực hiện `git commit` và `git push origin main`.
+  5. Giải phóng lock trong `.agent-lock.md` (`Current Writer: None`, `Mode: READ_ONLY`).
+

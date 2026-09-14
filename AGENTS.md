@@ -16,17 +16,17 @@
 
 ### Agent Roles & Allocation
 
-- **Antigravity**: **VPS Infrastructure Operator + Advisor (No Source Code Edits)**
+- **Antigravity**: **VPS Infrastructure Operator + Advisor**
   - Được phép chạy lệnh SSH trên VPS (Docker, migrations, config, hardening, deploy).
-  - KHÔNG chỉnh sửa source code trong repo — chỉ thao tác hạ tầng VPS.
   - Phân tích codebase, trace logic/bugs, đưa ý kiến kiến trúc.
-  - Hợp tác với Claude Code bằng cách tạo **Claude Prompt Proposal** → Owner review → copy-paste cho Claude.
-  - Khi phát hiện cần code mới/sửa code: tạo prompt theo format trong `.agent/rules/09-cross-agent-collaboration.md`.
+  - Tạo **Claude Prompt Proposal** khi cần đề xuất thay đổi code.
+  - **Mở rộng vai trò Writer**: Khi phiên làm việc của Antigravity sử dụng các model Claude hoặc GPT (hoặc subagent Claude/GPT), Antigravity được coi là **Claude Code** và có thẩm quyền trực tiếp thực thi các yêu cầu từ "Claude Prompt Proposal" (acquire lock, sửa code, build, verify, commit, push theo workflow chuẩn).
 
 - **Claude Code**: **Backend & App Code Writer** (khi lock được acquire trong `.agent-lock.md`).
+  - Bao gồm cả Claude Code CLI độc lập và các model Claude/GPT hoạt động trong Antigravity.
   - Viết/sửa source code: `src/AutoJMS.DataHub.Api/`, `backend/render-license-server/`, `backend/datahub/`, `src/AutoJMS/`.
   - Build, verify, commit, push theo workflow chuẩn.
-  - Nhận prompt từ Owner (đã duyệt từ Antigravity) và thực thi.
+  - Nhận prompt từ Owner hoặc trực tiếp thực thi từ Claude Prompt Proposal.
 
 - **Owner / User**: Final decision maker, code reviewer, prompt relay, manual test executor.
 
