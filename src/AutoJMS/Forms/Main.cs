@@ -43,10 +43,12 @@ namespace AutoJMS
         private bool _ultraLaunched;
         private bool _isShowingFullStackForm;
         /// <summary>
-        /// Lệnh cập nhật đồng loạt chỉ được hỏi MỘT lần cho mỗi phiên chạy. Người dùng
-        /// từ chối thì thôi, đừng hỏi lại giữa ca làm việc.
+        /// Khoá (version + channel) của lệnh cập nhật đồng loạt đã hỏi gần nhất. Người
+        /// dùng từ chối một lệnh thì thôi, đừng hỏi lại ĐÚNG lệnh đó; nhưng lệnh MỚI mà
+        /// Owner bật giữa ca vẫn phải tới được — nên đây là khoá nhận dạng lệnh, không
+        /// phải cờ một-lần-mỗi-phiên.
         /// </summary>
-        private bool _broadcastUpdatePromptedThisSession;
+        private string _broadcastUpdatePromptedKey;
         private bool _isSyncingZoomFactor;
         private CancellationTokenSource _zoomSaveCts;
 
@@ -1427,8 +1429,8 @@ namespace AutoJMS
         /// </summary>
         /// <remarks>
         /// Chạy trên thread của heartbeat, nên phải marshal về UI thread trước khi
-        /// hiện MessageBox. Cờ _broadcastUpdatePromptedThisSession bên trong
-        /// CheckAndPromptBroadcastUpdateAsync lo việc không hỏi hai lần.
+        /// hiện MessageBox. Khoá _broadcastUpdatePromptedKey bên trong
+        /// CheckAndPromptBroadcastUpdateAsync lo việc không hỏi hai lần cùng một lệnh.
         /// </remarks>
         private void OnBroadcastUpdateReceived(BroadcastUpdateDirective directive)
         {
@@ -1457,17 +1459,29 @@ namespace AutoJMS
         /// </summary>
         /// <remarks>
         /// Nuốt mọi lỗi: một lệnh cập nhật hỏng không bao giờ được phép chặn app khởi động.
-        /// Chỉ hỏi một lần mỗi phiên. Lệnh bật giữa ca vẫn tới được, qua
-        /// LicenseApiService.BroadcastUpdateReceived.
+        /// Mỗi lệnh (version + channel) chỉ hỏi một lần. Lệnh bật giữa ca vẫn tới được,
+        /// qua LicenseApiService.BroadcastUpdateReceived.
         /// </remarks>
         private async Task CheckAndPromptBroadcastUpdateAsync()
         {
             try
             {
-                if (_broadcastUpdatePromptedThisSession) return;
-
                 var directive = LicenseApiService.CurrentBroadcastUpdate;
                 if (directive == null || string.IsNullOrWhiteSpace(directive.Version)) return;
+
+                string channel = string.Equals(directive.Channel, "beta", StringComparison.OrdinalIgnoreCase)
+                    ? "beta"
+                    : "stable";
+
+                // Khoá nhận dạng lệnh. Dùng channel đã chuẩn hoá ở trên nên Channel rỗng
+                // hay null cũng ra "stable" thay vì ném.
+                string directiveKey = directive.Version + "|" + channel;
+
+                if (string.Equals(_broadcastUpdatePromptedKey, directiveKey, StringComparison.Ordinal))
+                {
+                    AppLogger.Info($"[BroadcastUpdate] bỏ qua: đã hỏi lệnh {directiveKey} trong phiên này.");
+                    return;
+                }
 
                 string currentVersion = AppVersion.Current;
                 if (!UpdateChannelDialog.IsUpgrade(currentVersion, directive.Version))
@@ -1478,13 +1492,12 @@ namespace AutoJMS
                     return;
                 }
 
-                // Đánh dấu trước khi hiện hộp thoại: người dùng bấm "Để sau" thì cũng
-                // không bị hỏi lại nếu heartbeat kế tiếp lại mang về đúng lệnh đó.
-                _broadcastUpdatePromptedThisSession = true;
-
-                string channel = string.Equals(directive.Channel, "beta", StringComparison.OrdinalIgnoreCase)
-                    ? "beta"
-                    : "stable";
+                // Đánh dấu TRƯỚC khi hiện hộp thoại: MessageBox.Show bơm message loop,
+                // nên một lượt gọi đang xếp hàng sẽ chạy ngay khi hộp thoại còn mở và
+                // phải thấy khoá đã lưu, nếu không sẽ hiện hai hộp thoại. Cũng có nghĩa
+                // người dùng bấm "Để sau" thì không bị hỏi lại ĐÚNG lệnh đó — lệnh khác
+                // mang khoá khác nên vẫn tới được.
+                _broadcastUpdatePromptedKey = directiveKey;
 
                 AppLogger.Action(
                     $"[BroadcastUpdate] prompt: current={currentVersion}, " +
@@ -1544,12 +1557,14 @@ namespace AutoJMS
                 {
                     // suppressPrompt: người dùng vừa bấm Yes ở hộp thoại trên, hỏi lại
                     // là hộp thoại thứ hai y hệt. promptBeforeRestart: không tắt app
-                    // đột ngột giữa lúc đang nhập liệu.
+                    // đột ngột giữa lúc đang nhập liệu. expectedVersion: bản vừa hứa
+                    // với người dùng, để log nói ra khi feed trả về bản khác.
                     await updateSvc.CheckAndUpdateAsync(
                         progress,
                         _appCts.Token,
                         suppressPrompt: true,
-                        promptBeforeRestart: true);
+                        promptBeforeRestart: true,
+                        expectedVersion: directive.Version);
                 }
                 finally
                 {

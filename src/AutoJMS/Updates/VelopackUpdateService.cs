@@ -182,11 +182,18 @@ namespace AutoJMS
         /// Hỏi trước khi khởi động lại. Mặc định false để luồng thủ công ở tab
         /// GIỚI THIỆU giữ nguyên hành vi cũ.
         /// </param>
+        /// <param name="expectedVersion">
+        /// Phiên bản mà người gọi vừa hứa với người dùng (lệnh cập nhật đồng loạt từ
+        /// Dashboard). KHÔNG ghim phiên bản — feed vẫn cài thứ nó đang có — chỉ để
+        /// chênh lệch nhìn thấy được trong log: dashboard cho chọn MỌI release chứ
+        /// không riêng bản mới nhất, nên "phát 1.26.11" hoàn toàn có thể cài 1.26.12.
+        /// </param>
         public async Task CheckAndUpdateAsync(
             IProgress<int>? downloadProgress = null,
             CancellationToken ct = default,
             bool suppressPrompt = false,
-            bool promptBeforeRestart = false)
+            bool promptBeforeRestart = false,
+            string? expectedVersion = null)
         {
             UpdateManager mgr;
             try
@@ -243,11 +250,39 @@ namespace AutoJMS
                 string reason = await DiagnoseNoUpdateReasonAsync(mgr, ct).ConfigureAwait(true);
                 LogUpdateContext(mgr, updateAvailable: false, noUpdateReason: reason);
                 AppLogger.Info($"VelopackUpdateService: no update available for channel={_channel}, reason={reason}");
+
+                if (!string.IsNullOrWhiteSpace(expectedVersion))
+                {
+                    // Người dùng vừa bấm Yes cho đúng bản này vài giây trước. Nói
+                    // "bạn đang dùng phiên bản mới nhất" ở đây là mâu thuẫn thẳng với
+                    // hộp thoại họ vừa trả lời — thường là manifest DataHub trễ hơn
+                    // GitHub release.
+                    AppLogger.Warning(
+                        $"VelopackUpdateService: broadcast expected v{expectedVersion} on channel={_channel} " +
+                        $"but the feed has nothing to install, reason={reason}");
+                    ShowInfo(
+                        $"Chưa lấy được bản cập nhật {expectedVersion} (kênh {_channel}).\n\n" +
+                        "Máy chủ phát hành chưa có gói này. Thử lại sau ít phút.");
+                    return;
+                }
+
                 ShowInfo("Bạn đang dùng phiên bản mới nhất.");
                 return;
             }
 
             string newVersion = updateInfo.TargetFullRelease?.Version?.ToString() ?? "mới";
+
+            if (!string.IsNullOrWhiteSpace(expectedVersion) &&
+                !string.Equals(expectedVersion, newVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                // Chỉ cảnh báo, không từ chối: ghim phiên bản là thay đổi lớn hơn và
+                // chưa được duyệt. Mục đích duy nhất của dòng này là để khi một máy
+                // được phát 1.26.11 mà cài 1.26.12 thì log nói ra, thay vì im lặng.
+                AppLogger.Warning(
+                    $"VelopackUpdateService: broadcast requested v{expectedVersion} but the feed resolved " +
+                    $"v{newVersion} on channel={_channel}; installing what the feed holds.");
+            }
+
             LogUpdateContext(mgr, updateAvailable: true);
             if (!suppressPrompt)
             {
