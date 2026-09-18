@@ -209,7 +209,7 @@ test("the heartbeat does not rewrite the licence record on every beat", async ()
     // each time would make a presence indicator the busiest write in the system
     // while carrying no more information than a ten-minute-old one.
     const harness = await startServer({
-        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 600_000 }
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 600_000, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
     });
 
     try {

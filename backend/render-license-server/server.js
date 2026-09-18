@@ -540,6 +540,40 @@ function parseSemverParts(v) {
 }
 
 /**
+ * Compares two prerelease identifier strings per SemVer §11.
+ *
+ * Each string is split on "." and compared segment by segment. Numeric
+ * segments compare numerically; alphanumeric segments compare lexicographically;
+ * a numeric segment has lower precedence than a non-numeric one; a shorter
+ * set of identifiers has lower precedence than a longer one that shares its
+ * prefix (`beta` < `beta.1`).
+ *
+ * Returns negative when a < b, positive when a > b, zero when equal.
+ */
+function comparePrerelease(a, b) {
+    const as = a.split(".");
+    const bs = b.split(".");
+    for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+        const x = as[i];
+        const y = bs[i];
+        if (x === undefined) return -1;
+        if (y === undefined) return 1;
+        const xn = /^\d+$/.test(x) ? parseInt(x, 10) : null;
+        const yn = /^\d+$/.test(y) ? parseInt(y, 10) : null;
+        if (xn !== null && yn !== null) {
+            if (xn !== yn) return xn < yn ? -1 : 1;
+        } else if (xn !== null) {
+            return -1;
+        } else if (yn !== null) {
+            return 1;
+        } else if (x !== y) {
+            return x < y ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+/**
  * Whether `incoming` may replace `stored` on the LICENCE record.
  *
  * One licence can hold several stations. When they run different builds, every
@@ -564,7 +598,7 @@ function isNewerOrEqualVersion(incoming, stored) {
 
     if (!a.pre && b.pre) return true;
     if (a.pre && !b.pre) return false;
-    return a.pre >= b.pre;
+    return comparePrerelease(a.pre, b.pre) >= 0;
 }
 
 /**
@@ -573,8 +607,8 @@ function isNewerOrEqualVersion(incoming, stored) {
  * The heartbeat runs once a minute per station, and the licence record is not
  * session state: writing it on every beat would make a presence indicator the
  * busiest write in the system without carrying any more information than a
- * ten-minute-old one. A version CHANGE is always written immediately — the clock
- * alone is what waits.
+ * ten-minute-old one. Both the thirty-second floor and the ten-minute interval
+ * apply to every write, including version changes; activation bypasses both.
  */
 const LICENSE_ACTIVITY_WRITE_INTERVAL_MS = numericEnv(
     process.env.LICENSE_ACTIVITY_WRITE_INTERVAL_MS,
@@ -620,8 +654,10 @@ async function recordLicenseActivity(licenseKey, record, appVersion, { force = f
     const lastActiveAt = sessionTimestamp(record?.lastActiveAt) ?? 0;
     const sinceLastWrite = now - lastActiveAt;
 
-    // Only a version that does not move the stored one backwards may be written.
-    const versionWritable = version !== "" && isNewerOrEqualVersion(version, storedVersion);
+    // Activation (force) may always write, even if the version appears older than
+    // stored — it is the one moment the reported build is certainly current.
+    // Heartbeats remain fully guarded by the monotonic check.
+    const versionWritable = version !== "" && (force || isNewerOrEqualVersion(version, storedVersion));
     const versionChanged = versionWritable && version !== storedVersion;
 
     if (!force) {
