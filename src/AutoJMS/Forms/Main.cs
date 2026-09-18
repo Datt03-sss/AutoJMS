@@ -1443,6 +1443,10 @@ namespace AutoJMS
             {
                 // Form đóng ngay giữa lúc heartbeat về — không có gì để làm.
             }
+            catch (InvalidOperationException)
+            {
+                // Handle đã bị huỷ giữa lúc kiểm tra IsHandleCreated và BeginInvoke.
+            }
         }
 
         /// <summary>
