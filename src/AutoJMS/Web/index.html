@@ -190,30 +190,30 @@ body { margin: 0; }
         </div>
 
         <sc-if value="{{ hasOrders }}" hint-placeholder-val="{{ true }}">
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-          <thead>
-            <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
-              <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Mã vận đơn</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác hiện tại</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác cuối cùng</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Tồn kho</th>
-            </tr>
-          </thead>
-          <tbody>
+        <sc-raw-table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <sc-raw-thead>
+            <sc-raw-tr style="background: #f8fafc; color: #6b7588; text-align: left;">
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Mã vận đơn</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác hiện tại</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác cuối cùng</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Tồn kho</sc-raw-th>
+            </sc-raw-tr>
+          </sc-raw-thead>
+          <sc-raw-tbody>
             <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
-            <tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
-                <td style="padding: {{ cellPad }}; color: #6b7588; border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</td>
-                <td style="padding: {{ cellPad }}; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span><span onclick="{{ o.onOpen }}" title="Bấm để xem chi tiết" style="color: {{ o.codeColor }}; font-weight: 600; cursor: pointer;">{{ o.code }}</span></td>
-                <td style="padding: {{ cellPad }}; color: #2d3645; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ o.curOp }}">{{ o.curOp }}</td>
-                <td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: #eef1f5; color: #3a4555; white-space: nowrap;">{{ o.lastOp }}</span></td>
-                <td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ o.opTime }}</td>
-                <td style="padding: {{ cellPad }}; font-weight: 600; white-space: nowrap; color: {{ o.tonKhoColor }};">{{ o.tonKho }}</td>
-              </tr>
+            <sc-raw-tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
+                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span><span onclick="{{ o.onOpen }}" title="Bấm để xem chi tiết" style="color: {{ o.codeColor }}; font-weight: 600; cursor: pointer;">{{ o.code }}</span></sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #2d3645; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ o.curOp }}">{{ o.curOp }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: #eef1f5; color: #3a4555; white-space: nowrap;">{{ o.lastOp }}</span></sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ o.opTime }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; font-weight: 600; white-space: nowrap; color: {{ o.tonKhoColor }};">{{ o.tonKho }}</sc-raw-td>
+              </sc-raw-tr>
             </sc-for>
-          </tbody>
-        </table>
+          </sc-raw-tbody>
+        </sc-raw-table>
         </sc-if>
 
         <sc-if value="{{ noOrders }}" hint-placeholder-val="{{ false }}">
@@ -255,34 +255,34 @@ body { margin: 0; }
         </div>
 
         <sc-if value="{{ hasJourneyRows }}" hint-placeholder-val="{{ true }}">
-        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-          <thead>
-            <tr style="background: #f8fafc; color: #6b7588; text-align: left;">
-              <th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600; width: 28px;"></th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian tải lên</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Loại thao tác</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Mô tả lịch sử hành trình</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Nguồn</th>
-              <th style="padding: {{ cellPad }}; font-weight: 600;">Trọng lượng</th>
-            </tr>
-          </thead>
-          <tbody>
+        <sc-raw-table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <sc-raw-thead>
+            <sc-raw-tr style="background: #f8fafc; color: #6b7588; text-align: left;">
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 28px;"></sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian tải lên</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Loại thao tác</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Mô tả lịch sử hành trình</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Nguồn</sc-raw-th>
+              <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Trọng lượng</sc-raw-th>
+            </sc-raw-tr>
+          </sc-raw-thead>
+          <sc-raw-tbody>
             <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
-              <tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
-                <td style="padding: {{ cellPad }}; color: #6b7588;">{{ r.stt }}</td>
-                <td style="padding: {{ cellPad }};"><span style="display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid {{ r.dotColor }}; background: {{ r.dotFill }};"></span></td>
-                <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.t1 }}</td>
-                <td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ r.t2 }}</td>
-                <td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ r.badgeBg }}; color: {{ r.badgeColor }}; white-space: nowrap;">{{ r.type }}</span></td>
-                <td style="padding: {{ cellPad }}; color: #3a4555;">{{ r.desc }}</td>
-                <td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.source }}</td>
-                <td style="padding: {{ cellPad }}; color: #3a4555;">{{ wbWeight }}</td>
-              </tr>
+              <sc-raw-tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
+                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588;">{{ r.stt }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }};"><span style="display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid {{ r.dotColor }}; background: {{ r.dotFill }};"></span></sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.t1 }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ r.t2 }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ r.badgeBg }}; color: {{ r.badgeColor }}; white-space: nowrap;">{{ r.type }}</span></sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555;">{{ r.desc }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.source }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555;">{{ wbWeight }}</sc-raw-td>
+              </sc-raw-tr>
             </sc-for>
-          </tbody>
-        </table>
+          </sc-raw-tbody>
+        </sc-raw-table>
         </sc-if>
 
         <sc-if value="{{ noJourneyRows }}" hint-placeholder-val="{{ false }}">
