@@ -1,4 +1,5 @@
 using Xunit;
+using AutoJMS;
 
 namespace AutoJMS.Tests;
 
@@ -13,4 +14,29 @@ public sealed class AppVersionTests
     {
         Assert.Equal(expected, AppVersion.NormalizeDisplayVersion(input));
     }
+
+        // AutoJMS tags every build `-Release`. Read as a SemVer prerelease label
+        // it sorts BELOW the plain version, so the newest build looked like a
+        // downgrade; and `beta.1-Release` / `beta.2-Release` both parsed their
+        // build number as 0, so no beta ever superseded another.
+        [Theory]
+        [InlineData("1.26.11", "1.26.12-Release", true)]
+        [InlineData("1.26.12", "1.26.12-Release", false)]
+        [InlineData("1.26.12-Release", "1.26.12", false)]
+        [InlineData("1.26.12-beta.1-Release", "1.26.12-beta.2-Release", true)]
+        [InlineData("1.26.12-beta.2-Release", "1.26.12-beta.1-Release", false)]
+        [InlineData("1.26.12-beta.1", "1.26.12-Release", true)]
+        [InlineData("1.26.11", "v1.26.12-Release+abc1234", true)]
+        public void IsUpgrade_HandlesReleaseSuffixedTags(string current, string target, bool expected)
+        {
+            Assert.Equal(expected, UpdateChannelDialog.IsUpgrade(current, target));
+        }
+
+        [Theory]
+        [InlineData("1.26.12", "1.26.11-Release", true)]
+        [InlineData("1.26.12", "1.26.12-Release", false)]
+        public void IsDowngrade_HandlesReleaseSuffixedTags(string current, string target, bool expected)
+        {
+            Assert.Equal(expected, UpdateChannelDialog.IsDowngrade(current, target));
+        }
 }

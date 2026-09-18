@@ -397,6 +397,15 @@ namespace AutoJMS
             var clean = value.Trim().TrimStart('v', 'V');
             var plus = clean.IndexOf('+');
             if (plus >= 0) clean = clean.Substring(0, plus);
+
+            // AutoJMS tags every build `-Release`; it is a house convention, not a
+            // SemVer prerelease label. Left on, it sorts the newest build below the
+            // plain version, and it swallows a beta's build number
+            // (`beta.1-Release` parses as beta build 0, same as `beta.2-Release`).
+            // After the `+build` strip, so `1.26.12-Release+abc1234` is caught too.
+            if (clean.EndsWith("-Release", StringComparison.OrdinalIgnoreCase))
+                clean = clean.Substring(0, clean.Length - "-Release".Length);
+
             clean = clean.Replace(" beta ", "-beta.", StringComparison.OrdinalIgnoreCase)
                          .Replace(" beta.", "-beta.", StringComparison.OrdinalIgnoreCase);
 
