@@ -201,6 +201,7 @@ async function startServer(options = {}) {
         // unrelated to the change being tested.
         BROADCAST_UPDATE_CACHE_MS: undefined,
         LICENSE_ACTIVITY_WRITE_INTERVAL_MS: undefined,
+        LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: undefined,
         GITHUB_RELEASES_API_URL: undefined,
         UPDATE_XML_URL: undefined,
         RELEASES_FETCH_TIMEOUT_MS: undefined,

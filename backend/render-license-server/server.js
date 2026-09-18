@@ -524,6 +524,50 @@ function sanitizeAppVersion(raw) {
 }
 
 /**
+ * A version reduced to the numbers a comparison can use.
+ *
+ * Deliberately not a SemVer library: only two shapes reach this — what
+ * AppVersion.Current reports (`1.26.12`, `1.26.12-beta.1`, or the 4-part
+ * assembly fallback) and a git tag that arrived with `-Release` still attached.
+ * Anything unreadable degrades to zeros instead of throwing.
+ */
+function parseSemverParts(v) {
+    const clean = String(v || "").trim().replace(/^[vV]/, "").replace(/-[Rr]elease$/i, "");
+    const [main, pre] = clean.split("-");
+    const parts = String(main || "").split(".").map(n => parseInt(n, 10) || 0);
+    while (parts.length < 3) parts.push(0);
+    return { parts, pre: pre || "" };
+}
+
+/**
+ * Whether `incoming` may replace `stored` on the LICENCE record.
+ *
+ * One licence can hold several stations. When they run different builds, every
+ * heartbeat saw `version !== storedVersion` and wrote — two stations a minute
+ * apart meant a write per beat, forever, and the dashboard column flickered
+ * between the two. Keeping the licence-level version monotonic ends that: the
+ * older station simply has nothing to add. Its own build is still recorded on
+ * its session row, which is where per-machine truth belongs.
+ */
+function isNewerOrEqualVersion(incoming, stored) {
+    if (!stored) return true;
+    if (!incoming) return false;
+
+    const a = parseSemverParts(incoming);
+    const b = parseSemverParts(stored);
+
+    for (let i = 0; i < Math.max(a.parts.length, b.parts.length); i++) {
+        const diff = (a.parts[i] || 0) - (b.parts[i] || 0);
+        if (diff > 0) return true;
+        if (diff < 0) return false;
+    }
+
+    if (!a.pre && b.pre) return true;
+    if (a.pre && !b.pre) return false;
+    return a.pre >= b.pre;
+}
+
+/**
  * How stale `lastActiveAt` may get before a heartbeat refreshes it.
  *
  * The heartbeat runs once a minute per station, and the licence record is not
@@ -535,6 +579,23 @@ function sanitizeAppVersion(raw) {
 const LICENSE_ACTIVITY_WRITE_INTERVAL_MS = numericEnv(
     process.env.LICENSE_ACTIVITY_WRITE_INTERVAL_MS,
     600_000,
+    0
+);
+
+/**
+ * The floor under any licence-activity write, version change included.
+ *
+ * The ten-minute interval above only rations writes that carry nothing new. It
+ * does not stop the case that genuinely thrashes: two stations on one licence
+ * whose reported versions each look "newer or equal" to the other — versions
+ * differing only past what parseSemverParts reads — alternating every beat.
+ * Thirty seconds costs no real telemetry, because a station that has just
+ * updated re-activates through verify-license (force: true) on restart and is
+ * written immediately anyway.
+ */
+const LICENSE_ACTIVITY_MIN_WRITE_GAP_MS = numericEnv(
+    process.env.LICENSE_ACTIVITY_MIN_WRITE_GAP_MS,
+    30_000,
     0
 );
 
@@ -557,17 +618,19 @@ async function recordLicenseActivity(licenseKey, record, appVersion, { force = f
 
     const storedVersion = sanitizeAppVersion(record?.appVersion);
     const lastActiveAt = sessionTimestamp(record?.lastActiveAt) ?? 0;
-    const versionChanged = version !== "" && version !== storedVersion;
+    const sinceLastWrite = now - lastActiveAt;
 
-    if (!force && !versionChanged && now - lastActiveAt < LICENSE_ACTIVITY_WRITE_INTERVAL_MS) {
-        return;
+    // Only a version that does not move the stored one backwards may be written.
+    const versionWritable = version !== "" && isNewerOrEqualVersion(version, storedVersion);
+    const versionChanged = versionWritable && version !== storedVersion;
+
+    if (!force) {
+        if (sinceLastWrite < LICENSE_ACTIVITY_MIN_WRITE_GAP_MS) return;
+        if (!versionChanged && sinceLastWrite < LICENSE_ACTIVITY_WRITE_INTERVAL_MS) return;
     }
 
-    // An unreadable version leaves the stored one alone rather than blanking it:
-    // the last known build is better information than none, and a client too old
-    // to report a version is precisely the one worth still seeing in the table.
     const patch = { lastActiveAt: now };
-    if (version !== "") patch.appVersion = version;
+    if (versionWritable) patch.appVersion = version;
 
     try {
         await withTimeout(
@@ -1374,7 +1437,7 @@ app.post("/api/verify-license", limiter, async (req, res) => {
                 tier,
                 middleCode,
                 status: "active",
-                appVersion: appVersion || "",
+                appVersion: sanitizeAppVersion(appVersion),
                 ip: getClientIp(req),
                 createdAt: Date.now(),
                 lastPing: Date.now()

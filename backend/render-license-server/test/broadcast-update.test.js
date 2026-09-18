@@ -53,7 +53,7 @@ test.describe("verify-license and heartbeat", () => {
 
     test.before(async () => {
         harness = await startServer({
-            env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0 }
+            env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
         });
     });
 
@@ -233,7 +233,7 @@ test("the heartbeat does not rewrite the licence record on every beat", async ()
 
 test("a version change is written immediately, whatever the interval says", async () => {
     const harness = await startServer({
-        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 600_000 }
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 600_000, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
     });
 
     try {
@@ -248,6 +248,82 @@ test("a version change is written immediately, whatever the interval says", asyn
     } finally {
         await harness.close();
     }
+});
+
+test("an older station does not drag the licence version backwards", async () => {
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession({ appVersion: "1.26.12" }));
+        await harness.post("/api/heartbeat", {
+            body: { appVersion: "1.26.11" },
+            token: harness.signToken()
+        });
+
+        // One licence, several stations. The licence-level column means
+        // "highest build seen here"; the older machine's own build stays on
+        // its session row.
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.12");
+    } finally { await harness.close(); }
+});
+
+test("a newer station still moves the licence version forward", async () => {
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession({ appVersion: "1.26.12-beta.1" }));
+        await harness.post("/api/heartbeat", {
+            body: { appVersion: "1.26.12" },
+            token: harness.signToken()
+        });
+
+        // A release supersedes its own prerelease.
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.12");
+    } finally { await harness.close(); }
+});
+
+test("two writes cannot land inside the minimum gap", async () => {
+    const harness = await startServer({
+        env: {
+            BROADCAST_UPDATE_CACHE_MS: 0,
+            LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0,
+            LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 30_000
+        }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession({ appVersion: "1.26.11", lastActiveAt: Date.now() }));
+        await harness.post("/api/heartbeat", {
+            body: { appVersion: "1.26.12" },
+            token: harness.signToken()
+        });
+
+        // The floor holds even for a version change: a station that just
+        // updated re-activates (force: true) on restart and is written then.
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.11");
+    } finally { await harness.close(); }
+});
+
+test("an unreadable version never reaches the session row", async () => {
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession());
+        const res = await harness.post("/api/verify-license", {
+            body: {
+                licenseKey: FIXTURE.licenseKey,
+                hwid: FIXTURE.hwid,
+                appVersion: "1.26.12<script>alert(1)</script>"
+            }
+        });
+
+        assert.equal(res.status, 200);
+        const sessions = Object.values(harness.db.read("sessions") || {});
+        assert.equal(sessions.length, 1);
+        assert.equal(sessions[0].appVersion, "");
+    } finally { await harness.close(); }
 });
 
 // ==========================================================================
