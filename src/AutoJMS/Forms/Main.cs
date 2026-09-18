@@ -184,6 +184,12 @@ namespace AutoJMS
             _tabManager.RegisterTab("PRINT", tabPrint);
             _tabManager.RegisterTab("ABOUT", tabAbout);
             _tabManager.ApplyTier(CurrentTier);
+
+            // Heartbeat nền có thể mang lệnh cập nhật về MUỘN hơn lúc mở app (khởi
+            // động lúc mất mạng thì directive đầu tiên là null). Đăng ký ở constructor
+            // để đúng một lần cho mỗi form; huỷ trong Main_FormClosing.
+            LicenseApiService.BroadcastUpdateReceived += OnBroadcastUpdateReceived;
+
             _userSettings = new UserSettingsService();
             _settings = _userSettings.Current;
 
@@ -1026,6 +1032,11 @@ namespace AutoJMS
 
             _isExiting = true;
 
+            // Event tĩnh giữ tham chiếu tới form: không huỷ là leak, và heartbeat
+            // vẫn gọi vào một form đã dispose. Phải đặt SAU _isExiting = true, vì
+            // người dùng có thể đã bấm Huỷ ở hộp thoại thoát phía trên.
+            LicenseApiService.BroadcastUpdateReceived -= OnBroadcastUpdateReceived;
+
             this.Hide();
             _appCts.Cancel();
             DisposeAppCaptureWebViews();
@@ -1412,6 +1423,29 @@ namespace AutoJMS
         }
 
         /// <summary>
+        /// Lệnh cập nhật đồng loạt vừa về từ verify-license hoặc heartbeat.
+        /// </summary>
+        /// <remarks>
+        /// Chạy trên thread của heartbeat, nên phải marshal về UI thread trước khi
+        /// hiện MessageBox. Cờ _broadcastUpdatePromptedThisSession bên trong
+        /// CheckAndPromptBroadcastUpdateAsync lo việc không hỏi hai lần.
+        /// </remarks>
+        private void OnBroadcastUpdateReceived(BroadcastUpdateDirective directive)
+        {
+            if (directive == null) return;
+            if (this.IsDisposed || !this.IsHandleCreated) return;
+
+            try
+            {
+                this.BeginInvoke(new Action(() => _ = CheckAndPromptBroadcastUpdateAsync()));
+            }
+            catch (ObjectDisposedException)
+            {
+                // Form đóng ngay giữa lúc heartbeat về — không có gì để làm.
+            }
+        }
+
+        /// <summary>
         /// Hỏi người dùng có chạy lệnh cập nhật đồng loạt mà Owner bật trên dashboard hay không.
         /// Directive đi kèm phản hồi verify-license/heartbeat và nằm ở
         /// <see cref="LicenseApiService.CurrentBroadcastUpdate"/>; không có lệnh, hoặc máy đã ở
@@ -1419,7 +1453,8 @@ namespace AutoJMS
         /// </summary>
         /// <remarks>
         /// Nuốt mọi lỗi: một lệnh cập nhật hỏng không bao giờ được phép chặn app khởi động.
-        /// Chỉ hỏi một lần mỗi phiên — lệnh bật giữa ca sẽ được nhận ở lần mở app kế tiếp.
+        /// Chỉ hỏi một lần mỗi phiên. Lệnh bật giữa ca vẫn tới được, qua
+        /// LicenseApiService.BroadcastUpdateReceived.
         /// </remarks>
         private async Task CheckAndPromptBroadcastUpdateAsync()
         {

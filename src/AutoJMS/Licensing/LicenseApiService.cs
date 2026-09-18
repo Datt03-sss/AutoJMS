@@ -158,6 +158,17 @@ eQIDAQAB
         private static string _lastLoggedLifecycleState;
 
         /// <summary>
+        /// Bắn khi verify-license hoặc heartbeat mang về một lệnh cập nhật đồng loạt.
+        /// </summary>
+        /// <remarks>
+        /// Cần thiết vì một máy khởi động lúc mất mạng sẽ thấy directive đầu tiên là
+        /// null; nếu chỉ đọc CurrentBroadcastUpdate một lần lúc mở form thì lệnh về
+        /// sau (qua heartbeat) không bao giờ tới được người dùng.
+        /// Handler chạy trên thread của heartbeat — người nghe phải tự marshal về UI.
+        /// </remarks>
+        public static event Action<BroadcastUpdateDirective> BroadcastUpdateReceived;
+
+        /// <summary>
         /// The fleet-wide update command the server last sent, or null when there is none.
         /// </summary>
         /// <remarks>
@@ -661,7 +672,28 @@ eQIDAQAB
                 }
             }
 
+            var previous = CurrentBroadcastUpdate;
             CurrentBroadcastUpdate = directive;
+
+            // Bắn event chỉ khi directive thực sự thay đổi (version, channel, hoặc trạng
+            // thái bật/tắt). Không bắn khi cùng version và channel để tránh ghi log
+            // "[BroadcastUpdate] bỏ qua" mỗi nhịp heartbeat khi lệnh đang bật ổn định.
+            // Nhánh gán null (lệnh đã tắt) không bắn event — hàm gọi đã tắt directive.
+            if (directive != null)
+            {
+                bool changed = previous == null
+                    || previous.Version != directive.Version
+                    || previous.Channel != directive.Channel;
+                if (changed)
+                {
+                    try
+                    {
+                        BroadcastUpdateReceived?.Invoke(directive);
+                    }
+                    catch { }
+                }
+            }
+
             return directive;
         }
 
