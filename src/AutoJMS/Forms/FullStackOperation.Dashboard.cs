@@ -30,7 +30,10 @@ namespace AutoJMS
 
                 _webView = new Microsoft.Web.WebView2.WinForms.WebView2
                 {
-                    Dock = DockStyle.Fill
+                    Dock = DockStyle.Fill,
+                    // Default is white; anything the page has not painted yet (first frame, an
+                    // overscroll bounce) must show the shell grey, not a white flash.
+                    DefaultBackgroundColor = FullStackBackColor
                 };
                 tabDash.Controls.Add(_webView);
 
@@ -444,7 +447,12 @@ namespace AutoJMS
                 // Lock page zoom for the whole dashboard (Ctrl+scroll / pinch / Ctrl±) so image
                 // zoom in the overlay never rescales tabDash itself.
                 _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+                _webView.CoreWebView2.Settings.IsPinchZoomEnabled = false;
                 _webView.ZoomFactor = 1.0;
+
+                // A two-finger horizontal swipe is a back/forward gesture: it drags the whole
+                // page off its corner before OnDashboardNavigationStarting gets to cancel it.
+                _webView.CoreWebView2.Settings.IsSwipeNavigationEnabled = false;
 
                 _webView.CoreWebView2.NavigationStarting += OnDashboardNavigationStarting;
                 _webView.WebMessageReceived += OnWebViewMessageReceived;
