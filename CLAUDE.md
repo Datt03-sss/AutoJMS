@@ -36,24 +36,30 @@ Khi nhận Antigravity Prompt Proposal:
 
 Before starting work on any task:
 
-1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, DataHub manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
+1. Check `.agent/skills/` (curated project skills), `.claude/skills/` (in-repo skills như `graphify`) và `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, DataHub manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
 2. For any DataHub work (API endpoints, enrollment, migrations, manifest publish) follow [.agent/rules/05-datahub-firebase-github-rules.md](./.agent/rules/05-datahub-firebase-github-rules.md) and [.agent/skills/datahub-manifest-skill.md](./.agent/skills/datahub-manifest-skill.md); for Postgres SQL tuning follow [.agent/skills/postgres-best-practices/SKILL.md](./.agent/skills/postgres-best-practices/SKILL.md).
 3. To build or publish a release (owner request only) follow [.agent/skills/autojms-release-build/SKILL.md](./.agent/skills/autojms-release-build/SKILL.md) — exact commands and the traps that break `release/build-release.ps1`.
-3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
-3. Skills are helpers — project rules in this file and `AGENTS.md` always take precedence over any skill guidance.
+4. Next, check the plugin skills from `superpowers`, `agent-skills` and `ponytail` — [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md) says which one owns which job.
+5. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
+6. Skills are helpers — project rules in this file and `AGENTS.md` always take precedence over any skill guidance.
 
 ---
 
-## Agent Tooling — desktop-commander & superpowers
+## Agent Tooling — desktop-commander, superpowers, ponytail, agent-skills, graphify
 
-Full rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md).
+Full rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md)
+và [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md).
 Skills: [.agent/skills/desktop-commander-skill.md](./.agent/skills/desktop-commander-skill.md),
-[.agent/skills/superpowers-skill.md](./.agent/skills/superpowers-skill.md).
+[.agent/skills/superpowers-skill.md](./.agent/skills/superpowers-skill.md),
+[.claude/skills/graphify/SKILL.md](./.claude/skills/graphify/SKILL.md).
 
 | Tool | Kind | Who has it | Use it for |
 |---|---|---|---|
 | `desktop-commander` | MCP server, repo-scoped in `.mcp.json` | any client that loads `.mcp.json` | terminal + long-running processes, files **outside** the repo (runtime logs, `AppData\modules`, WebView2 captures), `list_processes`/`kill_process` for build file locks, streaming search, `write_pdf` |
 | `superpowers` | Claude Code **plugin** (`.claude/settings.json`) | Claude Code CLI only | `brainstorm` before non-trivial work, `write-plan`/`execute-plan`, systematic debugging, TDD on pure-logic classes |
+| `ponytail` | Claude Code **plugin** (`.claude/settings.json`) | Claude Code CLI only | **bật sẵn mode `full` mỗi phiên** — ép YAGNI/stdlib-first, chính là Minimal Edit Rule dạng tự động. `/ponytail-review` trước khi commit |
+| `agent-skills` | Claude Code **plugin** (`.claude/settings.json`) | Claude Code CLI only | checklist chuyên đề: `security-auditor` cho licensing/tier/DataHub, `api-and-interface-design`, `shipping-and-launch`. Không dùng cho việc superpowers đã lo |
+| `graphify` | **Skill trong repo** (`.claude/skills/graphify/`), không phải plugin | client nào đọc `.claude/skills/` | gộp code + docs/PDF/ảnh vào một graph, hoặc xuất `graph.html` trực quan. Hỏi code thường ngày thì dùng `.codegraph/` |
 
 Use them proactively when they fit — but note:
 
@@ -67,6 +73,17 @@ Use them proactively when they fit — but note:
 - `superpowers` TDD applies to pure-logic classes only (`DkchJourneyAnalyzer`, `Tab2Config`, the
   response parsers, `TierDefinitions`) — **not** to WinForms Designer code or WebView2 automation,
   which are verified by the Owner Manual Test Checklist instead.
+- **Khi `superpowers` và `agent-skills` cùng áp được**: superpowers lo quy trình (brainstorm, plan,
+  debug, TDD), agent-skills lo checklist chuyên đề. `/ship` **không** phải lệnh phát hành — release
+  vẫn là [.agent/skills/autojms-release-build/SKILL.md](./.agent/skills/autojms-release-build/SKILL.md)
+  và chỉ khi Owner yêu cầu.
+- `/ponytail-audit`, `/ponytail-debt`, `/ponytail-gain` là **báo cáo read-only**. Chúng sẽ chỉ ra
+  hàng loạt chỗ "thừa" trong Protected Files — xuất cho Owner, không tự dọn.
+- `graphify` chạy theo yêu cầu, không mặc định. Hook `PreToolUse` của nó **đã bị gỡ có chủ ý**; nếu
+  chạy lại `graphify install` thì gỡ hook lần nữa trước khi commit. `graphify-out/` không bao giờ
+  commit, và không trỏ graphify vào `docs/manual/samples/` (dữ liệu khách hàng thật).
+- **Thêm plugin hoặc marketplace mới vào `.claude/settings.json` phải có yêu cầu rõ của Owner** —
+  file đó được commit nên mỗi dòng thêm là code bên thứ ba chạy trên máy mọi người mở repo.
 
 ---
 

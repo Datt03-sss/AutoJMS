@@ -25,6 +25,12 @@ Minimal Edit Rule, the Protected Files list, the Secret Policy and the build-bef
 instructions that assume every agent has it. `desktop-commander` is repo-scoped in `.mcp.json`; if an
 agent does not see the tools, the client needs a restart — do not silently fall back to guessing.
 
+Three more toolsets are installed at project scope — `ponytail`, `agent-skills` (both Claude Code
+plugins) and `graphify` (an in-repo skill, not a plugin). Their rules, and the tie-break against
+`superpowers` when both cover the same job, live in
+[10-plugin-stack-rules.md](./10-plugin-stack-rules.md). `ponytail` is **on by default** in every
+Claude Code session; read that file before deciding a skill's advice overrides this one.
+
 ---
 
 ## 2. desktop-commander — when to use it, when NOT to
@@ -122,3 +128,4 @@ The order in AGENTS.md § Skills First Rule is unchanged. Project skills in `.ag
 - `.agent/skills/superpowers-skill.md`
 - `.agent/skills/webview2-devtools-inspector-skill.md`
 - `.agent/skills/csharp-winforms-skill.md`
+- `.claude/skills/graphify/SKILL.md` — in-repo skill, invoked on demand only (see rule 10 §4)

@@ -60,21 +60,26 @@ Never start editing on a stale or dirty working tree.
 
 Before starting work on any task:
 
-1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain and follow it.
+1. Check `.agent/skills/` (curated project skills), `.claude/skills/` (in-repo skills such as `graphify`) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain and follow it.
 2. For any DataHub/PostgreSQL work follow `.agent/skills/postgres-best-practices/SKILL.md`.
-3. If no local skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
-3. Skills are helpers — the rules in this file always take precedence over any skill guidance.
+3. Next, check the plugin skills from `superpowers`, `agent-skills` and `ponytail` — see [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md) for which one owns which job. Project skills describe *this* codebase and beat generic methodology.
+4. If no skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
+5. Skills are helpers — the rules in this file always take precedence over any skill guidance.
 
 ### Agent Tooling Rule
 
-Two extra toolsets are available and **every agent should use them proactively when they fit**:
+Extra toolsets are available and **every agent should use them proactively when they fit**:
 
 | Tool | Kind | Who has it | Skill file |
 |---|---|---|---|
 | `desktop-commander` | MCP server, repo-scoped in `.mcp.json` | any client loading `.mcp.json` | `.agent/skills/desktop-commander-skill.md` |
 | `superpowers` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/skills/superpowers-skill.md` |
+| `ponytail` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/rules/10-plugin-stack-rules.md` §2 |
+| `agent-skills` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/rules/10-plugin-stack-rules.md` §3 |
+| `graphify` | in-repo skill, **not** a plugin | any client reading `.claude/skills/` | `.claude/skills/graphify/SKILL.md` |
 
-Binding rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md).
+Binding rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md)
+and [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md).
 
 Non-negotiables, restated because these tools make it easy to break them:
 
@@ -88,6 +93,14 @@ Non-negotiables, restated because these tools make it easy to break them:
   without an explicit owner request.
 - `superpowers` TDD covers pure-logic classes only — not WinForms Designer code or WebView2
   automation.
+- `ponytail` is on by default (mode `full`) and enforces the Minimal Edit Rule — leave it on.
+  Its `-audit`/`-debt`/`-gain` reports are read-only: hand them to the owner, do not act on them.
+- When `superpowers` and `agent-skills` both cover a job, `superpowers` wins for process
+  (brainstorm, plan, debug, TDD); `agent-skills` is for topic checklists (security, API design,
+  ship). `/ship` is not a release command — release is `.agent/skills/autojms-release-build/`.
+- `graphify` is on-demand only. `.codegraph/` stays the default for code questions, and
+  `graphify-out/` is never committed.
+- Adding a new plugin or marketplace to `.claude/settings.json` requires an explicit owner request.
 
 ### After Every Edit — Build
 ```powershell
