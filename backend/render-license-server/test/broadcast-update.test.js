@@ -5,7 +5,7 @@
 // ==========================================================================
 // Two features that share one Firebase node each and one shared failure mode:
 // both are things the client is told, so both run on the hot paths the whole
-// fleet hits once a minute. The tests are weighted towards what happens when
+// fleet hits every two minutes. The tests are weighted towards what happens when
 // they are ABSENT or BROKEN — a broadcast that cannot be read must not take an
 // activation down with it, and a version nobody reported must not blank the one
 // already stored.
@@ -230,7 +230,8 @@ test.describe("verify-license and heartbeat", () => {
 // ==========================================================================
 
 test("the heartbeat does not rewrite the licence record on every beat", async () => {
-    // The heartbeat runs once a minute per station. Writing the licence record
+    // The heartbeat runs every two minutes per station (HeartbeatSupervisor._interval,
+    // LicenseApiService.cs:1260). Writing the licence record
     // each time would make a presence indicator the busiest write in the system
     // while carrying no more information than a ten-minute-old one.
     const harness = await startServer({

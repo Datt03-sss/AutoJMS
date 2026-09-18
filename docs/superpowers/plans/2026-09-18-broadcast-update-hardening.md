@@ -1160,8 +1160,8 @@ Chèn ngay **trên** `private async Task CheckAndPromptBroadcastUpdateAsync()` (
         /// </summary>
         /// <remarks>
         /// Chạy trên thread của heartbeat, nên phải marshal về UI thread trước khi
-        /// hiện MessageBox. Cờ _broadcastUpdatePromptedThisSession bên trong
-        /// CheckAndPromptBroadcastUpdateAsync lo việc không hỏi hai lần.
+        /// hiện MessageBox. Khoá _broadcastUpdatePromptedKey bên trong
+        /// CheckAndPromptBroadcastUpdateAsync lo việc không hỏi hai lần cùng một lệnh.
         /// </remarks>
         private void OnBroadcastUpdateReceived(BroadcastUpdateDirective directive)
         {
@@ -1176,8 +1176,25 @@ Chèn ngay **trên** `private async Task CheckAndPromptBroadcastUpdateAsync()` (
             {
                 // Form đóng ngay giữa lúc heartbeat về — không có gì để làm.
             }
+            catch (InvalidOperationException)
+            {
+                // Handle đã bị huỷ giữa lúc kiểm tra IsHandleCreated và BeginInvoke.
+            }
         }
 ```
+
+<!-- Sửa sau review (commit 727c4ff): khối này trước đây đặt tên cờ là
+     `_broadcastUpdatePromptedThisSession` — một cờ bool một-lần-mỗi-PHIÊN. Sai:
+     máy trạm bỏ lỡ lệnh THỨ HAI trong cùng ca (Owner phát 1.26.12 rồi phát tiếp
+     1.26.13 thì lệnh sau bị nuốt im lặng). Bản đã ship dùng `string
+     _broadcastUpdatePromptedKey` — khoá "version|channel", một-lần-mỗi-LỆNH.
+     Đừng khôi phục cờ bool.
+
+     Khối `catch (InvalidOperationException)` cũng được thêm sau (commit 37fe4e7):
+     giữa `IsHandleCreated` và `BeginInvoke` có khe thời gian mà handle bị huỷ, và
+     `Control.MarshaledInvoke` ném InvalidOperationException chứ không phải
+     ObjectDisposedException. Đây là idiom sẵn có của repo
+     (`FullStackOperation.cs:3273` và `:4163`). Đừng bỏ. -->
 
 > Nếu `Main.cs` chưa có `using AutoJMS.Licensing;` thì thêm; kiểm bằng `grep -n "using AutoJMS.Licensing" src/AutoJMS/Forms/Main.cs`.
 
@@ -1215,9 +1232,18 @@ Dòng 1422 hiện nói lệnh bật giữa ca chỉ nhận được ở lần m�
 bằng:
 
 ```csharp
-        /// Chỉ hỏi một lần mỗi phiên. Lệnh bật giữa ca vẫn tới được, qua
-        /// LicenseApiService.BroadcastUpdateReceived.
+        /// Mỗi lệnh (version + channel) chỉ hỏi một lần. Lệnh bật giữa ca vẫn tới được,
+        /// qua LicenseApiService.BroadcastUpdateReceived.
 ```
+
+<!-- Sửa sau review (commit 727c4ff): câu thay thế trước đây là "Chỉ hỏi một lần mỗi
+     phiên. Lệnh bật giữa ca vẫn tới được, qua LicenseApiService.BroadcastUpdateReceived."
+     Nửa đầu mâu thuẫn nửa sau: nếu chỉ hỏi một lần mỗi phiên thì lệnh thứ hai giữa ca
+     KHÔNG tới được. Semantics đã ship là một-lần-mỗi-LỆNH, nên doc comment phải nói
+     đúng như trên. Xem chú thích ở Step 4 về `_broadcastUpdatePromptedKey`. -->
+
+> Doc comment ở dòng ~1462 trong bản đã ship có nội dung đúng như khối trên; nếu file
+> hiện tại còn chữ "Chỉ hỏi một lần mỗi phiên" thì cờ bool cũ vẫn chưa được thay.
 
 - [ ] **Step 7: Build**
 
@@ -1345,7 +1371,7 @@ Theo đúng format bắt buộc trong `CLAUDE.md`: **1. Summary — 2. Files Cha
 - **Chưa có auto-apply khi mở app.** Chọn "Để sau" thì gói đã tải nằm chờ, nhưng không có code khởi động nào áp dụng nó; người dùng phải vào tab GIỚI THIỆU. Làm tự động cần sửa `Program.cs` (`UpdateManager.UpdatePendingRestart`) — Protected File, **chưa** được duyệt trong task này. **Xin Owner quyết.**
 - **Ý nghĩa cột Phiên bản đã đổi**: giờ là "bản cao nhất từng thấy trên license", per-máy nằm ở `sessions/{sessionId}`. Tooltip đã nói rõ, nhưng Owner cần biết.
 - **Sàn 30 giây** làm telemetry `lastActiveAt` thô hơn một chút cho license nhiều máy. Hạ được bằng env `LICENSE_ACTIVITY_MIN_WRITE_GAP_MS` mà không cần deploy code.
-- **Prompt có thể chen ngang giữa ca.** Đây đúng là điều lỗi #5 yêu cầu, nhưng hệ quả là hộp thoại modal có thể hiện lúc người dùng đang nhập liệu. Chỉ hỏi một lần mỗi phiên nên không quấy rầy lặp lại.
+- **Prompt có thể chen ngang giữa ca.** Đây đúng là điều lỗi #5 yêu cầu, nhưng hệ quả là hộp thoại modal có thể hiện lúc người dùng đang nhập liệu. Mỗi lệnh (version + channel) chỉ hỏi một lần nên không quấy rầy lặp lại; nhưng nếu Owner phát hai lệnh khác nhau trong cùng một ca thì máy trạm sẽ hỏi hai lần — đó là chủ ý, vì lệnh thứ hai là lệnh mới.
 - **`server.js:1060` và `:1237` vẫn log `appVersion` thô** (`appVersion || null`, không qua `sanitizeAppVersion`) — cùng gốc với lỗi #6 nhưng chỉ là log, nên cố ý **để ngoài** diff này để không mở rộng phạm vi. Đề xuất làm ở task sau.
 - **`.agent/rules/04-update-release-rules.md:203`** vẫn ghi "No automatic updates - user must click About tab", và `manualOnly: true` ở dòng 175/188 — đã cũ từ commit `403b999`. Cần Owner duyệt mới sửa tài liệu rule.
 
