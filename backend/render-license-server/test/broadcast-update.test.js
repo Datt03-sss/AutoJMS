@@ -94,6 +94,18 @@ test.describe("verify-license and heartbeat", () => {
         assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.12-beta.1");
     });
 
+    test("the space-separated beta form every beta build stamps is stored canonically", async () => {
+        // build-release.ps1 sets InformationalVersion to "1.26.6 beta 1", spaces
+        // and all, so this is the literal string every beta station reports. It
+        // used to fail the pattern and be dropped, leaving the dashboard's version
+        // column blank on exactly the channel that needed watching.
+        seed();
+
+        await verify({ appVersion: "1.26.6 beta 1" });
+
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.6-beta.1");
+    });
+
     test("a version that is not a version is dropped, and the stored one is kept", async () => {
         // The value arrives off the wire and is rendered in the admin table and
         // compared against on the station. Anything that is not a plain version
@@ -107,6 +119,19 @@ test.describe("verify-license and heartbeat", () => {
         const record = harness.db.read(`Licenses/${FIXTURE.licenseKey}`);
         assert.equal(record.appVersion, "1.26.11", "a rejected report must not blank the last known build");
         assert.ok(record.lastActiveAt > 0, "the station was still seen, whatever it claimed to be running");
+    });
+
+    test("the beta normalisation is not a way past the pattern", async () => {
+        // The " beta " substitution runs BEFORE the pattern test, so it has to be
+        // checked that it cannot be used to smuggle something the pattern would
+        // otherwise have caught.
+        harness.db.reset({
+            Licenses: { [FIXTURE.licenseKey]: activeLicense({ appVersion: "1.26.11" }) }
+        });
+
+        await verify({ appVersion: "1.26.6 beta <script>alert(1)</script>" });
+
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.11");
     });
 
     test("a client too old to report a version still activates", async () => {
@@ -284,6 +309,43 @@ test("a newer station still moves the licence version forward", async () => {
     } finally { await harness.close(); }
 });
 
+test("beta.9 does not drag a licence back from beta.10", async () => {
+    // The prerelease labels used to be compared as plain strings, and "beta.9"
+    // sorts ABOVE "beta.10" lexicographically — so the tenth beta was treated as
+    // older than the ninth and every station past beta.9 had its reported build
+    // overwritten by an older one. Both knobs are zeroed so the only thing that
+    // can stop the write is the comparison itself.
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession({ appVersion: "1.26.12-beta.10" }));
+        await harness.post("/api/heartbeat", {
+            body: { appVersion: "1.26.12-beta.9" },
+            token: harness.signToken()
+        });
+
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.12-beta.10");
+    } finally { await harness.close(); }
+});
+
+test("beta.10 still moves a licence forward from beta.9", async () => {
+    // The other half of the same comparison: refusing everything would satisfy
+    // the test above and break the feature.
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession({ appVersion: "1.26.12-beta.9" }));
+        await harness.post("/api/heartbeat", {
+            body: { appVersion: "1.26.12-beta.10" },
+            token: harness.signToken()
+        });
+
+        assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.12-beta.10");
+    } finally { await harness.close(); }
+});
+
 test("two writes cannot land inside the minimum gap", async () => {
     const harness = await startServer({
         env: {
@@ -302,6 +364,30 @@ test("two writes cannot land inside the minimum gap", async () => {
         // The floor holds even for a version change: a station that just
         // updated re-activates (force: true) on restart and is written then.
         assert.equal(harness.db.read(`Licenses/${FIXTURE.licenseKey}`).appVersion, "1.26.11");
+    } finally { await harness.close(); }
+});
+
+test("a beta station's own build reaches its session row", async () => {
+    // The session row is where per-machine truth lives, and a beta station's
+    // report is the space form. Sanitising it to "" here would leave the only
+    // per-machine record of a beta build empty.
+    const harness = await startServer({
+        env: { BROADCAST_UPDATE_CACHE_MS: 0, LICENSE_ACTIVITY_WRITE_INTERVAL_MS: 0, LICENSE_ACTIVITY_MIN_WRITE_GAP_MS: 0 }
+    });
+    try {
+        harness.db.reset(seedWithActiveSession());
+        const res = await harness.post("/api/verify-license", {
+            body: {
+                licenseKey: FIXTURE.licenseKey,
+                hwid: FIXTURE.hwid,
+                appVersion: "1.26.6 beta 1"
+            }
+        });
+
+        assert.equal(res.status, 200);
+        const sessions = Object.values(harness.db.read("sessions") || {});
+        assert.equal(sessions.length, 1);
+        assert.equal(sessions[0].appVersion, "1.26.6-beta.1");
     } finally { await harness.close(); }
 });
 

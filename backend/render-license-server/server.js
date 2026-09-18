@@ -519,7 +519,13 @@ function getClientIp(req) {
 const APP_VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
 
 function sanitizeAppVersion(raw) {
-    const value = String(raw ?? "").trim();
+    // `release/build-release.ps1` stamps a beta build's InformationalVersion as
+    // "1.26.6 beta 1" — with spaces — which the pattern above rejects, so the
+    // dashboard column was blank on exactly the channel it is needed for.
+    // Normalise to the canonical form first; UpdateChannelDialog.IsUpgrade does
+    // the same substitution on the client, so both halves agree on what a
+    // version is. Anything that is still not a version token is dropped.
+    const value = String(raw ?? "").trim().replace(/ beta /i, "-beta.");
     return APP_VERSION_PATTERN.test(value) ? value : "";
 }
 
@@ -604,11 +610,13 @@ function isNewerOrEqualVersion(incoming, stored) {
 /**
  * How stale `lastActiveAt` may get before a heartbeat refreshes it.
  *
- * The heartbeat runs once a minute per station, and the licence record is not
- * session state: writing it on every beat would make a presence indicator the
- * busiest write in the system without carrying any more information than a
- * ten-minute-old one. Both the thirty-second floor and the ten-minute interval
- * apply to every write, including version changes; activation bypasses both.
+ * The heartbeat runs once every two minutes per station, and the licence record
+ * is not session state: writing it on every beat would make a presence indicator
+ * the busiest write in the system without carrying any more information than a
+ * ten-minute-old one. This interval rations only the beats that carry nothing
+ * new — the check below it is guarded by `!versionChanged` — so a heartbeat
+ * reporting a version change waits on the thirty-second floor alone; activation
+ * bypasses both.
  */
 const LICENSE_ACTIVITY_WRITE_INTERVAL_MS = numericEnv(
     process.env.LICENSE_ACTIVITY_WRITE_INTERVAL_MS,
@@ -686,9 +694,10 @@ async function recordLicenseActivity(licenseKey, record, appVersion, { force = f
  * How long a read of config/broadcastUpdate is reused.
  *
  * Every verify-license AND every heartbeat in the fleet consults this node —
- * once a minute per station — while it changes only when the owner presses a
- * button in /admin. The TTL is therefore the delay between switching a broadcast
- * on and the fleet noticing, which is why it is seconds rather than minutes.
+ * once every two minutes per station — while it changes only when the owner
+ * presses a button in /admin. The TTL is therefore the delay between switching a
+ * broadcast on and the fleet noticing, which is why it is seconds rather than
+ * minutes.
  */
 const BROADCAST_CACHE_TTL_MS = numericEnv(process.env.BROADCAST_UPDATE_CACHE_MS, 20_000, 0);
 

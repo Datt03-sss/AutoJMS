@@ -450,9 +450,17 @@ function isNewerOrEqualVersion(incoming, stored) {
 
     if (!a.pre && b.pre) return true;
     if (a.pre && !b.pre) return false;
-    return a.pre >= b.pre;
+    return comparePrerelease(a.pre, b.pre) >= 0;
 }
 ```
+
+<!-- Sửa sau review (commit 1d3da8a): dòng cuối trước đây là `return a.pre >= b.pre;`.
+     So sánh chuỗi thuần xếp "beta.9" TRÊN "beta.10", nên beta thứ mười bị coi là cũ
+     hơn beta thứ chín. Bản đã ship dùng `comparePrerelease` (SemVer §11, nằm ngay
+     trên `isNewerOrEqualVersion` trong server.js) và có test HTTP đi kèm ở
+     `test/broadcast-update.test.js` ("beta.9 does not drag a licence back from
+     beta.10" và chiều ngược lại). Đừng khôi phục dòng cũ. -->
+
 
 - [ ] **Step 5: Thêm knob sàn tần suất**
 
@@ -1110,6 +1118,15 @@ bằng:
 ```
 
 > Nếu hàm có nhiều điểm `return` khác gán `CurrentBroadcastUpdate`, chỉ sửa điểm gán directive hợp lệ này. Nhánh gán `null` (lệnh đã tắt) **không** bắn event.
+
+<!-- Sửa sau review: bản đã ship KHÁC đoạn code trên ở một điểm có chủ ý. Nó chỉ
+     `Invoke` khi directive thực sự đổi (so `previous.Version` và `previous.Channel`,
+     xem `LicenseApiService.cs:684-687`), chứ không bắn mỗi lần parse được một
+     directive đang bật. Làm đúng như chữ ở trên thì mỗi nhịp heartbeat (2 phút) lại
+     bắn một lần trong khi lệnh vẫn đang bật ổn định — khoảng 720 dòng log
+     "[BroadcastUpdate] bỏ qua" mỗi máy mỗi ngày, vĩnh viễn. Đừng "sửa" code về
+     đúng đoạn trên. -->
+
 
 - [ ] **Step 3: Đăng ký trong constructor**
 
