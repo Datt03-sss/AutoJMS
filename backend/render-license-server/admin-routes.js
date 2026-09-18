@@ -1454,14 +1454,21 @@ router.post(
 // ==========================================
 
 /**
- * A release tag reduced to the version string the desktop client reports.
+ * The plain SemVer inside a git tag.
  *
- * AutoJMS tags are `v1.26.12` / `v1.26.12-beta.1`; AppVersion.Current reports
- * them without the `v`. They have to end up in the same shape or the broadcast
- * comparison on the station would find every release newer than itself.
+ * AutoJMS tags every build `-Release` (`v1.26.12-Release`,
+ * `v1.26.13-beta.1-Release`) — a house convention, not a SemVer prerelease
+ * label. Handing it to the client untouched makes `1.26.12-Release` sort BELOW
+ * `1.26.12`, so a station reads the newest build as a downgrade and refuses it;
+ * and `beta.1-Release` / `beta.2-Release` both parse their build number as 0,
+ * so no beta ever supersedes another. Strip it here, at the one place tags
+ * become versions.
  */
 function versionFromTag(tag) {
-    return String(tag || "").trim().replace(/^[vV]/, "");
+    return String(tag || "")
+        .trim()
+        .replace(/^[vV]/, "")
+        .replace(/-[Rr]elease$/i, "");
 }
 
 /** One release, in the only shape the dropdown and the POST body care about. */
@@ -1667,9 +1674,18 @@ router.post(
             );
         }
 
-        const channel = String(req.body?.channel || "").trim().toLowerCase();
-        if (!KNOWN_CHANNELS.has(channel)) {
+        const requestedChannel = String(req.body?.channel || "").trim().toLowerCase();
+        if (!KNOWN_CHANNELS.has(requestedChannel)) {
             return fail(res, 400, "INVALID_UPDATE_CHANNEL", "Kênh cập nhật chỉ nhận stable hoặc beta.");
+        }
+
+        // A beta build exists only on the beta feed. A broadcast naming one while
+        // saying "stable" sends every station to a feed that has no such release:
+        // Velopack answers "you are up to date", so the broadcast looks delivered
+        // and changes nothing. Correct it here rather than trusting the form.
+        const channel = version.toLowerCase().includes("-beta") ? "beta" : requestedChannel;
+        if (channel !== requestedChannel) {
+            logEvent("info", "admin.broadcast_channel_corrected", { version, requestedChannel, channel });
         }
 
         // Same treatment as notes: this string is typed by the owner and shown in

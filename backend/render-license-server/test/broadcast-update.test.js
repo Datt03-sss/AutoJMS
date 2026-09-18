@@ -452,6 +452,38 @@ test.describe("admin broadcast routes", () => {
         assert.equal(response.body.license.appVersion, "");
         assert.equal(response.body.license.lastActiveAt, null);
     });
+
+    test("a -beta version forces the beta channel even when stable was asked for", async () => {
+        const harness = await startServer({ env: { ADMIN_SECRET_TOKEN: ADMIN_TOKEN } });
+        try {
+            harness.db.reset({});
+            const res = await harness.post("/api/admin/broadcast-update", {
+                body: { active: true, version: "1.26.12-beta.1", channel: "stable" },
+                ...withAuth()
+            });
+
+            assert.equal(res.status, 200);
+            // A beta build exists only on the beta feed. Honouring "stable" here
+            // would send every station to a feed with no such release, and Velopack
+            // would answer "you are up to date" — a broadcast that looks delivered
+            // and changes nothing.
+            assert.equal(harness.db.read("config/broadcastUpdate").channel, "beta");
+        } finally { await harness.close(); }
+    });
+
+    test("a plain version keeps the channel the owner chose", async () => {
+        const harness = await startServer({ env: { ADMIN_SECRET_TOKEN: ADMIN_TOKEN } });
+        try {
+            harness.db.reset({});
+            const res = await harness.post("/api/admin/broadcast-update", {
+                body: { active: true, version: "1.26.12", channel: "stable" },
+                ...withAuth()
+            });
+
+            assert.equal(res.status, 200);
+            assert.equal(harness.db.read("config/broadcastUpdate").channel, "stable");
+        } finally { await harness.close(); }
+    });
 });
 
 // ==========================================================================
@@ -591,5 +623,33 @@ test("the release list is behind the admin token too", async () => {
         assert.equal(response.status, 401);
     } finally {
         await harness.close();
+    }
+});
+
+test("a release tag keeps its -Release suffix out of the version", async () => {
+    const github = await stubServer((req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify([
+            { tag_name: "v1.26.12-Release", name: "AutoJMS 1.26.12", prerelease: false, draft: false, published_at: "2026-09-01T00:00:00Z" },
+            { tag_name: "v1.26.13-beta.1-Release", name: "AutoJMS 1.26.13-beta.1", prerelease: true, draft: false, published_at: "2026-09-02T00:00:00Z" }
+        ]));
+    });
+
+    const harness = await startServer({
+        env: { ADMIN_SECRET_TOKEN: ADMIN_TOKEN, GITHUB_RELEASES_API_URL: `${github.origin}/releases` }
+    });
+
+    try {
+        const res = await harness.get("/api/admin/releases", withAuth());
+        assert.equal(res.status, 200);
+
+        const versions = res.body.releases.map(r => r.version);
+        // AutoJMS tags every build `-Release`. Left on, the client's semver
+        // comparison reads it as a prerelease label and refuses the upgrade.
+        assert.ok(versions.includes("1.26.12"), `stable version not normalised: ${versions.join(", ")}`);
+        assert.ok(versions.includes("1.26.13-beta.1"), `beta version not normalised: ${versions.join(", ")}`);
+    } finally {
+        await harness.close();
+        await github.close();
     }
 });
