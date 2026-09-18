@@ -1460,7 +1460,7 @@ namespace AutoJMS
                     text.AppendLine(directive.Message.Trim());
                 }
                 text.AppendLine();
-                text.Append("Cập nhật ngay bây giờ? Ứng dụng sẽ tự khởi động lại sau khi tải xong.");
+                text.Append("Cập nhật ngay bây giờ? Tải xong sẽ hỏi lại trước khi khởi động lại.");
 
                 var answer = MessageBox.Show(
                     this,
@@ -1476,6 +1476,19 @@ namespace AutoJMS
                     return;
                 }
 
+                // Tiến trình tải hiện trên thanh tiêu đề: người dùng đang ở tab nào
+                // cũng thấy, và không phải thêm control mới (Main.Designer.cs là
+                // Protected File). Designer đặt Text = "AutoJMS" và Main.cs chưa bao
+                // giờ gán lại, nên đây là bề mặt trống duy nhất luôn nhìn thấy được.
+                string originalTitle = this.Text;
+                var progress = new Progress<int>(percent =>
+                {
+                    if (this.IsDisposed) return;
+                    this.Text = percent >= 100
+                        ? "AutoJMS — Đang áp dụng cập nhật…"
+                        : $"AutoJMS — Đang tải cập nhật {percent}%";
+                });
+
                 var updateSvc = new VelopackUpdateService(
                     channel,
                     PrepareForUpdateAsync,
@@ -1488,7 +1501,21 @@ namespace AutoJMS
                         return false;
                     });
 
-                await updateSvc.CheckAndUpdateAsync(null, _appCts.Token);
+                try
+                {
+                    // suppressPrompt: người dùng vừa bấm Yes ở hộp thoại trên, hỏi lại
+                    // là hộp thoại thứ hai y hệt. promptBeforeRestart: không tắt app
+                    // đột ngột giữa lúc đang nhập liệu.
+                    await updateSvc.CheckAndUpdateAsync(
+                        progress,
+                        _appCts.Token,
+                        suppressPrompt: true,
+                        promptBeforeRestart: true);
+                }
+                finally
+                {
+                    if (!this.IsDisposed) this.Text = originalTitle;
+                }
             }
             catch (OperationCanceledException)
             {
