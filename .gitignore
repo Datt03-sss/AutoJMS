@@ -124,14 +124,9 @@ service_accout*.json
 # Cursor IDE tooling — local to each machine, not for committing (like .codegraph/)
 .cursor/
 
-# Đồ thị tri thức do graphify sinh ra. Dựng lại được từ source bằng `graphify .` nên là
-# artifact chứ không phải source, và nó nội suy nguyên văn code vào graph.json/wiki —
-# đúng loại thứ không nên nằm trong một repo PUBLIC. Cùng lý do với .codegraph/.
-# Bản thân SKILL (.claude/skills/graphify/) THÌ ĐƯỢC commit. Xem .agent/rules/10-plugin-stack-rules.md.
-graphify-out/
-
-# Bản sao lưu settings.json do `graphify install` tự tạo. Đuôi "-bak" không khớp mẫu *.bak
-# ở trên nên phải liệt kê riêng; giữ lại trên máy để rollback, không đưa vào git.
+# Bản sao lưu settings.json do `graphify install` tự tạo, còn sót lại trên máy Owner sau khi
+# graphify bị loại bỏ (ADR-0002). Đuôi "-bak" không khớp mẫu *.bak ở trên nên phải liệt kê
+# riêng; repo có rule không xoá file nên giữ dòng này để nó không hiện `??` trong mọi git status.
 .claude/settings.json.graphify-bak
 
 # VPS infrastructure state — this repo is PUBLIC.

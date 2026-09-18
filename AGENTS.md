@@ -35,10 +35,17 @@
 ## Workspace Lock Rules
 
 1. **Read Lock Before Edit**: Before making any edits, read `.agent-lock.md`.
-2. **Check Current Writer**: Do **NOT** edit any files if `Current Writer` is set to another agent.
-3. **Acquire Lock**: If `Current Writer` is `None`, set it to your agent name and set `Mode: WRITE_ACTIVE`.
+2. **Check Current Writer**: Do **NOT** edit any files if `Current Writer` is anything other than
+   `None` or your own identifier from step 3. A value you do not recognise as yours belongs to
+   another session — treat the repo as locked and **wait**. Do not assume a stale lock; ask the Owner.
+3. **Acquire Lock**: If `Current Writer` is `None`, set it to `<agent name> (<session identifier>)` —
+   e.g. `Claude Code (cleanup-tooling-rules)` — and set `Mode: WRITE_ACTIVE`. The session identifier
+   is **mandatory**: two Claude Code sessions can run in parallel and both call themselves
+   "Claude Code", so a bare agent name lets each one mistake the other's lock for its own.
 4. **Task Scoping**: Only edit files specified in the active `Scope` property in `.agent-lock.md`.
 5. **Release Lock**: After verification and push succeed, reset `Current Writer: None`, `Mode: READ_ONLY`.
+6. **Re-read Before Release**: Read `.agent-lock.md` again before releasing. If `Current Writer` is no
+   longer your identifier, another session took the lock — do not overwrite it, report to the Owner.
 
 ---
 
@@ -60,7 +67,7 @@ Never start editing on a stale or dirty working tree.
 
 Before starting work on any task:
 
-1. Check `.agent/skills/` (curated project skills), `.claude/skills/` (in-repo skills such as `graphify`) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain and follow it.
+1. Check `.agent/skills/` (curated project skills) and `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain and follow it.
 2. For any DataHub/PostgreSQL work follow `.agent/skills/postgres-best-practices/SKILL.md`.
 3. Next, check the plugin skills from `superpowers`, `agent-skills` and `ponytail` — see [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md) for which one owns which job. Project skills describe *this* codebase and beat generic methodology.
 4. If no skill matches, use the `find-skills` skill (`.agent/skills/SKILL.md`) to discover and install a suitable skill (`npx skills find [query]`) before falling back to general knowledge.
@@ -76,7 +83,6 @@ Extra toolsets are available and **every agent should use them proactively when 
 | `superpowers` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/skills/superpowers-skill.md` |
 | `ponytail` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/rules/10-plugin-stack-rules.md` §2 |
 | `agent-skills` | Claude Code plugin (`.claude/settings.json`) | Claude Code CLI only | `.agent/rules/10-plugin-stack-rules.md` §3 |
-| `graphify` | in-repo skill, **not** a plugin | any client reading `.claude/skills/` | `.claude/skills/graphify/SKILL.md` |
 
 Binding rules: [.agent/rules/08-agent-tooling-rules.md](./.agent/rules/08-agent-tooling-rules.md)
 and [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md).
@@ -98,8 +104,8 @@ Non-negotiables, restated because these tools make it easy to break them:
 - When `superpowers` and `agent-skills` both cover a job, `superpowers` wins for process
   (brainstorm, plan, debug, TDD); `agent-skills` is for topic checklists (security, API design,
   ship). `/ship` is not a release command — release is `.agent/skills/autojms-release-build/`.
-- `graphify` is on-demand only. `.codegraph/` stays the default for code questions, and
-  `graphify-out/` is never committed.
+- `.codegraph/` is the repo's only code-graph tool. `graphify` and OmniRoute were evaluated and
+  rejected — see [ADR-0002](./docs/decisions/ADR-0002-rejected-tools-omniroute-and-graphify.md).
 - Adding a new plugin or marketplace to `.claude/settings.json` requires an explicit owner request.
 
 ### After Every Edit — Build

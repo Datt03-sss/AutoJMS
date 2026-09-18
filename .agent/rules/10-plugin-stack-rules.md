@@ -1,4 +1,4 @@
-# Plugin Stack Rules — ponytail, agent-skills, graphify
+# Plugin Stack Rules — ponytail, agent-skills
 
 Áp dụng cho mọi agent. Bổ sung cho [08-agent-tooling-rules.md](./08-agent-tooling-rules.md), không thay thế nó.
 
@@ -9,9 +9,9 @@ AGENTS.md  >  CLAUDE.md  >  .agent/rules/*  >  .agent/skills/*  >  plugin skill 
 ```
 
 Một plugin *có thể* làm gì đó không bao giờ là quyền được làm điều đó. `ponytail` sẽ ép bạn viết ít
-code nhất, `agent-skills` sẽ đề xuất refactor hoặc test suite mới, `graphify` sẽ muốn dựng lại graph —
-cả ba vẫn bị chặn bởi Minimal Edit Rule, Protected Files, Secret Policy, khoá single-writer trong
-`.agent-lock.md`, và gate "không push khi Release build chưa pass".
+code nhất, `agent-skills` sẽ đề xuất refactor hoặc test suite mới — cả hai vẫn bị chặn bởi Minimal
+Edit Rule, Protected Files, Secret Policy, khoá single-writer trong `.agent-lock.md`, và gate
+"không push khi Release build chưa pass".
 
 ---
 
@@ -22,21 +22,12 @@ cả ba vẫn bị chặn bởi Minimal Edit Rule, Protected Files, Secret Polic
 | `superpowers@claude-plugins-official` | Claude Code plugin | `.claude/settings.json` | Claude Code CLI | project |
 | `ponytail@ponytail` | Claude Code plugin | `.claude/settings.json` | Claude Code CLI | project |
 | `agent-skills@addy-agent-skills` | Claude Code plugin | `.claude/settings.json` | Claude Code CLI | project |
-| `graphify` | **Skill trong repo**, không phải plugin | `.claude/skills/graphify/` | client nào đọc `.claude/skills/` | project |
 | `desktop-commander` | MCP server | `.mcp.json` | client nào load `.mcp.json` | project |
 
 Cả ba plugin đều **project scope** — khai báo nằm trong `.claude/settings.json` và file đó được commit,
-nên mọi session Claude Code mở repo này đều nhận được. Cowork / Antigravity / ChatGPT **không** có
-plugin; đừng viết hướng dẫn giả định mọi agent đều có `/ponytail` hay `/spec`.
-
-Dựng lại trên một máy mới:
-
-```bash
-pip install graphifyy
-```
-
-Marketplace và plugin tự resolve từ `.claude/settings.json` khi mở repo. `graphifyy` phải cài thủ công
-vì nó là CLI Python, không đi kèm git.
+nên mọi session Claude Code mở repo này đều nhận được, không phải cài lại trên máy mới. Cowork /
+Antigravity / ChatGPT **không** có plugin; đừng viết hướng dẫn giả định mọi agent đều có `/ponytail`
+hay `/spec`.
 
 ---
 
@@ -110,41 +101,15 @@ Nguyên tắc: **superpowers cho quy trình, agent-skills cho checklist chuyên 
 
 ---
 
-## 4. graphify — skill thủ công, KHÔNG phải mặc định
+## 4. Đã cân nhắc và loại bỏ — graphify, OmniRoute
 
-`graphify` biến repo thành knowledge graph truy vấn được (`graphify query|path|explain`).
+Cả hai đều **không** được cài. `.codegraph/` là giải pháp đồ thị code duy nhất của repo này; hỏi code
+thì dùng `codegraph explore "..."`. Lý do loại bỏ ghi ở
+[ADR-0002](../../docs/decisions/ADR-0002-rejected-tools-omniroute-and-graphify.md).
 
-### Hook đã bị gỡ — đừng cài lại
-
-`graphify install --project` tự đăng ký hook `PreToolUse` chặn mọi `Bash|Grep|Read|Glob` để gọi
-`graphify hook-guard`. **Hook đó đã bị gỡ khỏi `.claude/settings.json` có chủ ý**, vì hai lý do:
-
-1. `graphify` là script Python nằm ngoài PATH mặc định trên Windows
-   (`…\Python\pythoncore-3.14-64\Scripts\`). Máy nào chưa `pip install graphifyy` sẽ lỗi
-   `command not found` ở **mọi** tool call.
-2. Repo này đã có `.codegraph/` làm đúng việc đó, và global rule của Owner là CodeGraph trước tiên.
-   Hai hệ đồ thị cùng chặn `Read`/`Grep` là dư thừa.
-
-Nếu chạy lại `graphify install`, nó sẽ ghi hook trở lại. Gỡ hook lần nữa trước khi commit.
-
-### Dùng khi nào
-
-| Tình huống | Dùng |
-|---|---|
-| Hỏi code C#/JS trong repo | `.codegraph/` (`codegraph explore "..."`) — mặc định |
-| Gộp cả docs/PDF/ảnh vào cùng một graph với code | `graphify` |
-| Cần `graph.html` trực quan để trình bày cho Owner | `graphify` |
-| Truy vết quan hệ giữa hai symbol | CodeGraph trước; `graphify path` nếu CodeGraph không ra |
-
-### Ràng buộc
-
-1. **`graphify-out/` không bao giờ được commit.** Đã nằm trong `.gitignore`. Nó nhúng nguyên văn code
-   vào `graph.json`/wiki, và repo này PUBLIC.
-2. **Không chạy `graphify` trên thư mục chứa dữ liệu thật** — `docs/manual/samples/`,
-   `docs/manual/*.xlsx` chứa tên/địa chỉ/SĐT khách hàng. Chỉ trỏ vào `src/`, `backend/`, `tests/`.
-3. **Không bật `--strict`.** Flag đó chặn lần đọc file thô đầu tiên mỗi phiên cho tới khi chạy
-   `graphify query` — xung đột trực tiếp với luồng CodeGraph.
-4. Phần lớn máy sẽ phải gọi bằng đường dẫn đầy đủ tới `graphify.exe` nếu chưa thêm Scripts vào PATH.
+Nếu ai đó chạy lại `graphify install --project`, nó sẽ ghi lại skill vào `.claude/skills/graphify/`,
+thêm hook `PreToolUse` gọi binary `graphify` vào `.claude/settings.json`, và nối thêm một mục vào
+`CLAUDE.md`. Hoàn tác cả ba trước khi commit.
 
 ---
 
