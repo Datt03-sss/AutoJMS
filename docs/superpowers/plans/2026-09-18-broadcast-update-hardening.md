@@ -674,15 +674,15 @@ Giữ nguyên 3 dòng comment ngay trên nó (1681-1683).
 
 - [ ] **Step 7: Sửa tooltip cột Phiên bản cho khớp ý nghĩa mới**
 
-Sau Task 2, giá trị trên `Licenses/{key}` là phiên bản cao nhất từng thấy trên license đó, không phải phiên bản máy báo về gần nhất. Trong `versionCell(license)`, thay 3 dòng `title:`:
+Sau Task 2, giá trị trên `Licenses/{key}` là phiên bản cao nhất từng thấy trên license đó, không phải phiên bản máy báo về gần nhất. Trong `versionCell(license)`, thay 3 dòng `title:` hiện tại:
 
 ```js
             title: seen
-                ? `Cao nhat da thay tren license nay. Bao ve lan cuoi: ${seen[3]}/${seen[2]}/${seen[1]} ${seen[4]}:${seen[5]}`
-                : "Phien ban cao nhat cac may tram tren license nay tung bao ve"
+                ? `Máy trạm báo về lần cuối: ${seen[3]}/${seen[2]}/${seen[1]} ${seen[4]}:${seen[5]}`
+                : "Phiên bản do máy trạm tự báo về"
 ```
 
-bằng bản có dấu (file này dùng tiếng Việt có dấu, UTF-8):
+bằng:
 
 ```js
             title: seen
