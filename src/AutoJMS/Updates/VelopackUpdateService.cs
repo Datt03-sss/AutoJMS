@@ -174,9 +174,19 @@ namespace AutoJMS
         /// Full interactive flow: check → confirm → download (with progress) →
         /// prepare → apply & restart. Never opens a browser.
         /// </summary>
+        /// <param name="suppressPrompt">
+        /// Người gọi đã xin phép người dùng rồi (lệnh cập nhật đồng loạt từ Dashboard).
+        /// Hỏi lại ở đây là hộp thoại thứ hai y hệt hộp thoại vừa bấm Yes.
+        /// </param>
+        /// <param name="promptBeforeRestart">
+        /// Hỏi trước khi khởi động lại. Mặc định false để luồng thủ công ở tab
+        /// GIỚI THIỆU giữ nguyên hành vi cũ.
+        /// </param>
         public async Task CheckAndUpdateAsync(
             IProgress<int>? downloadProgress = null,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            bool suppressPrompt = false,
+            bool promptBeforeRestart = false)
         {
             UpdateManager mgr;
             try
@@ -239,16 +249,23 @@ namespace AutoJMS
 
             string newVersion = updateInfo.TargetFullRelease?.Version?.ToString() ?? "mới";
             LogUpdateContext(mgr, updateAvailable: true);
-            var confirm = MessageBox.Show(
-                $"Có bản cập nhật mới: v{newVersion}\n\nBạn có muốn cập nhật ngay không?",
-                "AutoJMS Update",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (confirm != DialogResult.Yes)
+            if (!suppressPrompt)
             {
-                AppLogger.Info($"VelopackUpdateService: user declined update v{newVersion} on channel={_channel}");
-                return;
+                var confirm = MessageBox.Show(
+                    $"Có bản cập nhật mới: v{newVersion}\n\nBạn có muốn cập nhật ngay không?",
+                    "AutoJMS Update",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (confirm != DialogResult.Yes)
+                {
+                    AppLogger.Info($"VelopackUpdateService: user declined update v{newVersion} on channel={_channel}");
+                    return;
+                }
+            }
+            else
+            {
+                AppLogger.Info($"VelopackUpdateService: prompt suppressed, caller already has consent for v{newVersion} on channel={_channel}");
             }
 
             try
@@ -268,6 +285,33 @@ namespace AutoJMS
                 AppLogger.Error("VelopackUpdateService: download failed", ex);
                 ShowError($"Tải bản cập nhật thất bại.\n\n{ex.Message}");
                 return;
+            }
+
+            // Câu hỏi này phải đứng TRƯỚC _prepareForUpdate. _prepareForUpdate là
+            // Main.PrepareForUpdateAsync: nó cancel _appCts, tắt auto-sync timer,
+            // tắt nhắc Zalo, đóng FullStackOperation, nhả DataHub inventory lease và
+            // dispose các WebView2. Hỏi "để sau?" sau đó là trả lại một cái app đã
+            // bị rút ruột.
+            if (promptBeforeRestart)
+            {
+                var restartNow = MessageBox.Show(
+                    $"Đã tải xong bản cập nhật v{newVersion}.\n\nKhởi động lại ngay để hoàn tất?",
+                    "Hoàn tất tải cập nhật",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (restartNow != DialogResult.Yes)
+                {
+                    // Không gọi _prepareForUpdate: app phải còn nguyên để làm việc tiếp.
+                    // Cũng không gọi WaitExitThenApplyUpdates — updater chỉ chờ tối đa
+                    // 60 giây rồi bỏ, và không có code khởi động nào áp dụng gói đã
+                    // stage, nên hứa "tự áp dụng lần mở kế tiếp" là hứa suông.
+                    AppLogger.Info($"VelopackUpdateService: v{newVersion} downloaded; user chose to restart later.");
+                    ShowInfo(
+                        $"Đã tải xong bản cập nhật v{newVersion}, gói đã nằm sẵn trên máy.\n\n" +
+                        $"Khi nào tiện, vào tab GIỚI THIỆU → Kiểm tra cập nhật (kênh {_channel}) rồi chọn Có để hoàn tất. Lần đó không phải tải lại.");
+                    return;
+                }
             }
 
             // Stop running services before the process is replaced/restarted.
