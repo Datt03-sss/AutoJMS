@@ -71,6 +71,11 @@
         // convenience, not a claim.
         candidateKey: "",
 
+        // Broadcast-modal state. The release list is kept, not just rendered into
+        // the datalist, because picking a version has to be able to look its
+        // channel up — a `<datalist>` option carries no data back to us.
+        broadcastReleases: [],
+
         // Edit-modal state.
         editKey: "",
         editTier: "ULTRA",
@@ -623,8 +628,8 @@
             class: "badge badge--version",
             text: version,
             title: seen
-                ? `Máy trạm báo về lần cuối: ${seen[3]}/${seen[2]}/${seen[1]} ${seen[4]}:${seen[5]}`
-                : "Phiên bản do máy trạm tự báo về"
+                ? `Phiên bản cao nhất đã thấy trên license này. Báo về lần cuối: ${seen[3]}/${seen[2]}/${seen[1]} ${seen[4]}:${seen[5]}`
+                : "Phiên bản cao nhất mà các máy trạm trên license này từng báo về"
         });
     }
 
@@ -1537,6 +1542,7 @@
         try {
             const result = await api("GET", "/releases");
             const releases = Array.isArray(result?.releases) ? result.releases : [];
+            state.broadcastReleases = releases;
 
             dom.broadcastReleaseList.replaceChildren(
                 ...releases.map(release =>
@@ -1551,8 +1557,32 @@
                 ? `${releases.length} bản phát hành (nguồn: ${result.source || "github"}). Có thể gõ tay.`
                 : "Không có bản phát hành nào trong danh sách. Nhập phiên bản thủ công.";
         } catch (error) {
+            state.broadcastReleases = [];
             dom.broadcastReleaseHint.textContent = `${describeError(error).detail} Nhập phiên bản thủ công.`;
         }
+    }
+
+    /**
+     * Keeps the channel select honest about the version typed beside it.
+     *
+     * A beta build exists only on the beta feed. Leaving the select on "stable"
+     * after picking `1.26.12-beta.1` sends every station to a feed with no such
+     * release, and each one reports back "you are already up to date" — the
+     * broadcast looks delivered and does nothing. The server corrects this too;
+     * doing it here means the owner SEES the channel they are about to send.
+     */
+    function syncBroadcastChannel() {
+        const version = dom.broadcastVersion.value.trim();
+        if (!version) return;
+
+        const matched = state.broadcastReleases.find(release => release.version === version);
+        if (matched && (matched.channel === "beta" || matched.channel === "stable")) {
+            dom.broadcastChannel.value = matched.channel;
+            return;
+        }
+
+        // Hand-typed version: the `-beta` label is all we have to go on.
+        dom.broadcastChannel.value = version.toLowerCase().includes("-beta") ? "beta" : "stable";
     }
 
     async function openBroadcast() {
@@ -1631,7 +1661,7 @@
         }
     }
 
-    function submitBroadcast(event) {
+    async function submitBroadcast(event) {
         event.preventDefault();
 
         const version = dom.broadcastVersion.value.trim();
@@ -1642,11 +1672,20 @@
             return;
         }
 
+        const channel = dom.broadcastChannel.value;
+        const ok = await confirmAction({
+            title: "Bật lệnh cập nhật đồng loạt",
+            message: `Phát lệnh yêu cầu TẤT CẢ máy trạm cập nhật lên ${version} (kênh ${channel})?`,
+            okText: "Bật cập nhật",
+            danger: false
+        });
+        if (!ok) return;
+
         return sendBroadcast(
             {
                 active: true,
                 version,
-                channel: dom.broadcastChannel.value,
+                channel,
                 message: dom.broadcastMessage.value
             },
             "Đang bật…"
@@ -1678,10 +1717,23 @@
         dom.broadcastClose.addEventListener("click", closeBroadcast);
         dom.broadcastBackdrop.addEventListener("click", closeBroadcast);
         dom.broadcastForm.addEventListener("submit", submitBroadcast);
+        // Both events: `change` fires when a datalist option is picked, `input`
+        // when the version is typed by hand.
+        dom.broadcastVersion.addEventListener("input", syncBroadcastChannel);
+        dom.broadcastVersion.addEventListener("change", syncBroadcastChannel);
         // Only `active:false` goes up: the server keeps the version and message
         // it already holds, so turning the broadcast back on later reopens on the
         // same text instead of a blank form.
-        dom.broadcastDisable.addEventListener("click", () => sendBroadcast({ active: false }, "Đang tắt…"));
+        dom.broadcastDisable.addEventListener("click", async () => {
+            const ok = await confirmAction({
+                title: "Tắt lệnh cập nhật đồng loạt",
+                message: "Tắt lệnh cập nhật đồng loạt? Máy trạm sẽ không còn nhận thông báo này.",
+                okText: "Tắt cập nhật",
+                danger: true
+            });
+            if (!ok) return;
+            return sendBroadcast({ active: false }, "Đang tắt…");
+        });
 
         dom.createButton.addEventListener("click", openCreate);
         dom.createClose.addEventListener("click", closeCreate);
