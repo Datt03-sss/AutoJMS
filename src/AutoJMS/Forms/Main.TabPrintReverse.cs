@@ -387,15 +387,17 @@ namespace AutoJMS
             if (_reverseGridToolbar == null || _reverseGridToolbar.IsDisposed) return;
             _reverseGridToolbar.Visible = GetTabPrintModeFromSelectedTab() == PrintMode.InReverse;
 
-            // AppTheme.Apply() chỉ nhận ra control SunnyUI nên cụm này không được đổi màu theo.
-            // Bám vào lượt đổi tab con: đổi theme xong quay lại tab là màu đã đúng.
+            // Đổi tab con cũng phát lại một lượt: rẻ, và bắt được mọi đường nào lỡ tô đè lên cụm
+            // này mà không đi qua AppTheme.Apply.
             ApplyReverseTheme();
         }
 
         /// <summary>
-        /// Tô màu cụm control của tab theo bảng màu đang dùng. Gọi lúc dựng và mỗi lần đổi tab
-        /// con. <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor —
-        /// hai ô thời gian luôn giữ nền sáng kể cả ở theme tối.
+        /// Tô màu và trả lại font cho cụm control của tab. Gọi lúc dựng, mỗi lần đổi tab con, và
+        /// ngay sau mỗi <c>AppTheme.Apply</c>: theme chỉ nhận ra control SunnyUI nên không tô
+        /// màu cụm này, nhưng lại gán Font = "Segoe UI" 10F cho MỌI control — không phát lại là
+        /// nhãn và ô nhập tụt cỡ chữ. <see cref="DateTimePicker"/> là control của Windows, không
+        /// nhận BackColor — hai ô thời gian luôn giữ nền sáng kể cả ở theme tối.
         /// </summary>
         private void ApplyReverseTheme()
         {
@@ -407,34 +409,62 @@ namespace AutoJMS
                 if (box == null || box.IsDisposed) continue;
                 box.BackColor = colors.InputBackground;
                 box.ForeColor = colors.TextPrimary;
+                RestoreReverseFont(box, ReverseFieldFont);
             }
 
+            RestoreReverseFont(tabPrint_timeFrom, ReverseFieldFont);
+            RestoreReverseFont(tabPrint_timeTo, ReverseFieldFont);
+
             foreach (var caption in _reverseCaptions)
+            {
                 caption.ForeColor = colors.TextPrimary;
+                RestoreReverseFont(caption, ReverseFieldFont);
+            }
 
             foreach (var button in _reverseToolbarButtons)
             {
                 button.BackColor = colors.InputBackground;
                 button.ForeColor = colors.TextPrimary;
                 button.FlatAppearance.BorderColor = colors.InputBorder;
+                RestoreReverseFont(button, ReverseUiFont);
             }
 
             if (_reverseClearStaff != null && !_reverseClearStaff.IsDisposed)
             {
                 _reverseClearStaff.BackColor = colors.InputBackground;
                 _reverseClearStaff.ForeColor = colors.PrimaryAccent;
+                RestoreReverseFont(_reverseClearStaff, ReverseUiFont);
             }
 
-            if (_reversePageLabel != null) _reversePageLabel.ForeColor = colors.TextPrimary;
+            if (_reversePageLabel != null)
+            {
+                _reversePageLabel.ForeColor = colors.TextPrimary;
+                RestoreReverseFont(_reversePageLabel, ReverseUiFont);
+            }
+
             if (_reverseStaffList != null)
             {
                 _reverseStaffList.BackColor = colors.InputBackground;
                 _reverseStaffList.ForeColor = colors.TextPrimary;
+                RestoreReverseFont(_reverseStaffList, ReverseUiFont);
             }
+
+            RestoreReverseFont(_reverseStatus, ReverseUiFont);
 
             // Dòng trạng thái tự chọn màu đỏ/thường trong SetReverseStatus, phát lại câu đang
             // hiện để nó tính lại theo theme mới thay vì ghi đè bằng TextPrimary.
             SetReverseStatus(_reverseStatus.Text, _reverseStatusIsError);
+        }
+
+        /// <summary>
+        /// Gán lại font khi theme đã ghi đè. So tham chiếu chứ không so nội dung: hai font này là
+        /// static readonly nên control nào còn giữ đúng tham chiếu là chưa bị đụng, bỏ qua được
+        /// một lượt layout thừa.
+        /// </summary>
+        private static void RestoreReverseFont(Control ctrl, Font font)
+        {
+            if (ctrl == null || ctrl.IsDisposed) return;
+            if (!ReferenceEquals(ctrl.Font, font)) ctrl.Font = font;
         }
 
         /// <summary>

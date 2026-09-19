@@ -612,6 +612,7 @@ namespace AutoJMS
             }
             UI.AppTheme.Apply(this);
             ApplyWaybillInputBoldFonts();
+            ApplyReverseTheme();   // cụm In Reverse dựng bằng code — theme không tự tô, tự lo font
             // AppTheme gán Font = "Segoe UI" 10F cho MỌI control, nên phải đo và xếp lại
             // mục DATA SAU khi theme chạy, nếu không chữ sẽ bị cắt.
             LayoutDkchDataSection();
@@ -1287,6 +1288,7 @@ namespace AutoJMS
                     {
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
+                        ApplyReverseTheme();       // cụm In Reverse dựng bằng code — theme không tự tô
                         LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
                         LayoutDkchNewbill();
                         this.Invalidate(true);
