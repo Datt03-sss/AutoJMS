@@ -5395,6 +5395,17 @@ namespace AutoJMS
                             dataUrls.Add(item.GetString() ?? "");
                     }
                 }
+                else if (data.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    // waybillCenterPrint ("In Reverse") không trả URL trần như printWaybill mà
+                    // trả object {requestTraceId, pdfRelativePath, pdfFullPath}. Chỉ pdfFullPath
+                    // là URL tải được (đã ký sẵn query Expires/Signature).
+                    if (data.TryGetProperty("pdfFullPath", out System.Text.Json.JsonElement fullPath)
+                        && fullPath.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        dataUrls.Add(fullPath.GetString() ?? "");
+                    }
+                }
             }
 
             AppLogger.Info($"PRINT_API_PARSE_OK waybill={firstWaybill} code={codeVal} dataCount={dataUrls.Count}");

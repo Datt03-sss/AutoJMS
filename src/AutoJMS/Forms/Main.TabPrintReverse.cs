@@ -337,7 +337,6 @@ namespace AutoJMS
                 ClearPrintJobCaches();
 
                 var rows = await JmsSendWaybillService.SearchShippingWaybillsAsync(
-                    siteCode,
                     _reverseStaff.Code,
                     from,
                     to,

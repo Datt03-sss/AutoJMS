@@ -76,6 +76,18 @@ namespace AutoJMS
                 url += "&networkId=" + Uri.EscapeDataString(networkId);
 
             string body = await ReadAsync(HttpMethod.Get, url, null, "SearchStaff", ct).ConfigureAwait(false);
+            var unique = ParseStaff(body);
+
+            AppLogger.Info($"[SendWaybill] SearchStaff name={name} results={unique.Count}");
+            return unique;
+        }
+
+        /// <summary>
+        /// Bóc danh sách nhân viên từ body của <c>sysStaff/selectAll</c>. Tách riêng khỏi
+        /// phần gọi mạng để test bằng response thật.
+        /// </summary>
+        internal static IReadOnlyList<StaffInfo> ParseStaff(string body)
+        {
             if (string.IsNullOrWhiteSpace(body)) return Array.Empty<StaffInfo>();
 
             var staff = new List<StaffInfo>();
@@ -84,8 +96,8 @@ namespace AutoJMS
                 using var doc = JsonDocument.Parse(body);
                 foreach (var item in EnumerateRecords(doc.RootElement))
                 {
-                    string code = FirstText(item, "staffCode", "jobNumber", "code", "employeeCode", "userCode");
-                    string staffName = FirstText(item, "staffName", "realName", "name", "userName", "employeeName");
+                    string code = FirstText(item, "code");
+                    string staffName = FirstText(item, "name");
                     if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(staffName)) continue;
                     staff.Add(new StaffInfo { Code = code, Name = staffName });
                 }
@@ -98,14 +110,11 @@ namespace AutoJMS
 
             // Cùng một người có thể xuất hiện nhiều dòng (nhiều vai trò) — lưới chọn chỉ cần
             // mỗi mã một lần.
-            var unique = staff
+            return staff
                 .Where(s => !string.IsNullOrWhiteSpace(s.Code))
                 .GroupBy(s => s.Code, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .ToList();
-
-            AppLogger.Info($"[SendWaybill] SearchStaff name={name} results={unique.Count}");
-            return unique;
         }
 
         /// <summary>
@@ -114,7 +123,6 @@ namespace AutoJMS
         /// vào lưới của tab IN ĐƠN.
         /// </summary>
         public static async Task<IReadOnlyList<TrackingRow>> SearchShippingWaybillsAsync(
-            string siteCode,
             string collectStaffCode,
             DateTime timeFrom,
             DateTime timeTo,
@@ -131,7 +139,7 @@ namespace AutoJMS
                 string body = await ReadAsync(
                     HttpMethod.Post,
                     url,
-                    () => BuildListForm(current, siteCode, collectStaffCode, timeFrom, timeTo, customerCodes),
+                    () => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes),
                     "ShippingWaybillList",
                     ct).ConfigureAwait(false);
 
@@ -180,7 +188,6 @@ namespace AutoJMS
 
         private static MultipartFormDataContent BuildListForm(
             int current,
-            string siteCode,
             string collectStaffCode,
             DateTime timeFrom,
             DateTime timeTo,
@@ -194,7 +201,12 @@ namespace AutoJMS
             var form = new MultipartFormDataContent();
             Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
             Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
-            Add(form, "pickFinanceCode", siteCode ?? "");
+            // pickFinanceCode là mã TÀI CHÍNH của bưu cục (vd 208001 "Thái Nguyên"), KHÔNG
+            // phải mã bưu cục mà SiteContextProvider.Get() trả về — cùng một dòng dữ liệu có
+            // pickFinanceCode=208001 nhưng pickNetworkCode=214A02. Điền nhầm mã bưu cục vào
+            // đây thì server trả danh sách rỗng mà không báo lỗi. collectStaffCode + khoảng
+            // thời gian đã đủ thu hẹp, nên để trống.
+            Add(form, "pickFinanceCode", "");
             Add(form, "collectStaffCode", collectStaffCode ?? "");
             Add(form, "timeStart", from);
             Add(form, "timeEnd", to);
@@ -306,21 +318,21 @@ namespace AutoJMS
             }
         }
 
-        private static TrackingRow MapRow(JsonElement item)
+        internal static TrackingRow MapRow(JsonElement item)
         {
-            string waybill = FirstText(item, "waybillNo", "billCode", "waybillNumber", "waybillCode");
+            string waybill = FirstText(item, "waybillNo");
             if (string.IsNullOrWhiteSpace(waybill)) return null;
 
             return new TrackingRow
             {
                 WaybillNo = waybill.Trim(),
-                NhanVienNhanHang = FirstText(item, "collectStaffName", "pickStaffName", "staffName", "collectStaffCode"),
-                DiaChiLayHang = FirstText(item, "senderDetailedAddress", "senderAddress", "pickAddress", "collectAddress"),
-                TenNguoiGui = FirstText(item, "senderName", "customerName", "sender"),
-                ThoiGianNhanHang = FirstText(item, "collectTime", "pickTime", "sendTime", "inputTime", "createTime"),
-                NoiDungHangHoa = FirstText(item, "goodsName", "goodsType", "itemName", "goods"),
-                PrintCount = ParseInt(FirstText(item, "printCount", "printNum", "printTimes")),
-                PrintSenderNetworkCode = FirstText(item, "terminalDispatchCode", "dispatchCode", "sortingCode", "twoDispatchCode")
+                NhanVienNhanHang = FirstText(item, "collectStaffName"),
+                DiaChiLayHang = FirstText(item, "senderDetailedAddress"),
+                TenNguoiGui = FirstText(item, "senderName"),
+                ThoiGianNhanHang = FirstText(item, "collectTime"),
+                NoiDungHangHoa = FirstText(item, "goodsName"),
+                PrintCount = ParseInt(FirstText(item, "printsNumber")),
+                PrintSenderNetworkCode = FirstText(item, "terminalDispatchCode")
             };
         }
 
