@@ -232,10 +232,22 @@ public sealed class SiteContextProvider : ISiteContextProvider
         AppConfig.SaveCurrent();
 
         var settings = SettingsManager.Load();
+        string oldCode = NormalizeCode(settings.MiddleCode);
+        bool isStationChange = !string.Equals(oldCode, normalized, StringComparison.OrdinalIgnoreCase);
+
         settings.MiddleCode = normalized;
-        settings.MiddleCodeAliases = normalized.Length == 0
-            ? new List<string>()
-            : DistinctCodes(settings.MiddleCodeAliases.Append(normalized)).ToList();
+        if (isStationChange)
+        {
+            settings.MiddleCodeAliases = normalized.Length == 0 ? new List<string>() : new List<string> { normalized };
+            settings.SiteNameAliases = new List<string>();
+            AppLogger.Info($"[SiteContext] doi tram '{oldCode}' -> '{normalized}', reset MiddleCodeAliases va SiteNameAliases");
+        }
+        else
+        {
+            settings.MiddleCodeAliases = normalized.Length == 0
+                ? new List<string>()
+                : DistinctCodes(settings.MiddleCodeAliases.Append(normalized)).ToList();
+        }
         SettingsManager.Save(settings);
         InvalidateCache(); // xoa cache sau khi ca hai kho da nhat quan
 
