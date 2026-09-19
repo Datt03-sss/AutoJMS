@@ -33,7 +33,16 @@ namespace AutoJMS
         private const int ReverseStaffPopupRows = 6;
         private const int ReverseClearSymbol = 61453;   // FontAwesome v4 fa-times
         private const int ReverseCopySymbol = 61637;    // cùng ký hiệu "Copy" của frmLogin
+        private const int ReverseUnprintedSymbol = 61616;  // fa-filter
+        private const int ReversePrevPageSymbol = 61700;   // fa-angle-left
+        private const int ReverseNextPageSymbol = 61701;   // fa-angle-right
         private const string ReversePrintFolderName = "Thu hồi đã in";
+
+        /// <summary>
+        /// Số đơn hiện mỗi trang lưới. Bằng đúng <c>PageSize</c> của
+        /// <see cref="JmsSendWaybillService"/> nên một trang API là một trang lưới.
+        /// </summary>
+        private const int ReversePageSize = 20;
 
         /// <summary>
         /// Owner chốt: bản in thu hồi cần tra lại theo NGÀY, nên thư mục riêng của tab này dọn
@@ -46,6 +55,10 @@ namespace AutoJMS
         // ── controls dựng trong BuildTabPrintInReverseSection ──
         private UILabel _reverseStatus;
         private ListBox _reverseStaffList;
+        private FlowLayoutPanel _reverseGridToolbar;
+        private UISymbolButton _reversePrevPage;
+        private UISymbolButton _reverseNextPage;
+        private UILabel _reversePageLabel;
 
         // ── state ──
         private System.Windows.Forms.Timer _reverseStaffDebounce;
@@ -53,6 +66,21 @@ namespace AutoJMS
         private CancellationTokenSource _reverseSearchCts;
         private JmsSendWaybillService.StaffInfo _reverseStaff;
         private bool _reverseSuppressLookup;
+
+        /// <summary>
+        /// Toàn bộ kết quả của lượt tra gần nhất, đã sắp xếp. Lưới chỉ giữ 20 dòng của trang
+        /// đang xem nên danh sách đầy đủ phải nằm ở đây.
+        /// </summary>
+        private readonly List<TrackingRow> _reverseAllRows = new();
+        private int _reversePageIndex;
+
+        private int ReversePageCount =>
+            Math.Max(1, (_reverseAllRows.Count + ReversePageSize - 1) / ReversePageSize);
+
+        /// <summary>Phần đuôi "(trang x/y của N đơn)" — bỏ hẳn khi chỉ có một trang.</summary>
+        private string ReversePageSuffix => ReversePageCount <= 1
+            ? ""
+            : $" (trang {_reversePageIndex + 1}/{ReversePageCount} của {_reverseAllRows.Count} đơn)";
 
         private bool IsReverseModeActive =>
             _printService != null && _printService.CurrentMode == PrintMode.InReverse;
@@ -194,7 +222,86 @@ namespace AutoJMS
                 tabPrint_btnPrint.Click += TabPrint_btnPrint_Dispatch;
             }
 
+            BuildReverseGridToolbar();
             ResetReverseTimeRange();
+        }
+
+        /// <summary>
+        /// Nút "Chưa in" và bộ chuyển trang, đặt cùng hàng với "Chọn tất cả" (uiPanel20).
+        /// Hàng đó của chung bốn tab con nên cả cụm nằm trong một FlowLayoutPanel riêng và chỉ
+        /// hiện khi In Reverse đang mở — ba tab kia nhìn y như trước.
+        /// </summary>
+        private void BuildReverseGridToolbar()
+        {
+            if (uiPanel20 == null || uiPanel20.IsDisposed) return;
+            if (uiPanel20.Controls.Find("tabPrint_reverseGridToolbar", false).Length > 0) return;
+
+            var unprinted = NewReverseToolbarButton(
+                "tabPrint_reverseUnprinted", "Chưa in", ReverseUnprintedSymbol, 104);
+            unprinted.Click += (s, e) => SelectReverseUnprintedOnPage();
+
+            _reversePrevPage = NewReverseToolbarButton(
+                "tabPrint_reversePrevPage", "", ReversePrevPageSymbol, 36);
+            _reversePrevPage.Click += (s, e) => _ = TurnReversePageAsync(-1);
+
+            _reversePageLabel = new UILabel
+            {
+                Name = "tabPrint_reversePageLabel",
+                AutoSize = false,
+                Size = new Size(64, 29),
+                Margin = new Padding(0, 3, 0, 3),
+                Text = "0/0",
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+
+            _reverseNextPage = NewReverseToolbarButton(
+                "tabPrint_reverseNextPage", "", ReverseNextPageSymbol, 36);
+            _reverseNextPage.Click += (s, e) => _ = TurnReversePageAsync(1);
+
+            _reverseGridToolbar = new FlowLayoutPanel
+            {
+                Name = "tabPrint_reverseGridToolbar",
+                Dock = DockStyle.Left,
+                AutoSize = true,
+                WrapContents = false,
+                Margin = new Padding(0),
+                Visible = false
+            };
+            _reverseGridToolbar.Controls.AddRange(new Control[]
+                { unprinted, _reversePrevPage, _reversePageLabel, _reverseNextPage });
+
+            uiPanel20.Controls.Add(_reverseGridToolbar);
+
+            // Dock=Left xếp theo z-order ngược — chỉ số CAO dock trước nên bám sát mép trái.
+            // Đẩy cụm này về chỉ số 0 để "Chọn tất cả" giữ nguyên chỗ cũ, cụm mới nằm bên phải.
+            _reverseGridToolbar.BringToFront();
+
+            // Đổi tab con thì ẩn/hiện theo. Nối thêm handler thay vì sửa
+            // TabPrint_printFunc_SelectedIndexChanged trong Main.cs (Protected File).
+            if (tabPrint_printFunc != null && !tabPrint_printFunc.IsDisposed)
+                tabPrint_printFunc.SelectedIndexChanged += (s, e) => SyncReverseGridToolbarVisibility();
+
+            UpdateReversePagerUi();
+            SyncReverseGridToolbarVisibility();
+        }
+
+        private static UISymbolButton NewReverseToolbarButton(string name, string text, int symbol, int width)
+            => new()
+            {
+                Name = name,
+                Text = text,
+                Symbol = symbol,
+                SymbolSize = 18,
+                Size = new Size(width, 29),
+                Margin = new Padding(6, 3, 0, 3),
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+            };
+
+        private void SyncReverseGridToolbarVisibility()
+        {
+            if (_reverseGridToolbar == null || _reverseGridToolbar.IsDisposed) return;
+            _reverseGridToolbar.Visible = GetTabPrintModeFromSelectedTab() == PrintMode.InReverse;
         }
 
         /// <summary>
@@ -209,6 +316,10 @@ namespace AutoJMS
 
             foreach (var box in new[] { tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
                 if (box != null && !box.IsDisposed) box.Text = "";
+
+            _reverseAllRows.Clear();
+            _reversePageIndex = 0;
+            UpdateReversePagerUi();
 
             ResetReverseTimeRange();
             SetReverseStatus(ReverseHint);
@@ -550,9 +661,7 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Phần đuôi dùng chung của hai lối tra: nạp lưới, tick hết, rồi dựng bản xem trước.
-        /// Bản xem trước chỉ để nhìn; nút IN tự tải bản in riêng — xem
-        /// <see cref="ExecuteReversePrintAsync"/>.
+        /// Phần đuôi dùng chung của hai lối tra: giữ cả kết quả lại, rồi mở trang đầu.
         /// </summary>
         private async Task LoadReverseRowsAndPreviewAsync(
             IReadOnlyList<TrackingRow> rows, string emptyMessage, CancellationToken ct)
@@ -563,23 +672,115 @@ namespace AutoJMS
             // đoán culture. Lưới tab IN ĐƠN khoá sort trên header (PrintService.DisableSorting)
             // nên đây là thứ tự duy nhất người dùng thấy, và cũng là thứ tự trang của bản in
             // vì GetSelectedWaybills đọc theo dòng lưới.
-            _printService.LoadRowsDirect(
-                rows.OrderByDescending(r => r?.ThoiGianNhanHang ?? "", StringComparer.Ordinal),
-                PrintMode.InReverse);
-            _printService.SelectAll(true);
-            if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
+            _reverseAllRows.Clear();
+            _reverseAllRows.AddRange(rows
+                .Where(r => r != null)
+                .OrderByDescending(r => r.ThoiGianNhanHang ?? "", StringComparer.Ordinal));
 
-            if (rows.Count == 0)
+            if (_reverseAllRows.Count == 0)
             {
+                _reversePageIndex = 0;
+                _printService.LoadRowsDirect(_reverseAllRows, PrintMode.InReverse);
+                UpdateReversePagerUi();
                 if (tabPrint_printPreview?.CoreWebView2 != null)
                     tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
                 SetReverseStatus(emptyMessage, true);
                 return;
             }
 
+            await ShowReversePageAsync(0, ct).ConfigureAwait(true);
+        }
+
+        /// <summary>
+        /// Nạp một trang <see cref="ReversePageSize"/> đơn vào lưới rồi dựng bản xem trước của
+        /// đúng trang đó. Phân trang phía client: một lượt tra đã kéo đủ mọi trang của JMS về
+        /// <see cref="_reverseAllRows"/> nên đổi trang KHÔNG gọi lại API tra — chỉ bản xem
+        /// trước phải gọi, mà nó chạy <c>printMode=1</c> nên không tốn lượt in nào.
+        /// </summary>
+        private async Task ShowReversePageAsync(int pageIndex, CancellationToken ct)
+        {
+            _reversePageIndex = Math.Clamp(pageIndex, 0, ReversePageCount - 1);
+
+            _printService.LoadRowsDirect(CurrentReversePageRows(), PrintMode.InReverse);
+            _printService.SelectAll(true);
+            if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
+            UpdateReversePagerUi();
+
+            if (_reverseAllRows.Count == 0) return;
+
             // Lấy danh sách từ chính lưới chứ không từ rows: đó là nguồn ExecutePrintAsync đọc
             // khi bấm IN, nên khoá cache hai bên mới khớp nhau từng ký tự.
             await ShowReversePreviewAsync(_printService.GetSelectedWaybills(), ct).ConfigureAwait(true);
+        }
+
+        private List<TrackingRow> CurrentReversePageRows() => _reverseAllRows
+            .Skip(_reversePageIndex * ReversePageSize)
+            .Take(ReversePageSize)
+            .ToList();
+
+        /// <summary>
+        /// Lật trang. Dùng chung <see cref="_reverseSearchCts"/> với lượt tra: lật trang giữa
+        /// chừng thì lượt tra đang bay bị huỷ, và ngược lại — hai bên không giành lưới nhau.
+        /// </summary>
+        private async Task TurnReversePageAsync(int delta)
+        {
+            int target = _reversePageIndex + delta;
+            if (_reverseAllRows.Count == 0 || target < 0 || target >= ReversePageCount) return;
+
+            _reverseSearchCts?.Cancel();
+            _reverseSearchCts?.Dispose();
+            _reverseSearchCts = new CancellationTokenSource();
+
+            try
+            {
+                await ShowReversePageAsync(target, _reverseSearchCts.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[TabPrint] In Reverse: lật trang thất bại", ex);
+                SetReverseStatus($"Lỗi đổi trang: {ex.Message}", true);
+            }
+        }
+
+        private void UpdateReversePagerUi()
+        {
+            if (_reversePageLabel == null || _reversePageLabel.IsDisposed) return;
+
+            _reversePageLabel.Text = _reverseAllRows.Count == 0
+                ? "0/0"
+                : $"{_reversePageIndex + 1}/{ReversePageCount}";
+            _reversePrevPage.Enabled = _reverseAllRows.Count > 0 && _reversePageIndex > 0;
+            _reverseNextPage.Enabled = _reversePageIndex + 1 < ReversePageCount;
+        }
+
+        /// <summary>
+        /// Tick riêng những mã trang hiện tại chưa in lần nào (<c>printsNumber = 0</c>), phần
+        /// còn lại bỏ tick. Chỉ xét trang đang xem vì lưới chỉ giữ đúng 20 dòng của trang đó.
+        /// </summary>
+        private void SelectReverseUnprintedOnPage()
+        {
+            var unprinted = CurrentReversePageRows()
+                .Where(r => r.PrintCount <= 0)
+                .Select(r => r.WaybillNo)
+                .ToList();
+
+            // Gạt ô "Chọn tất cả" TRƯỚC: nó bắn CheckedChanged -> SelectAll, làm sau là xoá
+            // sạch phần vừa tick. SelectAll(false) gọi thêm để phủ cả trường hợp ô đã bỏ tick
+            // sẵn (đặt Checked = false khi nó đang false thì không bắn sự kiện nào).
+            if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = false;
+            _printService.SelectAll(false);
+
+            if (unprinted.Count == 0)
+            {
+                SetReverseStatus("Trang này không còn mã nào chưa in." + ReversePageSuffix, true);
+                return;
+            }
+
+            _printService.SetSelected(unprinted, true);
+            SetReverseStatus($"Đã chọn {unprinted.Count} mã chưa in." + ReversePageSuffix);
         }
 
         /// <summary>
@@ -617,7 +818,8 @@ namespace AutoJMS
                     tabPrint_printPreview.Source = new Uri(pdfUrl);
 
                 SetReverseStatus(
-                    $"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
+                    $"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN."
+                    + ReversePageSuffix);
             }
             catch (OperationCanceledException)
             {
@@ -726,7 +928,13 @@ namespace AutoJMS
                 _printService.SetSelected(selected, false);
                 if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = false;
 
-                SetReverseStatus($"Đã in {selected.Count} đơn.");
+                // Cột "Số bản in" là ảnh chụp lúc tra, nhưng nút "Chưa in" đọc từ đây — không
+                // cộng thì vừa in xong bấm "Chưa in" lại tick đúng những mã vừa in ra.
+                var printed = new HashSet<string>(selected, StringComparer.OrdinalIgnoreCase);
+                foreach (var row in _reverseAllRows.Where(r => printed.Contains(r.WaybillNo ?? "")))
+                    row.PrintCount++;
+
+                SetReverseStatus($"Đã in {selected.Count} đơn." + ReversePageSuffix);
             }
             catch (Exception ex)
             {

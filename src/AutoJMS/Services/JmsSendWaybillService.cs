@@ -43,11 +43,11 @@ namespace AutoJMS
 
         private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
 
-        // Owner chốt size=30 (giao diện JMS mặc định 20): ít lượt gọi hơn cho một ca làm việc.
-        // Vẫn là 2 ký tự nên Content-Length của cả hai form không đổi — xem hai bài test ghim
-        // 1114 và 341. Lấy từng trang cho tới khi trang không còn đầy, chặn trên để một bộ lọc
-        // quá rộng không kéo về vô hạn.
-        private const int PageSize = 30;
+        // size=20 đúng như giao diện JMS. Lưới In Reverse cũng hiện 20 đơn mỗi trang, nên một
+        // trang API là một trang lưới. Hai bài test ghim Content-Length 1114 và 341 chỉ đúng
+        // khi số này còn 2 ký tự. Lấy từng trang cho tới khi trang không còn đầy, chặn trên để
+        // một bộ lọc quá rộng không kéo về vô hạn.
+        private const int PageSize = 20;
         private const int MaxPages = 50;
 
         // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.

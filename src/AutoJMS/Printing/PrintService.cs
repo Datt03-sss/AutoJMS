@@ -322,7 +322,10 @@ namespace AutoJMS
                         PrintMode.InHoan => new object[] { true, finalWaybill, DisplayValue(r.ThaoTacCuoi), ResolveApprovalStatus(r), ResolvePrintCount(r), ResolveSenderNetworkCode(r), string.IsNullOrEmpty(r.InHoanScanTime) ? "-" : r.InHoanScanTime, ResolveApplyStaffName(r, printerName) },
                         PrintMode.InChuyenTiep => new object[] { true, finalWaybill, DisplayValue(r.ThaoTacCuoi), ResolvePrintCount(r, 1), "", DisplayValue(r.DiaChiNhanHang), ResolveSenderNetworkCode(r), now, ResolveApplyStaffName(r, printerName) },
                         PrintMode.InLaiDon => new object[] { true, finalWaybill, ResolvePrintCount(r, 1), DisplayValue(r.NoiDungHangHoa), ResolveSenderNetworkCode(r) },
-                        PrintMode.InReverse => new object[] { true, finalWaybill, DisplayValue(r.NhanVienNhanHang), DisplayValue(r.DiaChiLayHang), DisplayValue(r.TenNguoiGui), DisplayValue(r.ThoiGianNhanHang), ResolvePrintCount(r, 1), DisplayValue(r.NoiDungHangHoa), ResolveSenderNetworkCode(r) },
+                        // Không lấy mặc định 1 như ba mode kia: ở đây "Số bản in" là printsNumber
+                        // của JMS — số lượt ĐÃ in, mà 0 mới là giá trị đáng tin nhất. Nút "Chưa in"
+                        // của tab In Reverse lọc đúng theo số này nên nó phải hiện 0 chứ không phải 1.
+                        PrintMode.InReverse => new object[] { true, finalWaybill, DisplayValue(r.NhanVienNhanHang), DisplayValue(r.DiaChiLayHang), DisplayValue(r.TenNguoiGui), DisplayValue(r.ThoiGianNhanHang), ResolvePrintCount(r), DisplayValue(r.NoiDungHangHoa), ResolveSenderNetworkCode(r) },
                         _ => null
                     };
 
