@@ -557,13 +557,14 @@ namespace AutoJMS
         private async Task LoadReverseRowsAndPreviewAsync(
             IReadOnlyList<TrackingRow> rows, string emptyMessage, CancellationToken ct)
         {
-            // Mặc định xếp thời gian nhận hàng tăng dần. collectTime của JMS luôn là
-            // "yyyy-MM-dd HH:mm:ss" nên so chuỗi ordinal đã đúng thứ tự thời gian — khỏi
-            // DateTime.Parse rồi phải đoán culture. Lưới tab IN ĐƠN khoá sort trên header
-            // (PrintService.DisableSorting) nên đây là thứ tự duy nhất người dùng thấy, và
-            // cũng là thứ tự trang của bản in vì GetSelectedWaybills đọc theo dòng lưới.
+            // Mặc định xếp thời gian nhận hàng giảm dần — đơn mới nhất lên đầu, đúng thứ tự
+            // người dùng cần in trong ca. collectTime của JMS luôn là "yyyy-MM-dd HH:mm:ss"
+            // nên so chuỗi ordinal đã đúng thứ tự thời gian — khỏi DateTime.Parse rồi phải
+            // đoán culture. Lưới tab IN ĐƠN khoá sort trên header (PrintService.DisableSorting)
+            // nên đây là thứ tự duy nhất người dùng thấy, và cũng là thứ tự trang của bản in
+            // vì GetSelectedWaybills đọc theo dòng lưới.
             _printService.LoadRowsDirect(
-                rows.OrderBy(r => r?.ThoiGianNhanHang ?? "", StringComparer.Ordinal),
+                rows.OrderByDescending(r => r?.ThoiGianNhanHang ?? "", StringComparer.Ordinal),
                 PrintMode.InReverse);
             _printService.SelectAll(true);
             if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
