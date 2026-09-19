@@ -776,8 +776,14 @@ namespace AutoJMS
 
                     // Ô mã bưu cục có thứ tự ưu tiên riêng (ResolveReprintNetworkCode) và mã
                     // tuyến là nguồn cuối cùng, nên chỉ điền khi dòng TRACKING không có gì.
+                    // Dòng đếm lần in mang mã bưu cục trần: bỏ tiền tố "L" của mã đoạn 2
+                    // ("L214A02" → "214A02"), khác ô "Sửa Mã tuyến" vốn giữ nguyên mã gốc.
                     if (ReadReprintText(_reprintTxtPrintCode).Length == 0)
-                        SetReprintText(_reprintTxtPrintCode, route[1]);
+                        SetReprintText(
+                            _reprintTxtPrintCode,
+                            route[1].Length > 1 && route[1].StartsWith("L", StringComparison.OrdinalIgnoreCase)
+                                ? route[1].Substring(1)
+                                : route[1]);
                 }
                 if (route.Length > 2 && route[2].Length > 0) SetReprintText(_reprintTxtRoute3, route[2]);
             }
