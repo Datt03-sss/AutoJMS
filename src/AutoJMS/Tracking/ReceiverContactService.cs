@@ -22,6 +22,9 @@ namespace AutoJMS
         /// <summary>Địa chỉ nhận hàng đầy đủ như nhãn gốc in; rỗng nếu JMS không trả.</summary>
         public string Address { get; init; } = "";
 
+        /// <summary>Mã tuyến gốc chưa tách, ví dụ <c>330-L214A02-001</c>; rỗng nếu JMS không trả.</summary>
+        public string TerminalDispatchCode { get; init; } = "";
+
         public bool HasUnmaskedPhone => !string.IsNullOrEmpty(Phone);
     }
 
@@ -85,18 +88,21 @@ namespace AutoJMS
                 string phone = "";
                 string maskedPhone = "";
                 string address = "";
+                string dispatchCode = "";
 
                 string reverseJson = await GetJsonAsync(ReverseEndpoint + encoded, token, ct).ConfigureAwait(false);
-                MergeFrom(reverseJson, isOrderDetail: false, ref name, ref phone, ref maskedPhone, ref address);
+                MergeFrom(reverseJson, isOrderDetail: false, ref name, ref phone, ref maskedPhone, ref address, ref dispatchCode);
 
                 // Chỉ gọi thêm khi vẫn thiếu — mỗi request thừa là một lần chạm rate-limit JMS.
-                if (name.Length == 0 || phone.Length == 0 || address.Length == 0)
+                // Mã tuyến nằm trong danh sách này vì trên thực tế chỉ getOrderDetail trả nó.
+                if (name.Length == 0 || phone.Length == 0 || address.Length == 0 || dispatchCode.Length == 0)
                 {
                     string orderJson = await PostOrderDetailAsync(code, token, ct).ConfigureAwait(false);
-                    MergeFrom(orderJson, isOrderDetail: true, ref name, ref phone, ref maskedPhone, ref address);
+                    MergeFrom(orderJson, isOrderDetail: true, ref name, ref phone, ref maskedPhone, ref address, ref dispatchCode);
                 }
 
-                if (name.Length == 0 && phone.Length == 0 && maskedPhone.Length == 0 && address.Length == 0)
+                if (name.Length == 0 && phone.Length == 0 && maskedPhone.Length == 0
+                    && address.Length == 0 && dispatchCode.Length == 0)
                     return null;
 
                 if (maskedPhone.Length == 0 && phone.Length > 0) maskedPhone = Mask(phone);
@@ -105,14 +111,16 @@ namespace AutoJMS
                 AppLogger.Info(
                     $"[ReceiverContact] waybill={code} name={(name.Length > 0 ? "có" : "trống")} " +
                     $"phone={(phone.Length > 0 ? "đầy đủ" : "chỉ bản che")} " +
-                    $"address={(address.Length > 0 ? "có" : "trống")}");
+                    $"address={(address.Length > 0 ? "có" : "trống")} " +
+                    $"maTuyen={(dispatchCode.Length > 0 ? dispatchCode : "trống")}");
 
                 return new ReceiverContact
                 {
                     Name = name,
                     Phone = phone,
                     MaskedPhone = maskedPhone,
-                    Address = address
+                    Address = address,
+                    TerminalDispatchCode = dispatchCode
                 };
             }
             catch (OperationCanceledException)
@@ -127,12 +135,13 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Đọc tên/SĐT/địa chỉ từ một phản hồi và điền vào chỗ còn trống. Ưu tiên giá trị chưa
-        /// bị che: một bản đầy đủ đến sau vẫn thay được bản che đã nhận trước đó.
+        /// Đọc tên/SĐT/địa chỉ/mã tuyến từ một phản hồi và điền vào chỗ còn trống. Ưu tiên giá
+        /// trị chưa bị che: một bản đầy đủ đến sau vẫn thay được bản che đã nhận trước đó.
         /// </summary>
         private static void MergeFrom(
             string json, bool isOrderDetail,
-            ref string name, ref string phone, ref string maskedPhone, ref string address)
+            ref string name, ref string phone, ref string maskedPhone, ref string address,
+            ref string dispatchCode)
         {
             if (string.IsNullOrWhiteSpace(json)) return;
 
@@ -168,6 +177,9 @@ namespace AutoJMS
                 if (foundAddress.Length > 0
                     && (address.Length == 0 || (IsMasked(address) && !IsMasked(foundAddress))))
                     address = foundAddress;
+
+                // Đọc trước nhánh SĐT: hàm thoát sớm ở đó khi đơn không có số điện thoại.
+                if (dispatchCode.Length == 0) dispatchCode = Field(node, "terminalDispatchCode");
 
                 string foundPhone = FirstNonEmpty(Field(node, "receiverMobilePhone"), Field(node, "receiverTelphone"));
                 if (foundPhone.Length == 0) return;
