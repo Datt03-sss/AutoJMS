@@ -16,8 +16,8 @@ namespace AutoJMS
     /// Màn "Quản lý vận đơn gửi" (<c>sendWaybillSite</c>) của JMS — nguồn dữ liệu duy nhất
     /// của tab con "In Reverse".
     ///
-    /// Khác với ba tab con còn lại, In Reverse không tra theo mã vận đơn mà tra theo
-    /// <b>nhân viên lấy hàng + khoảng thời gian</b>, nên nó không đi qua
+    /// In Reverse tra được theo hai lối — <b>nhân viên lấy hàng + khoảng thời gian</b>, hoặc
+    /// <b>mã vận đơn gõ thẳng</b> — nhưng cả hai đều không đi qua
     /// <see cref="PrintService.SearchAndLoadAsync"/> (tracking + SafetyGuard) mà nạp thẳng
     /// kết quả vào lưới.
     ///
@@ -134,8 +134,42 @@ namespace AutoJMS
             string customerCodes,
             CancellationToken ct = default)
         {
-            string url = AppConfig.Current.BuildJmsApiUrl(ShippingListEndpoint);
             string financeCode = await ResolveFinanceCodeAsync(ct).ConfigureAwait(false);
+            var rows = await CollectShippingPagesAsync(
+                current => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes, financeCode),
+                ct).ConfigureAwait(false);
+
+            AppLogger.Info($"[SendWaybill] ShippingWaybillList staff={collectStaffCode} rows={rows.Count} " +
+                           $"from={timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
+                           $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)}");
+            return rows;
+        }
+
+        /// <summary>
+        /// Danh sách vận đơn tra thẳng theo mã — người dùng gõ hoặc quét mã vào ô "Mã vận đơn"
+        /// rồi bấm Tìm kiếm. Không cần nhân viên lẫn khoảng thời gian: cURL của giao diện JMS
+        /// cho luồng này chỉ gửi ba trường, xem <see cref="BuildWaybillListForm"/>.
+        /// </summary>
+        public static async Task<IReadOnlyList<TrackingRow>> SearchShippingWaybillsByNoAsync(
+            string waybillNos,
+            CancellationToken ct = default)
+        {
+            var rows = await CollectShippingPagesAsync(
+                current => BuildWaybillListForm(current, waybillNos), ct).ConfigureAwait(false);
+
+            AppLogger.Info($"[SendWaybill] ShippingWaybillList byNo={waybillNos} rows={rows.Count}");
+            return rows;
+        }
+
+        /// <summary>
+        /// Vòng lấy trang dùng chung cho hai lối tra (theo nhân viên và theo mã): chúng chỉ
+        /// khác nhau ở bộ trường của form, còn phân trang, lọc trùng và bóc bản ghi thì giống hệt.
+        /// </summary>
+        private static async Task<List<TrackingRow>> CollectShippingPagesAsync(
+            Func<int, HttpContent> formFactory,
+            CancellationToken ct)
+        {
+            string url = AppConfig.Current.BuildJmsApiUrl(ShippingListEndpoint);
             var rows = new List<TrackingRow>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -145,7 +179,7 @@ namespace AutoJMS
                 string body = await ReadAsync(
                     HttpMethod.Post,
                     url,
-                    () => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes, financeCode),
+                    () => formFactory(current),
                     "ShippingWaybillList",
                     ct).ConfigureAwait(false);
 
@@ -181,9 +215,6 @@ namespace AutoJMS
                 if (recordsInPage < PageSize || rows.Count == before) break;
             }
 
-            AppLogger.Info($"[SendWaybill] ShippingWaybillList staff={collectStaffCode} rows={rows.Count} " +
-                           $"from={timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
-                           $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)}");
             return rows;
         }
 
@@ -222,15 +253,41 @@ namespace AutoJMS
             }
         }
 
+        /// <summary>Chỉ dựng PDF để xem trước — JMS không tính vào ba lượt in của vận đơn.</summary>
+        public const int CenterPrintModePreview = 1;
+
+        /// <summary>In thật: lượt này JMS đếm, quá ba lần là trả code 121003005.</summary>
+        public const int CenterPrintModePrint = 2;
+
         /// <summary>Payload cho <see cref="CenterPrintEndpoint"/> — xem mục 2.4 của spec.</summary>
-        public static string BuildCenterPrintPayload(IEnumerable<string> waybillNos)
+        public static string BuildCenterPrintPayload(
+            IEnumerable<string> waybillNos, int printMode = CenterPrintModePrint)
         {
             return JsonSerializer.Serialize(new Dictionary<string, object>
             {
-                { "printMode", 2 },
+                { "printMode", printMode },
                 { "waybillNos", (waybillNos ?? Enumerable.Empty<string>()).ToList() },
                 { "countryId", "1" }
             });
+        }
+
+        /// <summary>
+        /// Form tra theo mã vận đơn: ĐÚNG 3 trường, ĐÚNG thứ tự của cURL giao diện JMS
+        /// (waybillNos, current, size) — Content-Length 341 với một mã 12 ký tự.
+        /// <para>
+        /// Đây là bộ trường KHÁC hẳn <see cref="BuildListForm"/>: tra theo mã thì giao diện
+        /// JMS không gửi nhân viên, mốc thời gian hay mã tài chính. Đừng gộp hai form làm một
+        /// rồi để trường rỗng — thừa trường thì JMS trả code:1 với danh sách rỗng, không kêu
+        /// một tiếng nào.
+        /// </para>
+        /// </summary>
+        internal static MultipartFormDataContent BuildWaybillListForm(int current, string waybillNos)
+        {
+            var form = NewBrowserStyleForm();
+            Add(form, "waybillNos", waybillNos ?? "");
+            Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
+            Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
+            return form;
         }
 
         internal static MultipartFormDataContent BuildListForm(

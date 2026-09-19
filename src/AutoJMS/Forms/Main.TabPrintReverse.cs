@@ -31,7 +31,8 @@ namespace AutoJMS
         private const int ReverseStaffMinChars = 2;
         private const int ReverseStaffPopupRows = 6;
         private const int ReverseClearSymbol = 61453;   // FontAwesome v4 fa-times
-        private const string ReverseHint = "Nhập tên nhân viên, chọn trong danh sách rồi bấm Tìm kiếm.";
+        private const string ReverseHint =
+            "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 
         // ── controls dựng trong BuildTabPrintInReverseSection ──
         private UILabel _reverseStatus;
@@ -132,6 +133,19 @@ namespace AutoJMS
             // designer vẫn chạy trước, mình chỉ nối thêm phần của In Reverse.
             if (tabPrint_btnLamMoi != null && !tabPrint_btnLamMoi.IsDisposed)
                 tabPrint_btnLamMoi.Click += (s, e) => ResetTabPrintInReverseState();
+
+            // Ô "Mã vận đơn" dùng chung cho cả bốn tab con, nhưng handler Enter của designer
+            // bỏ qua In Reverse (ExecuteTabPrintSearchAsync thoát sớm ở mode này). Nối thêm
+            // một handler ở đây để Enter — và máy quét, vốn tự bắn Enter sau mỗi mã — chạy
+            // đúng lượt tra của tab này, thay vì không làm gì cả như trước.
+            if (tabPrint_inputWaybill != null && !tabPrint_inputWaybill.IsDisposed)
+                tabPrint_inputWaybill.KeyDown += (s, e) =>
+                {
+                    if (e.KeyCode != Keys.Enter) return;
+                    if (GetTabPrintModeFromSelectedTab() != PrintMode.InReverse) return;
+                    e.SuppressKeyPress = true;
+                    _ = ExecuteTabPrintReverseSearchAsync();
+                };
 
             ResetReverseTimeRange();
         }
@@ -357,8 +371,13 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
-        /// Tìm kiếm của tab "In Reverse": nhân viên đã chọn + khoảng thời gian, không dùng ô
-        /// mã vận đơn. Gọi từ nút Tìm kiếm khi tab con đang mở là In Reverse.
+        /// Tìm kiếm của tab "In Reverse". Hai lối vào chung một nút Tìm kiếm:
+        /// <list type="bullet">
+        ///   <item>ô "Mã vận đơn" có chữ → tra thẳng theo mã rồi dựng bản xem trước;</item>
+        ///   <item>ô đó rỗng → tra theo nhân viên đã chọn + khoảng thời gian.</item>
+        /// </list>
+        /// Ô mã được xét trước vì nó là thứ người dùng vừa gõ; nhân viên và thời gian có thể
+        /// còn sót lại từ lượt tra trước.
         /// </summary>
         private async Task ExecuteTabPrintReverseSearchAsync()
         {
@@ -366,9 +385,24 @@ namespace AutoJMS
             _printService.SetMode(PrintMode.InReverse);
             HideReverseStaffPopup();
 
+            string manualText = tabPrint_inputWaybill?.Text?.Trim() ?? "";
+            if (manualText.Length > 0)
+            {
+                var codes = ParseWaybillOrder(manualText);
+                if (codes.Count == 0)
+                {
+                    SetReverseStatus("Mã vận đơn không hợp lệ.", true);
+                    return;
+                }
+
+                await SearchReverseByWaybillAsync(codes).ConfigureAwait(true);
+                return;
+            }
+
             if (_reverseStaff == null || string.IsNullOrWhiteSpace(_reverseStaff.Code))
             {
-                SetReverseStatus("Chưa chọn nhân viên. Nhập tên rồi chọn một người trong danh sách.", true);
+                SetReverseStatus(
+                    "Chưa có gì để tra: nhập mã vận đơn, hoặc chọn một nhân viên trong danh sách.", true);
                 return;
             }
 
@@ -436,6 +470,112 @@ namespace AutoJMS
             }
         }
 
+        /// <summary>
+        /// Tra theo mã người dùng gõ/quét vào ô "Mã vận đơn". Lấy được dòng nào thì dựng luôn
+        /// bản xem trước — luồng Owner chốt là nhập mã → tìm kiếm → xem preview → bấm IN.
+        /// </summary>
+        private async Task SearchReverseByWaybillAsync(List<string> waybills)
+        {
+            _reverseSearchCts?.Cancel();
+            _reverseSearchCts?.Dispose();
+            _reverseSearchCts = new CancellationTokenSource();
+            var ct = _reverseSearchCts.Token;
+
+            if (tabPrint_btnTimKiem != null) tabPrint_btnTimKiem.Enabled = false;
+            try
+            {
+                SetReverseStatus($"Đang tra {waybills.Count} mã vận đơn...");
+                ClearPrintJobCaches();
+
+                var rows = await JmsSendWaybillService
+                    .SearchShippingWaybillsByNoAsync(string.Join(",", waybills), ct)
+                    .ConfigureAwait(true);
+
+                if (ct.IsCancellationRequested) return;
+                if (_printService.CurrentMode != PrintMode.InReverse) return;
+
+                _printService.LoadRowsDirect(rows, PrintMode.InReverse);
+                _printService.SelectAll(true);
+                if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
+
+                if (rows.Count == 0)
+                {
+                    if (tabPrint_printPreview?.CoreWebView2 != null)
+                        tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
+                    SetReverseStatus("Không tìm thấy đơn nào khớp mã đã nhập.", true);
+                    return;
+                }
+
+                await ShowReversePreviewAsync(rows.Select(r => r.WaybillNo).ToList(), ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[TabPrint] Tìm kiếm In Reverse theo mã thất bại", ex);
+                SetReverseStatus($"Lỗi tìm kiếm: {ex.Message}", true);
+            }
+            finally
+            {
+                if (tabPrint_btnTimKiem != null) tabPrint_btnTimKiem.Enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Bản xem trước của JMS: vẫn endpoint in, nhưng <c>printMode=1</c> nên không tính vào
+        /// ba lượt in của vận đơn. Phản hồi trả sẵn link PDF đã ký trong <c>data.pdfFullPath</c>,
+        /// đẩy thẳng link đó cho WebView2 — Edge tự dựng trình xem PDF, khỏi tải về đĩa như
+        /// "In lại đơn" (ở đó phải vẽ đè lên nhãn nên mới cần bytes).
+        /// <para>Không bao giờ ném: lưới đã có dữ liệu, hỏng preview thì vẫn bấm IN được.</para>
+        /// </summary>
+        private async Task ShowReversePreviewAsync(List<string> waybills, CancellationToken ct)
+        {
+            SetReverseStatus($"{waybills.Count} đơn — đang lấy bản xem trước...");
+            try
+            {
+                using var response = await JmsApiClient.PostJsonAsync(
+                    AppConfig.Current.BuildJmsApiUrl(JmsSendWaybillService.CenterPrintEndpoint),
+                    JmsSendWaybillService.BuildCenterPrintPayload(
+                        waybills, JmsSendWaybillService.CenterPrintModePreview),
+                    routeName: JmsSendWaybillService.CenterPrintRouteName,
+                    routerNameList: JmsSendWaybillService.CenterPrintRouterNameList,
+                    ct: ct).ConfigureAwait(true);
+
+                string body = response == null
+                    ? ""
+                    : await response.Content.ReadAsStringAsync(ct).ConfigureAwait(true);
+                if (ct.IsCancellationRequested) return;
+
+                // JMS nhét lỗi nghiệp vụ vào thân HTTP 200 (vd "quá 3 lượt in"), đọc trước khi
+                // bóc URL — nếu không thì mọi lỗi đều hiện thành "không có link PDF".
+                string error = JmsSendWaybillService.ReadBusinessError(body);
+                if (error != null)
+                {
+                    SetReverseStatus($"{waybills.Count} đơn — không xem trước được. {error}", true);
+                    return;
+                }
+
+                string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, waybills[0]), waybills[0]);
+                if (tabPrint_printPreview == null || tabPrint_printPreview.IsDisposed) return;
+
+                if (tabPrint_printPreview.CoreWebView2 != null)
+                    tabPrint_printPreview.CoreWebView2.Navigate(pdfUrl);
+                else
+                    tabPrint_printPreview.Source = new Uri(pdfUrl);
+
+                SetReverseStatus($"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[TabPrint] Lấy bản xem trước In Reverse thất bại", ex);
+                SetReverseStatus($"{waybills.Count} đơn — không xem trước được: {ex.Message}", true);
+            }
+        }
+
         // ==================================================================================
         // Bước 3 — in
         // ==================================================================================
@@ -450,7 +590,8 @@ namespace AutoJMS
         {
             return (
                 AppConfig.Current.BuildJmsApiUrl(JmsSendWaybillService.CenterPrintEndpoint),
-                JmsSendWaybillService.BuildCenterPrintPayload(waybills),
+                JmsSendWaybillService.BuildCenterPrintPayload(
+                    waybills, JmsSendWaybillService.CenterPrintModePrint),
                 JmsSendWaybillService.CenterPrintRouteName,
                 JmsSendWaybillService.CenterPrintRouterNameList);
         }

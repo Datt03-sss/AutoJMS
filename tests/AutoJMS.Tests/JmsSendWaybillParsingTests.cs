@@ -213,6 +213,29 @@ public sealed class JmsSendWaybillParsingTests
     }
 
     [Fact]
+    public async Task BuildWaybillListForm_DungBaTruongVaContentLength341()
+    {
+        using var form = JmsSendWaybillService.BuildWaybillListForm(1, "854160185681");
+
+        string body = await form.ReadAsStringAsync();
+
+        // Tra theo mã là bộ trường KHÁC hẳn tra theo nhân viên: đúng ba trường, đúng thứ tự
+        // của cURL thật — không có collectStaffCode/timeStart/timeEnd/pickFinanceCode, kể cả
+        // để rỗng. Thừa trường thì JMS trả code:1 với danh sách rỗng mà không báo lỗi.
+        Assert.Equal(
+            new[] { "waybillNos", "current", "size" },
+            Regex.Matches(body, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray());
+
+        // Chốt bằng SỐ, y như bài test 1114 ở trên: ảnh DevTools của request thật (một mã 12
+        // ký tự, boundary cũng dài 38 ký tự) ghi Content-Length: 341.
+        Assert.Equal(341, body.Length);
+        Assert.DoesNotContain("boundary=\"", form.Headers.ContentType!.ToString());
+        Assert.DoesNotContain("name=current", body);
+        Assert.DoesNotContain("Content-Type: text/plain", body);
+        Assert.Contains("\r\n\r\n854160185681\r\n", body);
+    }
+
+    [Fact]
     public void RouterNameList_PercentEncodeCaDauPhanCap()
     {
         // cURL thật gửi %3E chứ không phải ">" trần, và mọi hằng RouterNameList khác trong
@@ -303,5 +326,21 @@ public sealed class JmsSendWaybillParsingTests
         Assert.Equal(
             new[] { "801113227096", "842617152633" },
             root.GetProperty("waybillNos").EnumerateArray().Select(x => x.GetString()).ToArray());
+    }
+
+    [Fact]
+    public void BuildCenterPrintPayload_XemTruocDoiDuyNhatPrintMode()
+    {
+        // printMode=1 là bản xem trước, JMS không tính vào ba lượt in. Chỉ đúng một khoá đổi
+        // so với lệnh in thật — sai chỗ này thì mỗi lần bấm Tìm kiếm lại đốt một lượt in.
+        string preview = JmsSendWaybillService.BuildCenterPrintPayload(
+            new[] { "854160185681" }, JmsSendWaybillService.CenterPrintModePreview);
+
+        using var doc = JsonDocument.Parse(preview);
+        Assert.Equal(1, doc.RootElement.GetProperty("printMode").GetInt32());
+        Assert.Equal("1", doc.RootElement.GetProperty("countryId").GetString());
+        Assert.Equal(
+            preview.Replace("\"printMode\":1", "\"printMode\":2"),
+            JmsSendWaybillService.BuildCenterPrintPayload(new[] { "854160185681" }));
     }
 }
