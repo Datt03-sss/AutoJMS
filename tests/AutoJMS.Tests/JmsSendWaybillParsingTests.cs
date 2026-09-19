@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace AutoJMS.Tests;
@@ -173,7 +174,7 @@ public sealed class JmsSendWaybillParsingTests
             1, "01989714",
             new DateTime(2026, 9, 19, 0, 0, 0),
             new DateTime(2026, 9, 19, 23, 59, 59),
-            "");
+            "", "208001");
 
         string contentType = form.Headers.ContentType!.ToString();
         string body = await form.ReadAsStringAsync();
@@ -183,21 +184,24 @@ public sealed class JmsSendWaybillParsingTests
         // không bọc nháy, rồi trả code:1 kèm danh sách rỗng mà không báo lỗi gì.
         Assert.DoesNotContain("boundary=\"", contentType);
         Assert.DoesNotContain("name=current", body);
-        Assert.Contains("name=\"current\"", body);
 
-        foreach (string field in new[]
-                 {
-                     "current", "size", "pickFinanceCode", "collectStaffCode",
-                     "timeStart", "timeEnd", "inputTimeStart", "inputTimeEnd",
-                     "waybillNos", "customerCodes"
-                 })
+        // Đủ 11 trường, ĐÚNG thứ tự của cURL thật. searchTimeType=1 là thứ quyết định
+        // timeStart/timeEnd (thời gian nhận hàng) có hiệu lực — thiếu nó thì danh sách rỗng.
+        string[] expected =
         {
-            Assert.Contains($"Content-Disposition: form-data; name=\"{field}\"", body);
-        }
+            "current", "size", "pickFinanceCode", "collectStaffCode",
+            "timeStart", "timeEnd", "waybillNos", "customerCodes",
+            "searchTimeType", "inputTimeStart", "inputTimeEnd"
+        };
+        Assert.Equal(
+            expected,
+            Regex.Matches(body, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray());
 
         // Phần text thường không kèm Content-Type, y như trình duyệt.
         Assert.DoesNotContain("Content-Type: text/plain", body);
-        Assert.Contains("01989714", body);
+        Assert.Contains("\r\n\r\n208001\r\n", body);
+        Assert.Contains("\r\n\r\n01989714\r\n", body);
+        Assert.Contains("\r\n\r\n1\r\n", body);
         Assert.Contains("2026-09-19 00:00:00", body);
         Assert.Contains("2026-09-19 23:59:59", body);
     }

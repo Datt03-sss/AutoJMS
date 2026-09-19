@@ -50,6 +50,7 @@ namespace AutoJMS
         // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.
         private static string _cachedNetworkId;
         private static string _cachedNetworkIdForSite;
+        private static string _cachedFinanceCode;
 
         public sealed class StaffInfo
         {
@@ -132,6 +133,7 @@ namespace AutoJMS
             CancellationToken ct = default)
         {
             string url = AppConfig.Current.BuildJmsApiUrl(ShippingListEndpoint);
+            string financeCode = await ResolveFinanceCodeAsync(ct).ConfigureAwait(false);
             var rows = new List<TrackingRow>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -141,7 +143,7 @@ namespace AutoJMS
                 string body = await ReadAsync(
                     HttpMethod.Post,
                     url,
-                    () => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes),
+                    () => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes, financeCode),
                     "ShippingWaybillList",
                     ct).ConfigureAwait(false);
 
@@ -193,29 +195,32 @@ namespace AutoJMS
             string collectStaffCode,
             DateTime timeFrom,
             DateTime timeTo,
-            string customerCodes)
+            string customerCodes,
+            string pickFinanceCode)
         {
             string from = timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture);
             string to = timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture);
 
-            // Giữ đúng thứ tự và đủ 10 trường như cURL của giao diện JMS: thiếu một trường
-            // rỗng (waybillNos/customerCodes) là backend trả 500.
+            // Giữ ĐÚNG thứ tự và đủ 11 trường như cURL của giao diện JMS. Thiếu một trường
+            // rỗng (waybillNos/customerCodes) là backend trả 500; thiếu searchTimeType thì
+            // nó không biết lọc theo mốc thời gian nào và trả danh sách rỗng.
             var form = NewBrowserStyleForm();
             Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
             Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
             // pickFinanceCode là mã TÀI CHÍNH của bưu cục (vd 208001 "Thái Nguyên"), KHÔNG
             // phải mã bưu cục mà SiteContextProvider.Get() trả về — cùng một dòng dữ liệu có
-            // pickFinanceCode=208001 nhưng pickNetworkCode=214A02. Điền nhầm mã bưu cục vào
-            // đây thì server trả danh sách rỗng mà không báo lỗi. collectStaffCode + khoảng
-            // thời gian đã đủ thu hẹp, nên để trống.
-            Add(form, "pickFinanceCode", "");
+            // pickFinanceCode=208001 nhưng pickNetworkCode=214A02.
+            Add(form, "pickFinanceCode", pickFinanceCode ?? "");
             Add(form, "collectStaffCode", collectStaffCode ?? "");
             Add(form, "timeStart", from);
             Add(form, "timeEnd", to);
-            Add(form, "inputTimeStart", from);
-            Add(form, "inputTimeEnd", to);
             Add(form, "waybillNos", "");
             Add(form, "customerCodes", customerCodes ?? "");
+            // 1 = lọc theo thời gian NHẬN HÀNG (timeStart/timeEnd). Giao diện JMS luôn gửi
+            // cả hai cặp mốc, searchTimeType mới là thứ quyết định cặp nào có hiệu lực.
+            Add(form, "searchTimeType", "1");
+            Add(form, "inputTimeStart", from);
+            Add(form, "inputTimeEnd", to);
             return form;
         }
 
@@ -277,12 +282,19 @@ namespace AutoJMS
 
             string body = await ReadAsync(HttpMethod.Get, url, null, "ResolveNetworkId", ct).ConfigureAwait(false);
             string id = "";
+            string finance = "";
             try
             {
                 using var doc = JsonDocument.Parse(body ?? "");
                 var first = EnumerateRecords(doc.RootElement).FirstOrDefault();
                 if (first.ValueKind == JsonValueKind.Object)
+                {
                     id = FirstText(first, "id", "networkId");
+                    // Cùng một bản ghi bưu cục CÓ THỂ mang mã tài chính của chi nhánh bao
+                    // ngoài. Tên trường chưa xác nhận bằng response thật, nên đọc kiểu
+                    // "được thì tốt": không thấy thì để rỗng, request vẫn chạy như cũ.
+                    finance = FirstText(first, "financeCode");
+                }
             }
             catch (Exception ex)
             {
@@ -291,8 +303,20 @@ namespace AutoJMS
 
             _cachedNetworkIdForSite = siteCode;
             _cachedNetworkId = id;
-            AppLogger.Info($"[SendWaybill] ResolveNetworkId site={siteCode} networkId={(string.IsNullOrEmpty(id) ? "<none>" : id)}");
+            _cachedFinanceCode = finance;
+            AppLogger.Info($"[SendWaybill] ResolveNetworkId site={siteCode} networkId={(string.IsNullOrEmpty(id) ? "<none>" : id)} " +
+                           $"financeCode={(string.IsNullOrEmpty(finance) ? "<none>" : finance)}");
             return id;
+        }
+
+        /// <summary>
+        /// Mã tài chính của bưu cục đang đăng nhập, dùng cho <c>pickFinanceCode</c>. Trả
+        /// chuỗi rỗng nếu chưa tra được — phía gọi vẫn gửi request, chỉ là thiếu bộ lọc này.
+        /// </summary>
+        private static async Task<string> ResolveFinanceCodeAsync(CancellationToken ct)
+        {
+            await ResolveNetworkIdAsync(SiteContextProvider.Get(), ct).ConfigureAwait(false);
+            return _cachedFinanceCode ?? "";
         }
 
         private static async Task<string> ReadAsync(
