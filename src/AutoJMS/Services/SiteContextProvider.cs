@@ -56,6 +56,11 @@ public sealed class SiteMatchResult
 public sealed class SiteContextProvider : ISiteContextProvider
 {
     private static readonly object Sync = new();
+    // Get() là đường nóng: Dashboard, sync service và ArrivalMonitor gọi nó mỗi nhịp
+    // refresh. Getter `Current` bên dưới đọc (và có khi ghi) AutoJMS.json ở MỖI lần
+    // truy cập — không được để đường nóng đi qua đó.
+    private static string? _cachedMiddleCode;
+    private static bool _promptedThisSession;
     private SiteContext _current;
 
     public SiteContextProvider()
@@ -86,11 +91,40 @@ public sealed class SiteContextProvider : ISiteContextProvider
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Mã bưu cục (middleCode) đã chuẩn hoá, hoặc "" nếu chưa cấu hình.
+    /// Nguồn sự thật duy nhất cho toàn bộ app. Chỉ chạm đĩa ở lần gọi đầu tiên.
+    /// </summary>
+    public static string Get()
+    {
+        lock (Sync)
+        {
+            if (_cachedMiddleCode != null) return _cachedMiddleCode;
+
+            string runtime = NormalizeCode(AppConfig.Current.ActionSiteCode);
+            if (runtime.Length == 0 || runtime == "0000")
+            {
+                // AutoJMS.json giữ lại middleCode của lần verify online gần nhất,
+                // nên lần chạy offline sau vẫn ra đúng mã.
+                runtime = NormalizeCode(SettingsManager.Load().MiddleCode);
+            }
+
+            _cachedMiddleCode = runtime == "0000" ? "" : runtime;
+            return _cachedMiddleCode;
+        }
+    }
+
+    public static void InvalidateCache()
+    {
+        lock (Sync) { _cachedMiddleCode = null; }
+    }
+
     public static void ApplyLicenseMiddleCode(string? middleCode)
     {
         string normalized = NormalizeCode(middleCode);
         AppConfig.Current.ActionSiteCode = normalized;
         AppConfig.SaveCurrent();
+        InvalidateCache();
 
         var settings = SettingsManager.Load();
         settings.MiddleCode = normalized;
