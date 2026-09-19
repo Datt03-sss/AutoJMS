@@ -1157,6 +1157,24 @@ namespace AutoJMS
             UpdateStatsAndVisibility();
         }
 
+        public void SetSelected(IEnumerable<string> waybills, bool isChecked)
+        {
+            var wanted = new HashSet<string>(
+                (waybills ?? Enumerable.Empty<string>()).Where(x => !string.IsNullOrWhiteSpace(x)),
+                StringComparer.OrdinalIgnoreCase);
+            if (wanted.Count == 0)
+                return;
+
+            _grid.EndEdit();
+            foreach (DataRow row in _displayTable.Rows)
+            {
+                if (wanted.Contains(row["Mã vận đơn"]?.ToString() ?? ""))
+                    row["Select"] = isChecked;
+            }
+            _displayTable.AcceptChanges();
+            UpdateStatsAndVisibility();
+        }
+
         public void ClearSelection()
         {
             if (_grid.InvokeRequired)

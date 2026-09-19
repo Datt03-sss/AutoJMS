@@ -25,6 +25,11 @@ public interface IPrintService
     IReadOnlyList<PrintStatusSnapshot> GetLastPrintStatusSnapshots();
     PrintSafetyResult GetLastAllowedPrintSafetyResult(string waybillNo);
     void SelectAll(bool isChecked);
+    /// <summary>
+    /// Đổi tick của đúng những mã được nêu, không đụng dòng nào khác. "In Reverse" dùng sau
+    /// khi in để bỏ tick phần vừa in mà vẫn giữ nguyên danh sách đã tra.
+    /// </summary>
+    void SetSelected(IEnumerable<string> waybills, bool isChecked);
     void ClearSelection();
     List<string> GetSelectedWaybills();
     /// <summary>Rows behind the current grid — lets "In lại đơn" prefill its editor.</summary>
