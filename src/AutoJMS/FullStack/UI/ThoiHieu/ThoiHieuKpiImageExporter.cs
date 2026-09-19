@@ -4,6 +4,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using AutoJMS;
 
 namespace AutoJMS.FullStack.UI.ThoiHieu
 {
@@ -28,7 +29,11 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 data ??= new ThoiHieuKpiSheetData();
                 Directory.CreateDirectory(outputDirectory);
 
-                string siteCode = SanitizeFilePart(string.IsNullOrWhiteSpace(data.SiteCode) ? "214A02" : data.SiteCode);
+                string resolvedSite = string.IsNullOrWhiteSpace(data.SiteCode)
+                    ? SiteContextProvider.Get()
+                    : data.SiteCode;
+                // Đây là một phần TÊN FILE nên không được rỗng.
+                string siteCode = SanitizeFilePart(resolvedSite.Length == 0 ? "KHONG-RO" : resolvedSite);
                 string fileName = $"thoi-hieu-{siteCode}-{DateTime.Now:yyyyMMdd-HHmmss-fff}.png";
                 string path = EnsureUniquePath(Path.Combine(outputDirectory, fileName));
 

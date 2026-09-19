@@ -6,7 +6,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
     {
         public int Stt { get; set; }
         public string SupervisorName { get; set; } = "";
-        public string SiteCode { get; set; } = "214A02";
+        public string SiteCode { get; set; } = "";
         public string EmployeeCode { get; set; } = "";
         public string EmployeeName { get; set; } = "";
         public int DeliveryCount { get; set; }
@@ -30,7 +30,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 
     public sealed class ThoiHieuKpiSheetData
     {
-        public string SiteCode { get; set; } = "214A02";
+        public string SiteCode { get; set; } = "";
         public ThoiHieuKpiSummary Summary { get; set; } = new();
         public List<ThoiHieuEmployeeRow> Rows { get; set; } = new();
     }
