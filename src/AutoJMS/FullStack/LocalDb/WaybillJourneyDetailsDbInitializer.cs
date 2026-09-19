@@ -23,7 +23,8 @@ namespace AutoJMS.FullStack.LocalDb
             await _initGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (_initializedPath == _connectionFactory.DatabasePath) return;
+                var path = _connectionFactory.DatabasePath;
+                if (_initializedPath == path) return;
 
                 await using var connection = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -44,8 +45,8 @@ namespace AutoJMS.FullStack.LocalDb
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
-                _initializedPath = _connectionFactory.DatabasePath;
-                AppLogger.Info($"[FullStackJourneyDetailsDb] initialized path={_connectionFactory.DatabasePath}");
+                _initializedPath = path;
+                AppLogger.Info($"[FullStackJourneyDetailsDb] initialized path={path}");
             }
             finally
             {

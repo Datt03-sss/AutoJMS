@@ -80,14 +80,32 @@ public sealed class SiteIsolationTests : IDisposable
 
     // Xac minh: ma buu cuc "." khong ra duong dan thu muc chia se goc (FullStack\<filename>).
     // Path.GetInvalidFileNameChars() khong co '.'; neu khong co Trim('.') thi "." se thanh
-    // FullStack\.\journey_history.db = FullStack\journey_history.db — xoa su co lap.
+    // FullStack\.\journey_history.db — Path.GetFullPath thu gon "." thanh FullStack\journey_history.db
+    // nen so sanh raw string la vo nghia; can GetFullPath ca hai phia moi bat duoc lo hong.
     [Fact]
     public void DotSiteCode_DoesNotResolveToLegacySharedFolder()
     {
         SiteContextProvider.ApplyLicenseMiddleCode(".");
         var path = FullStackLocalDbPaths.GetDatabasePath("journey_history.db");
         var legacyPath = System.IO.Path.Combine(AppPaths.UserDataDir, "FullStack", "journey_history.db");
-        Assert.NotEqual(legacyPath, path, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEqual(
+            System.IO.Path.GetFullPath(legacyPath),
+            System.IO.Path.GetFullPath(path),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Xac minh: ma buu cuc ".." khong thoat ra ngoai thu muc FullStack (path traversal).
+    // ".." se tao FullStack\..\journey_history.db = AppData\journey_history.db neu khong co Trim('.').
+    [Fact]
+    public void DotDotSiteCode_DoesNotEscapeFullStackFolder()
+    {
+        SiteContextProvider.ApplyLicenseMiddleCode("..");
+        var path = FullStackLocalDbPaths.GetDatabasePath("journey_history.db");
+        var escapedPath = System.IO.Path.Combine(AppPaths.UserDataDir, "journey_history.db");
+        Assert.NotEqual(
+            System.IO.Path.GetFullPath(escapedPath),
+            System.IO.Path.GetFullPath(path),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     // Xac minh: file cu duoc chuyen sang duong dan moi khi file dich chua ton tai.

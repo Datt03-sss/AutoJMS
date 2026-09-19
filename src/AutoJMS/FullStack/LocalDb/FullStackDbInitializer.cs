@@ -24,7 +24,8 @@ namespace AutoJMS.FullStack.LocalDb
             await _initGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                if (_initializedPath == _connectionFactory.DatabasePath) return;
+                var path = _connectionFactory.DatabasePath;
+                if (_initializedPath == path) return;
 
                 await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
                 await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
@@ -45,8 +46,8 @@ namespace AutoJMS.FullStack.LocalDb
                     ("$appliedAt", DateTime.UtcNow.ToString("O"))).ConfigureAwait(false);
 
                 await transaction.CommitAsync(ct).ConfigureAwait(false);
-                _initializedPath = _connectionFactory.DatabasePath;
-                AppLogger.Info($"[FullStackLocalDb] DB initialized path={_connectionFactory.DatabasePath}");
+                _initializedPath = path;
+                AppLogger.Info($"[FullStackLocalDb] DB initialized path={path}");
                 AppLogger.Info($"[FullStackLocalDb] migration applied version={FullStackMigrations.CurrentVersion}");
             }
             finally

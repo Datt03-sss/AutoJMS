@@ -63,8 +63,13 @@ namespace AutoJMS.FullStack.LocalDb
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warning("[LocalDb] doi database cu that bai: " +
+                    AppLogger.Error("[LocalDb] doi database cu that bai: " +
                         legacyPath + " -> " + targetPath + ": " + ex.Message);
+                    // Khong nuot loi: neu nuot, OpenAsync se tiep tuc tao file rong tai targetPath,
+                    // File.Exists(targetPath) se tra ve true va biet lap migration mai mai —
+                    // du lieu legacy bi mat vinh vien. Nem lai de giu legacy nguyen va cho lan
+                    // khoi dong ke tiep thu lai.
+                    throw;
                 }
             }
         }
