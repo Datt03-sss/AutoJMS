@@ -32,7 +32,14 @@ namespace AutoJMS
         private const int ReverseStaffMinChars = 2;
         private const int ReverseStaffPopupRows = 6;
         private const int ReverseClearSymbol = 61453;   // FontAwesome v4 fa-times
+        private const int ReverseCopySymbol = 61637;    // cùng ký hiệu "Copy" của frmLogin
         private const string ReversePrintFolderName = "Thu hồi đã in";
+
+        /// <summary>
+        /// Owner chốt: bản in thu hồi cần tra lại theo NGÀY, nên thư mục riêng của tab này dọn
+        /// theo tuổi file chứ không theo <c>KeepRecentPdfCount</c> như "Vận đơn đã in".
+        /// </summary>
+        private const int ReversePrintRetentionDays = 7;
         private const string ReverseHint =
             "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 
@@ -62,11 +69,11 @@ namespace AutoJMS
         {
             if (tabPrint_inRV == null || tabPrint_inRV.IsDisposed) return;
             if (uiTableLayoutPanel24 == null || uiTableLayoutPanel24.IsDisposed) return;
-            if (uiTableLayoutPanel24.Controls.Find("tabPrint_reverseStatus", false).Length > 0) return;
+            if (uiTableLayoutPanel24.Controls.Find("tabPrint_reverseStatusBar", false).Length > 0) return;
 
             // Hàng thứ ba, cao cố định: hai hàng ô nhập vẫn chia đôi phần còn lại như designer.
             uiTableLayoutPanel24.RowCount = 3;
-            uiTableLayoutPanel24.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
+            uiTableLayoutPanel24.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
 
             _reverseStatus = new UILabel
             {
@@ -75,10 +82,36 @@ namespace AutoJMS
                 Text = ReverseHint,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Margin = new Padding(0)
+            };
+
+            var copyButton = new UISymbolButton
+            {
+                Name = "tabPrint_reverseCopy",
+                Dock = DockStyle.Right,
+                Width = 150,
+                Text = "Copy mã đã chọn",
+                Symbol = ReverseCopySymbol,
+                SymbolSize = 18,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Margin = new Padding(0)
+            };
+            copyButton.Click += (s, e) => CopyReverseSelectionToClipboard();
+
+            // Nhãn trạng thái và nút Copy chung một hàng: nhãn Fill phải nằm ở z-order trên cùng
+            // để nút Dock=Right lấy dải bên phải trước, phần còn lại mới của nhãn.
+            var statusBar = new Panel
+            {
+                Name = "tabPrint_reverseStatusBar",
+                Dock = DockStyle.Fill,
                 Margin = new Padding(6, 0, 6, 0)
             };
-            uiTableLayoutPanel24.Controls.Add(_reverseStatus, 0, 2);
-            uiTableLayoutPanel24.SetColumnSpan(_reverseStatus, 3);
+            statusBar.Controls.Add(copyButton);
+            statusBar.Controls.Add(_reverseStatus);
+            _reverseStatus.BringToFront();
+
+            uiTableLayoutPanel24.Controls.Add(statusBar, 0, 2);
+            uiTableLayoutPanel24.SetColumnSpan(statusBar, 3);
 
             // Danh sách gợi ý treo trên Form chứ không trong tab page: tab page chỉ cao
             // ~150px nên thả xuống trong đó là bị cắt cụt ngay.
@@ -150,11 +183,11 @@ namespace AutoJMS
                 };
 
             // Nút IN cũng dùng chung cho bốn tab con. Ba tab kia đi pipeline mặc định trong
-            // ExecutePrintAsync; In Reverse cần đường riêng — thư mục tải riêng, tự hạ cấp sang
-            // bản xem trước khi vận đơn hết lượt in, và giữ nguyên lưới sau khi in. Chen một bộ
-            // phân luồng vào TRƯỚC handler của designer (chỉ cộng thêm handler là không đủ:
-            // handler kia vẫn chạy và vẫn in theo đường cũ). Mode khác thì gọi lại đúng handler
-            // đó, nên ba tab kia không đổi một dòng nào.
+            // ExecutePrintAsync; In Reverse cần đường riêng — thư mục tải riêng, dọn theo ngày,
+            // và giữ nguyên lưới sau khi in. Chen một bộ phân luồng vào TRƯỚC handler của
+            // designer (chỉ cộng thêm handler là không đủ: handler kia vẫn chạy và vẫn in theo
+            // đường cũ). Mode khác thì gọi lại đúng handler đó, nên ba tab kia không đổi một
+            // dòng nào. Nếu dây này đứt, BuildReversePrintRequest là chốt chặn — xem hàm đó.
             if (tabPrint_btnPrint != null && !tabPrint_btnPrint.IsDisposed)
             {
                 tabPrint_btnPrint.Click -= tabPrint_btnPrint_Click;
@@ -608,12 +641,13 @@ namespace AutoJMS
 
         /// <summary>
         /// Lệnh in của In Reverse, cùng ba bước như "In chuyển hoàn" — xin link, tải PDF về,
-        /// đẩy bytes vừa tải ra spooler — chỉ khác endpoint và ba điểm riêng của tab này:
+        /// đẩy bytes vừa tải ra spooler — chỉ khác endpoint và hai điểm riêng của tab này:
         /// <list type="number">
-        ///   <item>hết ba lượt in thì tự hạ cấp sang bản xem trước thay vì báo lỗi rồi dừng;</item>
-        ///   <item>PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>;</item>
+        ///   <item>PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>, dọn theo ngày;</item>
         ///   <item>in xong giữ nguyên lưới, chỉ bỏ tick đúng những mã vừa in.</item>
         /// </list>
+        /// Giới hạn ba lượt in của JMS giữ nguyên như mọi tab khác: hết lượt thì báo đúng câu
+        /// JMS trả về rồi dừng — nút "Copy mã đã chọn" để người dùng mang danh sách đi chỗ khác.
         /// Không gọi <c>QueuePostPrintRefresh</c>: nguồn của lưới này là
         /// <see cref="JmsSendWaybillService"/> chứ không phải tracking, một lượt làm mới theo
         /// tracking chỉ ghi đè các cột bằng dữ liệu rỗng.
@@ -642,32 +676,19 @@ namespace AutoJMS
                     selected, JmsSendWaybillService.CenterPrintModePrint, CancellationToken.None)
                     .ConfigureAwait(true);
 
-                // Quá ba lượt in thì JMS chặn hẳn lệnh in thật (code 121003005). Bản xem trước
-                // vẫn dựng được và vẫn là đúng tờ nhãn đó, nên lấy bằng printMode=1 rồi đẩy
-                // thẳng ra spooler: người dùng vẫn có giấy, chỉ là JMS không đếm thêm lượt nào.
+                // JMS nhét lỗi nghiệp vụ vào thân HTTP 200 — quá ba lượt in là code 121003005.
+                // Dừng đúng ở đây và giữ nguyên tick: ba lượt là luật của JMS, tab này không
+                // tìm đường vòng. Mã vẫn còn trên lưới để bấm "Copy mã đã chọn".
                 string error = JmsSendWaybillService.ReadBusinessError(body);
-                bool viaPreview = error != null;
-                if (viaPreview)
+                if (error != null)
                 {
-                    AppLogger.Warning($"[TabPrint] In Reverse: in thật bị từ chối ({error}) — hạ cấp sang bản xem trước.");
-                    SetReverseStatus($"{error} — đang in bằng bản xem trước...");
-
-                    body = await PostCenterPrintAsync(
-                        selected, JmsSendWaybillService.CenterPrintModePreview, CancellationToken.None)
-                        .ConfigureAwait(true);
-
-                    string previewError = JmsSendWaybillService.ReadBusinessError(body);
-                    if (previewError != null)
-                    {
-                        SetReverseStatus($"In thất bại: {previewError}", true);
-                        return;
-                    }
+                    AppLogger.Warning($"[TabPrint] In Reverse: JMS từ chối lệnh in — {error}");
+                    SetReverseStatus($"In thất bại: {error}", true);
+                    return;
                 }
 
                 string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, selected[0]), selected[0]);
-                TryReadPrintConfig(out int keepPdfs, out _);
-                string localPath = await DownloadReversePdfAsync(pdfUrl, selected[0], keepPdfs)
-                    .ConfigureAwait(true);
+                string localPath = await DownloadReversePdfAsync(pdfUrl, selected[0]).ConfigureAwait(true);
 
                 byte[] pdfBytes = string.IsNullOrEmpty(localPath) ? null : File.ReadAllBytes(localPath);
                 if (pdfBytes == null || pdfBytes.Length == 0)
@@ -697,9 +718,7 @@ namespace AutoJMS
                 _printService.SetSelected(selected, false);
                 if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = false;
 
-                SetReverseStatus(viaPreview
-                    ? $"Đã in {selected.Count} đơn bằng bản xem trước (JMS không tính thêm lượt in)."
-                    : $"Đã in {selected.Count} đơn.");
+                SetReverseStatus($"Đã in {selected.Count} đơn.");
             }
             catch (Exception ex)
             {
@@ -714,12 +733,13 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Tải PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>, rồi dọn bớt theo đúng cấu
-        /// hình <c>KeepRecentPdfCount</c> mà "In chuyển hoàn" dùng cho "Vận đơn đã in" — cùng
-        /// một con số, cùng một quy tắc giữ bản mới nhất. Hai thư mục tách nhau để lượt dọn của
-        /// tab này không đẩy bản in của tab kia ra ngoài.
+        /// Tải PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>, rồi xoá file quá
+        /// <see cref="ReversePrintRetentionDays"/> ngày. Khác "Vận đơn đã in" — thư mục kia giữ
+        /// theo SỐ LƯỢNG (<c>KeepRecentPdfCount</c>) nên một ngày in nhiều là mất dấu ngày cũ;
+        /// bản thu hồi cần tra lại theo ngày nên phải dọn theo tuổi file. Hai thư mục tách nhau
+        /// để lượt dọn của tab này không đẩy bản in của tab kia ra ngoài.
         /// </summary>
-        private static async Task<string> DownloadReversePdfAsync(string pdfUrl, string waybillTag, int keepPdfs)
+        private static async Task<string> DownloadReversePdfAsync(string pdfUrl, string waybillTag)
         {
             if (string.IsNullOrWhiteSpace(pdfUrl)) return "";
 
@@ -733,12 +753,25 @@ namespace AutoJMS
                 pdfUrl.Trim(), path, waybillTag, timeoutCts.Token).ConfigureAwait(true);
             if (!result.Success || !File.Exists(path)) return "";
 
-            var files = new DirectoryInfo(folder).GetFiles("*.pdf").OrderByDescending(f => f.CreationTime).ToList();
-            for (int i = keepPdfs; i < files.Count; i++)
-            {
-                try { files[i].Delete(); } catch { }
-            }
+            PruneReversePrintFolder(folder);
             return path;
+        }
+
+        /// <summary>
+        /// Xoá mọi PDF trong thư mục quá <see cref="ReversePrintRetentionDays"/> ngày. Mốc là
+        /// <c>CreationTime</c> — tên file có sẵn ngày giờ nhưng đọc từ tên thì một lần đổi định
+        /// dạng tên là lượt dọn câm luôn mà không ai biết.
+        /// <para>Không bao giờ ném: file đang mở trong trình xem PDF thì bỏ qua, lượt in sau dọn tiếp.</para>
+        /// </summary>
+        private static void PruneReversePrintFolder(string folder)
+        {
+            // Cùng cách tính mốc với lượt dọn log của tab IN ĐƠN: so theo NGÀY, không theo giờ.
+            DateTime cutoff = DateTime.Now.Date.AddDays(-ReversePrintRetentionDays);
+            foreach (var file in new DirectoryInfo(folder).GetFiles("*.pdf"))
+            {
+                if (file.CreationTime.Date >= cutoff) continue;
+                try { file.Delete(); } catch { }
+            }
         }
 
         /// <summary>
@@ -762,18 +795,48 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Chỉ còn để <c>RequestPrintWaybillApiAsync</c> biên dịch được: từ khi nút IN của tab
-        /// này đi <see cref="ExecuteReversePrintAsync"/>, pipeline in mặc định không còn chạm
-        /// vào mode InReverse nữa.
+        /// Chép các mã đang tick vào clipboard, mỗi mã một dòng — đúng định dạng
+        /// <c>ParseWaybillOrder</c> đọc lại được, nên dán thẳng vào ô "Mã vận đơn" là chạy.
+        /// Dùng nhiều nhất khi JMS báo hết ba lượt in: danh sách vẫn còn nguyên trên lưới.
+        /// </summary>
+        private void CopyReverseSelectionToClipboard()
+        {
+            var selected = _printService?.GetSelectedWaybills();
+            if (selected == null || selected.Count == 0)
+            {
+                SetReverseStatus("Chưa tick mã nào để copy.", true);
+                return;
+            }
+
+            try
+            {
+                Clipboard.SetText(string.Join(Environment.NewLine, selected));
+                SetReverseStatus($"Đã copy {selected.Count} mã vào clipboard.");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[TabPrint] In Reverse: không copy được mã — {ex.Message}");
+                SetReverseStatus($"Không copy được: {ex.Message}", true);
+            }
+        }
+
+        /// <summary>
+        /// Chốt chặn, KHÔNG phải đường chạy. Nút IN của tab này đi
+        /// <see cref="ExecuteReversePrintAsync"/>, nên pipeline in mặc định không bao giờ chạm
+        /// tới mode InReverse — trừ khi dây của <see cref="TabPrint_btnPrint_Dispatch"/> đứt
+        /// (designer đổi handler, hoặc <see cref="BuildTabPrintInReverseSection"/> thoát sớm).
+        /// Ném ngay tại đây để hỏng dây thì hiện thành lỗi đỏ, thay vì im lặng in vào thư mục
+        /// của tab khác rồi xoá trắng lưới. Chữ ký phải giữ nguyên cho
+        /// <c>RequestPrintWaybillApiAsync</c> biên dịch được.
         /// </summary>
         private (string Url, string Payload, string RouteName, string RouterNameList) BuildReversePrintRequest(
             List<string> waybills)
         {
-            return (
-                AppConfig.Current.BuildJmsApiUrl(JmsSendWaybillService.CenterPrintEndpoint),
-                JmsSendWaybillService.BuildCenterPrintPayload(waybills),
-                JmsSendWaybillService.CenterPrintRouteName,
-                JmsSendWaybillService.CenterPrintRouterNameList);
+            AppLogger.Error(
+                $"[TabPrint] In Reverse rơi vào pipeline in mặc định (count={waybills?.Count ?? 0}) — "
+                + "nút IN không còn trỏ vào TabPrint_btnPrint_Dispatch.");
+            throw new PrintPipelineException(
+                "PrintWaybillApi", PrintFailureApi, "In Reverse phải in qua ExecuteReversePrintAsync.");
         }
     }
 }

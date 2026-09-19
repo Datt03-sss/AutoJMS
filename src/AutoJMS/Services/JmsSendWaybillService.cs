@@ -43,10 +43,11 @@ namespace AutoJMS
 
         private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
 
-        // Giữ đúng size=20 như giao diện JMS: đây là request DUY NHẤT đã biết chắc chạy được,
-        // nên không tự ý nống lên. Lấy từng trang cho tới khi trang không còn đầy, chặn trên
-        // để một bộ lọc quá rộng không kéo về vô hạn.
-        private const int PageSize = 20;
+        // Owner chốt size=30 (giao diện JMS mặc định 20): ít lượt gọi hơn cho một ca làm việc.
+        // Vẫn là 2 ký tự nên Content-Length của cả hai form không đổi — xem hai bài test ghim
+        // 1114 và 341. Lấy từng trang cho tới khi trang không còn đầy, chặn trên để một bộ lọc
+        // quá rộng không kéo về vô hạn.
+        private const int PageSize = 30;
         private const int MaxPages = 50;
 
         // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.
