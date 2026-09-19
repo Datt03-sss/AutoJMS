@@ -30,6 +30,8 @@ namespace AutoJMS
         private const int ReverseStaffDebounceMs = 450;
         private const int ReverseStaffMinChars = 2;
         private const int ReverseStaffPopupRows = 6;
+        private const int ReverseClearSymbol = 61453;   // FontAwesome v4 fa-times
+        private const string ReverseHint = "Nhập tên nhân viên, chọn trong danh sách rồi bấm Tìm kiếm.";
 
         // ── controls dựng trong BuildTabPrintInReverseSection ──
         private UILabel _reverseStatus;
@@ -67,7 +69,7 @@ namespace AutoJMS
             {
                 Name = "tabPrint_reverseStatus",
                 Dock = DockStyle.Fill,
-                Text = "Nhập tên nhân viên, chọn trong danh sách rồi bấm Tìm kiếm.",
+                Text = ReverseHint,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
                 Margin = new Padding(6, 0, 6, 0)
@@ -103,6 +105,19 @@ namespace AutoJMS
                 {
                     if (_reverseStaffList == null || !_reverseStaffList.Focused) HideReverseStaffPopup();
                 };
+
+                // Nút "X" trong lòng ô: đổi người tra không phải xoá tay từng ký tự nữa.
+                // UITextBox có sẵn nút này (ShowButton + ButtonClick) nên khỏi chồng thêm control.
+                tabPrint_tenNV.ShowButton = true;
+                tabPrint_tenNV.ButtonSymbol = ReverseClearSymbol;
+                tabPrint_tenNV.ButtonSymbolSize = 16;
+                tabPrint_tenNV.ButtonWidth = 26;
+                tabPrint_tenNV.ButtonClick += (s, e) =>
+                {
+                    ClearReverseStaffInput();
+                    tabPrint_tenNV.Focus();
+                    SetReverseStatus(ReverseHint);
+                };
             }
 
             if (tabPrint_maCOD != null && !tabPrint_maCOD.IsDisposed)
@@ -128,26 +143,37 @@ namespace AutoJMS
         /// </summary>
         private void ResetTabPrintInReverseState()
         {
-            _reverseStaffCts?.Cancel();
             _reverseSearchCts?.Cancel();
+            ClearReverseStaffInput();
+
+            foreach (var box in new[] { tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
+                if (box != null && !box.IsDisposed) box.Text = "";
+
+            ResetReverseTimeRange();
+            SetReverseStatus(ReverseHint);
+        }
+
+        /// <summary>
+        /// Quên nhân viên đang chọn và dọn ô tên — dùng cho cả nút "X" lẫn Làm mới. Không đụng
+        /// thời gian hay ba ô còn lại: "X" chỉ để đổi người tra, dọn cả tab là việc của Làm mới.
+        /// </summary>
+        private void ClearReverseStaffInput()
+        {
+            _reverseStaffCts?.Cancel();
             _reverseStaffDebounce?.Stop();
             _reverseStaff = null;
             HideReverseStaffPopup();
 
-            // Xoá ô tên sẽ bắn TextChanged; chặn lại kẻo Làm mới tự mở một lượt tra nhân viên.
+            // Xoá ô tên sẽ bắn TextChanged; chặn lại kẻo tự mở một lượt tra nhân viên với ô rỗng.
             _reverseSuppressLookup = true;
             try
             {
-                foreach (var box in new[] { tabPrint_tenNV, tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
-                    if (box != null && !box.IsDisposed) box.Text = "";
+                if (tabPrint_tenNV != null && !tabPrint_tenNV.IsDisposed) tabPrint_tenNV.Text = "";
             }
             finally
             {
                 _reverseSuppressLookup = false;
             }
-
-            ResetReverseTimeRange();
-            SetReverseStatus("Nhập tên nhân viên, chọn trong danh sách rồi bấm Tìm kiếm.");
         }
 
         /// <summary>Mặc định: trọn ngày hôm nay — đúng ca làm việc người dùng hay tra nhất.</summary>
