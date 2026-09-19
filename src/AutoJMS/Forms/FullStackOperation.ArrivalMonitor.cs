@@ -17,7 +17,6 @@ namespace AutoJMS
     {
         private const string ArrivalMonitorEndpoint =
             "https://jmsgw.jtexpress.vn/businessindicator/bigdataReport/detail/bus_op_arrival_monitor_detail";
-        private const string ArrivalStationCode = "214A02";
 
         private int _arrivalArrivedTotal = 0;
         private List<object> _arrivalNotScanned = new();
@@ -40,6 +39,16 @@ namespace AutoJMS
                     return;
                 }
 
+                // Đặt trong try, sau guard token, để bám đúng khuôn "thiếu điều kiện thì skip"
+                // đã có sẵn ở trên và được catch của hàm bảo vệ.
+                string stationCode = SiteContextProvider.Require(this);
+                if (stationCode.Length == 0)
+                {
+                    // Bỏ API thay vì hỏi JMS bằng mã của trạm khác.
+                    AppLogger.Warning("[ArrivalMonitor] bo qua: chua cau hinh ma buu cuc.");
+                    return;
+                }
+
                 var today = DateTime.Now.Date;
                 string todayStart = today.ToString("yyyy-MM-dd") + " 00:00:00";
                 string todayEnd = today.ToString("yyyy-MM-dd") + " 23:59:59";
@@ -47,11 +56,11 @@ namespace AutoJMS
 
                 // "Đã đến" — count only (size 1; total is independent of page size), no list.
                 var arrived = await FetchArrivalBucketAsync(
-                    token, 2, "arrivalNum", todayStart, todayEnd, 1, "Đã đến", "hang_den_all", ct).ConfigureAwait(true);
+                    token, stationCode, 2, "arrivalNum", todayStart, todayEnd, 1, "Đã đến", "hang_den_all", ct).ConfigureAwait(true);
 
                 // "Chưa quét đến" — list (up to 100) + count.
                 var notScanned = await FetchArrivalBucketAsync(
-                    token, 1, "noArrivalNum", weekStart, todayEnd, 100, "Chưa quét đến", "not_scanned_in", ct).ConfigureAwait(true);
+                    token, stationCode, 1, "noArrivalNum", weekStart, todayEnd, 100, "Chưa quét đến", "not_scanned_in", ct).ConfigureAwait(true);
 
                 _arrivalArrivedTotal = arrived.Total;
                 _arrivalNotScanned = notScanned.List;
@@ -71,7 +80,7 @@ namespace AutoJMS
         }
 
         private async Task<(List<object> List, int Total)> FetchArrivalBucketAsync(
-            string token, int dateType, string jumpType, string startTime, string endTime,
+            string token, string stationCode, int dateType, string jumpType, string startTime, string endTime,
             int size, string subLabel, string subKey, CancellationToken ct)
         {
             try
@@ -80,7 +89,7 @@ namespace AutoJMS
                 {
                     current = 1,
                     size = size,
-                    arrivalSationCode = ArrivalStationCode,
+                    arrivalSationCode = stationCode,
                     dateType,
                     JumpType = jumpType,
                     startTime,
