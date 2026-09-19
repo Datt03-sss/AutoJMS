@@ -3555,12 +3555,29 @@ namespace AutoJMS
 
             ClearPrintJobCaches();
             ResetTabPrintReprintState(clearInputs: true);
-            if (tabPrint_printFunc.SelectedTab == tabPrint_inCH) _printService.SetMode(PrintMode.InHoan);
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inCT) _printService.SetMode(PrintMode.InChuyenTiep);
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inLaiDon) _printService.SetMode(PrintMode.InLaiDon);
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inRV) _printService.SetMode(PrintMode.InReverse);
+
+            PrintMode newMode = PrintMode.InHoan;
+            if (tabPrint_printFunc.SelectedTab == tabPrint_inCH) newMode = PrintMode.InHoan;
+            else if (tabPrint_printFunc.SelectedTab == tabPrint_inCT) newMode = PrintMode.InChuyenTiep;
+            else if (tabPrint_printFunc.SelectedTab == tabPrint_inLaiDon) newMode = PrintMode.InLaiDon;
+            else if (tabPrint_printFunc.SelectedTab == tabPrint_inRV) newMode = PrintMode.InReverse;
+            _printService.SetMode(newMode);
 
             tabPrint_btnSelectAll.Checked = false;
+
+            // Ô mã vận đơn dùng chung cho cả 4 tab con: còn mã thì tab vừa mở tự nạp lại theo
+            // mode của nó, khỏi bắt người dùng bấm Tìm kiếm thêm lần nữa.
+            string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                if (tabPrint_printPreview?.CoreWebView2 != null)
+                    tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
+                return;
+            }
+
+            // Xếp hàng sau sự kiện đổi tab: gọi thẳng ở đây là chạy lượt mạng ngay trong
+            // handler, người dùng bấm tab kế tiếp sẽ tái nhập chính handler này.
+            BeginInvoke((MethodInvoker)(async () => await ExecuteTabPrintSearchAsync(input, newMode)));
         }
 
         private void print_InChuyenHoan_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InHoan);
@@ -3598,16 +3615,33 @@ namespace AutoJMS
                 }
                 else
                 {
-                    tabPrint_inputWaybill.AppendText(Environment.NewLine);
-                    print_TimKiem_Click(null, null);
+                    string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
+                    if (string.IsNullOrWhiteSpace(input)) return;
+                    await ExecuteTabPrintSearchAsync(input);
                 }
             }
         }
 
         private async void print_TimKiem_Click(object sender, EventArgs e)
         {
-            string input = tabPrint_inputWaybill.Text.Trim();
+            string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(input)) return;
+            await ExecuteTabPrintSearchAsync(input);
+        }
+
+        /// <summary>
+        /// Tìm kiếm cho tab con đang mở của tab IN ĐƠN. Dùng chung cho nút Tìm kiếm, phím
+        /// Enter trên ô nhập, và lượt tự chạy khi đổi tab con.
+        /// </summary>
+        /// <param name="expectedMode">
+        /// Mode kỳ vọng lúc lượt tìm kiếm này được xếp hàng. Bấm đổi tab dồn dập thì lượt của
+        /// tab cũ bị bỏ, chỉ kết quả của tab cuối cùng được nạp.
+        /// </param>
+        private async Task ExecuteTabPrintSearchAsync(string input, PrintMode? expectedMode = null)
+        {
+            if (string.IsNullOrWhiteSpace(input) || _printService == null) return;
+            if (expectedMode.HasValue && _printService.CurrentMode != expectedMode.Value) return;
+
             AppCaptureManager.Instance.RecordEvent(new AppCaptureEvent
             {
                 Category = "print.flow",
@@ -3615,23 +3649,41 @@ namespace AutoJMS
                 EventName = "SearchRequested",
                 WaybillNo = input,
                 CorrelationId = BuildPrintCorrelationId(input),
-                Data = new Dictionary<string, object> { ["mode"] = _printService == null ? "" : _printService.CurrentMode.ToString() }
+                Data = new Dictionary<string, object> { ["mode"] = _printService.CurrentMode.ToString() }
             });
 
-            tabPrint_btnTimKiem.Enabled = false;
+            if (tabPrint_btnTimKiem != null) tabPrint_btnTimKiem.Enabled = false;
             try
             {
                 ClearPrintStatusSnapshot();
                 await _printService.SearchAndLoadAsync(input, _printService.CurrentMode);
+
+                // Await xong mới biết người dùng có đổi tab giữa chừng hay không: đổi rồi thì
+                // kết quả này là của tab cũ, nạp vào sẽ đè lên tab đang mở.
+                if (expectedMode.HasValue && _printService.CurrentMode != expectedMode.Value) return;
+
                 _printService.SelectAll(true);
                 tabPrint_btnSelectAll.Checked = true;
-                ShowPrintMessage("Đã xác minh, sẵn sàng in", false, 1500);
+
                 if (IsReprintModeActive)
+                {
                     await PrepareReprintPreviewAsync();
+                }
+                else
+                {
+                    ShowPrintMessage("Đã xác minh, sẵn sàng in", false, 1500);
+                    if (tabPrint_printPreview?.CoreWebView2 != null)
+                        tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"[TabPrint] Tìm kiếm thất bại mode={_printService.CurrentMode}", ex);
+                ShowPrintMessage($"Lỗi tìm kiếm: {ex.Message}", true, 3000);
             }
             finally
             {
-                tabPrint_btnTimKiem.Enabled = true;
+                if (tabPrint_btnTimKiem != null) tabPrint_btnTimKiem.Enabled = true;
             }
         }
 
