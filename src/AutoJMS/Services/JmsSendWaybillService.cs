@@ -151,6 +151,12 @@ namespace AutoJMS
 
                 if (string.IsNullOrWhiteSpace(body)) break;
 
+                // JMS báo lỗi nghiệp vụ trong thân HTTP 200 rồi để data=null. Không đọc
+                // code/msg thì MỌI lỗi đều hiện ra thành "Không có đơn nào trong khoảng
+                // thời gian này" — sai hoàn toàn và không cách nào lần ra.
+                string error = ReadBusinessError(body);
+                if (error != null) throw new InvalidOperationException(error);
+
                 int before = rows.Count;
                 int recordsInPage = 0;
                 try
@@ -179,6 +185,41 @@ namespace AutoJMS
                            $"from={timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
                            $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)}");
             return rows;
+        }
+
+        /// <summary>
+        /// Thông báo lỗi nghiệp vụ JMS nhét trong thân HTTP 200, hoặc <c>null</c> nếu phản
+        /// hồi bình thường. JMS không dùng mã HTTP cho lỗi nghiệp vụ: nó trả 200 kèm
+        /// <c>succ:false</c> / <c>code</c> khác 1 và <c>data:null</c> — ví dụ thật là
+        /// <c>code:121003005 msg:"运单打印次数超过3次"</c> (quá 3 lượt in).
+        /// </summary>
+        internal static string ReadBusinessError(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Object) return null;
+
+                bool failed =
+                    (root.TryGetProperty("succ", out var succ) && succ.ValueKind == JsonValueKind.False)
+                    || (root.TryGetProperty("code", out var code)
+                        && code.ValueKind == JsonValueKind.Number
+                        && code.GetInt64() != 1);
+                if (!failed) return null;
+
+                string msg = FirstText(root, "msg");
+                string codeText = root.TryGetProperty("code", out var c) ? c.ToString() : "?";
+                return string.IsNullOrWhiteSpace(msg)
+                    ? $"JMS từ chối yêu cầu (code {codeText})."
+                    : $"JMS: {msg} (code {codeText})";
+            }
+            catch
+            {
+                // Thân không phải JSON thì để phía gọi bóc như cũ rồi tự báo lỗi parse.
+                return null;
+            }
         }
 
         /// <summary>Payload cho <see cref="CenterPrintEndpoint"/> — xem mục 2.4 của spec.</summary>
@@ -349,6 +390,13 @@ namespace AutoJMS
                 }
 
                 string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+                // Nửa còn lại của cặp dump: request đúng từng byte mà vẫn ra rỗng thì câu
+                // trả lời nằm ở đây. Cắt bớt vì một trang 20 đơn dài vài KB, nhưng code/msg
+                // của JMS luôn ở ngay đầu thân nên không bao giờ bị cắt mất.
+                AppLogger.Info($"[SendWaybill] <<< {what} RESPONSE HTTP {(int)resp.StatusCode} "
+                               + TokenRedactor.RedactText(Preview(body)));
+
                 if (!resp.IsSuccessStatusCode)
                 {
                     AppLogger.Warning($"[SendWaybill] {what}: HTTP {(int)resp.StatusCode}");
@@ -365,6 +413,13 @@ namespace AutoJMS
                 AppLogger.Warning($"[SendWaybill] {what} failed: {ex.Message}");
                 return null;
             }
+        }
+
+        private static string Preview(string body)
+        {
+            if (string.IsNullOrEmpty(body)) return "<empty>";
+            const int max = 2000;
+            return body.Length <= max ? body : body.Substring(0, max) + "...[cắt bớt]";
         }
 
         /// <summary>

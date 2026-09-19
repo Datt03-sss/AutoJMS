@@ -221,6 +221,47 @@ public sealed class JmsSendWaybillParsingTests
         Assert.Equal(2, Regex.Matches(JmsSendWaybillService.CenterPrintRouterNameList, "%3E").Count);
     }
 
+    // ── Lỗi nghiệp vụ nằm trong thân HTTP 200, không phải ở mã HTTP ────────────────
+
+    [Fact]
+    public void ReadBusinessError_PhanHoiThanhCong_TraNull()
+    {
+        Assert.Null(JmsSendWaybillService.ReadBusinessError(StaffResponse));
+        Assert.Null(JmsSendWaybillService.ReadBusinessError("""{"code":1,"data":[],"succ":true}"""));
+    }
+
+    [Fact]
+    public void ReadBusinessError_QuaLuotIn_TraNguyenVanMsgCuaJms()
+    {
+        // Response thật của waybillCenterPrint khi vận đơn đã in quá 3 lần. Đây chính là
+        // hình dạng mà code cũ nuốt trọn rồi hiện ra "Không có đơn nào trong khoảng thời
+        // gian này" — data=null nên bộ bóc bản ghi trả 0 dòng, tuyệt nhiên không kêu.
+        const string json = """
+        {
+            "code": 121003005,
+            "msg": "运单打印次数超过3次",
+            "data": null,
+            "traceId": "de9650083a5cfb2f",
+            "content": null,
+            "succ": false,
+            "fail": true
+        }
+        """;
+
+        string error = JmsSendWaybillService.ReadBusinessError(json);
+
+        Assert.Contains("运单打印次数超过3次", error);
+        Assert.Contains("121003005", error);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("khong-phai-json")]
+    public void ReadBusinessError_BodyHongHoacRong_TraNull(string body)
+    {
+        Assert.Null(JmsSendWaybillService.ReadBusinessError(body));
+    }
+
     // ── Payload in: đúng 3 khoá như cURL của giao diện JMS ─────────────────────────
 
     [Fact]
