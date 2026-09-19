@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace AutoJMS;
 
@@ -117,6 +118,49 @@ public sealed class SiteContextProvider : ISiteContextProvider
     public static void InvalidateCache()
     {
         lock (Sync) { _cachedMiddleCode = null; }
+    }
+
+    /// <summary>
+    /// Như <see cref="Get"/> nhưng khi chưa cấu hình thì hỏi người dùng rồi lưu lại.
+    /// Chỉ hỏi MỘT lần mỗi phiên — các vòng lặp refresh nền không được spam dialog.
+    /// Trả về "" nếu user huỷ hoặc không có form chủ để làm owner cho modal.
+    /// </summary>
+    public static string Require(Form? owner)
+    {
+        string current = Get();
+        if (current.Length > 0) return current;
+
+        // Không có owner nghĩa là đang ở thread nền không có UI — mở modal ở đó
+        // sẽ dựng message loop lạc chỗ. Thà bỏ API còn hơn.
+        if (owner == null || owner.IsDisposed) return "";
+
+        lock (Sync)
+        {
+            if (_promptedThisSession) return "";
+            _promptedThisSession = true;
+        }
+
+        string entered = "";
+        bool ok = false;
+        void Prompt() => ok = Sunny.UI.UIInputDialog.ShowInputStringDialog(
+            owner, ref entered,
+            checkEmpty: true,
+            desc: "Chưa xác định được mã bưu cục từ license. Vui lòng nhập mã bưu cục (Middle Code):",
+            showMask: true,
+            maxLength: 16);
+
+        if (owner.InvokeRequired) owner.Invoke((Action)Prompt);
+        else Prompt();
+
+        if (!ok) return "";
+
+        string normalized = NormalizeCode(entered);
+        if (normalized.Length == 0 || normalized == "0000") return "";
+
+        // Ghi vào CẢ AppConfig lẫn AutoJMS.json để lần chạy sau (kể cả offline) có sẵn.
+        ApplyLicenseMiddleCode(normalized);
+        AppLogger.Info($"[SiteContext] middleCode nhap tay source=dialog value={normalized}");
+        return normalized;
     }
 
     public static void ApplyLicenseMiddleCode(string? middleCode)
