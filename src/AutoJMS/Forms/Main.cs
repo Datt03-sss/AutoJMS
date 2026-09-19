@@ -313,6 +313,7 @@ namespace AutoJMS
             tabPrint_btnSelectAll.CheckedChanged += tabPrint_btnSelectAll_CheckedChanged;
             tabPrint_printFunc.SelectedIndexChanged += TabPrint_printFunc_SelectedIndexChanged;
             BuildTabPrintInLaiDonSection();
+            BuildTabPrintInReverseSection();
             tabHome_webView.NavigationCompleted += tabHome_WebView_NavigationCompleted;
 
             // DKCH buttons
@@ -3574,6 +3575,7 @@ namespace AutoJMS
 
             ClearPrintJobCaches();
             ResetTabPrintReprintState(clearInputs: true);
+            HideReverseStaffPopup();
 
             PrintMode newMode = GetTabPrintModeFromSelectedTab();
             _printService.SetMode(newMode);
@@ -3613,7 +3615,8 @@ namespace AutoJMS
             {
                 e.SuppressKeyPress = true;
                 // "In lại đơn" bắt buộc phải xem trước bản in, nên không cho AutoMode in thẳng.
-                if (tabPrint_AutoMode.Active && !IsReprintModeActive)
+                // "In Reverse" thì ô mã vận đơn không phải đầu vào của nó, nên cũng không.
+                if (tabPrint_AutoMode.Active && !IsReprintModeActive && !IsReverseModeActive)
                 {
                     string input = tabPrint_inputWaybill.Text.Trim();
                     if (string.IsNullOrWhiteSpace(input)) return;
@@ -3639,6 +3642,14 @@ namespace AutoJMS
 
         private async void print_TimKiem_Click(object sender, EventArgs e)
         {
+            // "In Reverse" tra theo nhân viên lấy hàng + khoảng thời gian, ô mã vận đơn không
+            // tham gia — xem Main.TabPrintReverse.cs.
+            if (GetTabPrintModeFromSelectedTab() == PrintMode.InReverse)
+            {
+                await ExecuteTabPrintReverseSearchAsync();
+                return;
+            }
+
             string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(input)) return;
             await ExecuteTabPrintSearchAsync(input);
@@ -3661,6 +3672,11 @@ namespace AutoJMS
             // init là async) — bấm sang "In lại đơn" trong lúc đó thì mode kẹt ở InHoan, tìm
             // kiếm chạy nhánh SafetyGuard và không ra dòng nào. SetMode tự bỏ qua khi trùng mode.
             _printService.SetMode(GetTabPrintModeFromSelectedTab());
+
+            // "In Reverse" không nhận mã vận đơn làm đầu vào: nó có đường tìm kiếm riêng. Bỏ
+            // qua ở đây thì cả ba lối gọi (nút Tìm kiếm, Enter trên ô mã, đổi tab con khi ô mã
+            // còn chữ) đều không kéo nhầm lượt tra theo mã.
+            if (_printService.CurrentMode == PrintMode.InReverse) return;
 
             if (expectedMode.HasValue && _printService.CurrentMode != expectedMode.Value) return;
 
@@ -5280,22 +5296,35 @@ namespace AutoJMS
                 throw new PrintPipelineException("PrintWaybillApi", PrintFailureApi, "Missing JMS auth token.");
             }
 
-            var payload = new Dictionary<string, object>
+            string jsonPayload;
+            string apiUrl;
+            string routeName = "trackingExpress";
+            string routerNameList = null;
+
+            // "In Reverse" in từ màn "Quản lý vận đơn gửi": endpoint và payload riêng.
+            if (_printService?.CurrentMode == PrintMode.InReverse)
             {
-                { "waybillIds", waybills },
-                { "applyTypeCode", applyTypeCode },
-                { "printType", printType },
-                { "pringType", printType },
-                { "countryId", "1" }
-            };
-            string jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
-            string apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printWaybill");
+                (apiUrl, jsonPayload, routeName, routerNameList) = BuildReversePrintRequest(waybills);
+            }
+            else
+            {
+                var payload = new Dictionary<string, object>
+                {
+                    { "waybillIds", waybills },
+                    { "applyTypeCode", applyTypeCode },
+                    { "printType", printType },
+                    { "pringType", printType },
+                    { "countryId", "1" }
+                };
+                jsonPayload = System.Text.Json.JsonSerializer.Serialize(payload);
+                apiUrl = AppConfig.Current.BuildJmsApiUrl("operatingplatform/rebackTransferExpress/printWaybill");
+            }
 
             AppLogger.Info($"PRINT_API_REQUEST_START waybill={firstWaybill} endpoint=printWaybill waybillCount={waybills?.Count ?? 0}");
             using var timeoutCts = new CancellationTokenSource(PrintPdfUrlTimeout);
             try
             {
-                using var response = await JmsApiClient.PostJsonAsync(apiUrl, jsonPayload, routeName: "trackingExpress", ct: timeoutCts.Token)
+                using var response = await JmsApiClient.PostJsonAsync(apiUrl, jsonPayload, routeName: routeName, routerNameList: routerNameList, ct: timeoutCts.Token)
                     .ConfigureAwait(false);
                 if (response == null)
                 {
@@ -5756,6 +5785,10 @@ namespace AutoJMS
                 BeginInvoke((MethodInvoker)(() => ShowPrintMessage(message, isError, timeout)));
                 return;
             }
+
+            // tabPrint_messLable nằm trong tab con "In chuyển hoàn" nên từ "In Reverse" không
+            // nhìn thấy gì. Dội lại sang dòng trạng thái của tab đó để lệnh in vẫn có phản hồi.
+            if (IsReverseModeActive) SetReverseStatus(message, isError);
 
             if (tabPrint_messLable == null || tabPrint_messLable.IsDisposed) return;
             if (hideTimer != null)

@@ -344,6 +344,19 @@ namespace AutoJMS
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
         }
 
+        public void LoadRowsDirect(IEnumerable<TrackingRow> rows, PrintMode mode)
+        {
+            SetMode(mode);               // no-op khi trùng mode; đổi mode thì dựng lại cột
+            ClearPrintableState(resetCurrent: true);
+
+            _printRows.AddRange((rows ?? Enumerable.Empty<TrackingRow>())
+                .Where(r => !string.IsNullOrWhiteSpace(r?.WaybillNo)));
+            _currentPrintWaybill = _printRows.FirstOrDefault()?.WaybillNo ?? string.Empty;
+
+            LoadDataToGrid();
+            SetColumnAlignments();
+        }
+
         public async System.Threading.Tasks.Task SearchAndLoadAsync(string waybillsText, PrintMode mode)
         {
             var totalWatch = Stopwatch.StartNew();
@@ -556,6 +569,15 @@ namespace AutoJMS
 
             if (selected.Count == 0)
                 return false;
+
+            // In Reverse: danh sách đến từ shippingWaybillList (nhân viên + thời gian), ô nhập
+            // mã vận đơn luôn rỗng nên không có gì để đối chiếu. Phải chặn TRƯỚC phép so khớp
+            // bên dưới, nếu không mọi lệnh in đều rơi vào WAYBILL_MISMATCH.
+            if (_currentMode == PrintMode.InReverse)
+            {
+                AppLogger.Info($"[PrintPerf] phase=Print InReverse bypass validation count={selected.Count} totalMs={totalWatch.ElapsedMilliseconds}");
+                return true;
+            }
 
             var inputBases = new HashSet<string>(currentInput.Select(NormalizeBaseWaybill), StringComparer.OrdinalIgnoreCase);
             var selectedBases = new HashSet<string>(selected.Select(NormalizeBaseWaybill), StringComparer.OrdinalIgnoreCase);

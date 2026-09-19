@@ -1,0 +1,347 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace AutoJMS
+{
+    /// <summary>
+    /// Màn "Quản lý vận đơn gửi" (<c>sendWaybillSite</c>) của JMS — nguồn dữ liệu duy nhất
+    /// của tab con "In Reverse".
+    ///
+    /// Khác với ba tab con còn lại, In Reverse không tra theo mã vận đơn mà tra theo
+    /// <b>nhân viên lấy hàng + khoảng thời gian</b>, nên nó không đi qua
+    /// <see cref="PrintService.SearchAndLoadAsync"/> (tracking + SafetyGuard) mà nạp thẳng
+    /// kết quả vào lưới.
+    ///
+    /// Mọi request ở đây đi qua <see cref="JmsApiClient"/> để dùng chung hàng đợi 12 slot,
+    /// token hiện hành và một lượt retry sau khi refresh token.
+    /// </summary>
+    public static class JmsSendWaybillService
+    {
+        // Breadcrumb của màn sendWaybillSite, chép nguyên văn từ cURL: dấu ">" để trần,
+        // chỉ phần chữ Hán là đã percent-encode.
+        private const string SendWaybillRouterNameList =
+            "%E7%BD%91%E7%82%B9%E7%BB%8F%E8%90%A5>%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86>%E5%AF%84%E4%BB%B6%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86";
+        private const string SendWaybillRouteName = "sendWaybillSite";
+
+        private const string StaffEndpoint = "basicdata/sysStaff/selectAll";
+        private const string NetworkEndpoint = "basicdata/network/select/all";
+        private const string ShippingListEndpoint = "networkmanagement/omsWaybill/shippingWaybillList";
+
+        /// <summary>Endpoint in của màn gửi — payload khác hẳn luồng in mặc định.</summary>
+        public const string CenterPrintEndpoint = "networkmanagement/print/waybillCenterPrint";
+        public const string CenterPrintRouteName = SendWaybillRouteName;
+        public const string CenterPrintRouterNameList = SendWaybillRouterNameList;
+
+        private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
+
+        // JMS trả tối đa vài trăm đơn cho một ca lấy hàng. Lấy từng trang lớn cho tới khi
+        // trang không còn đầy, chặn trên để một bộ lọc quá rộng không kéo về vô hạn.
+        private const int PageSize = 100;
+        private const int MaxPages = 10;
+
+        // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.
+        private static string _cachedNetworkId;
+        private static string _cachedNetworkIdForSite;
+
+        public sealed class StaffInfo
+        {
+            public string Code { get; init; } = "";
+            public string Name { get; init; } = "";
+            public string Display => string.IsNullOrWhiteSpace(Code) ? Name : $"{Name} ({Code})";
+        }
+
+        /// <summary>
+        /// Tra nhân viên theo tên cho bưu cục đang đăng nhập. Trả danh sách rỗng khi JMS
+        /// không trả bản ghi nào — gọi hàm này không bao giờ ném vì lỗi nghiệp vụ.
+        /// </summary>
+        public static async Task<IReadOnlyList<StaffInfo>> SearchStaffAsync(
+            string name, string siteCode, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return Array.Empty<StaffInfo>();
+
+            string url = AppConfig.Current.BuildJmsApiUrl(StaffEndpoint)
+                       + "?name=" + Uri.EscapeDataString(name.Trim())
+                       + "&networkLevel=3";
+
+            // networkId chỉ để thu hẹp kết quả về đúng bưu cục. Không tra được thì vẫn gọi:
+            // JMS đã biết bưu cục của phiên qua authToken.
+            string networkId = await ResolveNetworkIdAsync(siteCode, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(networkId))
+                url += "&networkId=" + Uri.EscapeDataString(networkId);
+
+            string body = await ReadAsync(HttpMethod.Get, url, null, "SearchStaff", ct).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(body)) return Array.Empty<StaffInfo>();
+
+            var staff = new List<StaffInfo>();
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                foreach (var item in EnumerateRecords(doc.RootElement))
+                {
+                    string code = FirstText(item, "staffCode", "jobNumber", "code", "employeeCode", "userCode");
+                    string staffName = FirstText(item, "staffName", "realName", "name", "userName", "employeeName");
+                    if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(staffName)) continue;
+                    staff.Add(new StaffInfo { Code = code, Name = staffName });
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[SendWaybill] SearchStaff parse failed: {ex.Message}");
+                return Array.Empty<StaffInfo>();
+            }
+
+            // Cùng một người có thể xuất hiện nhiều dòng (nhiều vai trò) — lưới chọn chỉ cần
+            // mỗi mã một lần.
+            var unique = staff
+                .Where(s => !string.IsNullOrWhiteSpace(s.Code))
+                .GroupBy(s => s.Code, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            AppLogger.Info($"[SendWaybill] SearchStaff name={name} results={unique.Count}");
+            return unique;
+        }
+
+        /// <summary>
+        /// Danh sách vận đơn nhân viên <paramref name="collectStaffCode"/> đã lấy trong
+        /// khoảng thời gian đã chọn, đã map sẵn sang <see cref="TrackingRow"/> để nạp thẳng
+        /// vào lưới của tab IN ĐƠN.
+        /// </summary>
+        public static async Task<IReadOnlyList<TrackingRow>> SearchShippingWaybillsAsync(
+            string siteCode,
+            string collectStaffCode,
+            DateTime timeFrom,
+            DateTime timeTo,
+            string customerCodes,
+            CancellationToken ct = default)
+        {
+            string url = AppConfig.Current.BuildJmsApiUrl(ShippingListEndpoint);
+            var rows = new List<TrackingRow>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            for (int page = 1; page <= MaxPages; page++)
+            {
+                int current = page;
+                string body = await ReadAsync(
+                    HttpMethod.Post,
+                    url,
+                    () => BuildListForm(current, siteCode, collectStaffCode, timeFrom, timeTo, customerCodes),
+                    "ShippingWaybillList",
+                    ct).ConfigureAwait(false);
+
+                if (string.IsNullOrWhiteSpace(body)) break;
+
+                int before = rows.Count;
+                int recordsInPage = 0;
+                try
+                {
+                    using var doc = JsonDocument.Parse(body);
+                    foreach (var item in EnumerateRecords(doc.RootElement))
+                    {
+                        recordsInPage++;
+                        var row = MapRow(item);
+                        if (row == null || !seen.Add(row.WaybillNo)) continue;
+                        rows.Add(row);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warning($"[SendWaybill] ShippingWaybillList parse failed (page {page}): {ex.Message}");
+                    break;
+                }
+
+                // Trang chưa đầy nghĩa là đã hết dữ liệu; trang đầy nhưng không thêm được dòng
+                // nào (toàn trùng) thì tiếp tục cũng vô nghĩa.
+                if (recordsInPage < PageSize || rows.Count == before) break;
+            }
+
+            AppLogger.Info($"[SendWaybill] ShippingWaybillList staff={collectStaffCode} rows={rows.Count} " +
+                           $"from={timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
+                           $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)}");
+            return rows;
+        }
+
+        /// <summary>Payload cho <see cref="CenterPrintEndpoint"/> — xem mục 2.4 của spec.</summary>
+        public static string BuildCenterPrintPayload(IEnumerable<string> waybillNos)
+        {
+            return JsonSerializer.Serialize(new Dictionary<string, object>
+            {
+                { "printMode", 2 },
+                { "waybillNos", (waybillNos ?? Enumerable.Empty<string>()).ToList() },
+                { "countryId", "1" }
+            });
+        }
+
+        private static MultipartFormDataContent BuildListForm(
+            int current,
+            string siteCode,
+            string collectStaffCode,
+            DateTime timeFrom,
+            DateTime timeTo,
+            string customerCodes)
+        {
+            string from = timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture);
+            string to = timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture);
+
+            // Giữ đúng thứ tự và đủ 10 trường như cURL của giao diện JMS: thiếu một trường
+            // rỗng (waybillNos/customerCodes) là backend trả 500.
+            var form = new MultipartFormDataContent();
+            Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
+            Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
+            Add(form, "pickFinanceCode", siteCode ?? "");
+            Add(form, "collectStaffCode", collectStaffCode ?? "");
+            Add(form, "timeStart", from);
+            Add(form, "timeEnd", to);
+            Add(form, "inputTimeStart", from);
+            Add(form, "inputTimeEnd", to);
+            Add(form, "waybillNos", "");
+            Add(form, "customerCodes", customerCodes ?? "");
+            return form;
+        }
+
+        private static void Add(MultipartFormDataContent form, string name, string value)
+        {
+            // Tên trường phải để trần, không bọc dấu nháy như mặc định của .NET.
+            var part = new StringContent(value ?? "");
+            part.Headers.ContentType = null;
+            form.Add(part, name);
+        }
+
+        /// <summary>
+        /// networkId nội bộ của bưu cục, suy từ mã bưu cục qua <c>network/select/all</c>.
+        /// Trả chuỗi rỗng nếu không tra được — phía gọi coi đó là "bỏ qua bộ lọc này".
+        /// </summary>
+        private static async Task<string> ResolveNetworkIdAsync(string siteCode, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(siteCode)) return "";
+            if (string.Equals(_cachedNetworkIdForSite, siteCode, StringComparison.OrdinalIgnoreCase))
+                return _cachedNetworkId ?? "";
+
+            string url = AppConfig.Current.BuildJmsApiUrl(NetworkEndpoint)
+                       + "?current=1&size=10&name=" + Uri.EscapeDataString(siteCode) + "&queryLevel=3";
+
+            string body = await ReadAsync(HttpMethod.Get, url, null, "ResolveNetworkId", ct).ConfigureAwait(false);
+            string id = "";
+            try
+            {
+                using var doc = JsonDocument.Parse(body ?? "");
+                var first = EnumerateRecords(doc.RootElement).FirstOrDefault();
+                if (first.ValueKind == JsonValueKind.Object)
+                    id = FirstText(first, "id", "networkId");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[SendWaybill] ResolveNetworkId parse failed: {ex.Message}");
+            }
+
+            _cachedNetworkIdForSite = siteCode;
+            _cachedNetworkId = id;
+            AppLogger.Info($"[SendWaybill] ResolveNetworkId site={siteCode} networkId={(string.IsNullOrEmpty(id) ? "<none>" : id)}");
+            return id;
+        }
+
+        private static async Task<string> ReadAsync(
+            HttpMethod method, string url, Func<HttpContent> contentFactory, string what, CancellationToken ct)
+        {
+            try
+            {
+                using var resp = await JmsApiClient.SendAsync(
+                    method, url, contentFactory,
+                    routeName: SendWaybillRouteName,
+                    routerNameList: SendWaybillRouterNameList,
+                    ct: ct).ConfigureAwait(false);
+
+                if (resp == null)
+                {
+                    AppLogger.Warning($"[SendWaybill] {what}: null response");
+                    return null;
+                }
+
+                string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    AppLogger.Warning($"[SendWaybill] {what}: HTTP {(int)resp.StatusCode}");
+                    return null;
+                }
+                return body;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[SendWaybill] {what} failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// JMS trả lúc thì <c>data.records</c>, lúc thì <c>data</c> là mảng thẳng — cả hai
+        /// dạng đều gặp trong phân hệ này.
+        /// </summary>
+        private static IEnumerable<JsonElement> EnumerateRecords(JsonElement root)
+        {
+            if (root.ValueKind != JsonValueKind.Object) yield break;
+            if (!root.TryGetProperty("data", out var data)) yield break;
+
+            if (data.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in data.EnumerateArray()) yield return item;
+                yield break;
+            }
+
+            if (data.ValueKind != JsonValueKind.Object) yield break;
+            foreach (string key in new[] { "records", "list", "rows" })
+            {
+                if (!data.TryGetProperty(key, out var arr) || arr.ValueKind != JsonValueKind.Array) continue;
+                foreach (var item in arr.EnumerateArray()) yield return item;
+                yield break;
+            }
+        }
+
+        private static TrackingRow MapRow(JsonElement item)
+        {
+            string waybill = FirstText(item, "waybillNo", "billCode", "waybillNumber", "waybillCode");
+            if (string.IsNullOrWhiteSpace(waybill)) return null;
+
+            return new TrackingRow
+            {
+                WaybillNo = waybill.Trim(),
+                NhanVienNhanHang = FirstText(item, "collectStaffName", "pickStaffName", "staffName", "collectStaffCode"),
+                DiaChiLayHang = FirstText(item, "senderDetailedAddress", "senderAddress", "pickAddress", "collectAddress"),
+                TenNguoiGui = FirstText(item, "senderName", "customerName", "sender"),
+                ThoiGianNhanHang = FirstText(item, "collectTime", "pickTime", "sendTime", "inputTime", "createTime"),
+                NoiDungHangHoa = FirstText(item, "goodsName", "goodsType", "itemName", "goods"),
+                PrintCount = ParseInt(FirstText(item, "printCount", "printNum", "printTimes")),
+                PrintSenderNetworkCode = FirstText(item, "terminalDispatchCode", "dispatchCode", "sortingCode", "twoDispatchCode")
+            };
+        }
+
+        private static int ParseInt(string value)
+            => int.TryParse((value ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 0;
+
+        private static string FirstText(JsonElement item, params string[] names)
+        {
+            if (item.ValueKind != JsonValueKind.Object) return "";
+            foreach (string name in names)
+            {
+                if (!item.TryGetProperty(name, out var value)) continue;
+                string text = value.ValueKind switch
+                {
+                    JsonValueKind.String => value.GetString() ?? "",
+                    JsonValueKind.Null or JsonValueKind.Undefined => "",
+                    _ => value.ToString()
+                };
+                if (!string.IsNullOrWhiteSpace(text)) return text.Trim();
+            }
+            return "";
+        }
+    }
+}

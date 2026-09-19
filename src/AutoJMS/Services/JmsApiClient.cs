@@ -78,6 +78,27 @@ namespace AutoJMS
             return Instance.PostJsonAsync(url, jsonBody, routeName, routerNameList, origin, ct);
         }
 
+        /// <summary>
+        /// Same gate / token / one-retry contract as <see cref="PostJsonAsync"/>, but for
+        /// verbs and bodies JSON POST cannot express — a GET with a query string, or the
+        /// multipart/form-data the "Quản lý vận đơn gửi" endpoints want.
+        /// </summary>
+        /// <param name="contentFactory">
+        /// Returns a NEW body each call (null for GET). An <see cref="HttpContent"/> cannot
+        /// be sent twice, so the retry needs its own.
+        /// </param>
+        public static Task<HttpResponseMessage> SendAsync(
+            HttpMethod method,
+            string url,
+            Func<HttpContent> contentFactory,
+            string routeName = "trackingExpress",
+            string routerNameList = null,
+            string origin = "https://jms.jtexpress.vn",
+            CancellationToken ct = default)
+        {
+            return SendInternalAsync(method, url, contentFactory, routeName, routerNameList, origin, ct);
+        }
+
         Task<HttpResponseMessage> IJmsApiClient.PostJsonAsync(
             string url,
             string jsonBody,
@@ -94,9 +115,25 @@ namespace AutoJMS
             return GetByteArrayInternalAsync(url, ct);
         }
 
-        private static async Task<HttpResponseMessage> PostJsonInternalAsync(
+        private static Task<HttpResponseMessage> PostJsonInternalAsync(
             string url,
             string jsonBody,
+            string routeName,
+            string routerNameList,
+            string origin,
+            CancellationToken ct)
+        {
+            return SendInternalAsync(
+                HttpMethod.Post,
+                url,
+                () => new StringContent(jsonBody ?? "{}", Encoding.UTF8, "application/json"),
+                routeName, routerNameList, origin, ct);
+        }
+
+        private static async Task<HttpResponseMessage> SendInternalAsync(
+            HttpMethod method,
+            string url,
+            Func<HttpContent> contentFactory,
             string routeName,
             string routerNameList,
             string origin,
@@ -110,7 +147,7 @@ namespace AutoJMS
                 string token = await JmsAuthTokenService.ResolveTokenAsync(ct).ConfigureAwait(false);
 
                 // ---- Attempt 1 -------------------------------------------------
-                var resp = await SendOnceAsync(url, jsonBody, token, routeName, routerNameList, origin, ct)
+                var resp = await SendOnceAsync(method, url, contentFactory, token, routeName, routerNameList, origin, ct)
                                 .ConfigureAwait(false);
 
                 var (expired1, body1) = await ClassifyAsync(resp).ConfigureAwait(false);
@@ -131,7 +168,7 @@ namespace AutoJMS
                                $"(unchanged token is fine — JMS authToken can stay constant for a whole session).");
 
                 // ---- Retry EXACTLY ONCE, even if the token is unchanged --------
-                var resp2 = await SendOnceAsync(url, jsonBody, refreshed, routeName, routerNameList, origin, ct)
+                var resp2 = await SendOnceAsync(method, url, contentFactory, refreshed, routeName, routerNameList, origin, ct)
                                  .ConfigureAwait(false);
 
                 var (expired2, body2) = await ClassifyAsync(resp2).ConfigureAwait(false);
@@ -157,13 +194,13 @@ namespace AutoJMS
         }
 
         private static async Task<HttpResponseMessage> SendOnceAsync(
-            string url, string jsonBody, string token,
+            HttpMethod method, string url, Func<HttpContent> contentFactory, string token,
             string routeName, string routerNameList, string origin,
             CancellationToken ct)
         {
-            var req = new HttpRequestMessage(HttpMethod.Post, url)
+            var req = new HttpRequestMessage(method, url)
             {
-                Content = new StringContent(jsonBody ?? "{}", Encoding.UTF8, "application/json")
+                Content = contentFactory?.Invoke()
             };
 
             // Custom JMS headers — use TryAddWithoutValidation so values that

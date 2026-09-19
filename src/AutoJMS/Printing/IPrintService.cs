@@ -12,6 +12,12 @@ public interface IPrintService
     event Action<PrintSafetyResult> OnPrintSafetyBlocked;
     event Action OnPrintSelectionCleared;
     Task SearchAndLoadAsync(string waybillsText, PrintMode mode);
+    /// <summary>
+    /// Nạp thẳng danh sách dòng vào lưới, bỏ qua tracking + SafetyGuard. Dùng cho
+    /// "In Reverse": nguồn của nó là <see cref="JmsSendWaybillService"/> (tra theo nhân viên
+    /// lấy hàng + thời gian), không phải ô nhập mã vận đơn.
+    /// </summary>
+    void LoadRowsDirect(IEnumerable<TrackingRow> rows, PrintMode mode);
     Task<bool> ValidateSelectedBeforePrintAsync(IEnumerable<string> waybills, string currentInputText);
     Task<IReadOnlyList<PrintApprovalInfo>> RefreshPrintApprovalInfoAsync(IEnumerable<string> waybills, int printType, string phase);
     Task<IReadOnlyList<PrintStatusSnapshot>> RefreshPrintStatusAsync(IEnumerable<string> waybills, int printType, PrintStatusRefreshReason reason, CancellationToken cancellationToken = default);
