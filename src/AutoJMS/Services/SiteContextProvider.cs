@@ -105,8 +105,8 @@ public sealed class SiteContextProvider : ISiteContextProvider
             string runtime = NormalizeCode(AppConfig.Current.ActionSiteCode);
             if (runtime.Length == 0 || runtime == "0000")
             {
-                // AutoJMS.json giữ lại middleCode của lần verify online gần nhất,
-                // nên lần chạy offline sau vẫn ra đúng mã.
+                // AutoJMS.json giữ lại middleCode của lần verify gần nhất. Đọc lại ở đây
+                // chỉ để khỏi lấy lại một giá trị cố định — không phải để chạy offline.
                 runtime = NormalizeCode(SettingsManager.Load().MiddleCode);
             }
 
@@ -157,7 +157,7 @@ public sealed class SiteContextProvider : ISiteContextProvider
         string normalized = NormalizeCode(entered);
         if (normalized.Length == 0 || normalized == "0000") return "";
 
-        // Ghi vào CẢ AppConfig lẫn AutoJMS.json để lần chạy sau (kể cả offline) có sẵn.
+        // Ghi vào CẢ AppConfig lẫn AutoJMS.json để lần chạy sau có sẵn, khỏi hỏi lại.
         ApplyLicenseMiddleCode(normalized);
         AppLogger.Info($"[SiteContext] middleCode nhap tay source=dialog value={normalized}");
         return normalized;
