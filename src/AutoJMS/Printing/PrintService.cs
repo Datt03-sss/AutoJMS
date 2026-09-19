@@ -570,8 +570,9 @@ namespace AutoJMS
             if (selected.Count == 0)
                 return false;
 
-            // In Reverse: danh sách đến từ shippingWaybillList (nhân viên + thời gian), ô nhập
-            // mã vận đơn luôn rỗng nên không có gì để đối chiếu. Phải chặn TRƯỚC phép so khớp
+            // In Reverse: danh sách đến từ shippingWaybillList chứ không từ ô nhập — tra theo
+            // nhân viên thì ô đó rỗng, tra theo mã thì nó chỉ là một phần của lưới sau khi người
+            // dùng bỏ tick. Cả hai kiểu đều không so khớp được, nên phải chặn TRƯỚC phép so khớp
             // bên dưới, nếu không mọi lệnh in đều rơi vào WAYBILL_MISMATCH.
             if (_currentMode == PrintMode.InReverse)
             {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,12 +13,12 @@ namespace AutoJMS
     /// <summary>
     /// "In Reverse" (tabPrint_inRV).
     ///
-    /// Luồng Owner chốt:
-    ///   nhập tên nhân viên -> chọn tên trong danh sách JMS trả về -> chọn khoảng thời gian
-    ///   -> Tìm kiếm -> lưới hiện các đơn nhân viên đó đã lấy -> tick chọn -> IN.
+    /// Luồng Owner chốt — hai lối vào, chung một nút Tìm kiếm và chung một nút IN:
+    ///   nhập tên nhân viên -> chọn tên trong danh sách JMS trả về -> chọn khoảng thời gian,
+    ///   HOẶC gõ/quét thẳng mã vào ô "Mã vận đơn"
+    ///   -> Tìm kiếm -> lưới hiện đơn kèm bản xem trước -> bỏ tick mã không in -> IN.
     ///
-    /// Đây là tab con duy nhất KHÔNG tra theo mã vận đơn, nên nó không dùng ô
-    /// <c>tabPrint_inputWaybill</c> và không đi qua tracking + SafetyGuard. Dữ liệu lấy từ
+    /// Tab này không đi qua tracking + SafetyGuard. Dữ liệu lấy từ
     /// <see cref="JmsSendWaybillService"/> rồi nạp thẳng vào lưới qua
     /// <see cref="IPrintService.LoadRowsDirect"/>; lệnh in dùng endpoint riêng
     /// <see cref="JmsSendWaybillService.CenterPrintEndpoint"/>.
@@ -444,17 +445,8 @@ namespace AutoJMS
                 // Người dùng có thể đã đổi sang tab con khác trong lúc chờ mạng.
                 if (_printService.CurrentMode != PrintMode.InReverse) return;
 
-                _printService.LoadRowsDirect(rows, PrintMode.InReverse);
-                _printService.SelectAll(true);
-                if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
-
-                if (tabPrint_printPreview?.CoreWebView2 != null)
-                    tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
-
-                SetReverseStatus(rows.Count == 0
-                    ? "Không có đơn nào trong khoảng thời gian này."
-                    : $"{rows.Count} đơn. Bỏ tick những mã không in rồi bấm IN.",
-                    rows.Count == 0);
+                await LoadReverseRowsAndPreviewAsync(
+                    rows, "Không có đơn nào trong khoảng thời gian này.", ct).ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
@@ -494,19 +486,8 @@ namespace AutoJMS
                 if (ct.IsCancellationRequested) return;
                 if (_printService.CurrentMode != PrintMode.InReverse) return;
 
-                _printService.LoadRowsDirect(rows, PrintMode.InReverse);
-                _printService.SelectAll(true);
-                if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
-
-                if (rows.Count == 0)
-                {
-                    if (tabPrint_printPreview?.CoreWebView2 != null)
-                        tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
-                    SetReverseStatus("Không tìm thấy đơn nào khớp mã đã nhập.", true);
-                    return;
-                }
-
-                await ShowReversePreviewAsync(rows.Select(r => r.WaybillNo).ToList(), ct).ConfigureAwait(true);
+                await LoadReverseRowsAndPreviewAsync(
+                    rows, "Không tìm thấy đơn nào khớp mã đã nhập.", ct).ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
@@ -523,10 +504,34 @@ namespace AutoJMS
         }
 
         /// <summary>
+        /// Phần đuôi dùng chung của hai lối tra: nạp lưới, tick hết, rồi dựng bản xem trước.
+        /// Cả hai lối đều xem trước — bản đang nhìn CHÍNH LÀ bản nút IN sẽ đẩy ra máy in.
+        /// </summary>
+        private async Task LoadReverseRowsAndPreviewAsync(
+            IReadOnlyList<TrackingRow> rows, string emptyMessage, CancellationToken ct)
+        {
+            _printService.LoadRowsDirect(rows, PrintMode.InReverse);
+            _printService.SelectAll(true);
+            if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = true;
+
+            if (rows.Count == 0)
+            {
+                if (tabPrint_printPreview?.CoreWebView2 != null)
+                    tabPrint_printPreview.CoreWebView2.Navigate("about:blank");
+                SetReverseStatus(emptyMessage, true);
+                return;
+            }
+
+            // Lấy danh sách từ chính lưới chứ không từ rows: đó là nguồn ExecutePrintAsync đọc
+            // khi bấm IN, nên khoá cache hai bên mới khớp nhau từng ký tự.
+            await ShowReversePreviewAsync(_printService.GetSelectedWaybills(), ct).ConfigureAwait(true);
+        }
+
+        /// <summary>
         /// Bản xem trước của JMS: vẫn endpoint in, nhưng <c>printMode=1</c> nên không tính vào
-        /// ba lượt in của vận đơn. Phản hồi trả sẵn link PDF đã ký trong <c>data.pdfFullPath</c>,
-        /// đẩy thẳng link đó cho WebView2 — Edge tự dựng trình xem PDF, khỏi tải về đĩa như
-        /// "In lại đơn" (ở đó phải vẽ đè lên nhãn nên mới cần bytes).
+        /// ba lượt in của vận đơn. Phản hồi trả sẵn link PDF đã ký trong <c>data.pdfFullPath</c>;
+        /// tải về một lần rồi vừa đem hiển thị vừa cất vào cache in, nên bấm IN là in đúng tờ
+        /// đang nhìn mà không gọi lại JMS — xem <see cref="CacheReversePrintJob"/>.
         /// <para>Không bao giờ ném: lưới đã có dữ liệu, hỏng preview thì vẫn bấm IN được.</para>
         /// </summary>
         private async Task ShowReversePreviewAsync(List<string> waybills, CancellationToken ct)
@@ -559,12 +564,28 @@ namespace AutoJMS
                 string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, waybills[0]), waybills[0]);
                 if (tabPrint_printPreview == null || tabPrint_printPreview.IsDisposed) return;
 
+                TryReadPrintConfig(out int keepPdfs, out _);
+                string localPath = await DownloadPdfWithRetryAsync(pdfUrl, keepPdfs, waybills[0])
+                    .ConfigureAwait(true);
+                if (ct.IsCancellationRequested) return;
+
+                if (CacheReversePrintJob(waybills, localPath))
+                {
+                    NavigatePreviewTo(localPath);
+                    SetReverseStatus(
+                        $"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
+                    return;
+                }
+
+                // Tải hụt: vẫn cho xem bằng link đã ký để không mất luôn bản xem trước, nhưng
+                // cache in trống nên lượt IN tới sẽ phải hỏi JMS một lần nữa.
                 if (tabPrint_printPreview.CoreWebView2 != null)
                     tabPrint_printPreview.CoreWebView2.Navigate(pdfUrl);
                 else
                     tabPrint_printPreview.Source = new Uri(pdfUrl);
 
-                SetReverseStatus($"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
+                SetReverseStatus(
+                    $"{waybills.Count} đơn — xem trước bên phải (chưa giữ được bản in, bấm IN sẽ lấy lại).");
             }
             catch (OperationCanceledException)
             {
@@ -581,9 +602,51 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
+        /// Cất bản vừa xem trước vào cache in, dưới ĐÚNG khoá <c>ExecutePrintAsync</c> sẽ tra
+        /// khi bấm IN — <c>BuildPrintPdfCacheKey(selected, printType: 1, applyTypeCode: 4)</c>,
+        /// bộ số tab IN ĐƠN dùng cho mọi mode trừ "In chuyển tiếp". Khoá khớp thì lượt IN là
+        /// một lần cache hit: đẩy thẳng bytes này ra máy in, không gọi lại JMS nên không ăn
+        /// thêm lượt in nào trong ba lượt của vận đơn.
+        /// <para>
+        /// Đổi hai con số kia ở <c>ExecutePrintAsync</c> mà quên đổi ở đây thì không ai báo lỗi:
+        /// cache chỉ lặng lẽ trượt và lượt IN quay lại hỏi JMS.
+        /// </para>
+        /// <para>
+        /// TTL mượn của "In lại đơn" (30 phút) chứ không dùng 60 giây mặc định của cache in:
+        /// người dùng còn soi bản in, còn bỏ tick từng mã, một phút là quá ngắn cho thao tác tay.
+        /// </para>
+        /// </summary>
+        private bool CacheReversePrintJob(List<string> waybills, string localPath)
+        {
+            if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)) return false;
+
+            byte[] pdfBytes = File.ReadAllBytes(localPath);
+            if (pdfBytes.Length == 0) return false;
+
+            string cacheKey = BuildPrintPdfCacheKey(waybills, 1, 4);
+            RememberPrintJob(cacheKey, new PrintJobCacheEntry
+            {
+                CacheKey = cacheKey,
+                WaybillNo = waybills[0],
+                PdfBytes = pdfBytes,
+                LocalPdfPath = localPath,
+                CreatedAt = DateTime.Now,
+                ExpiresAt = DateTime.Now.Add(ReprintJobTtl),
+                PdfHash = ComputeSha256(pdfBytes)
+            });
+            return true;
+        }
+
+        /// <summary>
         /// URL + payload cho lệnh in của màn "Quản lý vận đơn gửi". Endpoint và body khác hẳn
         /// luồng in mặc định (<c>rebackTransferExpress/printWaybill</c>), nhưng phần còn lại
         /// của pipeline — parse, lấy link PDF, tải về, đẩy spooler — dùng chung.
+        /// <para>
+        /// Đường dự phòng, không phải đường chính: bấm IN với đúng bộ mã đã xem trước là cache
+        /// hit nên không ai gọi tới đây. Chỉ khi người dùng bỏ tick vài mã — bộ mã đổi thì bản
+        /// PDF cũ không còn đúng nữa — mới cần dựng lại, và lúc đó vẫn xin <c>printMode=1</c>:
+        /// tờ giấy do spooler in ra, JMS không cần đếm thêm một lượt để việc đó xảy ra.
+        /// </para>
         /// </summary>
         private (string Url, string Payload, string RouteName, string RouterNameList) BuildReversePrintRequest(
             List<string> waybills)
@@ -591,7 +654,7 @@ namespace AutoJMS
             return (
                 AppConfig.Current.BuildJmsApiUrl(JmsSendWaybillService.CenterPrintEndpoint),
                 JmsSendWaybillService.BuildCenterPrintPayload(
-                    waybills, JmsSendWaybillService.CenterPrintModePrint),
+                    waybills, JmsSendWaybillService.CenterPrintModePreview),
                 JmsSendWaybillService.CenterPrintRouteName,
                 JmsSendWaybillService.CenterPrintRouterNameList);
         }

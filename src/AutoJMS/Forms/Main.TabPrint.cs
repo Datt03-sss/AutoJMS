@@ -1128,7 +1128,7 @@ namespace AutoJMS
             }
             catch (Exception ex)
             {
-                AppLogger.Warning($"In lại đơn: không mở được preview: {ex.Message}");
+                AppLogger.Warning($"[TabPrint] Không mở được preview: {ex.Message}");
             }
         }
 
