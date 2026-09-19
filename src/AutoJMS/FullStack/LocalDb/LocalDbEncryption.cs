@@ -14,9 +14,9 @@ namespace AutoJMS.FullStack.LocalDb
     /// SQLCipher-at-rest for the FullStack SQLite files.
     ///
     /// There are three connection factories but only two physical databases:
-    ///   * FullStack\journey_history.db — shared by <see cref="FullStackDbConnectionFactory"/>
+    ///   * FullStack\&lt;siteCode&gt;\journey_history.db — shared by <see cref="FullStackDbConnectionFactory"/>
     ///     and <see cref="JourneyHistoryDbConnectionFactory"/>
-    ///   * FullStack\details.db        — <see cref="WaybillJourneyDetailsDbConnectionFactory"/>
+    ///   * FullStack\&lt;siteCode&gt;\details.db        — <see cref="WaybillJourneyDetailsDbConnectionFactory"/>
     ///
     /// Key handling:
     ///   * A 32-byte random key is generated once and stored DPAPI-protected under

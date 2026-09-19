@@ -1,3 +1,4 @@
+#nullable enable
 using Microsoft.Data.Sqlite;
 using System;
 using System.Threading;
@@ -9,7 +10,7 @@ namespace AutoJMS.FullStack.LocalDb
     {
         private readonly FullStackDbConnectionFactory _connectionFactory;
         private readonly SemaphoreSlim _initGate = new(1, 1);
-        private bool _initialized;
+        private string? _initializedPath;
 
         public FullStackDbInitializer(FullStackDbConnectionFactory connectionFactory)
         {
@@ -18,12 +19,12 @@ namespace AutoJMS.FullStack.LocalDb
 
         public async Task InitializeAsync(CancellationToken ct = default)
         {
-            if (_initialized) return;
+            if (_initializedPath == _connectionFactory.DatabasePath) return;
 
             await _initGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                if (_initialized) return;
+                if (_initializedPath == _connectionFactory.DatabasePath) return;
 
                 await using var connection = await _connectionFactory.OpenAsync(ct).ConfigureAwait(false);
                 await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
@@ -44,7 +45,7 @@ namespace AutoJMS.FullStack.LocalDb
                     ("$appliedAt", DateTime.UtcNow.ToString("O"))).ConfigureAwait(false);
 
                 await transaction.CommitAsync(ct).ConfigureAwait(false);
-                _initialized = true;
+                _initializedPath = _connectionFactory.DatabasePath;
                 AppLogger.Info($"[FullStackLocalDb] DB initialized path={_connectionFactory.DatabasePath}");
                 AppLogger.Info($"[FullStackLocalDb] migration applied version={FullStackMigrations.CurrentVersion}");
             }

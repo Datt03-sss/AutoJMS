@@ -1,3 +1,4 @@
+#nullable enable
 using Microsoft.Data.Sqlite;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +9,7 @@ namespace AutoJMS.FullStack.LocalDb
     {
         private readonly WaybillJourneyDetailsDbConnectionFactory _connectionFactory;
         private readonly SemaphoreSlim _initGate = new(1, 1);
-        private bool _initialized;
+        private string? _initializedPath;
 
         public WaybillJourneyDetailsDbInitializer(WaybillJourneyDetailsDbConnectionFactory connectionFactory)
         {
@@ -17,12 +18,12 @@ namespace AutoJMS.FullStack.LocalDb
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
-            if (_initialized) return;
+            if (_initializedPath == _connectionFactory.DatabasePath) return;
 
             await _initGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (_initialized) return;
+                if (_initializedPath == _connectionFactory.DatabasePath) return;
 
                 await using var connection = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -43,7 +44,7 @@ namespace AutoJMS.FullStack.LocalDb
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
-                _initialized = true;
+                _initializedPath = _connectionFactory.DatabasePath;
                 AppLogger.Info($"[FullStackJourneyDetailsDb] initialized path={_connectionFactory.DatabasePath}");
             }
             finally

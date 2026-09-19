@@ -1,3 +1,4 @@
+#nullable enable
 using Microsoft.Data.Sqlite;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,7 @@ namespace AutoJMS.FullStack.LocalDb
     {
         private readonly JourneyHistoryDbConnectionFactory _connectionFactory;
         private readonly SemaphoreSlim _initGate = new(1, 1);
-        private bool _initialized;
+        private string? _initializedPath;
 
         public JourneyHistoryDbInitializer(JourneyHistoryDbConnectionFactory connectionFactory)
         {
@@ -22,19 +23,19 @@ namespace AutoJMS.FullStack.LocalDb
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
-            if (_initialized) return;
+            if (_initializedPath == _connectionFactory.DatabasePath) return;
 
             await _initGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (_initialized) return;
+                if (_initializedPath == _connectionFactory.DatabasePath) return;
 
                 await using var connection = await _connectionFactory.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var command = connection.CreateCommand();
                 command.CommandText = SchemaSql;
                 await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
-                _initialized = true;
+                _initializedPath = _connectionFactory.DatabasePath;
                 AppLogger.Info($"[JourneyHistoryDb] initialized path={_connectionFactory.DatabasePath}");
             }
             finally

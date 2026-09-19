@@ -77,6 +77,18 @@ public sealed class SiteIsolationTests : IDisposable
         Assert.Contains("Bưu cục Kim Tân", settings.SiteNameAliases);
     }
 
+    // Xac minh: ma buu cuc "." khong ra duong dan thu muc chia se goc (FullStack\<filename>).
+    // Path.GetInvalidFileNameChars() khong co '.'; neu khong co Trim('.') thi "." se thanh
+    // FullStack\.\journey_history.db = FullStack\journey_history.db — xoa su co lap.
+    [Fact]
+    public void DotSiteCode_DoesNotResolveToLegacySharedFolder()
+    {
+        SiteContextProvider.ApplyLicenseMiddleCode(".");
+        var path = FullStackLocalDbPaths.GetDatabasePath("journey_history.db");
+        var legacyPath = System.IO.Path.Combine(AppPaths.UserDataDir, "FullStack", "journey_history.db");
+        Assert.NotEqual(legacyPath, path, StringComparer.OrdinalIgnoreCase);
+    }
+
     // Xác minh: đường dẫn database phân vùng theo mã bưu cục.
     // Test này sẽ fail nếu FullStackLocalDbPaths.GetDatabasePath không dùng SiteContextProvider.Get()
     // để xác định thư mục, hoặc nếu GetDatabasePath dùng "default" cho mọi mã.

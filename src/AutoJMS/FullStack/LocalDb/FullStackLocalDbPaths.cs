@@ -15,7 +15,9 @@ namespace AutoJMS.FullStack.LocalDb
         private static string SanitizeFolderName(string name)
         {
             var invalid = Path.GetInvalidFileNameChars();
-            var clean = new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim();
+            // Path.GetInvalidFileNameChars() khong co '.'; can Trim('.') de "." khoi ve
+            // thu muc chia se va ".." khoi thoat khoi FullStack\.
+            var clean = new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim().Trim('.');
             return string.IsNullOrWhiteSpace(clean) ? "default" : clean;
         }
     }
