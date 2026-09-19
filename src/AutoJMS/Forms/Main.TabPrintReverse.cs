@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -505,7 +504,8 @@ namespace AutoJMS
 
         /// <summary>
         /// Phần đuôi dùng chung của hai lối tra: nạp lưới, tick hết, rồi dựng bản xem trước.
-        /// Cả hai lối đều xem trước — bản đang nhìn CHÍNH LÀ bản nút IN sẽ đẩy ra máy in.
+        /// Bản xem trước chỉ để nhìn; nút IN tự tải bản in riêng — xem
+        /// <see cref="BuildReversePrintRequest"/>.
         /// </summary>
         private async Task LoadReverseRowsAndPreviewAsync(
             IReadOnlyList<TrackingRow> rows, string emptyMessage, CancellationToken ct)
@@ -529,9 +529,10 @@ namespace AutoJMS
 
         /// <summary>
         /// Bản xem trước của JMS: vẫn endpoint in, nhưng <c>printMode=1</c> nên không tính vào
-        /// ba lượt in của vận đơn. Phản hồi trả sẵn link PDF đã ký trong <c>data.pdfFullPath</c>;
-        /// tải về một lần rồi vừa đem hiển thị vừa cất vào cache in, nên bấm IN là in đúng tờ
-        /// đang nhìn mà không gọi lại JMS — xem <see cref="CacheReversePrintJob"/>.
+        /// ba lượt in của vận đơn. Phản hồi trả sẵn link PDF đã ký trong <c>data.pdfFullPath</c>,
+        /// thả thẳng vào WebView2 — không tải về đĩa: thư mục "Vận đơn đã in" chỉ giữ bản đã in
+        /// thật, và <c>DownloadPdfWithRetryAsync</c> dọn bớt theo <c>keepPdfs</c> nên bản xem
+        /// trước lọt vào đó sẽ đẩy bản in thật ra ngoài.
         /// <para>Không bao giờ ném: lưới đã có dữ liệu, hỏng preview thì vẫn bấm IN được.</para>
         /// </summary>
         private async Task ShowReversePreviewAsync(List<string> waybills, CancellationToken ct)
@@ -564,28 +565,13 @@ namespace AutoJMS
                 string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, waybills[0]), waybills[0]);
                 if (tabPrint_printPreview == null || tabPrint_printPreview.IsDisposed) return;
 
-                TryReadPrintConfig(out int keepPdfs, out _);
-                string localPath = await DownloadPdfWithRetryAsync(pdfUrl, keepPdfs, waybills[0])
-                    .ConfigureAwait(true);
-                if (ct.IsCancellationRequested) return;
-
-                if (CacheReversePrintJob(waybills, localPath))
-                {
-                    NavigatePreviewTo(localPath);
-                    SetReverseStatus(
-                        $"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
-                    return;
-                }
-
-                // Tải hụt: vẫn cho xem bằng link đã ký để không mất luôn bản xem trước, nhưng
-                // cache in trống nên lượt IN tới sẽ phải hỏi JMS một lần nữa.
                 if (tabPrint_printPreview.CoreWebView2 != null)
                     tabPrint_printPreview.CoreWebView2.Navigate(pdfUrl);
                 else
                     tabPrint_printPreview.Source = new Uri(pdfUrl);
 
                 SetReverseStatus(
-                    $"{waybills.Count} đơn — xem trước bên phải (chưa giữ được bản in, bấm IN sẽ lấy lại).");
+                    $"{waybills.Count} đơn — xem trước bên phải. Bỏ tick mã không in rồi bấm IN.");
             }
             catch (OperationCanceledException)
             {
@@ -602,50 +588,16 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
-        /// Cất bản vừa xem trước vào cache in, dưới ĐÚNG khoá <c>ExecutePrintAsync</c> sẽ tra
-        /// khi bấm IN — <c>BuildPrintPdfCacheKey(selected, printType: 1, applyTypeCode: 4)</c>,
-        /// bộ số tab IN ĐƠN dùng cho mọi mode trừ "In chuyển tiếp". Khoá khớp thì lượt IN là
-        /// một lần cache hit: đẩy thẳng bytes này ra máy in, không gọi lại JMS nên không ăn
-        /// thêm lượt in nào trong ba lượt của vận đơn.
-        /// <para>
-        /// Đổi hai con số kia ở <c>ExecutePrintAsync</c> mà quên đổi ở đây thì không ai báo lỗi:
-        /// cache chỉ lặng lẽ trượt và lượt IN quay lại hỏi JMS.
-        /// </para>
-        /// <para>
-        /// TTL mượn của "In lại đơn" (30 phút) chứ không dùng 60 giây mặc định của cache in:
-        /// người dùng còn soi bản in, còn bỏ tick từng mã, một phút là quá ngắn cho thao tác tay.
-        /// </para>
-        /// </summary>
-        private bool CacheReversePrintJob(List<string> waybills, string localPath)
-        {
-            if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)) return false;
-
-            byte[] pdfBytes = File.ReadAllBytes(localPath);
-            if (pdfBytes.Length == 0) return false;
-
-            string cacheKey = BuildPrintPdfCacheKey(waybills, 1, 4);
-            RememberPrintJob(cacheKey, new PrintJobCacheEntry
-            {
-                CacheKey = cacheKey,
-                WaybillNo = waybills[0],
-                PdfBytes = pdfBytes,
-                LocalPdfPath = localPath,
-                CreatedAt = DateTime.Now,
-                ExpiresAt = DateTime.Now.Add(ReprintJobTtl),
-                PdfHash = ComputeSha256(pdfBytes)
-            });
-            return true;
-        }
-
-        /// <summary>
         /// URL + payload cho lệnh in của màn "Quản lý vận đơn gửi". Endpoint và body khác hẳn
-        /// luồng in mặc định (<c>rebackTransferExpress/printWaybill</c>), nhưng phần còn lại
-        /// của pipeline — parse, lấy link PDF, tải về, đẩy spooler — dùng chung.
+        /// luồng in mặc định (<c>rebackTransferExpress/printWaybill</c>), nhưng đây là chỗ duy
+        /// nhất khác: từ đây trở đi nút IN đi chung đường với "In chuyển hoàn" —
+        /// <c>ExecutePrintAsync</c> xin link, tải PDF về <c>Downloads/Vận đơn đã in</c>, rồi
+        /// đẩy bytes vừa tải ra spooler.
         /// <para>
-        /// Đường dự phòng, không phải đường chính: bấm IN với đúng bộ mã đã xem trước là cache
-        /// hit nên không ai gọi tới đây. Chỉ khi người dùng bỏ tick vài mã — bộ mã đổi thì bản
-        /// PDF cũ không còn đúng nữa — mới cần dựng lại, và lúc đó vẫn xin <c>printMode=1</c>:
-        /// tờ giấy do spooler in ra, JMS không cần đếm thêm một lượt để việc đó xảy ra.
+        /// <c>printMode=2</c> (mặc định của <c>BuildCenterPrintPayload</c>) — in thật, nên JMS
+        /// ghi nhận đúng một lượt trong ba lượt của vận đơn. Bản xem trước lúc Tìm kiếm xin
+        /// <c>printMode=1</c> và không tính lượt, nhưng cũng không phải tờ đem in: nút IN luôn
+        /// tải bản in mới, y như tab "In chuyển hoàn".
         /// </para>
         /// </summary>
         private (string Url, string Payload, string RouteName, string RouterNameList) BuildReversePrintRequest(
@@ -653,8 +605,7 @@ namespace AutoJMS
         {
             return (
                 AppConfig.Current.BuildJmsApiUrl(JmsSendWaybillService.CenterPrintEndpoint),
-                JmsSendWaybillService.BuildCenterPrintPayload(
-                    waybills, JmsSendWaybillService.CenterPrintModePreview),
+                JmsSendWaybillService.BuildCenterPrintPayload(waybills),
                 JmsSendWaybillService.CenterPrintRouteName,
                 JmsSendWaybillService.CenterPrintRouterNameList);
         }
