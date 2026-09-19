@@ -79,9 +79,15 @@ namespace AutoJMS
         private readonly Dictionary<string, string> _sourceRowFingerprintCache = new(StringComparer.OrdinalIgnoreCase);
         private string _cloudSourceFingerprintHash = string.Empty;
         private string _phatLaiSourceFingerprintHash = string.Empty;
-        private readonly string _syncCacheFilePath = Path.Combine(
-            AppPaths.CacheDir,
-            $"sync-cache-{DataHubClient.MachineId}.json");
+        private string SyncCacheFilePath
+        {
+            get
+            {
+                string site = SiteContextProvider.Get();
+                string suffix = string.IsNullOrWhiteSpace(site) ? "default" : site;
+                return Path.Combine(AppPaths.CacheDir, $"sync-cache-{DataHubClient.MachineId}-{suffix}.json");
+            }
+        }
         private readonly System.Windows.Forms.Timer _autoSyncTimer = new();
         private DateTime _lastSyncAttemptAtUtc = DateTime.MinValue;
         private DateTime _lastSuccessfulSyncAtUtc = DateTime.MinValue;
@@ -921,8 +927,8 @@ namespace AutoJMS
         {
             try
             {
-                if (!File.Exists(_syncCacheFilePath)) return;
-                var json = File.ReadAllText(_syncCacheFilePath);
+                if (!File.Exists(SyncCacheFilePath)) return;
+                var json = File.ReadAllText(SyncCacheFilePath);
                 var snapshot = JsonSerializer.Deserialize<SourceFingerprintSnapshot>(json, AppConfig.CreateJsonOptions());
                 if (snapshot == null) return;
 
@@ -946,7 +952,7 @@ namespace AutoJMS
         {
             try
             {
-                var dir = Path.GetDirectoryName(_syncCacheFilePath);
+                var dir = Path.GetDirectoryName(SyncCacheFilePath);
                 if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
                 var snapshot = new SourceFingerprintSnapshot
@@ -958,7 +964,7 @@ namespace AutoJMS
                     RowFingerprints = new Dictionary<string, string>(_sourceRowFingerprintCache, StringComparer.OrdinalIgnoreCase)
                 };
 
-                File.WriteAllText(_syncCacheFilePath, JsonSerializer.Serialize(snapshot, AppConfig.CreateJsonOptions()));
+                File.WriteAllText(SyncCacheFilePath, JsonSerializer.Serialize(snapshot, AppConfig.CreateJsonOptions()));
             }
             catch { }
         }
