@@ -57,7 +57,7 @@ namespace AutoJMS
         /// Owner chốt: bản in thu hồi cần tra lại theo NGÀY, nên thư mục riêng của tab này dọn
         /// theo tuổi file chứ không theo <c>KeepRecentPdfCount</c> như "Vận đơn đã in".
         /// </summary>
-        private const int ReversePrintRetentionDays = 7;
+        private const int ReversePrintRetentionDays = 10;
         private const string ReverseHint =
             "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 

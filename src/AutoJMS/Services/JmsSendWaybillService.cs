@@ -50,6 +50,19 @@ namespace AutoJMS
         private const int PageSize = 20;
         private const int MaxPages = 50;
 
+        /// <summary>
+        /// Bật để in nguyên văn request và thân phản hồi của từng lượt gọi ra debug.log. Chỉ
+        /// dùng khi JMS lại hỏng âm thầm (HTTP 200, <c>code:1</c>, danh sách rỗng) — mỗi trang
+        /// 20 đơn là vài KB log, bật thường xuyên thì file phình mà không ai đọc. Lượt gọi
+        /// thành công vẫn có dòng tổng kết ở <c>SearchShippingWaybillsAsync</c>/<c>SearchStaffAsync</c>,
+        /// lượt hỏng vẫn có Warning — tắt cái này không làm mất dấu vết nào của lỗi.
+        /// <para>
+        /// <c>static readonly</c> chứ không <c>const</c>: hằng false làm trình biên dịch gập
+        /// nhánh và kêu CS0162 ở cả hai chỗ gọi, mà repo này build sạch 0 warning.
+        /// </para>
+        /// </summary>
+        private static readonly bool DumpTraffic = false;
+
         // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.
         private static string _cachedNetworkId;
         private static string _cachedNetworkIdForSite;
@@ -473,7 +486,8 @@ namespace AutoJMS
         {
             try
             {
-                await DumpRequestAsync(method, url, contentFactory, what, ct).ConfigureAwait(false);
+                if (DumpTraffic)
+                    await DumpRequestAsync(method, url, contentFactory, what, ct).ConfigureAwait(false);
 
                 using var resp = await JmsApiClient.SendAsync(
                     method, url, contentFactory,
@@ -492,8 +506,9 @@ namespace AutoJMS
                 // Nửa còn lại của cặp dump: request đúng từng byte mà vẫn ra rỗng thì câu
                 // trả lời nằm ở đây. Cắt bớt vì một trang 20 đơn dài vài KB, nhưng code/msg
                 // của JMS luôn ở ngay đầu thân nên không bao giờ bị cắt mất.
-                AppLogger.Info($"[SendWaybill] <<< {what} RESPONSE HTTP {(int)resp.StatusCode} "
-                               + TokenRedactor.RedactText(Preview(body)));
+                if (DumpTraffic)
+                    AppLogger.Info($"[SendWaybill] <<< {what} RESPONSE HTTP {(int)resp.StatusCode} "
+                                   + TokenRedactor.RedactText(Preview(body)));
 
                 if (!resp.IsSuccessStatusCode)
                 {

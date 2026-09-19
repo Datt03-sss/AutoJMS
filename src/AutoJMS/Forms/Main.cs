@@ -1288,6 +1288,7 @@ namespace AutoJMS
                     {
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
+                        ApplyWaybillInputBoldFonts();
                         ApplyReverseTheme();       // cụm In Reverse dựng bằng code — theme không tự tô
                         LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
                         LayoutDkchNewbill();
