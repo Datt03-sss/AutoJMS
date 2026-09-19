@@ -55,8 +55,7 @@ public sealed class SiteIsolationTests : IDisposable
 
         var settings = SettingsManager.Load();
         Assert.Equal("214A03", settings.MiddleCode);
-        Assert.Contains("214A03", settings.MiddleCodeAliases);
-        Assert.DoesNotContain("214A02", settings.MiddleCodeAliases);
+        Assert.Equal(new List<string> { "214A03" }, settings.MiddleCodeAliases);
         Assert.Empty(settings.SiteNameAliases);
         Assert.False(SiteContextProvider.IsHomeStation("214A02", "Bưu cục Kim Tân"));
         Assert.True(SiteContextProvider.IsHomeStation("214A03", ""));
