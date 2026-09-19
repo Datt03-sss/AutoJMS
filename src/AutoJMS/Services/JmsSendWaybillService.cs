@@ -83,10 +83,38 @@ namespace AutoJMS
 
             string body = await ReadAsync(HttpMethod.Get, url, null, "SearchStaff", ct).ConfigureAwait(false);
             var unique = ParseStaff(body);
+            var exact = KeepExactName(unique, name);
+            var active = ActiveStaffRoster.KeepActive(exact);
 
-            AppLogger.Info($"[SendWaybill] SearchStaff name={name} results={unique.Count}");
-            return unique;
+            // Ba con số, không phải một: khi một người "biến mất" khỏi ô chọn, log này chỉ
+            // thẳng ra người đó rụng ở bước nào — JMS không trả, sai chữ, hay đã nghỉ.
+            AppLogger.Info($"[SendWaybill] SearchStaff name={name} jms={unique.Count} " +
+                           $"exact={exact.Count} active={active.Count}");
+            return active;
         }
+
+        /// <summary>
+        /// Lọc lại theo đúng chữ người dùng gõ. JMS khớp kiểu LIKE nên gõ "Thàn" nó trả về cả
+        /// "Thành" lẫn "Thàng" — cùng tiền tố thì lọt hết. Ở đây mỗi tiếng đã gõ phải trùng
+        /// TRỌN một tiếng trong tên, đúng dấu: gõ "Thàn" chỉ còn "Thàn Văn Đạt".
+        /// <para>Hệ quả cố ý: gõ dở một tiếng ("Thà") thì chưa ai khớp. Gợi ý hiện ra khi
+        /// người dùng gõ xong tiếng, chứ không hiện một danh sách gần đúng.</para>
+        /// </summary>
+        internal static IReadOnlyList<StaffInfo> KeepExactName(IReadOnlyList<StaffInfo> staff, string query)
+        {
+            var wanted = NameWords(query);
+            if (wanted.Count == 0) return staff;
+
+            return staff.Where(s => wanted.IsSubsetOf(NameWords(s.Name))).ToList();
+        }
+
+        // Tách theo khoảng trắng và đưa về NFC: tên tiếng Việt dạng tổ hợp (NFD) nhìn y hệt
+        // dạng dựng sẵn nhưng so chuỗi thì khác. OrdinalIgnoreCase giữ nguyên dấu — đó mới là
+        // thứ tách "Thàn" khỏi "Thành".
+        private static HashSet<string> NameWords(string text) =>
+            new((text ?? "").Normalize(NormalizationForm.FormC)
+                    .Split((char[])null, StringSplitOptions.RemoveEmptyEntries),
+                StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Bóc danh sách nhân viên từ body của <c>sysStaff/selectAll</c>. Tách riêng khỏi

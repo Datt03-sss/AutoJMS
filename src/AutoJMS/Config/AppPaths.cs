@@ -52,6 +52,8 @@ namespace AutoJMS
         public static string ModulesCacheDir => UserDataDir;
 
         public static string AutoJmsJson => Path.Combine(UserDataDir, "AutoJMS.json");
+        /// <summary>Danh sách nhân viên đang làm việc, do chủ bưu cục tự bổ sung.</summary>
+        public static string ActiveStaffFile => Path.Combine(UserDataDir, "nhan-vien-hoat-dong.txt");
         public static string UserSettingsFile => AutoJmsJson;
         public static string GoogleServiceAccountJson => Path.Combine(UserDataDir, "service_account.json");
         public static string EncryptedGoogleServiceAccount => Path.Combine(SecretsDir, "service_account.sec");
