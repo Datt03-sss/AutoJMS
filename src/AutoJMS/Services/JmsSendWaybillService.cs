@@ -4,9 +4,11 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AutoJMS.Diagnostics;
 
 namespace AutoJMS
 {
@@ -24,10 +26,10 @@ namespace AutoJMS
     /// </summary>
     public static class JmsSendWaybillService
     {
-        // Breadcrumb của màn sendWaybillSite, chép nguyên văn từ cURL: dấu ">" để trần,
-        // chỉ phần chữ Hán là đã percent-encode.
+        // Breadcrumb của màn sendWaybillSite, chép nguyên văn từ cURL. Dấu ">" phân cấp
+        // cũng percent-encode thành %3E — y như mọi hằng RouterNameList khác trong repo.
         private const string SendWaybillRouterNameList =
-            "%E7%BD%91%E7%82%B9%E7%BB%8F%E8%90%A5>%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86>%E5%AF%84%E4%BB%B6%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86";
+            "%E7%BD%91%E7%82%B9%E7%BB%8F%E8%90%A5%3E%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86%3E%E5%AF%84%E4%BB%B6%E8%BF%90%E5%8D%95%E7%AE%A1%E7%90%86";
         private const string SendWaybillRouteName = "sendWaybillSite";
 
         private const string StaffEndpoint = "basicdata/sysStaff/selectAll";
@@ -333,6 +335,8 @@ namespace AutoJMS
         {
             try
             {
+                await DumpRequestAsync(method, url, contentFactory, what, ct).ConfigureAwait(false);
+
                 using var resp = await JmsApiClient.SendAsync(
                     method, url, contentFactory,
                     routeName: SendWaybillRouteName,
@@ -361,6 +365,51 @@ namespace AutoJMS
             {
                 AppLogger.Warning($"[SendWaybill] {what} failed: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// In nguyên văn request sắp gửi ra log để đối chiếu từng dòng với cURL của giao
+        /// diện JMS — cả phân hệ này hỏng âm thầm (HTTP 200, <c>code:1</c>, danh sách rỗng)
+        /// nên body sai không tự lộ ra ở đâu khác.
+        /// <para>
+        /// Header lấy từ <see cref="JmsApiClient.JmsHeaders"/> chứ không chép tay, để cái in
+        /// ra đúng là cái gửi đi. Toàn bộ khối qua <see cref="TokenRedactor.RedactText"/>:
+        /// authToken là chuỗi 32 hex nên bị che thành <c>first6******last4</c>.
+        /// </para>
+        /// </summary>
+        private static async Task DumpRequestAsync(
+            HttpMethod method, string url, Func<HttpContent> contentFactory, string what, CancellationToken ct)
+        {
+            try
+            {
+                var dump = new StringBuilder();
+                dump.Append("[SendWaybill] >>> ").Append(what).AppendLine(" REQUEST");
+                dump.Append(method.Method).Append(' ').AppendLine(url);
+
+                foreach (var h in JmsApiClient.JmsHeaders(
+                             JmsAuthTokenService.CurrentToken, SendWaybillRouteName, SendWaybillRouterNameList))
+                    dump.Append(h.Key).Append(": ").AppendLine(h.Value);
+
+                // HttpContent chỉ đọc được một lần, nên dựng một bản RIÊNG để in — bản gửi
+                // đi vẫn do contentFactory sinh mới lúc SendAsync gọi.
+                using (var probe = contentFactory?.Invoke())
+                {
+                    if (probe != null)
+                    {
+                        foreach (var h in probe.Headers)
+                            dump.Append(h.Key).Append(": ").AppendLine(string.Join(", ", h.Value));
+                        dump.AppendLine();
+                        dump.Append(await probe.ReadAsStringAsync(ct).ConfigureAwait(false));
+                    }
+                }
+
+                AppLogger.Info(TokenRedactor.RedactText(dump.ToString()));
+            }
+            catch (Exception ex)
+            {
+                // Log hỏng thì thôi, tuyệt đối không được làm chết luôn request thật.
+                AppLogger.Warning($"[SendWaybill] {what}: dump request failed: {ex.Message}");
             }
         }
 

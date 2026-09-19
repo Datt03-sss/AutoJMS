@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -206,19 +207,31 @@ namespace AutoJMS
             // Custom JMS headers — use TryAddWithoutValidation so values that
             // contain reserved chars (percent-encoded breadcrumb, GMT+0700, …)
             // are not rejected by HttpClient's strict header validation.
-            req.Headers.TryAddWithoutValidation("authToken", token ?? string.Empty);
-            req.Headers.TryAddWithoutValidation("lang", "VN");
-            req.Headers.TryAddWithoutValidation("langType", "VN");
-            req.Headers.TryAddWithoutValidation("routeName", routeName ?? "trackingExpress");
-            if (!string.IsNullOrEmpty(routerNameList))
-                req.Headers.TryAddWithoutValidation("routerNameList", routerNameList);
-            req.Headers.TryAddWithoutValidation("timezone", "GMT+0700");
-            req.Headers.TryAddWithoutValidation("Accept", "application/json, text/plain, */*");
-            req.Headers.TryAddWithoutValidation("Origin", origin);
-            req.Headers.TryAddWithoutValidation("Referer", origin + "/");
-            req.Headers.TryAddWithoutValidation("User-Agent", DefaultUserAgent);
+            foreach (var h in JmsHeaders(token, routeName, routerNameList, origin))
+                req.Headers.TryAddWithoutValidation(h.Key, h.Value);
 
             return await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// The exact header set <see cref="SendOnceAsync"/> puts on every JMS request.
+        /// Exposed so a caller that dumps a request to the log prints the REAL headers
+        /// instead of a hand-copied list that drifts away from what is actually sent.
+        /// </summary>
+        internal static IEnumerable<KeyValuePair<string, string>> JmsHeaders(
+            string token, string routeName, string routerNameList, string origin = "https://jms.jtexpress.vn")
+        {
+            yield return new KeyValuePair<string, string>("authToken", token ?? string.Empty);
+            yield return new KeyValuePair<string, string>("lang", "VN");
+            yield return new KeyValuePair<string, string>("langType", "VN");
+            yield return new KeyValuePair<string, string>("routeName", routeName ?? "trackingExpress");
+            if (!string.IsNullOrEmpty(routerNameList))
+                yield return new KeyValuePair<string, string>("routerNameList", routerNameList);
+            yield return new KeyValuePair<string, string>("timezone", "GMT+0700");
+            yield return new KeyValuePair<string, string>("Accept", "application/json, text/plain, */*");
+            yield return new KeyValuePair<string, string>("Origin", origin);
+            yield return new KeyValuePair<string, string>("Referer", origin + "/");
+            yield return new KeyValuePair<string, string>("User-Agent", DefaultUserAgent);
         }
 
         /// <summary>

@@ -206,6 +206,16 @@ public sealed class JmsSendWaybillParsingTests
         Assert.Contains("2026-09-19 23:59:59", body);
     }
 
+    [Fact]
+    public void RouterNameList_PercentEncodeCaDauPhanCap()
+    {
+        // cURL thật gửi %3E chứ không phải ">" trần, và mọi hằng RouterNameList khác trong
+        // repo cũng vậy. Bản cũ để ">" trần — header đi ra khác giao diện JMS một cách
+        // không ai nhìn thấy, vì phân hệ này không báo lỗi bao giờ.
+        Assert.DoesNotContain(">", JmsSendWaybillService.CenterPrintRouterNameList);
+        Assert.Equal(2, Regex.Matches(JmsSendWaybillService.CenterPrintRouterNameList, "%3E").Count);
+    }
+
     // ── Payload in: đúng 3 khoá như cURL của giao diện JMS ─────────────────────────
 
     [Fact]
