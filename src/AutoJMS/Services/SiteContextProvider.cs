@@ -117,7 +117,7 @@ public sealed class SiteContextProvider : ISiteContextProvider
 
     public static void InvalidateCache()
     {
-        lock (Sync) { _cachedMiddleCode = null; }
+        lock (Sync) { _cachedMiddleCode = null; _promptedThisSession = false; }
     }
 
     /// <summary>
@@ -168,7 +168,6 @@ public sealed class SiteContextProvider : ISiteContextProvider
         string normalized = NormalizeCode(middleCode);
         AppConfig.Current.ActionSiteCode = normalized;
         AppConfig.SaveCurrent();
-        InvalidateCache();
 
         var settings = SettingsManager.Load();
         settings.MiddleCode = normalized;
@@ -176,6 +175,7 @@ public sealed class SiteContextProvider : ISiteContextProvider
             ? new List<string>()
             : DistinctCodes(settings.MiddleCodeAliases.Append(normalized)).ToList();
         SettingsManager.Save(settings);
+        InvalidateCache(); // xoa cache sau khi ca hai kho da nhat quan
 
         AppLogger.Info($"[SiteContext] license middleCode saved source=license value={(string.IsNullOrEmpty(normalized) ? "<empty>" : normalized)}");
     }
