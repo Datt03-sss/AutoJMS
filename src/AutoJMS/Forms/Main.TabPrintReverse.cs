@@ -44,6 +44,9 @@ namespace AutoJMS
         private const int ReverseRowHeight = ReverseCaptionHeight + ReverseInputHeight + 2;
         private const int ReverseStatusHeight = 26;
 
+        /// <summary>Khe giữa khung chọn ngày và khung chọn giờ trong cùng một ô thời gian.</summary>
+        private const int ReverseBoxGap = 6;
+
         /// <summary>
         /// Số đơn hiện mỗi trang lưới. Bằng đúng <c>PageSize</c> của
         /// <see cref="JmsSendWaybillService"/> nên một trang API là một trang lưới.
@@ -64,8 +67,13 @@ namespace AutoJMS
         private static readonly Font ReverseCaptionFont = new("Segoe UI Semibold", 9.75F, FontStyle.Bold);
         private static readonly Font ReverseUiFont = new("Segoe UI", 9F, FontStyle.Regular);
 
-        // ── sáu ô nhập, dựng trong BuildReverseInputPanel ──
+        // ── các ô nhập, dựng trong BuildReverseInputPanel ──
+        // Mỗi mốc thời gian là HAI picker: một chọn ngày, một chọn giờ. Cả hai vẫn giữ một
+        // DateTime đầy đủ, nhưng mỗi cái chỉ hiện và chỉ cho sửa một nửa — ghép lại trong
+        // ReverseRange.
+        private DateTimePicker tabPrint_dateFrom;
         private DateTimePicker tabPrint_timeFrom;
+        private DateTimePicker tabPrint_dateTo;
         private DateTimePicker tabPrint_timeTo;
         private TextBox tabPrint_tenNV;
         private TextBox tabPrint_maCOD;
@@ -205,8 +213,10 @@ namespace AutoJMS
         /// </summary>
         private void BuildReverseInputPanel()
         {
-            tabPrint_timeFrom = NewReverseDatePicker("tabPrint_timeFrom");
-            tabPrint_timeTo = NewReverseDatePicker("tabPrint_timeTo");
+            tabPrint_dateFrom = NewReverseDateOnlyPicker("tabPrint_dateFrom");
+            tabPrint_timeFrom = NewReverseTimeOnlyPicker("tabPrint_timeFrom");
+            tabPrint_dateTo = NewReverseDateOnlyPicker("tabPrint_dateTo");
+            tabPrint_timeTo = NewReverseTimeOnlyPicker("tabPrint_timeTo");
             tabPrint_tenNV = NewReverseTextBox("tabPrint_tenNV", "Tên nhân viên lấy hàng");
             tabPrint_maCOD = NewReverseTextBox("tabPrint_maCOD", "Mã khách hàng (tuỳ chọn)");
             tabPrint_sdtNG = NewReverseTextBox("tabPrint_sdtNG", "");
@@ -261,8 +271,8 @@ namespace AutoJMS
 
             // Chuỗi mẫu quyết định bề ngang từng ô — đo bằng font thật lúc dựng. Ô thời gian
             // lấy đúng chuỗi ngày giờ nó hiển thị, ba ô còn lại lấy chính chuỗi gợi ý của nó.
-            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, ReverseInputBox.Glyph.Clock, null, "2026-09-20 00:00:00"), 0, 0);
-            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, ReverseInputBox.Glyph.Clock, null, "2026-09-20 00:00:00"), 1, 0);
+            layout.Controls.Add(NewReverseTimeField("Thời gian từ:", tabPrint_dateFrom, tabPrint_timeFrom), 0, 0);
+            layout.Controls.Add(NewReverseTimeField("Thời gian đến:", tabPrint_dateTo, tabPrint_timeTo), 1, 0);
             layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, ReverseInputBox.Glyph.None, null, "0987 654 321 00"), 2, 0);
             layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, ReverseInputBox.Glyph.Search, _reverseClearStaff, "Tên nhân viên lấy hàng"), 0, 1);
             layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng (tuỳ chọn)"), 1, 1);
@@ -280,6 +290,32 @@ namespace AutoJMS
         private Panel NewReverseField(
             string caption, Control input, ReverseInputBox.Glyph glyph, Control trailing, string widthSample)
         {
+            var cell = NewReverseCell();
+            cell.Controls.Add(NewReverseBox(input, glyph, trailing, widthSample, 0));
+            cell.Controls.Add(NewReverseCaption(caption));
+            return cell;
+        }
+
+        /// <summary>
+        /// Ô thời gian: một nhãn, hai khung tách hẳn nhau — khung trái chọn NGÀY (xổ lịch),
+        /// khung phải chọn GIỜ (nút tăng giảm). Gộp chung một ô thì sửa giờ phải rê qua cả
+        /// phần ngày, mà xổ lịch ra để chỉnh giây thì càng vô nghĩa.
+        /// </summary>
+        private Panel NewReverseTimeField(string caption, DateTimePicker date, DateTimePicker time)
+        {
+            var dateBox = NewReverseBox(date, ReverseInputBox.Glyph.Calendar, null, "2026-09-20", 0);
+            var timeBox = NewReverseBox(
+                time, ReverseInputBox.Glyph.Clock, null, "00:00:00", dateBox.Right + ReverseBoxGap);
+
+            var cell = NewReverseCell();
+            cell.Controls.Add(timeBox);
+            cell.Controls.Add(dateBox);
+            cell.Controls.Add(NewReverseCaption(caption));
+            return cell;
+        }
+
+        private Label NewReverseCaption(string caption)
+        {
             var label = new Label
             {
                 AutoSize = true,
@@ -291,33 +327,40 @@ namespace AutoJMS
                 TextAlign = ContentAlignment.MiddleLeft
             };
             _reverseCaptions.Add(label);
+            return label;
+        }
 
-            // Margin của hai control phải là 0: panel AutoSize cộng cả margin con vào khung bao,
-            // để mặc định (3px mỗi phía) là cụm cao 52px trong khi hàng chỉ cao 48px và bị cắt.
-            var field = new ReverseInputBox(input, glyph, trailing)
+        /// <summary>
+        /// Margin phải là 0: panel AutoSize cộng cả margin con vào khung bao, để mặc định (3px
+        /// mỗi phía) là cụm cao 52px trong khi hàng chỉ cao 48px và bị cắt mất đáy.
+        /// </summary>
+        private ReverseInputBox NewReverseBox(
+            Control input, ReverseInputBox.Glyph glyph, Control trailing, string widthSample, int x)
+        {
+            var box = new ReverseInputBox(input, glyph, trailing)
             {
-                Location = new Point(0, ReverseCaptionHeight),
+                Location = new Point(x, ReverseCaptionHeight),
                 Margin = Padding.Empty,
                 Width = ReverseInputBox.MeasureWidth(
                     widthSample, ReverseFieldFont, glyph, trailing != null, input is DateTimePicker),
                 Height = ReverseInputHeight
             };
-            _reverseFields.Add(field);
-
-            // Ô co theo nội dung nên không Dock được: panel AutoSize lấy đúng khung bao hai
-            // control, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải 14px để
-            // hai cột cạnh nhau không dính vào nhau.
-            var cell = new Panel
-            {
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                BackColor = Color.Transparent,
-                Margin = new Padding(4, 1, 14, 1)
-            };
-            cell.Controls.Add(field);
-            cell.Controls.Add(label);
-            return cell;
+            _reverseFields.Add(box);
+            return box;
         }
+
+        /// <summary>
+        /// Ô co theo nội dung nên không Dock được: panel AutoSize lấy đúng khung bao các control
+        /// bên trong, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải 14px để hai
+        /// cột cạnh nhau không dính vào nhau.
+        /// </summary>
+        private static Panel NewReverseCell() => new()
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Margin = new Padding(4, 1, 14, 1)
+        };
 
         // Không viền: viền duy nhất nhìn thấy là khung bo góc do ReverseInputBox vẽ.
         private static TextBox NewReverseTextBox(string name, string placeholder) => new()
@@ -328,12 +371,22 @@ namespace AutoJMS
             PlaceholderText = placeholder
         };
 
-        private static DateTimePicker NewReverseDatePicker(string name) => new()
+        private static DateTimePicker NewReverseDateOnlyPicker(string name) => new()
         {
             Name = name,
             Font = ReverseFieldFont,
             Format = DateTimePickerFormat.Custom,
-            CustomFormat = "yyyy-MM-dd HH:mm:ss"
+            CustomFormat = "yyyy-MM-dd"
+        };
+
+        // ShowUpDown bỏ hẳn nút xổ lịch, thay bằng nút tăng giảm — đúng thứ cần cho giờ/phút/giây.
+        private static DateTimePicker NewReverseTimeOnlyPicker(string name) => new()
+        {
+            Name = name,
+            Font = ReverseFieldFont,
+            Format = DateTimePickerFormat.Custom,
+            CustomFormat = "HH:mm:ss",
+            ShowUpDown = true
         };
 
         /// <summary>
@@ -441,8 +494,8 @@ namespace AutoJMS
                 RestoreReverseFont(box, ReverseFieldFont);
             }
 
-            RestoreReverseFont(tabPrint_timeFrom, ReverseFieldFont);
-            RestoreReverseFont(tabPrint_timeTo, ReverseFieldFont);
+            foreach (var picker in new[] { tabPrint_dateFrom, tabPrint_timeFrom, tabPrint_dateTo, tabPrint_timeTo })
+                RestoreReverseFont(picker, ReverseFieldFont);
 
             // Khung bo góc tự vẽ nên phải tự nhận màu theme — nền, viền, viền lúc focus, và màu
             // biểu tượng trái. Font của control nhập vừa trả lại ở trên nên đo lại luôn chiều cao.
@@ -578,10 +631,26 @@ namespace AutoJMS
         private void ResetReverseTimeRange()
         {
             DateTime today = DateTime.Today;
-            if (tabPrint_timeFrom != null && !tabPrint_timeFrom.IsDisposed)
-                tabPrint_timeFrom.Value = today;
-            if (tabPrint_timeTo != null && !tabPrint_timeTo.IsDisposed)
-                tabPrint_timeTo.Value = today.AddDays(1).AddSeconds(-1);
+            SetReverseMoment(tabPrint_dateFrom, tabPrint_timeFrom, today);
+            SetReverseMoment(tabPrint_dateTo, tabPrint_timeTo, today.AddDays(1).AddSeconds(-1));
+        }
+
+        /// <summary>Đặt cùng một mốc cho cả hai picker — mỗi cái chỉ hiện phần của mình.</summary>
+        private static void SetReverseMoment(DateTimePicker date, DateTimePicker time, DateTime value)
+        {
+            if (date != null && !date.IsDisposed) date.Value = value;
+            if (time != null && !time.IsDisposed) time.Value = value;
+        }
+
+        /// <summary>
+        /// Ghép ngày của picker trái với giờ của picker phải. Hai picker giữ hai DateTime độc
+        /// lập nên phải lấy đúng nửa của từng cái: nửa còn lại của mỗi cái là giá trị cũ, người
+        /// dùng không nhìn thấy và không sửa được.
+        /// </summary>
+        private static DateTime ReverseMoment(DateTimePicker date, DateTimePicker time, DateTime fallback)
+        {
+            if (date == null || date.IsDisposed || time == null || time.IsDisposed) return fallback;
+            return date.Value.Date + time.Value.TimeOfDay;
         }
 
         private void SetReverseStatus(string message, bool isError = false)
@@ -794,8 +863,9 @@ namespace AutoJMS
                 return;
             }
 
-            DateTime from = tabPrint_timeFrom?.Value ?? DateTime.Today;
-            DateTime to = tabPrint_timeTo?.Value ?? DateTime.Today.AddDays(1).AddSeconds(-1);
+            DateTime from = ReverseMoment(tabPrint_dateFrom, tabPrint_timeFrom, DateTime.Today);
+            DateTime to = ReverseMoment(
+                tabPrint_dateTo, tabPrint_timeTo, DateTime.Today.AddDays(1).AddSeconds(-1));
             if (to < from)
             {
                 SetReverseStatus("Thời gian đến phải sau thời gian từ.", true);
@@ -1303,7 +1373,7 @@ namespace AutoJMS
     /// </summary>
     internal sealed class ReverseInputBox : Panel
     {
-        internal enum Glyph { None, Clock, Search }
+        internal enum Glyph { None, Clock, Search, Calendar }
 
         private const int Radius = 6;
         private const int TextPad = 9;
@@ -1385,6 +1455,7 @@ namespace AutoJMS
             using (var pen = new Pen(GlyphColor, 1.4f))
             {
                 if (_glyph == Glyph.Clock) DrawClock(g, pen, cell);
+                else if (_glyph == Glyph.Calendar) DrawCalendar(g, pen, cell);
                 else DrawSearch(g, pen, cell);
             }
         }
@@ -1396,6 +1467,15 @@ namespace AutoJMS
             float cy = r.Y + r.Height / 2f;
             g.DrawLine(pen, cx, cy, cx, cy - r.Height * 0.28f);   // kim giờ
             g.DrawLine(pen, cx, cy, cx + r.Width * 0.22f, cy);    // kim phút
+        }
+
+        private static void DrawCalendar(Graphics g, Pen pen, Rectangle r)
+        {
+            var body = new Rectangle(r.X, r.Y + 2, r.Width - 1, r.Height - 3);
+            g.DrawRectangle(pen, body);
+            g.DrawLine(pen, body.X, body.Y + 4, body.Right, body.Y + 4);        // vạch ngăn phần đầu
+            g.DrawLine(pen, body.X + 3, r.Y, body.X + 3, body.Y + 1);           // vòng treo trái
+            g.DrawLine(pen, body.Right - 3, r.Y, body.Right - 3, body.Y + 1);   // vòng treo phải
         }
 
         private static void DrawSearch(Graphics g, Pen pen, Rectangle r)
@@ -1422,10 +1502,15 @@ namespace AutoJMS
             int width = Math.Max(right - left, 8);
             if (_input is DateTimePicker)
             {
-                // Phủ hết chiều cao rồi cắt 2px mỗi phía: phần bị cắt đúng là viền vuông của
-                // control, chữ bên trong vẫn nguyên. Region cũ phải Dispose, nếu không mỗi lượt
-                // layout lại rò một handle vùng của GDI.
+                // Cắt 2px mỗi phía: phần bị cắt đúng là viền vuông của control, chữ bên trong
+                // vẫn nguyên. Region cũ phải Dispose, nếu không mỗi lượt layout lại rò một
+                // handle vùng của GDI.
+                //
+                // DateTimePicker tự ép chiều cao theo font y như TextBox một dòng (28 đặt vào
+                // thành 26), nên phải căn giữa theo chiều cao THẬT của nó sau khi đặt bề ngang
+                // — đặt Top = 0 là chữ bị lệch lên trên trong khung.
                 _input.Bounds = new Rectangle(left - 2, 0, width + 4, Height);
+                _input.Top = Math.Max((Height - _input.Height) / 2, 0);
                 var old = _input.Region;
                 _input.Region = new Region(new Rectangle(2, 2, _input.Width - 4, _input.Height - 4));
                 old?.Dispose();
