@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -36,8 +37,11 @@ namespace AutoJMS
         private const string ReversePrintFolderName = "Thu hồi đã in";
 
         // Chiều cao ba dải của một ô nhập — nhãn trên, ô nhập dưới — và của dòng trạng thái.
-        private const int ReverseCaptionHeight = 20;
-        private const int ReverseInputHeight = 30;
+        // Hàng nhập để ĐÚNG bằng tổng hai dải cộng lề: TableLayoutPanel chia phần trăm thì chỗ
+        // thừa rơi xuống đáy ô, đẩy nhãn và ô nhập xa nhau — đúng cái khoảng trống Owner báo.
+        private const int ReverseCaptionHeight = 18;
+        private const int ReverseInputHeight = 28;
+        private const int ReverseRowHeight = ReverseCaptionHeight + ReverseInputHeight + 2;
         private const int ReverseStatusHeight = 26;
 
         /// <summary>
@@ -54,7 +58,10 @@ namespace AutoJMS
         private const string ReverseHint =
             "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 
-        private static readonly Font ReverseFieldFont = new("Segoe UI Semibold", 12F, FontStyle.Bold);
+        // Chữ trong ô nhập hạ từ 12pt Semibold xuống 10.5pt thường: ở 12pt, TextBox một dòng tự
+        // ép chiều cao gần kín ô nên chữ chạm sát viền, còn ô thì phải cao ra mới chứa nổi.
+        private static readonly Font ReverseFieldFont = new("Segoe UI", 10.5F, FontStyle.Regular);
+        private static readonly Font ReverseCaptionFont = new("Segoe UI Semibold", 9.75F, FontStyle.Bold);
         private static readonly Font ReverseUiFont = new("Segoe UI", 9F, FontStyle.Regular);
 
         // ── sáu ô nhập, dựng trong BuildReverseInputPanel ──
@@ -69,12 +76,18 @@ namespace AutoJMS
         private Label _reverseStatus;
         private ListBox _reverseStaffList;
         private FlowLayoutPanel _reverseGridToolbar;
-        private Button _reversePrevPage;
-        private Button _reverseNextPage;
+        private ReverseRoundButton _reversePrevPage;
+        private ReverseRoundButton _reverseNextPage;
         private Label _reversePageLabel;
-        private Button _reverseClearStaff;
+        private ReverseRoundButton _reverseClearStaff;
         private readonly List<Label> _reverseCaptions = new();
-        private readonly List<Button> _reverseToolbarButtons = new();
+        private readonly List<ReverseInputBox> _reverseFields = new();
+
+        /// <summary>
+        /// Nút dưới lưới kèm vai trò màu: "Chưa in" là bộ lọc nên lấy màu cảnh báo, phần còn lại
+        /// lấy màu nhấn của theme. Giữ cặp này để đổi theme là tô lại được đúng vai trò.
+        /// </summary>
+        private readonly List<(ReverseRoundButton Button, bool Warning)> _reverseToolbarButtons = new();
 
         // ── state ──
         private System.Windows.Forms.Timer _reverseStaffDebounce;
@@ -201,19 +214,13 @@ namespace AutoJMS
 
             // Nút "X" nằm sát mép phải ô tên: đổi người tra không phải xoá tay từng ký tự.
             // TabStop = false để Tab vẫn nhảy thẳng từ ô tên sang ô kế tiếp như trước.
-            _reverseClearStaff = new Button
+            _reverseClearStaff = new ReverseRoundButton
             {
                 Name = "tabPrint_reverseClearStaff",
                 Text = "✕",
-                Dock = DockStyle.Right,
-                Width = 28,
-                FlatStyle = FlatStyle.Flat,
                 TabStop = false,
-                Cursor = Cursors.Hand,
-                Font = ReverseUiFont,
-                UseVisualStyleBackColor = false
+                Font = ReverseUiFont
             };
-            _reverseClearStaff.FlatAppearance.BorderSize = 0;
             _reverseClearStaff.Click += (s, e) =>
             {
                 ClearReverseStaffInput();
@@ -226,6 +233,7 @@ namespace AutoJMS
                 Name = "tabPrint_reverseStatus",
                 Dock = DockStyle.Fill,
                 AutoSize = false,
+                BackColor = Color.Transparent,
                 Text = ReverseHint,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = ReverseUiFont,
@@ -243,16 +251,18 @@ namespace AutoJMS
             };
             for (int i = 0; i < 3; i++)
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseStatusHeight));
+            // Hai hàng nhập cao CỐ ĐỊNH, chỗ thừa dồn hết xuống dòng trạng thái. Chia phần trăm
+            // thì phần thừa rơi vào đáy từng ô, tách nhãn khỏi ô nhập — đúng khoảng trống Owner báo.
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, null), 0, 0);
-            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, null), 1, 0);
-            layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, null), 2, 0);
-            layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, _reverseClearStaff), 0, 1);
-            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, null), 1, 1);
-            layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, null), 2, 1);
+            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, ReverseInputBox.Glyph.Clock, null), 0, 0);
+            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, ReverseInputBox.Glyph.Clock, null), 1, 0);
+            layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, ReverseInputBox.Glyph.None, null), 2, 0);
+            layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, ReverseInputBox.Glyph.Search, _reverseClearStaff), 0, 1);
+            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, ReverseInputBox.Glyph.None, null), 1, 1);
+            layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, ReverseInputBox.Glyph.None, null), 2, 1);
             layout.Controls.Add(_reverseStatus, 0, 2);
             layout.SetColumnSpan(_reverseStatus, 3);
 
@@ -260,39 +270,48 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Một ô của lưới nhập: nhãn trên, ô nhập dưới, và tuỳ chọn một nút nhỏ sát mép phải ô.
+        /// Một ô của lưới nhập: nhãn trên, khung bo góc dưới. Khung tự vẽ nền, viền và biểu
+        /// tượng trái; control nhập nằm lọt trong khung nên không còn viền vuông của WinForms.
         /// </summary>
-        private Panel NewReverseField(string caption, Control input, Control trailing)
+        private Panel NewReverseField(string caption, Control input, ReverseInputBox.Glyph glyph, Control trailing)
         {
             var label = new Label
             {
                 Dock = DockStyle.Top,
                 AutoSize = false,
+                BackColor = Color.Transparent,
                 Height = ReverseCaptionHeight,
                 Text = caption,
-                Font = ReverseFieldFont,
+                Font = ReverseCaptionFont,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             _reverseCaptions.Add(label);
 
-            // Dải chứa ô nhập cao cố định: nút phụ Dock=Right luôn cao bằng đúng ô nhập.
-            var inputRow = new Panel { Dock = DockStyle.Top, Height = ReverseInputHeight };
-            inputRow.Controls.Add(input);
-            if (trailing != null) inputRow.Controls.Add(trailing);
+            var field = new ReverseInputBox(input, glyph, trailing)
+            {
+                Dock = DockStyle.Top,
+                Height = ReverseInputHeight
+            };
+            _reverseFields.Add(field);
 
-            // Dock xếp theo z-order ngược: chỉ số CAO dock trước và lấy mép ngoài. Thêm dải ô
-            // nhập trước rồi mới tới nhãn, để nhãn chiếm mép trên và dải kia nằm ngay dưới.
-            var cell = new Panel { Dock = DockStyle.Fill, Margin = new Padding(5, 2, 5, 2) };
-            cell.Controls.Add(inputRow);
+            // Dock xếp theo z-order ngược: chỉ số CAO dock trước và lấy mép ngoài. Thêm khung ô
+            // nhập trước rồi mới tới nhãn, để nhãn chiếm mép trên và khung nằm ngay dưới.
+            var cell = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Margin = new Padding(4, 1, 4, 1)
+            };
+            cell.Controls.Add(field);
             cell.Controls.Add(label);
             return cell;
         }
 
+        // Không viền: viền duy nhất nhìn thấy là khung bo góc do ReverseInputBox vẽ.
         private static TextBox NewReverseTextBox(string name, string placeholder) => new()
         {
             Name = name,
-            Dock = DockStyle.Fill,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Font = ReverseFieldFont,
             PlaceholderText = placeholder
         };
@@ -300,7 +319,6 @@ namespace AutoJMS
         private static DateTimePicker NewReverseDatePicker(string name) => new()
         {
             Name = name,
-            Dock = DockStyle.Fill,
             Font = ReverseFieldFont,
             Format = DateTimePickerFormat.Custom,
             CustomFormat = "yyyy-MM-dd HH:mm:ss"
@@ -316,10 +334,11 @@ namespace AutoJMS
             if (uiPanel20 == null || uiPanel20.IsDisposed) return;
             if (uiPanel20.Controls.Find("tabPrint_reverseGridToolbar", false).Length > 0) return;
 
-            var unprinted = NewReverseToolbarButton("tabPrint_reverseUnprinted", "Chưa in", 84);
+            // "Chưa in" là bộ lọc, lấy tông cảnh báo; ba nút còn lại lấy tông nhấn của theme.
+            var unprinted = NewReverseToolbarButton("tabPrint_reverseUnprinted", "Chưa in", 84, warning: true);
             unprinted.Click += (s, e) => SelectReverseUnprintedOnPage();
 
-            _reversePrevPage = NewReverseToolbarButton("tabPrint_reversePrevPage", "‹", 34);
+            _reversePrevPage = NewReverseToolbarButton("tabPrint_reversePrevPage", "‹", 34, warning: false);
             _reversePrevPage.Click += (s, e) => _ = TurnReversePageAsync(-1);
 
             _reversePageLabel = new Label
@@ -333,10 +352,10 @@ namespace AutoJMS
                 Font = ReverseUiFont
             };
 
-            _reverseNextPage = NewReverseToolbarButton("tabPrint_reverseNextPage", "›", 34);
+            _reverseNextPage = NewReverseToolbarButton("tabPrint_reverseNextPage", "›", 34, warning: false);
             _reverseNextPage.Click += (s, e) => _ = TurnReversePageAsync(1);
 
-            var copy = NewReverseToolbarButton("tabPrint_reverseCopy", "Copy mã đã chọn", 132);
+            var copy = NewReverseToolbarButton("tabPrint_reverseCopy", "Copy mã đã chọn", 132, warning: false);
             copy.Click += (s, e) => CopyReverseSelectionToClipboard();
 
             _reverseGridToolbar = new FlowLayoutPanel
@@ -366,19 +385,17 @@ namespace AutoJMS
             SyncReverseGridToolbarVisibility();
         }
 
-        private Button NewReverseToolbarButton(string name, string text, int width)
+        private ReverseRoundButton NewReverseToolbarButton(string name, string text, int width, bool warning)
         {
-            var button = new Button
+            var button = new ReverseRoundButton
             {
                 Name = name,
                 Text = text,
                 Size = new Size(width, 29),
                 Margin = new Padding(6, 3, 0, 3),
-                Font = ReverseUiFont,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
+                Font = ReverseUiFont
             };
-            _reverseToolbarButtons.Add(button);
+            _reverseToolbarButtons.Add((button, warning));
             return button;
         }
 
@@ -415,25 +432,39 @@ namespace AutoJMS
             RestoreReverseFont(tabPrint_timeFrom, ReverseFieldFont);
             RestoreReverseFont(tabPrint_timeTo, ReverseFieldFont);
 
+            // Khung bo góc tự vẽ nên phải tự nhận màu theme — nền, viền, viền lúc focus, và màu
+            // biểu tượng trái. Font của control nhập vừa trả lại ở trên nên đo lại luôn chiều cao.
+            foreach (var field in _reverseFields)
+            {
+                if (field.IsDisposed) continue;
+                field.FieldBackColor = colors.InputBackground;
+                field.BorderColor = colors.InputBorder;
+                field.FocusBorderColor = colors.PrimaryAccent;
+                field.GlyphColor = colors.TextSecondary;
+                field.PerformLayout();
+                field.Invalidate();
+            }
+
             foreach (var caption in _reverseCaptions)
             {
                 caption.ForeColor = colors.TextPrimary;
-                RestoreReverseFont(caption, ReverseFieldFont);
+                RestoreReverseFont(caption, ReverseCaptionFont);
             }
 
-            foreach (var button in _reverseToolbarButtons)
-            {
-                button.BackColor = colors.InputBackground;
-                button.ForeColor = colors.TextPrimary;
-                button.FlatAppearance.BorderColor = colors.InputBorder;
-                RestoreReverseFont(button, ReverseUiFont);
-            }
+            foreach (var (button, warning) in _reverseToolbarButtons)
+                StyleReverseToolbarButton(button, warning ? colors.Warning : colors.PrimaryAccent);
 
             if (_reverseClearStaff != null && !_reverseClearStaff.IsDisposed)
             {
+                // Nút "X" nằm TRONG khung nhập nên phải chìm vào nền ô, chỉ dấu X mang màu nhấn.
                 _reverseClearStaff.BackColor = colors.InputBackground;
+                _reverseClearStaff.Fill = colors.InputBackground;
+                _reverseClearStaff.HoverFill = colors.PrimaryHoverTint;
+                _reverseClearStaff.DisabledFill = colors.InputBackground;
                 _reverseClearStaff.ForeColor = colors.PrimaryAccent;
+                _reverseClearStaff.DisabledForeColor = colors.TextSecondary;
                 RestoreReverseFont(_reverseClearStaff, ReverseUiFont);
+                _reverseClearStaff.Invalidate();
             }
 
             if (_reversePageLabel != null)
@@ -454,6 +485,26 @@ namespace AutoJMS
             // Dòng trạng thái tự chọn màu đỏ/thường trong SetReverseStatus, phát lại câu đang
             // hiện để nó tính lại theo theme mới thay vì ghi đè bằng TextPrimary.
             SetReverseStatus(_reverseStatus.Text, _reverseStatusIsError);
+        }
+
+        /// <summary>
+        /// Tô một nút dưới lưới theo tông màu vai trò của nó. <c>BackColor</c> là màu NGOÀI bốn
+        /// góc bo — lấy đúng màu nền uiPanel20 chứ không để trong suốt: nút nằm trên UIPanel của
+        /// SunnyUI, control trong suốt trên đó lộ mảng xám của Form.
+        /// </summary>
+        private void StyleReverseToolbarButton(ReverseRoundButton button, Color tone)
+        {
+            if (button == null || button.IsDisposed) return;
+
+            var colors = UI.AppTheme.Colors;
+            button.BackColor = uiPanel20 != null && !uiPanel20.IsDisposed ? uiPanel20.FillColor : colors.CardBackground;
+            button.Fill = tone;
+            button.HoverFill = ControlPaint.Light(tone, 0.25f);
+            button.DisabledFill = colors.InputBorder;
+            button.ForeColor = colors.TextInverse;
+            button.DisabledForeColor = colors.TextSecondary;
+            RestoreReverseFont(button, ReverseUiFont);
+            button.Invalidate();
         }
 
         /// <summary>
@@ -646,12 +697,15 @@ namespace AutoJMS
                 _reverseStaffList.EndUpdate();
             }
 
-            var anchor = PointToClient(tabPrint_tenNV.PointToScreen(new Point(0, tabPrint_tenNV.Height)));
+            // Bám vào KHUNG bo góc chứ không vào TextBox bên trong: TextBox đã thụt vào theo lề
+            // của khung, neo vào nó thì danh sách lệch phải và hụt bề ngang.
+            var host = (Control)tabPrint_tenNV.Parent ?? tabPrint_tenNV;
+            var anchor = PointToClient(host.PointToScreen(new Point(0, host.Height)));
             int rows = Math.Min(staff.Count, ReverseStaffPopupRows);
             _reverseStaffList.Bounds = new Rectangle(
                 anchor.X,
                 anchor.Y,
-                Math.Max(tabPrint_tenNV.Width, 200),
+                Math.Max(host.Width, 200),
                 Math.Max(_reverseStaffList.ItemHeight * rows + 4, 24));
             _reverseStaffList.SelectedIndex = 0;
             _reverseStaffList.Visible = true;
@@ -1218,5 +1272,205 @@ namespace AutoJMS
             throw new PrintPipelineException(
                 "PrintWaybillApi", PrintFailureApi, "In Reverse phải in qua ExecuteReversePrintAsync.");
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Hai control tự vẽ của tab In Reverse. Dựng ở đây chứ không tái dùng DkchDropDown:
+    // cụm Đăng ký chuyển hoàn vẽ ô nhập LẪN giá trị bên trong, còn tab này cần một cái
+    // khung rỗng để nhét TextBox/DateTimePicker thật vào — gõ và chọn lịch vẫn phải chạy.
+    // Hình học bo góc thì dùng chung DkchPaint.RoundRect, không vẽ lại.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Khung nhập bo góc: tự vẽ nền, viền và biểu tượng bên trái, còn control nhập thật
+    /// (<see cref="TextBox"/> hoặc <see cref="DateTimePicker"/>) nằm lọt bên trong.
+    ///
+    /// <see cref="DateTimePicker"/> là control của Windows: nó luôn tự vẽ viền vuông và bỏ
+    /// qua <c>BackColor</c>. Cắt viền đó bằng <see cref="Control.Region"/> — vùng cửa sổ do
+    /// hệ điều hành cắt nên viền không còn đường nào lọt ra ngoài.
+    /// </summary>
+    internal sealed class ReverseInputBox : Panel
+    {
+        internal enum Glyph { None, Clock, Search }
+
+        private const int Radius = 6;
+        private const int TextPad = 9;
+        private const int GlyphGutter = 26;
+        private const int TrailingWidth = 22;
+
+        private readonly Control _input;
+        private readonly Control _trailing;
+        private readonly Glyph _glyph;
+        private bool _hot;
+
+        public Color FieldBackColor { get; set; } = Color.White;
+        public Color BorderColor { get; set; } = Color.Gainsboro;
+        public Color FocusBorderColor { get; set; } = Color.DodgerBlue;
+        public Color GlyphColor { get; set; } = Color.Gray;
+
+        public ReverseInputBox(Control input, Glyph glyph, Control trailing)
+        {
+            _input = input;
+            _glyph = glyph;
+            _trailing = trailing;
+
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.ResizeRedraw | ControlStyles.UserPaint
+                | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+
+            Controls.Add(input);
+            if (trailing != null) Controls.Add(trailing);
+
+            // Viền sáng lên khi con trỏ đang ở trong ô. DateTimePicker không phát Enter/Leave
+            // cho control cha nên bắt thẳng trên chính nó.
+            input.GotFocus += (s, e) => SetHot(true);
+            input.LostFocus += (s, e) => SetHot(false);
+        }
+
+        private void SetHot(bool hot)
+        {
+            if (_hot == hot) return;
+            _hot = hot;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var box = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var path = DkchPaint.RoundRect(box, Radius))
+            using (var fill = new SolidBrush(FieldBackColor))
+            using (var pen = new Pen(_hot ? FocusBorderColor : BorderColor, _hot ? 1.4f : 1f))
+            {
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+            }
+
+            if (_glyph == Glyph.None) return;
+
+            // Biểu tượng vẽ bằng hình học chứ không bằng ký tự font: font hệ thống thiếu glyph
+            // thì ra ô vuông tofu, và ký tự thoát \uXXXX trong file nguồn dễ bị công cụ sửa
+            // file biến thành byte điều khiển thật.
+            int side = 14;
+            var cell = new Rectangle(8, (Height - side) / 2, side, side);
+            using (var pen = new Pen(GlyphColor, 1.4f))
+            {
+                if (_glyph == Glyph.Clock) DrawClock(g, pen, cell);
+                else DrawSearch(g, pen, cell);
+            }
+        }
+
+        private static void DrawClock(Graphics g, Pen pen, Rectangle r)
+        {
+            g.DrawEllipse(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
+            float cx = r.X + r.Width / 2f;
+            float cy = r.Y + r.Height / 2f;
+            g.DrawLine(pen, cx, cy, cx, cy - r.Height * 0.28f);   // kim giờ
+            g.DrawLine(pen, cx, cy, cx + r.Width * 0.22f, cy);    // kim phút
+        }
+
+        private static void DrawSearch(Graphics g, Pen pen, Rectangle r)
+        {
+            int d = (int)(r.Width * 0.72f);
+            g.DrawEllipse(pen, r.X, r.Y, d, d);
+            g.DrawLine(pen, r.X + d * 0.82f, r.Y + d * 0.82f, r.Right - 1, r.Bottom - 1);
+        }
+
+        protected override void OnLayout(LayoutEventArgs e)
+        {
+            base.OnLayout(e);
+            if (Width <= 0 || Height <= 0) return;
+
+            int left = _glyph == Glyph.None ? TextPad : GlyphGutter;
+            int right = Width - TextPad;
+
+            if (_trailing != null)
+            {
+                right -= TrailingWidth;
+                _trailing.Bounds = new Rectangle(right + 2, 3, TrailingWidth, Height - 6);
+            }
+
+            int width = Math.Max(right - left, 8);
+            if (_input is DateTimePicker)
+            {
+                // Phủ hết chiều cao rồi cắt 2px mỗi phía: phần bị cắt đúng là viền vuông của
+                // control, chữ bên trong vẫn nguyên. Region cũ phải Dispose, nếu không mỗi lượt
+                // layout lại rò một handle vùng của GDI.
+                _input.Bounds = new Rectangle(left - 2, 0, width + 4, Height);
+                var old = _input.Region;
+                _input.Region = new Region(new Rectangle(2, 2, _input.Width - 4, _input.Height - 4));
+                old?.Dispose();
+            }
+            else
+            {
+                // TextBox một dòng tự ép chiều cao theo font — căn giữa theo chiều cao thật của
+                // nó, đặt Height ở đây là bị nó ghi đè ngay.
+                _input.Bounds = new Rectangle(left, Math.Max((Height - _input.Height) / 2, 0), width, _input.Height);
+            }
+        }
+
+        /// <summary>Bấm vào khoảng trống trong khung cũng đưa con trỏ vào ô nhập.</summary>
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (_input != null && !_input.IsDisposed) _input.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Nút bo góc tô đặc. <c>BackColor</c> ở đây là màu NGOÀI bốn góc bo (màu nền của panel
+    /// chứa nút), <see cref="Fill"/> mới là màu thân nút — control WinForms không có nền thật
+    /// trong suốt nên bốn góc phải tô bằng đúng màu panel.
+    /// </summary>
+    internal sealed class ReverseRoundButton : Button
+    {
+        private const int Radius = 6;
+        private bool _hover;
+
+        public Color Fill { get; set; } = Color.DodgerBlue;
+        public Color HoverFill { get; set; } = Color.CornflowerBlue;
+        public Color DisabledFill { get; set; } = Color.Gainsboro;
+        public Color DisabledForeColor { get; set; } = Color.Gray;
+
+        public ReverseRoundButton()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            UseVisualStyleBackColor = false;
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(BackColor);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var body = new Rectangle(0, 0, Width - 1, Height - 1);
+            var tone = !Enabled ? DisabledFill : _hover ? HoverFill : Fill;
+            using (var path = DkchPaint.RoundRect(body, Radius))
+            using (var brush = new SolidBrush(tone))
+                g.FillPath(brush, path);
+
+            // SingleLine bắt buộc đi kèm VerticalCenter — thiếu nó thì DrawText chuyển sang chế
+            // độ nhiều dòng và bỏ qua luôn việc căn giữa theo chiều dọc.
+            TextRenderer.DrawText(g, Text, Font, body, Enabled ? ForeColor : DisabledForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+
+            if (Focused && Enabled)
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(body, -4, -4));
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
+        protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+        protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
     }
 }
