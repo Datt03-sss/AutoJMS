@@ -667,6 +667,11 @@ namespace AutoJMS
                 new PrintSafetyGuard(),
                 () => JmsAuthStateService.CurrentToken,
                 _siteContextProvider);
+
+            // Service vừa dựng xong luôn mang mode mặc định InHoan, trong khi người dùng có thể
+            // đã bấm sang tab con khác trong lúc chờ WebView2 init ở trên — những lượt đổi tab
+            // đó bị handler bỏ qua vì _printService còn null. Đồng bộ lại theo tab đang mở.
+            _printService.SetMode(GetTabPrintModeFromSelectedTab());
             _printerSpoolerSubmitter = new MainPrinterSpoolerSubmitter(this);
             _printJobCoordinator = new PrintJobCoordinator(
                 JmsApiClient.Instance,
@@ -3549,6 +3554,20 @@ namespace AutoJMS
             ResetTabPrintReprintState(clearInputs: true);
         }
 
+        /// <summary>
+        /// Mode ứng với tab con đang mở của tab IN ĐƠN. Tab là nguồn sự thật, không phải
+        /// <see cref="IPrintService.CurrentMode"/>: sự kiện đổi tab không bắn cho tab được chọn
+        /// sẵn lúc khởi động, nên mode chỉ chắc chắn đúng khi được suy ra từ tab.
+        /// </summary>
+        private PrintMode GetTabPrintModeFromSelectedTab()
+        {
+            var selected = tabPrint_printFunc?.SelectedTab;
+            if (selected == tabPrint_inCT) return PrintMode.InChuyenTiep;
+            if (selected == tabPrint_inLaiDon) return PrintMode.InLaiDon;
+            if (selected == tabPrint_inRV) return PrintMode.InReverse;
+            return PrintMode.InHoan;
+        }
+
         private void TabPrint_printFunc_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_printService == null) return;
@@ -3556,11 +3575,7 @@ namespace AutoJMS
             ClearPrintJobCaches();
             ResetTabPrintReprintState(clearInputs: true);
 
-            PrintMode newMode = PrintMode.InHoan;
-            if (tabPrint_printFunc.SelectedTab == tabPrint_inCH) newMode = PrintMode.InHoan;
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inCT) newMode = PrintMode.InChuyenTiep;
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inLaiDon) newMode = PrintMode.InLaiDon;
-            else if (tabPrint_printFunc.SelectedTab == tabPrint_inRV) newMode = PrintMode.InReverse;
+            PrintMode newMode = GetTabPrintModeFromSelectedTab();
             _printService.SetMode(newMode);
 
             tabPrint_btnSelectAll.Checked = false;
@@ -3640,6 +3655,13 @@ namespace AutoJMS
         private async Task ExecuteTabPrintSearchAsync(string input, PrintMode? expectedMode = null)
         {
             if (string.IsNullOrWhiteSpace(input) || _printService == null) return;
+
+            // Tab con đang mở mới là nguồn sự thật của mode. SelectedIndexChanged không bắn cho
+            // tab được chọn sẵn, và nó còn bị bỏ qua khi _printService chưa dựng xong (WebView2
+            // init là async) — bấm sang "In lại đơn" trong lúc đó thì mode kẹt ở InHoan, tìm
+            // kiếm chạy nhánh SafetyGuard và không ra dòng nào. SetMode tự bỏ qua khi trùng mode.
+            _printService.SetMode(GetTabPrintModeFromSelectedTab());
+
             if (expectedMode.HasValue && _printService.CurrentMode != expectedMode.Value) return;
 
             AppCaptureManager.Instance.RecordEvent(new AppCaptureEvent
