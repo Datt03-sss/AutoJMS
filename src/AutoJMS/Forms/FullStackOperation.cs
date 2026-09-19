@@ -3381,7 +3381,10 @@ namespace AutoJMS
             banner.Dock = DockStyle.Fill;
             banner.Margin = new Padding(0, 0, 0, 2);
             banner.FillColor = Color.FromArgb(169, 223, 191); // #A9DFBF
-            banner.Text = "BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN 214A02";
+            string bannerSite = SiteContextProvider.Get();
+            banner.Text = bannerSite.Length == 0
+                ? "BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN"
+                : $"BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN {bannerSite}";
             banner.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
             banner.ForeColor = Color.White;
             banner.TextAlignment = ContentAlignment.MiddleCenter;
@@ -4025,7 +4028,8 @@ namespace AutoJMS
                 foreach (var group in staffGroups)
                 {
                     var list = group.ToList();
-                    string quetMa = list.FirstOrDefault(w => !string.IsNullOrEmpty(w.BuuCucThaoTac))?.BuuCucThaoTac ?? "214A02";
+                    string quetMa = list.FirstOrDefault(w => !string.IsNullOrEmpty(w.BuuCucThaoTac))?.BuuCucThaoTac
+                                    ?? SiteContextProvider.Get();
                     int donPhat = list.Count;
                     int signed = list.Count(w => w.ThaoTacCuoi != null && w.ThaoTacCuoi.Contains("Ký nhận"));
                     int donCanKy91 = (int)Math.Ceiling(donPhat * 0.91);
