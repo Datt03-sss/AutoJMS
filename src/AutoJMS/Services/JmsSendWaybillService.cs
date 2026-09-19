@@ -203,9 +203,9 @@ namespace AutoJMS
             string from = timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture);
             string to = timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture);
 
-            // Giữ ĐÚNG thứ tự và đủ 11 trường như cURL của giao diện JMS. Thiếu một trường
-            // rỗng (waybillNos/customerCodes) là backend trả 500; thiếu searchTimeType thì
-            // nó không biết lọc theo mốc thời gian nào và trả danh sách rỗng.
+            // ĐÚNG 10 trường, ĐÚNG thứ tự của cURL giao diện JMS — không hơn một trường nào.
+            // Trường rỗng (waybillNos/customerCodes) vẫn phải gửi. Thêm trường lạ thì JMS trả
+            // code:1 kèm danh sách rỗng, không báo lỗi — xem test ghim Content-Length 1114.
             var form = NewBrowserStyleForm();
             Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
             Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
@@ -218,9 +218,8 @@ namespace AutoJMS
             Add(form, "timeEnd", to);
             Add(form, "waybillNos", "");
             Add(form, "customerCodes", customerCodes ?? "");
-            // 1 = lọc theo thời gian NHẬN HÀNG (timeStart/timeEnd). Giao diện JMS luôn gửi
-            // cả hai cặp mốc, searchTimeType mới là thứ quyết định cặp nào có hiệu lực.
-            Add(form, "searchTimeType", "1");
+            // Giao diện JMS gửi cả hai cặp mốc và KHÔNG gửi searchTimeType — không có trường
+            // nào chọn cặp nào có hiệu lực, cứ gửi trùng giá trị như nó.
             Add(form, "inputTimeStart", from);
             Add(form, "inputTimeEnd", to);
             return form;

@@ -185,17 +185,22 @@ public sealed class JmsSendWaybillParsingTests
         Assert.DoesNotContain("boundary=\"", contentType);
         Assert.DoesNotContain("name=current", body);
 
-        // Đủ 11 trường, ĐÚNG thứ tự của cURL thật. searchTimeType=1 là thứ quyết định
-        // timeStart/timeEnd (thời gian nhận hàng) có hiệu lực — thiếu nó thì danh sách rỗng.
+        // ĐÚNG 10 trường, ĐÚNG thứ tự của cURL thật — không có searchTimeType.
         string[] expected =
         {
             "current", "size", "pickFinanceCode", "collectStaffCode",
             "timeStart", "timeEnd", "waybillNos", "customerCodes",
-            "searchTimeType", "inputTimeStart", "inputTimeEnd"
+            "inputTimeStart", "inputTimeEnd"
         };
         Assert.Equal(
             expected,
             Regex.Matches(body, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray());
+
+        // Chốt bằng SỐ: ảnh DevTools của request thật (cùng đúng bộ tham số này, boundary
+        // cũng dài 38 ký tự) ghi Content-Length: 1114. Thừa một trường là lệch ngay — chẳng
+        // hạn searchTimeType=1 đẩy lên 1216. Đây là thứ duy nhất bắt được "thừa trường",
+        // vì JMS nhận trường lạ rồi trả code:1 với danh sách rỗng mà không kêu.
+        Assert.Equal(1114, body.Length);
 
         // Phần text thường không kèm Content-Type, y như trình duyệt.
         Assert.DoesNotContain("Content-Type: text/plain", body);
