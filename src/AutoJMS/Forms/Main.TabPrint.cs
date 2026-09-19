@@ -999,8 +999,8 @@ namespace AutoJMS
                     SetReprintStatus($"Không đè được nội dung ({appliedError}) — đang xem bản gốc.", true);
                 else if (missingReceiver.Length > 0)
                     SetReprintStatus(
-                        $"Đã xem trước bản sửa cho {_reprintFirstWaybill}, NHƯNG không lấy được {missingReceiver} " +
-                        $"— vùng này sẽ in thiếu {missingReceiver}. Bỏ tick \"Sửa Người nhận\" nếu không muốn vậy.", true);
+                        $"Đang chỉnh sửa {_reprintFirstWaybill}. Vui lòng điền chính xác thông tin trước khi in.",
+                        true);
                 else if (content.HasAnyEdit)
                     SetReprintStatus($"Đã xem trước bản sửa cho {_reprintFirstWaybill}. Bấm IN để in đúng bản này.");
                 else
