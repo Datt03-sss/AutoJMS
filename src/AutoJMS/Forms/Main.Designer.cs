@@ -77,25 +77,6 @@ namespace AutoJMS
             tabPrint_inCT = new TabPage();
             tabPrint_inLaiDon = new TabPage();
             tabPrint_inRV = new TabPage();
-            uiTableLayoutPanel24 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel23 = new Sunny.UI.UIPanel();
-            tabPrint_timeFrom = new Sunny.UI.UIDatetimePicker();
-            uiLabel23 = new Sunny.UI.UILabel();
-            uiPanel24 = new Sunny.UI.UIPanel();
-            tabPrint_timeTo = new Sunny.UI.UIDatetimePicker();
-            uiLabel24 = new Sunny.UI.UILabel();
-            uiPanel25 = new Sunny.UI.UIPanel();
-            tabPrint_sdtNG = new Sunny.UI.UITextBox();
-            uiLabel25 = new Sunny.UI.UILabel();
-            uiPanel26 = new Sunny.UI.UIPanel();
-            tabPrint_tenNV = new Sunny.UI.UITextBox();
-            uiLabel26 = new Sunny.UI.UILabel();
-            uiPanel27 = new Sunny.UI.UIPanel();
-            tabPrint_maCOD = new Sunny.UI.UITextBox();
-            uiLabel27 = new Sunny.UI.UILabel();
-            uiPanel28 = new Sunny.UI.UIPanel();
-            tabPrint_sdtNN = new Sunny.UI.UITextBox();
-            uiLabel28 = new Sunny.UI.UILabel();
             uiTableLayoutPanel13 = new Sunny.UI.UITableLayoutPanel();
             tabPrint_btnTimKiem = new Sunny.UI.UISymbolButton();
             tabPrint_btnLamMoi = new Sunny.UI.UISymbolButton();
@@ -169,14 +150,6 @@ namespace AutoJMS
             tabPrint_inCH.SuspendLayout();
             uiTableLayoutPanel7.SuspendLayout();
             uiPanel2.SuspendLayout();
-            tabPrint_inRV.SuspendLayout();
-            uiTableLayoutPanel24.SuspendLayout();
-            uiPanel23.SuspendLayout();
-            uiPanel24.SuspendLayout();
-            uiPanel25.SuspendLayout();
-            uiPanel26.SuspendLayout();
-            uiPanel27.SuspendLayout();
-            uiPanel28.SuspendLayout();
             uiTableLayoutPanel13.SuspendLayout();
             uiTableLayoutPanel15.SuspendLayout();
             uiPanel13.SuspendLayout();
@@ -824,7 +797,6 @@ namespace AutoJMS
             // 
             // tabPrint_inRV
             // 
-            tabPrint_inRV.Controls.Add(uiTableLayoutPanel24);
             tabPrint_inRV.Location = new Point(0, 40);
             tabPrint_inRV.Margin = new Padding(0);
             tabPrint_inRV.Name = "tabPrint_inRV";
@@ -832,297 +804,6 @@ namespace AutoJMS
             tabPrint_inRV.TabIndex = 3;
             tabPrint_inRV.Text = "In Reverse";
             tabPrint_inRV.UseVisualStyleBackColor = true;
-            // 
-            // uiTableLayoutPanel24
-            // 
-            uiTableLayoutPanel24.ColumnCount = 3;
-            uiTableLayoutPanel24.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333321F));
-            uiTableLayoutPanel24.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
-            uiTableLayoutPanel24.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3333359F));
-            uiTableLayoutPanel24.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20F));
-            uiTableLayoutPanel24.Controls.Add(uiPanel23, 0, 0);
-            uiTableLayoutPanel24.Controls.Add(uiPanel24, 1, 0);
-            uiTableLayoutPanel24.Controls.Add(uiPanel25, 2, 0);
-            uiTableLayoutPanel24.Controls.Add(uiPanel26, 0, 1);
-            uiTableLayoutPanel24.Controls.Add(uiPanel27, 1, 1);
-            uiTableLayoutPanel24.Controls.Add(uiPanel28, 2, 1);
-            uiTableLayoutPanel24.Dock = DockStyle.Fill;
-            uiTableLayoutPanel24.Location = new Point(0, 0);
-            uiTableLayoutPanel24.Margin = new Padding(0);
-            uiTableLayoutPanel24.Name = "uiTableLayoutPanel24";
-            uiTableLayoutPanel24.RowCount = 2;
-            uiTableLayoutPanel24.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            uiTableLayoutPanel24.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            uiTableLayoutPanel24.Size = new Size(200, 60);
-            uiTableLayoutPanel24.TabIndex = 3;
-            uiTableLayoutPanel24.TagString = null;
-            // 
-            // uiPanel23
-            // 
-            uiPanel23.Controls.Add(tabPrint_timeFrom);
-            uiPanel23.Controls.Add(uiLabel23);
-            uiPanel23.Dock = DockStyle.Fill;
-            uiPanel23.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel23.Location = new Point(5, 5);
-            uiPanel23.Margin = new Padding(5);
-            uiPanel23.MinimumSize = new Size(1, 1);
-            uiPanel23.Name = "uiPanel23";
-            uiPanel23.Padding = new Padding(5);
-            uiPanel23.Size = new Size(56, 20);
-            uiPanel23.TabIndex = 0;
-            uiPanel23.Text = null;
-            uiPanel23.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_timeFrom
-            // 
-            tabPrint_timeFrom.DateCultureInfo = new System.Globalization.CultureInfo("vi-VN");
-            tabPrint_timeFrom.Dock = DockStyle.Fill;
-            tabPrint_timeFrom.FillColor = Color.White;
-            tabPrint_timeFrom.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_timeFrom.Location = new Point(5, 28);
-            tabPrint_timeFrom.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_timeFrom.MaxLength = 19;
-            tabPrint_timeFrom.MinimumSize = new Size(63, 0);
-            tabPrint_timeFrom.MultiLanguageSupport = false;
-            tabPrint_timeFrom.Name = "tabPrint_timeFrom";
-            tabPrint_timeFrom.Padding = new Padding(5, 5, 30, 5);
-            tabPrint_timeFrom.Size = new Size(63, 0);
-            tabPrint_timeFrom.SymbolDropDown = 61555;
-            tabPrint_timeFrom.SymbolNormal = 61555;
-            tabPrint_timeFrom.SymbolSize = 24;
-            tabPrint_timeFrom.TabIndex = 1;
-            tabPrint_timeFrom.Text = "2026-04-14 11:38:34";
-            tabPrint_timeFrom.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_timeFrom.Value = new DateTime(2026, 4, 14, 11, 38, 34, 7);
-            tabPrint_timeFrom.Watermark = "";
-            // 
-            // uiLabel23
-            // 
-            uiLabel23.Dock = DockStyle.Top;
-            uiLabel23.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel23.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel23.Location = new Point(5, 5);
-            uiLabel23.Name = "uiLabel23";
-            uiLabel23.Size = new Size(46, 23);
-            uiLabel23.TabIndex = 0;
-            uiLabel23.Text = "Thời gian từ:";
-            // 
-            // uiPanel24
-            // 
-            uiPanel24.Controls.Add(tabPrint_timeTo);
-            uiPanel24.Controls.Add(uiLabel24);
-            uiPanel24.Dock = DockStyle.Fill;
-            uiPanel24.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel24.Location = new Point(71, 5);
-            uiPanel24.Margin = new Padding(5);
-            uiPanel24.MinimumSize = new Size(1, 1);
-            uiPanel24.Name = "uiPanel24";
-            uiPanel24.Padding = new Padding(5);
-            uiPanel24.Size = new Size(56, 20);
-            uiPanel24.TabIndex = 0;
-            uiPanel24.Text = null;
-            uiPanel24.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_timeTo
-            // 
-            tabPrint_timeTo.DateCultureInfo = new System.Globalization.CultureInfo("vi-VN");
-            tabPrint_timeTo.Dock = DockStyle.Fill;
-            tabPrint_timeTo.FillColor = Color.White;
-            tabPrint_timeTo.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_timeTo.Location = new Point(5, 28);
-            tabPrint_timeTo.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_timeTo.MaxLength = 19;
-            tabPrint_timeTo.MinimumSize = new Size(63, 0);
-            tabPrint_timeTo.Name = "tabPrint_timeTo";
-            tabPrint_timeTo.Padding = new Padding(5, 5, 30, 5);
-            tabPrint_timeTo.Size = new Size(63, 0);
-            tabPrint_timeTo.SymbolDropDown = 61555;
-            tabPrint_timeTo.SymbolNormal = 61555;
-            tabPrint_timeTo.SymbolSize = 24;
-            tabPrint_timeTo.TabIndex = 1;
-            tabPrint_timeTo.Text = "2026-04-14 11:38:34";
-            tabPrint_timeTo.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_timeTo.Value = new DateTime(2026, 4, 14, 11, 38, 34, 7);
-            tabPrint_timeTo.Watermark = "";
-            // 
-            // uiLabel24
-            // 
-            uiLabel24.Dock = DockStyle.Top;
-            uiLabel24.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel24.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel24.Location = new Point(5, 5);
-            uiLabel24.Name = "uiLabel24";
-            uiLabel24.Size = new Size(46, 23);
-            uiLabel24.TabIndex = 0;
-            uiLabel24.Text = "Thời gian đến:";
-            // 
-            // uiPanel25
-            // 
-            uiPanel25.Controls.Add(tabPrint_sdtNG);
-            uiPanel25.Controls.Add(uiLabel25);
-            uiPanel25.Dock = DockStyle.Fill;
-            uiPanel25.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel25.Location = new Point(137, 5);
-            uiPanel25.Margin = new Padding(5);
-            uiPanel25.MinimumSize = new Size(1, 1);
-            uiPanel25.Name = "uiPanel25";
-            uiPanel25.Padding = new Padding(5);
-            uiPanel25.Size = new Size(58, 20);
-            uiPanel25.TabIndex = 0;
-            uiPanel25.Text = null;
-            uiPanel25.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_sdtNG
-            // 
-            tabPrint_sdtNG.Dock = DockStyle.Fill;
-            tabPrint_sdtNG.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_sdtNG.Location = new Point(5, 28);
-            tabPrint_sdtNG.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_sdtNG.MinimumSize = new Size(1, 16);
-            tabPrint_sdtNG.Name = "tabPrint_sdtNG";
-            tabPrint_sdtNG.Padding = new Padding(5);
-            tabPrint_sdtNG.ShowText = false;
-            tabPrint_sdtNG.Size = new Size(48, 16);
-            tabPrint_sdtNG.TabIndex = 1;
-            tabPrint_sdtNG.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_sdtNG.Watermark = "";
-            // 
-            // uiLabel25
-            // 
-            uiLabel25.Dock = DockStyle.Top;
-            uiLabel25.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel25.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel25.Location = new Point(5, 5);
-            uiLabel25.Name = "uiLabel25";
-            uiLabel25.Size = new Size(48, 23);
-            uiLabel25.TabIndex = 0;
-            uiLabel25.Text = "SĐT người gửi:";
-            // 
-            // uiPanel26
-            // 
-            uiPanel26.Controls.Add(tabPrint_tenNV);
-            uiPanel26.Controls.Add(uiLabel26);
-            uiPanel26.Dock = DockStyle.Fill;
-            uiPanel26.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel26.Location = new Point(5, 35);
-            uiPanel26.Margin = new Padding(5);
-            uiPanel26.MinimumSize = new Size(1, 1);
-            uiPanel26.Name = "uiPanel26";
-            uiPanel26.Padding = new Padding(5);
-            uiPanel26.Size = new Size(56, 20);
-            uiPanel26.TabIndex = 0;
-            uiPanel26.Text = null;
-            uiPanel26.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_tenNV
-            // 
-            tabPrint_tenNV.Dock = DockStyle.Fill;
-            tabPrint_tenNV.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_tenNV.Location = new Point(5, 28);
-            tabPrint_tenNV.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_tenNV.MinimumSize = new Size(1, 16);
-            tabPrint_tenNV.Name = "tabPrint_tenNV";
-            tabPrint_tenNV.Padding = new Padding(5);
-            tabPrint_tenNV.ShowText = false;
-            tabPrint_tenNV.Size = new Size(46, 16);
-            tabPrint_tenNV.TabIndex = 1;
-            tabPrint_tenNV.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_tenNV.Watermark = "";
-            // 
-            // uiLabel26
-            // 
-            uiLabel26.Dock = DockStyle.Top;
-            uiLabel26.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel26.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel26.Location = new Point(5, 5);
-            uiLabel26.Name = "uiLabel26";
-            uiLabel26.Size = new Size(46, 23);
-            uiLabel26.TabIndex = 0;
-            uiLabel26.Text = "Tên nhân viên:";
-            // 
-            // uiPanel27
-            // 
-            uiPanel27.Controls.Add(tabPrint_maCOD);
-            uiPanel27.Controls.Add(uiLabel27);
-            uiPanel27.Dock = DockStyle.Fill;
-            uiPanel27.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel27.Location = new Point(71, 35);
-            uiPanel27.Margin = new Padding(5);
-            uiPanel27.MinimumSize = new Size(1, 1);
-            uiPanel27.Name = "uiPanel27";
-            uiPanel27.Padding = new Padding(5);
-            uiPanel27.Size = new Size(56, 20);
-            uiPanel27.TabIndex = 0;
-            uiPanel27.Text = null;
-            uiPanel27.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_maCOD
-            // 
-            tabPrint_maCOD.Dock = DockStyle.Fill;
-            tabPrint_maCOD.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_maCOD.Location = new Point(5, 28);
-            tabPrint_maCOD.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_maCOD.MinimumSize = new Size(1, 16);
-            tabPrint_maCOD.Name = "tabPrint_maCOD";
-            tabPrint_maCOD.Padding = new Padding(5);
-            tabPrint_maCOD.ShowText = false;
-            tabPrint_maCOD.Size = new Size(46, 16);
-            tabPrint_maCOD.TabIndex = 1;
-            tabPrint_maCOD.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_maCOD.Watermark = "";
-            // 
-            // uiLabel27
-            // 
-            uiLabel27.Dock = DockStyle.Top;
-            uiLabel27.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel27.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel27.Location = new Point(5, 5);
-            uiLabel27.Name = "uiLabel27";
-            uiLabel27.Size = new Size(46, 23);
-            uiLabel27.TabIndex = 0;
-            uiLabel27.Text = "Tên - Mã KH";
-            // 
-            // uiPanel28
-            // 
-            uiPanel28.Controls.Add(tabPrint_sdtNN);
-            uiPanel28.Controls.Add(uiLabel28);
-            uiPanel28.Dock = DockStyle.Fill;
-            uiPanel28.Font = new Font("Microsoft Sans Serif", 12F);
-            uiPanel28.Location = new Point(137, 35);
-            uiPanel28.Margin = new Padding(5);
-            uiPanel28.MinimumSize = new Size(1, 1);
-            uiPanel28.Name = "uiPanel28";
-            uiPanel28.Padding = new Padding(5);
-            uiPanel28.Size = new Size(58, 20);
-            uiPanel28.TabIndex = 0;
-            uiPanel28.Text = null;
-            uiPanel28.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
-            // tabPrint_sdtNN
-            // 
-            tabPrint_sdtNN.Dock = DockStyle.Fill;
-            tabPrint_sdtNN.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_sdtNN.Location = new Point(5, 28);
-            tabPrint_sdtNN.Margin = new Padding(4, 5, 4, 5);
-            tabPrint_sdtNN.MinimumSize = new Size(1, 16);
-            tabPrint_sdtNN.Name = "tabPrint_sdtNN";
-            tabPrint_sdtNN.Padding = new Padding(5);
-            tabPrint_sdtNN.ShowText = false;
-            tabPrint_sdtNN.Size = new Size(48, 16);
-            tabPrint_sdtNN.TabIndex = 1;
-            tabPrint_sdtNN.TextAlignment = ContentAlignment.MiddleLeft;
-            tabPrint_sdtNN.Watermark = "";
-            // 
-            // uiLabel28
-            // 
-            uiLabel28.Dock = DockStyle.Top;
-            uiLabel28.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel28.ForeColor = Color.FromArgb(48, 48, 48);
-            uiLabel28.Location = new Point(5, 5);
-            uiLabel28.Name = "uiLabel28";
-            uiLabel28.Size = new Size(48, 23);
-            uiLabel28.TabIndex = 0;
-            uiLabel28.Text = "SĐT người nhận:";
             // 
             // uiTableLayoutPanel13
             // 
@@ -2138,14 +1819,6 @@ namespace AutoJMS
             uiTableLayoutPanel7.ResumeLayout(false);
             uiTableLayoutPanel7.PerformLayout();
             uiPanel2.ResumeLayout(false);
-            tabPrint_inRV.ResumeLayout(false);
-            uiTableLayoutPanel24.ResumeLayout(false);
-            uiPanel23.ResumeLayout(false);
-            uiPanel24.ResumeLayout(false);
-            uiPanel25.ResumeLayout(false);
-            uiPanel26.ResumeLayout(false);
-            uiPanel27.ResumeLayout(false);
-            uiPanel28.ResumeLayout(false);
             uiTableLayoutPanel13.ResumeLayout(false);
             uiTableLayoutPanel15.ResumeLayout(false);
             uiTableLayoutPanel15.PerformLayout();
@@ -2222,25 +1895,6 @@ namespace AutoJMS
         private TabPage tabPrint_inCT;
         private TabPage tabPrint_inLaiDon;
         private TabPage tabPrint_inRV;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel24;
-        private Sunny.UI.UIPanel uiPanel23;
-        private Sunny.UI.UIDatetimePicker tabPrint_timeFrom;
-        private Sunny.UI.UILabel uiLabel23;
-        private Sunny.UI.UIPanel uiPanel24;
-        private Sunny.UI.UIDatetimePicker tabPrint_timeTo;
-        private Sunny.UI.UILabel uiLabel24;
-        private Sunny.UI.UIPanel uiPanel25;
-        private Sunny.UI.UITextBox tabPrint_sdtNG;
-        private Sunny.UI.UILabel uiLabel25;
-        private Sunny.UI.UIPanel uiPanel26;
-        private Sunny.UI.UITextBox tabPrint_tenNV;
-        private Sunny.UI.UILabel uiLabel26;
-        private Sunny.UI.UIPanel uiPanel27;
-        private Sunny.UI.UITextBox tabPrint_maCOD;
-        private Sunny.UI.UILabel uiLabel27;
-        private Sunny.UI.UIPanel uiPanel28;
-        private Sunny.UI.UITextBox tabPrint_sdtNN;
-        private Sunny.UI.UILabel uiLabel28;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel13;
         private Sunny.UI.UISymbolButton tabPrint_btnTimKiem;
         private Sunny.UI.UISymbolButton tabPrint_btnLamMoi;

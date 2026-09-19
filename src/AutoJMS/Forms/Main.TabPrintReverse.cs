@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Sunny.UI;
 
 namespace AutoJMS
 {
@@ -23,20 +22,23 @@ namespace AutoJMS
     /// <see cref="IPrintService.LoadRowsDirect"/>; lệnh in dùng endpoint riêng
     /// <see cref="JmsSendWaybillService.CenterPrintEndpoint"/>.
     ///
-    /// Sáu ô nhập của tab đã có sẵn trong Main.Designer.cs — file này chỉ đấu dây, thêm
-    /// dòng trạng thái và danh sách chọn nhân viên.
+    /// Toàn bộ giao diện của tab dựng bằng code trong file này — sáu ô nhập, dòng trạng thái,
+    /// danh sách chọn nhân viên và cụm nút dưới lưới. Không còn gì của tab này nằm trong
+    /// Main.Designer.cs ngoài chính TabPage <c>tabPrint_inRV</c>, và không dùng control
+    /// SunnyUI nào: bản dựng bằng designer lồng UIPanel trong UITableLayoutPanel nên mỗi lần
+    /// đổi kích thước là một lượt vẽ lại thủ công của cả cụm.
     /// </summary>
     public partial class Main
     {
         private const int ReverseStaffDebounceMs = 450;
         private const int ReverseStaffMinChars = 2;
         private const int ReverseStaffPopupRows = 6;
-        private const int ReverseClearSymbol = 61453;   // FontAwesome v4 fa-times
-        private const int ReverseCopySymbol = 61637;    // cùng ký hiệu "Copy" của frmLogin
-        private const int ReverseUnprintedSymbol = 61616;  // fa-filter
-        private const int ReversePrevPageSymbol = 61700;   // fa-angle-left
-        private const int ReverseNextPageSymbol = 61701;   // fa-angle-right
         private const string ReversePrintFolderName = "Thu hồi đã in";
+
+        // Chiều cao ba dải của một ô nhập — nhãn trên, ô nhập dưới — và của dòng trạng thái.
+        private const int ReverseCaptionHeight = 20;
+        private const int ReverseInputHeight = 30;
+        private const int ReverseStatusHeight = 26;
 
         /// <summary>
         /// Số đơn hiện mỗi trang lưới. Bằng đúng <c>PageSize</c> của
@@ -52,13 +54,27 @@ namespace AutoJMS
         private const string ReverseHint =
             "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 
+        private static readonly Font ReverseFieldFont = new("Segoe UI Semibold", 12F, FontStyle.Bold);
+        private static readonly Font ReverseUiFont = new("Segoe UI", 9F, FontStyle.Regular);
+
+        // ── sáu ô nhập, dựng trong BuildReverseInputPanel ──
+        private DateTimePicker tabPrint_timeFrom;
+        private DateTimePicker tabPrint_timeTo;
+        private TextBox tabPrint_tenNV;
+        private TextBox tabPrint_maCOD;
+        private TextBox tabPrint_sdtNG;
+        private TextBox tabPrint_sdtNN;
+
         // ── controls dựng trong BuildTabPrintInReverseSection ──
-        private UILabel _reverseStatus;
+        private Label _reverseStatus;
         private ListBox _reverseStaffList;
         private FlowLayoutPanel _reverseGridToolbar;
-        private UISymbolButton _reversePrevPage;
-        private UISymbolButton _reverseNextPage;
-        private UILabel _reversePageLabel;
+        private Button _reversePrevPage;
+        private Button _reverseNextPage;
+        private Label _reversePageLabel;
+        private Button _reverseClearStaff;
+        private readonly List<Label> _reverseCaptions = new();
+        private readonly List<Button> _reverseToolbarButtons = new();
 
         // ── state ──
         private System.Windows.Forms.Timer _reverseStaffDebounce;
@@ -66,6 +82,7 @@ namespace AutoJMS
         private CancellationTokenSource _reverseSearchCts;
         private JmsSendWaybillService.StaffInfo _reverseStaff;
         private bool _reverseSuppressLookup;
+        private bool _reverseStatusIsError;
 
         /// <summary>
         /// Toàn bộ kết quả của lượt tra gần nhất, đã sắp xếp. Lưới chỉ giữ 20 dòng của trang
@@ -90,56 +107,16 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
-        /// Đấu dây tab "In Reverse". Gọi từ constructor của Main, trước khi AppTheme áp lại,
-        /// để dòng trạng thái ăn theme như mọi control dựng động khác.
+        /// Dựng và đấu dây tab "In Reverse". Gọi từ constructor của Main, trước khi AppTheme áp
+        /// lại — AppTheme chỉ nhận ra control SunnyUI nên màu của cụm này do
+        /// <see cref="ApplyReverseTheme"/> tự đặt.
         /// </summary>
         private void BuildTabPrintInReverseSection()
         {
             if (tabPrint_inRV == null || tabPrint_inRV.IsDisposed) return;
-            if (uiTableLayoutPanel24 == null || uiTableLayoutPanel24.IsDisposed) return;
-            if (uiTableLayoutPanel24.Controls.Find("tabPrint_reverseStatusBar", false).Length > 0) return;
+            if (tabPrint_inRV.Controls.Find("tabPrint_reverseLayout", false).Length > 0) return;
 
-            // Hàng thứ ba, cao cố định: hai hàng ô nhập vẫn chia đôi phần còn lại như designer.
-            uiTableLayoutPanel24.RowCount = 3;
-            uiTableLayoutPanel24.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
-
-            _reverseStatus = new UILabel
-            {
-                Name = "tabPrint_reverseStatus",
-                Dock = DockStyle.Fill,
-                Text = ReverseHint,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                Margin = new Padding(0)
-            };
-
-            var copyButton = new UISymbolButton
-            {
-                Name = "tabPrint_reverseCopy",
-                Dock = DockStyle.Right,
-                Width = 150,
-                Text = "Copy mã đã chọn",
-                Symbol = ReverseCopySymbol,
-                SymbolSize = 18,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                Margin = new Padding(0)
-            };
-            copyButton.Click += (s, e) => CopyReverseSelectionToClipboard();
-
-            // Nhãn trạng thái và nút Copy chung một hàng: nhãn Fill phải nằm ở z-order trên cùng
-            // để nút Dock=Right lấy dải bên phải trước, phần còn lại mới của nhãn.
-            var statusBar = new Panel
-            {
-                Name = "tabPrint_reverseStatusBar",
-                Dock = DockStyle.Fill,
-                Margin = new Padding(6, 0, 6, 0)
-            };
-            statusBar.Controls.Add(copyButton);
-            statusBar.Controls.Add(_reverseStatus);
-            _reverseStatus.BringToFront();
-
-            uiTableLayoutPanel24.Controls.Add(statusBar, 0, 2);
-            uiTableLayoutPanel24.SetColumnSpan(statusBar, 3);
+            BuildReverseInputPanel();
 
             // Danh sách gợi ý treo trên Form chứ không trong tab page: tab page chỉ cao
             // ~150px nên thả xuống trong đó là bị cắt cụt ngay.
@@ -149,7 +126,7 @@ namespace AutoJMS
                 Visible = false,
                 IntegralHeight = false,
                 DisplayMember = nameof(JmsSendWaybillService.StaffInfo.Display),
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+                Font = ReverseUiFont
             };
             _reverseStaffList.Click += ReverseStaffList_Commit;
             _reverseStaffList.KeyDown += (s, e) =>
@@ -160,32 +137,12 @@ namespace AutoJMS
             _reverseStaffList.Leave += (s, e) => HideReverseStaffPopup();
             Controls.Add(_reverseStaffList);
 
-            if (tabPrint_tenNV != null && !tabPrint_tenNV.IsDisposed)
+            tabPrint_tenNV.TextChanged += TabPrint_tenNV_TextChanged;
+            tabPrint_tenNV.KeyDown += TabPrint_tenNV_KeyDown;
+            tabPrint_tenNV.Leave += (s, e) =>
             {
-                tabPrint_tenNV.Watermark = "Tên nhân viên lấy hàng";
-                tabPrint_tenNV.TextChanged += TabPrint_tenNV_TextChanged;
-                tabPrint_tenNV.KeyDown += TabPrint_tenNV_KeyDown;
-                tabPrint_tenNV.Leave += (s, e) =>
-                {
-                    if (_reverseStaffList == null || !_reverseStaffList.Focused) HideReverseStaffPopup();
-                };
-
-                // Nút "X" trong lòng ô: đổi người tra không phải xoá tay từng ký tự nữa.
-                // UITextBox có sẵn nút này (ShowButton + ButtonClick) nên khỏi chồng thêm control.
-                tabPrint_tenNV.ShowButton = true;
-                tabPrint_tenNV.ButtonSymbol = ReverseClearSymbol;
-                tabPrint_tenNV.ButtonSymbolSize = 16;
-                tabPrint_tenNV.ButtonWidth = 26;
-                tabPrint_tenNV.ButtonClick += (s, e) =>
-                {
-                    ClearReverseStaffInput();
-                    tabPrint_tenNV.Focus();
-                    SetReverseStatus(ReverseHint);
-                };
-            }
-
-            if (tabPrint_maCOD != null && !tabPrint_maCOD.IsDisposed)
-                tabPrint_maCOD.Watermark = "Mã khách hàng (tuỳ chọn)";
+                if (_reverseStaffList == null || !_reverseStaffList.Focused) HideReverseStaffPopup();
+            };
 
             _reverseStaffDebounce = new System.Windows.Forms.Timer { Interval = ReverseStaffDebounceMs };
             _reverseStaffDebounce.Tick += ReverseStaffDebounce_Tick;
@@ -224,40 +181,163 @@ namespace AutoJMS
 
             BuildReverseGridToolbar();
             ResetReverseTimeRange();
+            ApplyReverseTheme();
         }
 
         /// <summary>
-        /// Nút "Chưa in" và bộ chuyển trang, đặt cùng hàng với "Chọn tất cả" (uiPanel20).
-        /// Hàng đó của chung bốn tab con nên cả cụm nằm trong một FlowLayoutPanel riêng và chỉ
-        /// hiện khi In Reverse đang mở — ba tab kia nhìn y như trước.
+        /// Sáu ô nhập của tab, dựng bằng code trên một TableLayoutPanel 3 cột — đúng bố cục cũ
+        /// của designer: hàng 1 "Thời gian từ / Thời gian đến / SĐT người gửi", hàng 2
+        /// "Tên nhân viên / Tên - Mã KH / SĐT người nhận", hàng 3 là dòng trạng thái trải hết
+        /// ba cột.
+        /// </summary>
+        private void BuildReverseInputPanel()
+        {
+            tabPrint_timeFrom = NewReverseDatePicker("tabPrint_timeFrom");
+            tabPrint_timeTo = NewReverseDatePicker("tabPrint_timeTo");
+            tabPrint_tenNV = NewReverseTextBox("tabPrint_tenNV", "Tên nhân viên lấy hàng");
+            tabPrint_maCOD = NewReverseTextBox("tabPrint_maCOD", "Mã khách hàng (tuỳ chọn)");
+            tabPrint_sdtNG = NewReverseTextBox("tabPrint_sdtNG", "");
+            tabPrint_sdtNN = NewReverseTextBox("tabPrint_sdtNN", "");
+
+            // Nút "X" nằm sát mép phải ô tên: đổi người tra không phải xoá tay từng ký tự.
+            // TabStop = false để Tab vẫn nhảy thẳng từ ô tên sang ô kế tiếp như trước.
+            _reverseClearStaff = new Button
+            {
+                Name = "tabPrint_reverseClearStaff",
+                Text = "✕",
+                Dock = DockStyle.Right,
+                Width = 28,
+                FlatStyle = FlatStyle.Flat,
+                TabStop = false,
+                Cursor = Cursors.Hand,
+                Font = ReverseUiFont,
+                UseVisualStyleBackColor = false
+            };
+            _reverseClearStaff.FlatAppearance.BorderSize = 0;
+            _reverseClearStaff.Click += (s, e) =>
+            {
+                ClearReverseStaffInput();
+                tabPrint_tenNV.Focus();
+                SetReverseStatus(ReverseHint);
+            };
+
+            _reverseStatus = new Label
+            {
+                Name = "tabPrint_reverseStatus",
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                Text = ReverseHint,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = ReverseUiFont,
+                Margin = new Padding(6, 0, 6, 0)
+            };
+
+            var layout = new TableLayoutPanel
+            {
+                Name = "tabPrint_reverseLayout",
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 3,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
+            };
+            for (int i = 0; i < 3; i++)
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseStatusHeight));
+
+            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, null), 0, 0);
+            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, null), 1, 0);
+            layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, null), 2, 0);
+            layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, _reverseClearStaff), 0, 1);
+            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, null), 1, 1);
+            layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, null), 2, 1);
+            layout.Controls.Add(_reverseStatus, 0, 2);
+            layout.SetColumnSpan(_reverseStatus, 3);
+
+            tabPrint_inRV.Controls.Add(layout);
+        }
+
+        /// <summary>
+        /// Một ô của lưới nhập: nhãn trên, ô nhập dưới, và tuỳ chọn một nút nhỏ sát mép phải ô.
+        /// </summary>
+        private Panel NewReverseField(string caption, Control input, Control trailing)
+        {
+            var label = new Label
+            {
+                Dock = DockStyle.Top,
+                AutoSize = false,
+                Height = ReverseCaptionHeight,
+                Text = caption,
+                Font = ReverseFieldFont,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            _reverseCaptions.Add(label);
+
+            // Dải chứa ô nhập cao cố định: nút phụ Dock=Right luôn cao bằng đúng ô nhập.
+            var inputRow = new Panel { Dock = DockStyle.Top, Height = ReverseInputHeight };
+            inputRow.Controls.Add(input);
+            if (trailing != null) inputRow.Controls.Add(trailing);
+
+            // Dock xếp theo z-order ngược: chỉ số CAO dock trước và lấy mép ngoài. Thêm dải ô
+            // nhập trước rồi mới tới nhãn, để nhãn chiếm mép trên và dải kia nằm ngay dưới.
+            var cell = new Panel { Dock = DockStyle.Fill, Margin = new Padding(5, 2, 5, 2) };
+            cell.Controls.Add(inputRow);
+            cell.Controls.Add(label);
+            return cell;
+        }
+
+        private static TextBox NewReverseTextBox(string name, string placeholder) => new()
+        {
+            Name = name,
+            Dock = DockStyle.Fill,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = ReverseFieldFont,
+            PlaceholderText = placeholder
+        };
+
+        private static DateTimePicker NewReverseDatePicker(string name) => new()
+        {
+            Name = name,
+            Dock = DockStyle.Fill,
+            Font = ReverseFieldFont,
+            Format = DateTimePickerFormat.Custom,
+            CustomFormat = "yyyy-MM-dd HH:mm:ss"
+        };
+
+        /// <summary>
+        /// Nút "Chưa in", bộ chuyển trang và "Copy mã đã chọn", đặt cùng hàng với "Chọn tất cả"
+        /// (uiPanel20). Hàng đó của chung bốn tab con nên cả cụm nằm trong một FlowLayoutPanel
+        /// riêng và chỉ hiện khi In Reverse đang mở — ba tab kia nhìn y như trước.
         /// </summary>
         private void BuildReverseGridToolbar()
         {
             if (uiPanel20 == null || uiPanel20.IsDisposed) return;
             if (uiPanel20.Controls.Find("tabPrint_reverseGridToolbar", false).Length > 0) return;
 
-            var unprinted = NewReverseToolbarButton(
-                "tabPrint_reverseUnprinted", "Chưa in", ReverseUnprintedSymbol, 104);
+            var unprinted = NewReverseToolbarButton("tabPrint_reverseUnprinted", "Chưa in", 84);
             unprinted.Click += (s, e) => SelectReverseUnprintedOnPage();
 
-            _reversePrevPage = NewReverseToolbarButton(
-                "tabPrint_reversePrevPage", "", ReversePrevPageSymbol, 36);
+            _reversePrevPage = NewReverseToolbarButton("tabPrint_reversePrevPage", "‹", 34);
             _reversePrevPage.Click += (s, e) => _ = TurnReversePageAsync(-1);
 
-            _reversePageLabel = new UILabel
+            _reversePageLabel = new Label
             {
                 Name = "tabPrint_reversePageLabel",
                 AutoSize = false,
-                Size = new Size(64, 29),
+                Size = new Size(56, 29),
                 Margin = new Padding(0, 3, 0, 3),
                 Text = "0/0",
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+                Font = ReverseUiFont
             };
 
-            _reverseNextPage = NewReverseToolbarButton(
-                "tabPrint_reverseNextPage", "", ReverseNextPageSymbol, 36);
+            _reverseNextPage = NewReverseToolbarButton("tabPrint_reverseNextPage", "›", 34);
             _reverseNextPage.Click += (s, e) => _ = TurnReversePageAsync(1);
+
+            var copy = NewReverseToolbarButton("tabPrint_reverseCopy", "Copy mã đã chọn", 132);
+            copy.Click += (s, e) => CopyReverseSelectionToClipboard();
 
             _reverseGridToolbar = new FlowLayoutPanel
             {
@@ -269,7 +349,7 @@ namespace AutoJMS
                 Visible = false
             };
             _reverseGridToolbar.Controls.AddRange(new Control[]
-                { unprinted, _reversePrevPage, _reversePageLabel, _reverseNextPage });
+                { unprinted, _reversePrevPage, _reversePageLabel, _reverseNextPage, copy });
 
             uiPanel20.Controls.Add(_reverseGridToolbar);
 
@@ -286,22 +366,75 @@ namespace AutoJMS
             SyncReverseGridToolbarVisibility();
         }
 
-        private static UISymbolButton NewReverseToolbarButton(string name, string text, int symbol, int width)
-            => new()
+        private Button NewReverseToolbarButton(string name, string text, int width)
+        {
+            var button = new Button
             {
                 Name = name,
                 Text = text,
-                Symbol = symbol,
-                SymbolSize = 18,
                 Size = new Size(width, 29),
                 Margin = new Padding(6, 3, 0, 3),
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular)
+                Font = ReverseUiFont,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
             };
+            _reverseToolbarButtons.Add(button);
+            return button;
+        }
 
         private void SyncReverseGridToolbarVisibility()
         {
             if (_reverseGridToolbar == null || _reverseGridToolbar.IsDisposed) return;
             _reverseGridToolbar.Visible = GetTabPrintModeFromSelectedTab() == PrintMode.InReverse;
+
+            // AppTheme.Apply() chỉ nhận ra control SunnyUI nên cụm này không được đổi màu theo.
+            // Bám vào lượt đổi tab con: đổi theme xong quay lại tab là màu đã đúng.
+            ApplyReverseTheme();
+        }
+
+        /// <summary>
+        /// Tô màu cụm control của tab theo bảng màu đang dùng. Gọi lúc dựng và mỗi lần đổi tab
+        /// con. <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor —
+        /// hai ô thời gian luôn giữ nền sáng kể cả ở theme tối.
+        /// </summary>
+        private void ApplyReverseTheme()
+        {
+            if (_reverseStatus == null || _reverseStatus.IsDisposed) return;
+
+            var colors = UI.AppTheme.Colors;
+            foreach (var box in new Control[] { tabPrint_tenNV, tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
+            {
+                if (box == null || box.IsDisposed) continue;
+                box.BackColor = colors.InputBackground;
+                box.ForeColor = colors.TextPrimary;
+            }
+
+            foreach (var caption in _reverseCaptions)
+                caption.ForeColor = colors.TextPrimary;
+
+            foreach (var button in _reverseToolbarButtons)
+            {
+                button.BackColor = colors.InputBackground;
+                button.ForeColor = colors.TextPrimary;
+                button.FlatAppearance.BorderColor = colors.InputBorder;
+            }
+
+            if (_reverseClearStaff != null && !_reverseClearStaff.IsDisposed)
+            {
+                _reverseClearStaff.BackColor = colors.InputBackground;
+                _reverseClearStaff.ForeColor = colors.PrimaryAccent;
+            }
+
+            if (_reversePageLabel != null) _reversePageLabel.ForeColor = colors.TextPrimary;
+            if (_reverseStaffList != null)
+            {
+                _reverseStaffList.BackColor = colors.InputBackground;
+                _reverseStaffList.ForeColor = colors.TextPrimary;
+            }
+
+            // Dòng trạng thái tự chọn màu đỏ/thường trong SetReverseStatus, phát lại câu đang
+            // hiện để nó tính lại theo theme mới thay vì ghi đè bằng TextPrimary.
+            SetReverseStatus(_reverseStatus.Text, _reverseStatusIsError);
         }
 
         /// <summary>
@@ -368,6 +501,7 @@ namespace AutoJMS
             }
 
             bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
+            _reverseStatusIsError = isError;
             _reverseStatus.Text = message ?? "";
             _reverseStatus.ForeColor = isError
                 ? (isDark ? Color.FromArgb(252, 115, 115) : Color.Red)
