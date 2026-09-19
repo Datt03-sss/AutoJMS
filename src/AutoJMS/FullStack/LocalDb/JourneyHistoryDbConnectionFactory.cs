@@ -12,12 +12,7 @@ namespace AutoJMS.FullStack.LocalDb
     /// </summary>
     public sealed class JourneyHistoryDbConnectionFactory
     {
-        public string DatabasePath { get; }
-
-        public JourneyHistoryDbConnectionFactory()
-        {
-            DatabasePath = Path.Combine(AppPaths.UserDataDir, "FullStack", "journey_history.db");
-        }
+        public string DatabasePath => FullStackLocalDbPaths.GetDatabasePath("journey_history.db");
 
         public async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken = default)
         {

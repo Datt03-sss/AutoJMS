@@ -8,12 +8,7 @@ namespace AutoJMS.FullStack.LocalDb
 {
     public sealed class WaybillJourneyDetailsDbConnectionFactory
     {
-        public string DatabasePath { get; }
-
-        public WaybillJourneyDetailsDbConnectionFactory()
-        {
-            DatabasePath = Path.Combine(AppPaths.UserDataDir, "FullStack", "details.db");
-        }
+        public string DatabasePath => FullStackLocalDbPaths.GetDatabasePath("details.db");
 
         public async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken = default)
         {

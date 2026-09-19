@@ -1,0 +1,22 @@
+using System.IO;
+using System.Linq;
+
+namespace AutoJMS.FullStack.LocalDb
+{
+    public static class FullStackLocalDbPaths
+    {
+        public static string GetDatabasePath(string dbFileName)
+        {
+            string siteCode = SiteContextProvider.Get();
+            string folder = string.IsNullOrWhiteSpace(siteCode) ? "default" : SanitizeFolderName(siteCode);
+            return Path.Combine(AppPaths.UserDataDir, "FullStack", folder, dbFileName);
+        }
+
+        private static string SanitizeFolderName(string name)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            var clean = new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim();
+            return string.IsNullOrWhiteSpace(clean) ? "default" : clean;
+        }
+    }
+}
