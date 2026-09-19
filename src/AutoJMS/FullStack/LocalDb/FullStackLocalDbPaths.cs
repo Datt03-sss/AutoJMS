@@ -63,6 +63,11 @@ namespace AutoJMS.FullStack.LocalDb
                 }
                 catch (Exception ex)
                 {
+                    // Bo danh dau: MigratedPaths.Add o tren la co "da xong", dat truoc khi thu.
+                    // Neu giu lai, lan goi thu hai trong cung phien (LoadDataAndRefreshViewsAsync
+                    // chay lai moi lan bam Lam moi) se return im lang, OpenAsync tao file rong tai
+                    // targetPath va migration bi biet lap vinh vien — dung lo hong ma throw da chan.
+                    MigratedPaths.Remove(targetPath);
                     AppLogger.Error("[LocalDb] doi database cu that bai: " +
                         legacyPath + " -> " + targetPath + ": " + ex.Message);
                     // Khong nuot loi: neu nuot, OpenAsync se tiep tuc tao file rong tai targetPath,

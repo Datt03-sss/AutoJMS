@@ -207,6 +207,48 @@ public sealed class SiteIsolationTests : IDisposable
         }
     }
 
+    // Xac minh: migration that bai mot lan van thu lai duoc trong CUNG phien.
+    // MigratedPaths.Add duoc goi TRUOC khi thu move, nen neu catch khong Remove thi lan goi
+    // thu hai (LoadDataAndRefreshViewsAsync chay lai moi lan bam "Lam moi", va no nuot
+    // exception) se return im lang -> OpenAsync tao file rong tai targetPath -> lan khoi dong
+    // sau File.Exists(targetPath) == true -> migration bi bo qua vinh vien, mat du lieu legacy.
+    // Test se fail (targetDb khong ton tai) neu bo dong MigratedPaths.Remove trong catch.
+    [Fact]
+    public void LegacyMigration_RetriesInSameSession_AfterFailure()
+    {
+        SiteContextProvider.ApplyLicenseMiddleCode("214A02");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            string legacyDir = Path.Combine(tempRoot, "FullStack");
+            Directory.CreateDirectory(legacyDir);
+            string legacyDb = Path.Combine(legacyDir, "journey_history.db");
+            File.WriteAllText(legacyDb, "db-content");
+
+            string targetDb = Path.Combine(tempRoot, "FullStack", "214A02", "journey_history.db");
+
+            // Giu file cu bang FileShare.None de File.Move nem IOException — mo phong
+            // tien trinh cu con giu file luc Velopack nang cap.
+            using (var hold = new FileStream(legacyDb, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.ThrowsAny<IOException>(
+                    () => FullStackLocalDbPaths.MigrateLegacyIfNeeded(targetDb, tempRoot));
+            }
+
+            // Khoa da nha — lan thu hai trong cung phien phai chuyen duoc file.
+            FullStackLocalDbPaths.MigrateLegacyIfNeeded(targetDb, tempRoot);
+
+            Assert.True(File.Exists(targetDb), "Lan thu hai phai chuyen duoc file sau khi khoa da nha");
+            Assert.False(File.Exists(legacyDb), "File cu phai bien mat sau khi chuyen thanh cong");
+            Assert.Equal("db-content", File.ReadAllText(targetDb));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     // Xác minh: đường dẫn database phân vùng theo mã bưu cục.
     // Test này sẽ fail nếu FullStackLocalDbPaths.GetDatabasePath không dùng SiteContextProvider.Get()
     // để xác định thư mục, hoặc nếu GetDatabasePath dùng "default" cho mọi mã.
