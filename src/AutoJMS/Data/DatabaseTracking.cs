@@ -406,13 +406,11 @@ namespace AutoJMS
         private static bool IsArrivalDetail(WaybillDetail d)
         {
             var type = d?.scanTypeName ?? string.Empty;
-            var network = d?.scanNetworkName ?? string.Empty;
-            return type.Contains("Xuống hàng kiện đến", StringComparison.OrdinalIgnoreCase)
+            bool isArrival = type.Contains("Xuống hàng kiện đến", StringComparison.OrdinalIgnoreCase)
                 || type.Contains("Xuống kiện", StringComparison.OrdinalIgnoreCase)
                 || type.Contains("到件", StringComparison.OrdinalIgnoreCase)
-                || type.Contains("卸车到件", StringComparison.OrdinalIgnoreCase)
-                || network.Contains("Kim Tân", StringComparison.OrdinalIgnoreCase)
-                || network.Contains("LCI", StringComparison.OrdinalIgnoreCase);
+                || type.Contains("卸车到件", StringComparison.OrdinalIgnoreCase);
+            return isArrival && SiteContextProvider.IsHomeStation(d?.scanNetworkCode, d?.scanNetworkName);
         }
 
         private static DateTime GetDetailTime(WaybillDetail d)

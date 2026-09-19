@@ -906,7 +906,7 @@ namespace AutoJMS
 
         /// <summary>
         /// Dựng text lịch sử từ chi tiết đã có (không gọi lại API). Cắt từ lần
-        /// "Xuống hàng kiện đến" tại Kim Tân/(LCI) gần nhất trở về hiện tại.
+        /// "Xuống hàng kiện đến" tại bưu cục đang cấu hình gần nhất trở về hiện tại.
         /// </summary>
         public string BuildDkchHistoryText(string waybill, List<WaybillDetail> details)
         {
@@ -919,17 +919,16 @@ namespace AutoJMS
                 {
                     var d = details[i];
                     string type = d.scanTypeName ?? "";
-                    string network = d.scanNetworkName ?? "";
                     bool isArrival = type.Contains("Xuống hàng kiện đến") || type.Contains("Xuống kiện") ||
                                      type.Contains("卸车到件") || type.Contains("到件");
-                    bool isKimTan = network.Contains("Kim Tân") || network.Contains("(LCI)");
-                    if (isArrival && isKimTan)
+                    bool isHome = SiteContextProvider.IsHomeStation(d.scanNetworkCode, d.scanNetworkName);
+                    if (isArrival && isHome)
                     {
                         arrivalIndex = i;
                         break;
                     }
                 }
-                // Không tìm thấy lần về kho Kim Tân/(LCI): trước đây trả về "" làm ô hiển thị
+                // Không tìm thấy lần về kho bưu cục mình: trước đây trả về "" làm ô hiển thị
                 // trắng trơn, người vận hành không biết vì sao đơn bị chặn. Nay hiển thị
                 // các thao tác gần nhất để còn đối chiếu được.
                 if (arrivalIndex == -1)

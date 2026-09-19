@@ -4,6 +4,7 @@ namespace AutoJMS.Tests;
 
 // Các test này chạm state static toàn cục (AppConfig.Current). xunit chạy tuần tự
 // trong cùng một class nên không cần khoá thêm, nhưng phải trả state về cũ.
+[Collection("SiteContext")]
 public class SiteContextProviderGetTests : IDisposable
 {
     private readonly string _originalActionSiteCode;

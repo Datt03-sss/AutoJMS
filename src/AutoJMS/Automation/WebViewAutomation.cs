@@ -1471,7 +1471,7 @@ namespace AutoJMS
         {
             OnTrackingHistoryChanged?.Invoke(
                 string.IsNullOrWhiteSpace(gate.HistoryText)
-                    ? "(Không có đoạn hành trình từ lần về kho Kim Tân/(LCI) gần nhất.)"
+                    ? "(Không có đoạn hành trình từ lần về kho bưu cục gần nhất.)"
                     : gate.HistoryText);
         }
 

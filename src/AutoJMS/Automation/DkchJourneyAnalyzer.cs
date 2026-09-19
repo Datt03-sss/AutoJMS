@@ -408,7 +408,7 @@ namespace AutoJMS
             // hàng VỀ KHO gần nhất. Chặng vận chuyển trước đó (Hà Nội → Lào Cai → …) không
             // giúp gì cho việc quyết định chuyển hoàn mà đẩy các mốc cần xem ra khỏi tầm.
             // Mốc "về kho" gần nhất: "Xuống hàng kiện đến" hoặc "Gỡ bao" tại chính bưu cục
-            // (214A02 / (LCI)Kim Tân). Không tìm thấy thì lấy từ đầu — thà hiện đủ còn hơn trống.
+            // đang cấu hình. Không tìm thấy thì lấy từ đầu — thà hiện đủ còn hơn trống.
             int arrival = 0;
             for (int i = timeline.Count - 1; i >= 0; i--)
             {
@@ -418,9 +418,7 @@ namespace AutoJMS
                               || type.Contains("Gỡ bao") || type.Contains("卸车到件")
                               || type.Contains("到件") || type.Contains("拆包");
                 if (!isArrival) continue;
-                string net = d.scanNetworkName ?? "";
-                string netCode = d.scanNetworkCode ?? "";
-                if (net.Contains("Kim Tân") || net.Contains("(LCI)") || netCode == "214A02")
+                if (SiteContextProvider.IsHomeStation(d.scanNetworkCode, d.scanNetworkName))
                 {
                     arrival = i;
                     break;

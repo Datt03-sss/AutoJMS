@@ -40,6 +40,7 @@ namespace AutoJMS
         [JsonPropertyName("PrinterOriginalSettingsBackup")] public string PrinterOriginalSettingsBackup { get; set; } = "";
         [JsonPropertyName("MiddleCode")] public string MiddleCode { get; set; } = "";
         [JsonPropertyName("MiddleCodeAliases")] public List<string> MiddleCodeAliases { get; set; } = new();
+        [JsonPropertyName("SiteNameAliases")] public List<string> SiteNameAliases { get; set; } = new();
         [JsonPropertyName("MiddleCodeSegment2")] public string MiddleCodeSegment2 { get; set; } = "";
         [JsonPropertyName("AllowMiddleCodeSegment2Match")] public bool AllowMiddleCodeSegment2Match { get; set; } = true;
         [JsonPropertyName("DebugCaptureEnabled")] public bool DebugCaptureEnabled { get; set; } = false;
@@ -180,6 +181,13 @@ namespace AutoJMS
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            // Tên bưu cục là tên hiển thị có dấu ("(LCI)Kim Tân") nên KHÔNG ToUpperInvariant
+            // như mã — chỉ trim và khử trùng lặp, so khớp thì bỏ qua hoa thường.
+            settings.SiteNameAliases = (settings.SiteNameAliases ?? new List<string>())
+                .Select(x => (x ?? "").Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
             settings.LegacyServiceAccountPath = (settings.LegacyServiceAccountPath ?? "").Trim();
             settings.EncryptedServiceAccountPath = string.IsNullOrWhiteSpace(settings.EncryptedServiceAccountPath)
                 ? "appdata/secrets/service_account.sec"
@@ -239,6 +247,7 @@ namespace AutoJMS
             Set(root, "PrinterOriginalSettingsBackup", settings.PrinterOriginalSettingsBackup);
             Set(root, "MiddleCode", settings.MiddleCode);
             Set(root, "MiddleCodeAliases", settings.MiddleCodeAliases);
+            Set(root, "SiteNameAliases", settings.SiteNameAliases);
             Set(root, "MiddleCodeSegment2", settings.MiddleCodeSegment2);
             Set(root, "AllowMiddleCodeSegment2Match", settings.AllowMiddleCodeSegment2Match);
             Set(root, "DebugCaptureEnabled", settings.DebugCaptureEnabled);
@@ -286,7 +295,7 @@ namespace AutoJMS
                 "PrintDefaultAutoPrint", "EnablePrinterPreflight", "MaxAutoJmsReprintCount",
                 "PrintPaperWidthInch", "PrintPaperHeightInch", "PrinterPaperMode",
                 "PrinterOriginalPaperName", "PrinterOriginalSettingsBackup",
-                "MiddleCodeSegment2", "AllowMiddleCodeSegment2Match",
+                "SiteNameAliases", "MiddleCodeSegment2", "AllowMiddleCodeSegment2Match",
                 "DebugCaptureEnabled", "DebugCaptureSlowApiThresholdMs",
                 "DebugCaptureMaxRequestBodyBytes", "DebugCaptureMaxResponseBodyBytes",
                 "GoogleSheetsAccessMode", "PreferServerGoogleSheetsProxy",

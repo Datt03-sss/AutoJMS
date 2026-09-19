@@ -61,6 +61,10 @@ public sealed class SiteContextProvider : ISiteContextProvider
     // refresh. Getter `Current` bên dưới đọc (và có khi ghi) AutoJMS.json ở MỖI lần
     // truy cập — không được để đường nóng đi qua đó.
     private static string? _cachedMiddleCode;
+    // IsHomeStation() chạy trong vòng lặp duyệt hành trình của từng vận đơn — cache
+    // cả mã lẫn tên đã học để nó không đọc AutoJMS.json mỗi lần so sánh.
+    private static List<string>? _homeCodes;
+    private static List<string>? _siteNames;
     private static bool _promptedThisSession;
     private SiteContext _current;
 
@@ -117,7 +121,65 @@ public sealed class SiteContextProvider : ISiteContextProvider
 
     public static void InvalidateCache()
     {
-        lock (Sync) { _cachedMiddleCode = null; _promptedThisSession = false; }
+        lock (Sync)
+        {
+            _cachedMiddleCode = null;
+            _homeCodes = null;
+            _siteNames = null;
+            _promptedThisSession = false;
+        }
+    }
+
+    /// <summary>
+    /// Scan event này có diễn ra tại bưu cục của mình không? Dùng cho mọi chỗ cần
+    /// cắt hành trình tại "lần về kho gần nhất".
+    /// So theo MÃ trước — đó là nguồn chắc chắn. Khi mã khớp thì tên đi kèm chính là
+    /// tên trạm mình, nên học luôn để sau này nhận ra cả những event J&T chỉ trả tên.
+    /// Chưa cấu hình mã bưu cục thì trả false: thà không cắt còn hơn cắt theo trạm người khác.
+    /// </summary>
+    public static bool IsHomeStation(string? networkCode, string? networkName)
+    {
+        string home = Get();
+        if (home.Length == 0) return false;
+
+        string code = NormalizeCode(networkCode);
+        string name = (networkName ?? "").Trim();
+
+        lock (Sync)
+        {
+            _homeCodes ??= SettingsManager.Load().MiddleCodeAliases
+                .Append(home)
+                .Select(NormalizeCode)
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (code.Length > 0 && _homeCodes.Contains(code, StringComparer.OrdinalIgnoreCase))
+            {
+                LearnSiteName(name);
+                return true;
+            }
+
+            _siteNames ??= SettingsManager.Load().SiteNameAliases.ToList();
+            return name.Length > 0
+                && _siteNames.Any(n => name.Contains(n, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>Ghi nhớ tên trạm nhà học được từ dữ liệu J&amp;T. Gọi khi ĐANG giữ <see cref="Sync"/>.</summary>
+    private static void LearnSiteName(string name)
+    {
+        if (name.Length == 0) return;
+
+        _siteNames ??= SettingsManager.Load().SiteNameAliases.ToList();
+        if (_siteNames.Contains(name, StringComparer.OrdinalIgnoreCase)) return;
+
+        // Chỉ chạm đĩa khi thật sự có tên mới — thực tế là một, hai lần mỗi máy.
+        _siteNames.Add(name);
+        var settings = SettingsManager.Load();
+        settings.SiteNameAliases = _siteNames.ToList();
+        SettingsManager.Save(settings);
+        AppLogger.Info($"[SiteContext] hoc ten buu cuc tu du lieu J&T: {name}");
     }
 
     /// <summary>
