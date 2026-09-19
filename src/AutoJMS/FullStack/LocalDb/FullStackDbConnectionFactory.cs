@@ -12,6 +12,7 @@ namespace AutoJMS.FullStack.LocalDb
 
         public async Task<SqliteConnection> OpenAsync(CancellationToken ct = default)
         {
+            FullStackLocalDbPaths.MigrateLegacyIfNeeded(DatabasePath);
             Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
             LocalDbEncryption.PrepareDatabase(DatabasePath);
 

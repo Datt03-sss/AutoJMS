@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Xunit;
 using AutoJMS.FullStack.LocalDb;
@@ -87,6 +88,105 @@ public sealed class SiteIsolationTests : IDisposable
         var path = FullStackLocalDbPaths.GetDatabasePath("journey_history.db");
         var legacyPath = System.IO.Path.Combine(AppPaths.UserDataDir, "FullStack", "journey_history.db");
         Assert.NotEqual(legacyPath, path, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Xac minh: file cu duoc chuyen sang duong dan moi khi file dich chua ton tai.
+    // Test se fail neu MigrateLegacyIfNeeded khong goi File.Move hoac khong tao thu muc dich.
+    [Fact]
+    public void LegacyMigration_MovesFile_WhenTargetAbsent()
+    {
+        SiteContextProvider.ApplyLicenseMiddleCode("214A02");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            // Tao file cu tai duong dan legacy (khong co thu muc buu cuc)
+            string legacyDir = Path.Combine(tempRoot, "FullStack");
+            Directory.CreateDirectory(legacyDir);
+            string legacyDb = Path.Combine(legacyDir, "journey_history.db");
+            File.WriteAllText(legacyDb, "db-content");
+            File.WriteAllText(legacyDb + "-wal", "wal-content");
+
+            string targetDb = Path.Combine(tempRoot, "FullStack", "214A02", "journey_history.db");
+
+            FullStackLocalDbPaths.MigrateLegacyIfNeeded(targetDb, tempRoot);
+
+            Assert.True(File.Exists(targetDb), "File cu phai duoc chuyen sang duong dan theo buu cuc");
+            Assert.True(File.Exists(targetDb + "-wal"), "WAL phai duoc chuyen cung voi DB chinh");
+            Assert.False(File.Exists(legacyDb), "File cu phai bien mat sau khi chuyen thanh cong");
+            Assert.False(File.Exists(legacyDb + "-wal"), "WAL cu phai bien mat sau khi chuyen");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    // Xac minh: file cu KHONG bi chuyen khi file dich da ton tai.
+    // Test se fail neu MigrateLegacyIfNeeded ghi de len file dich hien co.
+    [Fact]
+    public void LegacyMigration_DoesNotMoveFile_WhenTargetExists()
+    {
+        SiteContextProvider.ApplyLicenseMiddleCode("214A02");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            string legacyDir = Path.Combine(tempRoot, "FullStack");
+            Directory.CreateDirectory(legacyDir);
+            string legacyDb = Path.Combine(legacyDir, "journey_history.db");
+            File.WriteAllText(legacyDb, "legacy");
+
+            string targetDir = Path.Combine(tempRoot, "FullStack", "214A02");
+            Directory.CreateDirectory(targetDir);
+            string targetDb = Path.Combine(targetDir, "journey_history.db");
+            File.WriteAllText(targetDb, "new-data");
+
+            FullStackLocalDbPaths.MigrateLegacyIfNeeded(targetDb, tempRoot);
+
+            // Ca hai file phai giu nguyen — file dich khong duoc bi ghi de
+            Assert.Equal("legacy", File.ReadAllText(legacyDb));
+            Assert.Equal("new-data", File.ReadAllText(targetDb));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    // Xac minh: file cu KHONG bi chuyen khi siteCode rong (thu muc "default").
+    // Test se fail neu MigrateLegacyIfNeeded bo qua kiem tra siteCode va chuyen vao "default".
+    [Fact]
+    public void LegacyMigration_DoesNotMoveFile_WhenSiteCodeBlank()
+    {
+        // Xoa siteCode de SiteContextProvider.Get() tra ve ""
+        AppConfig.Current.ActionSiteCode = "";
+        AppConfig.SaveCurrent();
+        var s = SettingsManager.Load();
+        s.MiddleCode = "";
+        SettingsManager.Save(s);
+        SiteContextProvider.InvalidateCache();
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            string legacyDir = Path.Combine(tempRoot, "FullStack");
+            Directory.CreateDirectory(legacyDir);
+            string legacyDb = Path.Combine(legacyDir, "journey_history.db");
+            File.WriteAllText(legacyDb, "legacy");
+
+            string targetDb = Path.Combine(tempRoot, "FullStack", "default", "journey_history.db");
+
+            FullStackLocalDbPaths.MigrateLegacyIfNeeded(targetDb, tempRoot);
+
+            // File cu phai giu nguyen — khong duoc chuyen vao thu muc "default"
+            Assert.True(File.Exists(legacyDb));
+            Assert.False(File.Exists(targetDb));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+        }
     }
 
     // Xác minh: đường dẫn database phân vùng theo mã bưu cục.
