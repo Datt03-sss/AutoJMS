@@ -294,6 +294,14 @@ namespace AutoJMS
                     // ngoài. Tên trường chưa xác nhận bằng response thật, nên đọc kiểu
                     // "được thì tốt": không thấy thì để rỗng, request vẫn chạy như cũ.
                     finance = FirstText(first, "financeCode");
+
+                    // Không thấy thì liệt kê tên trường (CHỈ tên, không kèm giá trị) để lần
+                    // chạy sau biết phải đọc ở đâu — khỏi phải đi xin lại cURL.
+                    if (string.IsNullOrWhiteSpace(finance))
+                    {
+                        AppLogger.Warning("[SendWaybill] ResolveNetworkId: không thấy financeCode. Các trường có trong bản ghi: "
+                            + string.Join(", ", first.EnumerateObject().Select(p => p.Name)));
+                    }
                 }
             }
             catch (Exception ex)
