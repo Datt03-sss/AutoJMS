@@ -249,20 +249,24 @@ namespace AutoJMS
                 Margin = new Padding(0),
                 Padding = new Padding(0)
             };
+            // Cột co theo nội dung chứ không chia ba phần bằng nhau: chia đều thì ô thời gian
+            // rộng gấp đôi giá trị nó chứa, còn lại là khoảng trống — đúng chỗ Owner khoanh.
             for (int i = 0; i < 3; i++)
-                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3F));
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             // Hai hàng nhập cao CỐ ĐỊNH, chỗ thừa dồn hết xuống dòng trạng thái. Chia phần trăm
             // thì phần thừa rơi vào đáy từng ô, tách nhãn khỏi ô nhập — đúng khoảng trống Owner báo.
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, ReverseInputBox.Glyph.Clock, null), 0, 0);
-            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, ReverseInputBox.Glyph.Clock, null), 1, 0);
-            layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, ReverseInputBox.Glyph.None, null), 2, 0);
-            layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, ReverseInputBox.Glyph.Search, _reverseClearStaff), 0, 1);
-            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, ReverseInputBox.Glyph.None, null), 1, 1);
-            layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, ReverseInputBox.Glyph.None, null), 2, 1);
+            // Chuỗi mẫu quyết định bề ngang từng ô — đo bằng font thật lúc dựng. Ô thời gian
+            // lấy đúng chuỗi ngày giờ nó hiển thị, ba ô còn lại lấy chính chuỗi gợi ý của nó.
+            layout.Controls.Add(NewReverseField("Thời gian từ:", tabPrint_timeFrom, ReverseInputBox.Glyph.Clock, null, "2026-09-20 00:00:00"), 0, 0);
+            layout.Controls.Add(NewReverseField("Thời gian đến:", tabPrint_timeTo, ReverseInputBox.Glyph.Clock, null, "2026-09-20 00:00:00"), 1, 0);
+            layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, ReverseInputBox.Glyph.None, null, "0987 654 321 00"), 2, 0);
+            layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, ReverseInputBox.Glyph.Search, _reverseClearStaff, "Tên nhân viên lấy hàng"), 0, 1);
+            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng (tuỳ chọn)"), 1, 1);
+            layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, ReverseInputBox.Glyph.None, null, "0987 654 321 00"), 2, 1);
             layout.Controls.Add(_reverseStatus, 0, 2);
             layout.SetColumnSpan(_reverseStatus, 3);
 
@@ -273,34 +277,42 @@ namespace AutoJMS
         /// Một ô của lưới nhập: nhãn trên, khung bo góc dưới. Khung tự vẽ nền, viền và biểu
         /// tượng trái; control nhập nằm lọt trong khung nên không còn viền vuông của WinForms.
         /// </summary>
-        private Panel NewReverseField(string caption, Control input, ReverseInputBox.Glyph glyph, Control trailing)
+        private Panel NewReverseField(
+            string caption, Control input, ReverseInputBox.Glyph glyph, Control trailing, string widthSample)
         {
             var label = new Label
             {
-                Dock = DockStyle.Top,
-                AutoSize = false,
+                AutoSize = true,
                 BackColor = Color.Transparent,
-                Height = ReverseCaptionHeight,
+                Location = Point.Empty,
+                Margin = Padding.Empty,
                 Text = caption,
                 Font = ReverseCaptionFont,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             _reverseCaptions.Add(label);
 
+            // Margin của hai control phải là 0: panel AutoSize cộng cả margin con vào khung bao,
+            // để mặc định (3px mỗi phía) là cụm cao 52px trong khi hàng chỉ cao 48px và bị cắt.
             var field = new ReverseInputBox(input, glyph, trailing)
             {
-                Dock = DockStyle.Top,
+                Location = new Point(0, ReverseCaptionHeight),
+                Margin = Padding.Empty,
+                Width = ReverseInputBox.MeasureWidth(
+                    widthSample, ReverseFieldFont, glyph, trailing != null, input is DateTimePicker),
                 Height = ReverseInputHeight
             };
             _reverseFields.Add(field);
 
-            // Dock xếp theo z-order ngược: chỉ số CAO dock trước và lấy mép ngoài. Thêm khung ô
-            // nhập trước rồi mới tới nhãn, để nhãn chiếm mép trên và khung nằm ngay dưới.
+            // Ô co theo nội dung nên không Dock được: panel AutoSize lấy đúng khung bao hai
+            // control, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải 14px để
+            // hai cột cạnh nhau không dính vào nhau.
             var cell = new Panel
             {
-                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 BackColor = Color.Transparent,
-                Margin = new Padding(4, 1, 4, 1)
+                Margin = new Padding(4, 1, 14, 1)
             };
             cell.Controls.Add(field);
             cell.Controls.Add(label);
@@ -1326,6 +1338,20 @@ namespace AutoJMS
             // cho control cha nên bắt thẳng trên chính nó.
             input.GotFocus += (s, e) => SetHot(true);
             input.LostFocus += (s, e) => SetHot(false);
+        }
+
+        /// <summary>
+        /// Bề ngang vừa đủ cho một chuỗi mẫu: máng biểu tượng trái (hoặc lề trái) + chữ + lề
+        /// phải, cộng chỗ cho nút phụ và cho nút xổ lịch của <see cref="DateTimePicker"/>. Đo
+        /// bằng chính font sẽ dùng nên đổi DPI hay đổi cỡ chữ là tự khớp, không phải sửa số.
+        /// </summary>
+        public static int MeasureWidth(string sample, Font font, Glyph glyph, bool hasTrailing, bool isPicker)
+        {
+            int width = (glyph == Glyph.None ? TextPad : GlyphGutter)
+                + TextRenderer.MeasureText(sample, font).Width + TextPad;
+            if (hasTrailing) width += TrailingWidth;
+            if (isPicker) width += SystemInformation.VerticalScrollBarWidth; // bề ngang nút xổ lịch
+            return width;
         }
 
         private void SetHot(bool hot)
