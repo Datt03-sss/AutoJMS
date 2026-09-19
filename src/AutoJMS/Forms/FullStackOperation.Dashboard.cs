@@ -1083,7 +1083,9 @@ namespace AutoJMS
 
             try
             {
-                string siteId = "214A02";
+                // Get() chứ không Require(): đây là đường hiển thị chạy mỗi nhịp refresh,
+                // không phải chỗ để bật modal. Rỗng thì UI hiện "---".
+                string siteId = SiteContextProvider.Get();
                 // "Last Update" = only the timestamp the data was last refreshed (never status text).
                 string lastUpdateTime = _lastDataUpdate.HasValue
                     ? _lastDataUpdate.Value.ToString("HH:mm:ss dd/MM/yyyy")

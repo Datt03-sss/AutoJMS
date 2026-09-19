@@ -45,7 +45,7 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       <span style="font-size: 11px; color: #8a94a6;">Bưu cục</span>
       <div title="Cố định theo middle code bưu cục" style="width: 130px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #f1f4f8; font-weight: 600; color: #3a4555; display: flex; align-items: center; gap: 7px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-        214A02
+        {{ siteId }}
       </div>
     </div>
     <div style="display: flex; flex-direction: column; gap: 3px;">
@@ -650,12 +650,12 @@ class Component extends DCLogic {
     issNetActive: -1,
     copied: false,
     starredCodes: {},
-    siteId: '214A02',
+    siteId: '',
     lastUpdateTime: (function () { const d = new Date(); const p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); })(),
     syncStatus: 'DB: Synced',
     waybills: [],
     journeyRows: [],
-    selectedSource: '214A02',
+    selectedSource: 'LOCAL',
     selectedTimeInterval: '1 giờ',
     selectedStatusSelect: 'Tất cả tồn kho',
     searchText: '',
@@ -868,7 +868,9 @@ class Component extends DCLogic {
   // otherwise the network from queryReceiverNetwork (fallback: current site).
   defaultNetworkFor(level2Code) {
     if (level2Code === 'PTWTJ16') return '214GW0';
-    return this.state.receiverNetCode || this.state.siteId || '214A02';
+    // Đây là đường GHI: giá trị này đi vào "Bưu cục tiếp nhận" của issue-report gửi lên
+    // JMS. Không có mã thật thì trả rỗng — tuyệt đối không bịa mã trạm.
+    return this.state.receiverNetCode || this.state.siteId || '';
   }
   // Normalize a network code to its canonical name (cached) for display.
   ensureNetworkInfo(code) {
@@ -1388,45 +1390,6 @@ class Component extends DCLogic {
     return out;
   }
 
-  genOrders(seed, count, mainKey, opts) {
-    const recips = ['Nguyễn Văn An', 'Trần Thị Bình', 'Lê Hoàng Cường', 'Phạm Thu Dung', 'Vũ Đức Em', 'Đỗ Minh Phúc', 'Bùi Thị Giang', 'Hồ Văn Hải', 'Ngô Thị Lan', 'Đặng Quốc Khánh', 'Mai Thị Ngọc', 'Trịnh Văn Long', 'Lý Thị Mai', 'Phan Văn Nam', 'Cao Thị Oanh', 'Đinh Quang Phú'];
-    const addrs = ['125 Lạch Tray, Ngô Quyền, Hải Phòng', '45 Trần Phú, Hà Đông, Hà Nội', '89 Lê Lợi, Quận 1, TP.HCM', '12 Nguyễn Trãi, Thanh Xuân, Hà Nội', '200 CMT8, Quận 3, TP.HCM', '7 Bạch Đằng, Hồng Bàng, Hải Phòng', '56 Hùng Vương, Hải Châu, Đà Nẵng', '301 Giải Phóng, Hoàng Mai, Hà Nội', '88 Phan Đình Phùng, Ba Đình, Hà Nội', '14 Võ Thị Sáu, Quận 3, TP.HCM'];
-    const sources = ['214A02 - Bưu cục A', '214H01 - Hub HCM', '214H02 - Hub HN', '213B05 - BC Hải Phòng', '215C03 - BC Đà Nẵng'];
-    const cods = ['1,250,000 đ', '320,000 đ', '0 đ', '2,100,000 đ', '585,000 đ', '770,000 đ', '1,890,000 đ', '430,000 đ', '95,000 đ', '3,250,000 đ'];
-    opts = opts || {};
-    const total = this.num(count);
-    const offset = opts.offset || 0;
-    const max = opts.max != null ? opts.max : 16;
-    const n = Math.max(0, Math.min(max, total - offset));
-    const overdue = /backlog|tồn|dừng|lost|thất lạc|sla/i.test((mainKey || '') + ' ' + seed);
-    const slaPool = overdue
-      ? [['Quá hạn 2 ngày', '#d23a2e'], ['Quá hạn 1 ngày', '#d23a2e'], ['Quá hạn 3 ngày', '#d23a2e'], ['Quá hạn 5 giờ', '#c77a14']]
-      : [['Còn 4 giờ', '#1c8a3c'], ['Còn 8 giờ', '#1c8a3c'], ['Còn 2 giờ', '#c77a14'], ['Trong hạn', '#1c8a3c']];
-    const base = 50800000 + seed.length * 137 + (mainKey || '').length * 911;
-    const out = [];
-    for (let k = 0; k < n; k++) {
-      const i = offset + k;
-      const sla = slaPool[i % slaPool.length];
-      out.push({
-        stt: i + 1,
-        code: '8027' + String(base + i * 1374).slice(0, 8),
-        recipient: recips[i % recips.length],
-        phone: '09' + String(10 + (i * 7) % 89) + ' ' + String(100 + (i * 137) % 900) + ' ' + String(100 + (i * 311) % 900),
-        addr: addrs[i % addrs.length],
-        source: sources[i % sources.length],
-        cod: cods[i % cods.length],
-        sla: sla[0], slaColor: sla[1],
-        service: i % 3 === 0 ? 'Chuyển phát nhanh' : i % 3 === 1 ? 'Chuyển phát tiết kiệm' : 'Hỏa tốc',
-        weight: (1 + (i % 5) * 0.45).toFixed(2) + ' kg',
-        pkgs: String(1 + (i % 3)),
-        orderNo: 'DH250605-' + String(101 + i),
-        sender: 'Cty TNHH ABC',
-        staff: 'Lê Quang Vinh (NV1023)',
-      });
-    }
-    return out;
-  }
-
   buildSummary(wb, status) {
     return [
       { k: 'Rủi ro', v: wb.risk || '-' },
@@ -1862,7 +1825,7 @@ class Component extends DCLogic {
       starBg: starActive ? '#fff7df' : '#fff',
       starBorder: starActive ? '#f0d588' : '#d7dde6',
       starLabel: 'Star',
-      siteId: this.state.siteId || '214A02',
+      siteId: this.state.siteId || '---',
       lastUpdateTime: this.state.lastUpdateTime || '00:00:00',
       syncStatus: this.state.syncStatus || 'DB: Synced',
       selectedSource: this.state.selectedSource || 'LOCAL',
