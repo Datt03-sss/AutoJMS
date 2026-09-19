@@ -79,6 +79,25 @@ namespace AutoJMS
         private TextBox tabPrint_maCOD;
         private TextBox tabPrint_sdtNG;
         private TextBox tabPrint_sdtNN;
+        private DkchDropDown tabPrint_reverseFlag;
+
+        /// <summary>
+        /// Ba lựa chọn của "Dấu Reverse", xếp đúng thứ tự mà <see cref="ReverseFlagParam"/> dịch
+        /// sang tham số <c>reverse</c>: bỏ hẳn trường / 1 / 0.
+        /// </summary>
+        private static readonly string[] ReverseFlagOptions = { "Tất cả", "Có", "Không" };
+
+        /// <summary>
+        /// Giá trị gửi lên cho ô "Dấu Reverse". Rỗng nghĩa là "Tất cả", và khi rỗng thì
+        /// <c>BuildListForm</c> không gửi trường <c>reverse</c> — payload trở lại đúng bộ mười
+        /// trường đã đối chiếu với cURL giao diện JMS.
+        /// </summary>
+        private string ReverseFlagParam() => tabPrint_reverseFlag?.SelectedIndex switch
+        {
+            1 => "1",
+            2 => "0",
+            _ => ""
+        };
 
         // ── controls dựng trong BuildTabPrintInReverseSection ──
         private Label _reverseStatus;
@@ -208,8 +227,8 @@ namespace AutoJMS
         /// <summary>
         /// Sáu ô nhập của tab, dựng bằng code trên một TableLayoutPanel 3 cột — đúng bố cục cũ
         /// của designer: hàng 1 "Thời gian từ / Thời gian đến / SĐT người gửi", hàng 2
-        /// "Tên nhân viên / Tên - Mã KH / SĐT người nhận", hàng 3 là dòng trạng thái trải hết
-        /// ba cột.
+        /// "Tên nhân viên / Tên - Mã KH + Dấu Reverse / SĐT người nhận", hàng 3 là dòng trạng
+        /// thái trải hết ba cột.
         /// </summary>
         private void BuildReverseInputPanel()
         {
@@ -218,9 +237,18 @@ namespace AutoJMS
             tabPrint_dateTo = NewReverseDateOnlyPicker("tabPrint_dateTo");
             tabPrint_timeTo = NewReverseTimeOnlyPicker("tabPrint_timeTo");
             tabPrint_tenNV = NewReverseTextBox("tabPrint_tenNV", "Tên nhân viên lấy hàng");
-            tabPrint_maCOD = NewReverseTextBox("tabPrint_maCOD", "Mã khách hàng (tuỳ chọn)");
+            tabPrint_maCOD = NewReverseTextBox("tabPrint_maCOD", "Mã khách hàng");
             tabPrint_sdtNG = NewReverseTextBox("tabPrint_sdtNG", "");
             tabPrint_sdtNN = NewReverseTextBox("tabPrint_sdtNN", "");
+
+            tabPrint_reverseFlag = new DkchDropDown
+            {
+                Name = "tabPrint_reverseFlag",
+                Font = ReverseFieldFont,
+                Margin = Padding.Empty
+            };
+            tabPrint_reverseFlag.Items.AddRange(ReverseFlagOptions);
+            tabPrint_reverseFlag.SelectedIndex = 0;
 
             // Nút "X" nằm sát mép phải ô tên: đổi người tra không phải xoá tay từng ký tự.
             // TabStop = false để Tab vẫn nhảy thẳng từ ô tên sang ô kế tiếp như trước.
@@ -275,7 +303,7 @@ namespace AutoJMS
             layout.Controls.Add(NewReverseTimeField("Thời gian đến:", tabPrint_dateTo, tabPrint_timeTo), 1, 0);
             layout.Controls.Add(NewReverseField("SĐT người gửi:", tabPrint_sdtNG, ReverseInputBox.Glyph.None, null, "0987 654 321 00"), 2, 0);
             layout.Controls.Add(NewReverseField("Tên nhân viên:", tabPrint_tenNV, ReverseInputBox.Glyph.Search, _reverseClearStaff, "Tên nhân viên lấy hàng"), 0, 1);
-            layout.Controls.Add(NewReverseField("Tên - Mã KH", tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng (tuỳ chọn)"), 1, 1);
+            layout.Controls.Add(NewReverseCustomerField(), 1, 1);
             layout.Controls.Add(NewReverseField("SĐT người nhận:", tabPrint_sdtNN, ReverseInputBox.Glyph.None, null, "0987 654 321 00"), 2, 1);
             layout.Controls.Add(_reverseStatus, 0, 2);
             layout.SetColumnSpan(_reverseStatus, 3);
@@ -311,6 +339,33 @@ namespace AutoJMS
             cell.Controls.Add(timeBox);
             cell.Controls.Add(dateBox);
             cell.Controls.Add(NewReverseCaption(caption));
+            return cell;
+        }
+
+        /// <summary>
+        /// Ô "Tên - Mã KH" thu lại vừa đúng chuỗi gợi ý của nó, nhường nửa phải của cột cho
+        /// dropdown "Dấu Reverse" — cột này vốn rộng theo ô thời gian ở hàng trên nên chỗ đó
+        /// đang bỏ không. Dropdown tự vẽ khung bo góc của chính nó nên KHÔNG bọc trong
+        /// <see cref="ReverseInputBox"/>: bọc vào là hai đường viền chồng lên nhau.
+        /// </summary>
+        private Panel NewReverseCustomerField()
+        {
+            var codeBox = NewReverseBox(
+                tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng", 0);
+
+            tabPrint_reverseFlag.Location =
+                new Point(codeBox.Right + ReverseBoxGap, ReverseCaptionHeight);
+            tabPrint_reverseFlag.Size = new Size(
+                DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont), ReverseInputHeight);
+
+            var flagCaption = NewReverseCaption("Dấu Reverse:");
+            flagCaption.Left = tabPrint_reverseFlag.Left;
+
+            var cell = NewReverseCell();
+            cell.Controls.Add(tabPrint_reverseFlag);
+            cell.Controls.Add(flagCaption);
+            cell.Controls.Add(codeBox);
+            cell.Controls.Add(NewReverseCaption("Tên - Mã KH"));
             return cell;
         }
 
@@ -510,6 +565,20 @@ namespace AutoJMS
                 field.Invalidate();
             }
 
+            // Dropdown cũng tự vẽ khung, cũng phải tự nhận màu — thêm màu của dải xổ xuống.
+            if (tabPrint_reverseFlag != null && !tabPrint_reverseFlag.IsDisposed)
+            {
+                tabPrint_reverseFlag.FieldBackColor = colors.InputBackground;
+                tabPrint_reverseFlag.BorderColor = colors.InputBorder;
+                tabPrint_reverseFlag.HoverBorderColor = colors.PrimaryAccent;
+                tabPrint_reverseFlag.HighlightColor = colors.PrimaryAccent;
+                tabPrint_reverseFlag.HighlightForeColor = colors.TextInverse;
+                tabPrint_reverseFlag.HoverItemColor = colors.PrimaryHoverTint;
+                tabPrint_reverseFlag.ForeColor = colors.TextPrimary;
+                RestoreReverseFont(tabPrint_reverseFlag, ReverseFieldFont);
+                tabPrint_reverseFlag.Invalidate();
+            }
+
             foreach (var caption in _reverseCaptions)
             {
                 caption.ForeColor = colors.TextPrimary;
@@ -595,6 +664,9 @@ namespace AutoJMS
 
             foreach (var box in new[] { tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
                 if (box != null && !box.IsDisposed) box.Text = "";
+
+            if (tabPrint_reverseFlag != null && !tabPrint_reverseFlag.IsDisposed)
+                tabPrint_reverseFlag.SelectedIndex = 0;
 
             _reverseAllRows.Clear();
             _reversePageIndex = 0;
@@ -895,6 +967,7 @@ namespace AutoJMS
                     from,
                     to,
                     tabPrint_maCOD?.Text?.Trim() ?? "",
+                    ReverseFlagParam(),
                     ct).ConfigureAwait(true);
 
                 if (ct.IsCancellationRequested) return;

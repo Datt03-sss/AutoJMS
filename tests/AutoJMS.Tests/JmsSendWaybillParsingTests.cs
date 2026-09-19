@@ -175,7 +175,7 @@ public sealed class JmsSendWaybillParsingTests
             1, "01989714",
             new DateTime(2026, 9, 19, 0, 0, 0),
             new DateTime(2026, 9, 19, 23, 59, 59),
-            "", "208001");
+            "", "208001", "");
 
         string contentType = form.Headers.ContentType!.ToString();
         string body = await form.ReadAsStringAsync();
@@ -210,6 +210,44 @@ public sealed class JmsSendWaybillParsingTests
         Assert.Contains("\r\n\r\n1\r\n", body);
         Assert.Contains("2026-09-19 00:00:00", body);
         Assert.Contains("2026-09-19 23:59:59", body);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("0")]
+    public async Task BuildListForm_ChonDauReverse_ThemDungMotTruongOCuoi(string flag)
+    {
+        // Dropdown "Dấu Reverse" là trường THỨ 11 và chỉ xuất hiện khi người dùng chủ động
+        // lọc. Nó phải đứng cuối: mười trường trước đó đã đối chiếu với cURL giao diện JMS.
+        using var form = JmsSendWaybillService.BuildListForm(
+            1, "01989714",
+            new DateTime(2026, 9, 19, 0, 0, 0),
+            new DateTime(2026, 9, 19, 23, 59, 59),
+            "", "208001", flag);
+
+        string body = await form.ReadAsStringAsync();
+        var names = Regex.Matches(body, "name=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToArray();
+
+        Assert.Equal(11, names.Length);
+        Assert.Equal("reverse", names[^1]);
+        Assert.Contains($"name=\"reverse\"\r\n\r\n{flag}\r\n", body);
+    }
+
+    [Fact]
+    public async Task BuildListForm_TatCa_ThiKhongGuiTruongReverse()
+    {
+        // "Tất cả" phải trả payload về đúng bộ 10 trường — thừa một trường rỗng là JMS trả
+        // code:1 kèm danh sách rỗng mà không báo lỗi gì.
+        using var form = JmsSendWaybillService.BuildListForm(
+            1, "01989714",
+            new DateTime(2026, 9, 19, 0, 0, 0),
+            new DateTime(2026, 9, 19, 23, 59, 59),
+            "", "208001", "");
+
+        string body = await form.ReadAsStringAsync();
+
+        Assert.DoesNotContain("name=\"reverse\"", body);
+        Assert.Equal(1114, body.Length);
     }
 
     [Fact]
@@ -259,7 +297,7 @@ public sealed class JmsSendWaybillParsingTests
             1, "01989714",
             new DateTime(2026, 9, 19, 0, 0, 0),
             new DateTime(2026, 9, 19, 23, 59, 59),
-            "", "208001");
+            "", "208001", "");
         string body = await form.ReadAsStringAsync();
 
         using var clone = AppHttpCaptureHandler.CloneStringContent(form, body);

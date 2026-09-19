@@ -161,16 +161,19 @@ namespace AutoJMS
             DateTime timeFrom,
             DateTime timeTo,
             string customerCodes,
+            string reverseFlag,
             CancellationToken ct = default)
         {
             string financeCode = await ResolveFinanceCodeAsync(ct).ConfigureAwait(false);
             var rows = await CollectShippingPagesAsync(
-                current => BuildListForm(current, collectStaffCode, timeFrom, timeTo, customerCodes, financeCode),
+                current => BuildListForm(
+                    current, collectStaffCode, timeFrom, timeTo, customerCodes, financeCode, reverseFlag),
                 ct).ConfigureAwait(false);
 
             AppLogger.Info($"[SendWaybill] ShippingWaybillList staff={collectStaffCode} rows={rows.Count} " +
                            $"from={timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
-                           $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)}");
+                           $"to={timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture)} " +
+                           $"reverse={(string.IsNullOrEmpty(reverseFlag) ? "(tất cả)" : reverseFlag)}");
             return rows;
         }
 
@@ -319,13 +322,19 @@ namespace AutoJMS
             return form;
         }
 
+        /// <param name="reverseFlag">
+        /// Dropdown "Dấu Reverse" của tab: "1" = chỉ đơn có dấu, "0" = chỉ đơn không có dấu.
+        /// Rỗng/null = "Tất cả" và khi đó trường <c>reverse</c> KHÔNG được gửi — payload trở lại
+        /// đúng 10 trường như cURL giao diện JMS, đúng bộ mà test ghim Content-Length 1114.
+        /// </param>
         internal static MultipartFormDataContent BuildListForm(
             int current,
             string collectStaffCode,
             DateTime timeFrom,
             DateTime timeTo,
             string customerCodes,
-            string pickFinanceCode)
+            string pickFinanceCode,
+            string reverseFlag)
         {
             string from = timeFrom.ToString(TimeFormat, CultureInfo.InvariantCulture);
             string to = timeTo.ToString(TimeFormat, CultureInfo.InvariantCulture);
@@ -349,6 +358,9 @@ namespace AutoJMS
             // nào chọn cặp nào có hiệu lực, cứ gửi trùng giá trị như nó.
             Add(form, "inputTimeStart", from);
             Add(form, "inputTimeEnd", to);
+            // Trường THỨ 11, chỉ có khi người dùng chủ động lọc. Đặt cuối để bộ 10 trường đã
+            // đối chiếu với cURL giao diện JMS giữ nguyên cả nội dung lẫn thứ tự.
+            if (!string.IsNullOrEmpty(reverseFlag)) Add(form, "reverse", reverseFlag);
             return form;
         }
 
