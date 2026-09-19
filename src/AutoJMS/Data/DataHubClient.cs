@@ -1274,7 +1274,9 @@ public static class DataHubClient
         }
     }
 
-    private static string ResolveSiteCode() => new SiteContextProvider().Current?.MiddleCode ?? string.Empty;
+    // Get() thay cho `.Current` vì `Current` đọc (và có khi ghi) AutoJMS.json mỗi lần
+    // truy cập, còn hàm này bị gọi trên mọi đường lease/observation.
+    private static string ResolveSiteCode() => SiteContextProvider.Get();
 
     private static string FirstNonEmpty(params string[] values) => values?.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 }

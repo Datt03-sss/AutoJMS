@@ -1,3 +1,4 @@
+using AutoJMS;
 using AutoJMS.FullStack.Events;
 using AutoJMS.FullStack.LocalDb;
 using Microsoft.Data.Sqlite;
@@ -85,12 +86,7 @@ namespace AutoJMS.FullStack.Services
         public bool IsRunning => _started;
         public int PendingOutboxCount => _pendingOutboxCount;
 
-        public static string ResolveSiteCode()
-        {
-            var site = (AppConfig.Current.ActionSiteCode ?? "").Trim().ToUpperInvariant();
-            if (string.IsNullOrWhiteSpace(site) || site == "0000") return "";
-            return site;
-        }
+        public static string ResolveSiteCode() => SiteContextProvider.Get();
 
         public static bool IsEnabled
         {

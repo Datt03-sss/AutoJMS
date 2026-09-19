@@ -1,3 +1,4 @@
+using AutoJMS;
 using AutoJMS.Data;
 using AutoJMS.FullStack.Models;
 using AutoJMS.FullStack.Repositories;
@@ -555,12 +556,7 @@ namespace AutoJMS.FullStack.Services
             };
         }
 
-        private static string GetActionSiteCode()
-        {
-            if (!string.IsNullOrWhiteSpace(AppConfig.Current.ActionSiteCode))
-                return AppConfig.Current.ActionSiteCode.Trim();
-            return "214A02";
-        }
+        private static string GetActionSiteCode() => SiteContextProvider.Get();
 
         private static string GetInventoryDimension()
         {

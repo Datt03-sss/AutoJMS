@@ -34,12 +34,7 @@ namespace AutoJMS
         private const string TotalPath = "businessindicator/bigdataReport/detail/opt_stocktaking_total";
         private const string DetailPath = "businessindicator/bigdataReport/detail/opt_stocktaking_ret_detail";
 
-        private static string GetNetworkCode()
-        {
-            if (!string.IsNullOrWhiteSpace(AppConfig.Current.ActionSiteCode))
-                return AppConfig.Current.ActionSiteCode.Trim();
-            return "214A02";
-        }
+        private static string GetNetworkCode() => SiteContextProvider.Get();
 
         /// <summary>
         /// Fetches the full "Số đơn tồn" waybill list for today (tồn 1 ngày) with parallel paging.
@@ -56,6 +51,11 @@ namespace AutoJMS
             var collectLock = new object();
             string detailUrl = AppConfig.Current.BuildJmsApiUrl(DetailPath);
             string networkCode = GetNetworkCode();
+            if (networkCode.Length == 0)
+            {
+                AppLogger.Warning("[StockCheckSync] bo qua: chua cau hinh ma buu cuc.");
+                return new List<string>();
+            }
             string startDate = DateTime.Now.ToString("yyyy-MM-dd 00:00:00");
             string endDate = DateTime.Now.ToString("yyyy-MM-dd 23:59:59");
 

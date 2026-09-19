@@ -24,12 +24,7 @@ namespace AutoJMS
         private const string InventoryRouterNameList = "%E7%BB%8F%E8%90%A5%E6%8C%87%E6%A0%87%3E%E6%B4%BE%E4%BB%B6%E7%AB%AF%3E%E7%95%99%E4%BB%93%E7%9B%91%E6%8E%A7DB";
         private const string InventoryDimension = "3";
 
-        private static string GetActionSiteCode()
-        {
-            if (!string.IsNullOrWhiteSpace(AppConfig.Current.ActionSiteCode))
-                return AppConfig.Current.ActionSiteCode.Trim();
-            return "214A02";
-        }
+        private static string GetActionSiteCode() => SiteContextProvider.Get();
 
         public static async Task<List<string>> FetchInventoryWaybillsManualAsync(CancellationToken ct = default)
         {
@@ -160,6 +155,12 @@ namespace AutoJMS
             var collectLock = new object();
             string url = AppConfig.Current.BuildJmsApiUrl("businessindicator/bigdataReport/detail/take_ret_mon_detail_doris2");
             string actionSiteCode = GetActionSiteCode();
+            if (actionSiteCode.Length == 0)
+            {
+                // Trước đây rơi về "214A02" và lẳng lặng kéo tồn kho của trạm khác.
+                AppLogger.Warning("[InventorySync] bo qua: chua cau hinh ma buu cuc.");
+                return new List<string>();
+            }
             string startDate = DateTime.Now.AddMonths(-1).ToString("yyyy-MM-dd 00:00:00");
             string endDate = DateTime.Now.ToString("yyyy-MM-dd 23:59:59");
 
