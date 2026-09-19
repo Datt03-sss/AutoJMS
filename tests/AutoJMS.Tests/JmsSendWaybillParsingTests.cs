@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AutoJMS.Diagnostics.AppCapture;
 using Xunit;
 
 namespace AutoJMS.Tests;
@@ -219,6 +220,30 @@ public sealed class JmsSendWaybillParsingTests
         // không ai nhìn thấy, vì phân hệ này không báo lỗi bao giờ.
         Assert.DoesNotContain(">", JmsSendWaybillService.CenterPrintRouterNameList);
         Assert.Equal(2, Regex.Matches(JmsSendWaybillService.CenterPrintRouterNameList, "%3E").Count);
+    }
+
+    // ── AppCapture gửi lại body thì phải giữ nguyên boundary ──────────────────────
+
+    [Fact]
+    public async Task AppCapture_ChepLaiContent_GiuNguyenBoundaryCuaMultipart()
+    {
+        // AppHttpCaptureHandler đọc cạn body để ghi log rồi dựng một content khác gửi đi.
+        // Bản cũ dựng Content-Type từ mỗi MediaType nên rơi mất boundary — body ra khỏi máy
+        // vẫn đủ 1114 byte y như trình duyệt, chỉ thiếu boundary trên header, và JMS trả
+        // code 999005060 "NWM:Lỗi nội bộ hệ thống". Đã kiểm chứng trực tiếp trên API thật:
+        // cùng body, có boundary thì code:1, bỏ boundary thì 999005060.
+        using var form = JmsSendWaybillService.BuildListForm(
+            1, "01989714",
+            new DateTime(2026, 9, 19, 0, 0, 0),
+            new DateTime(2026, 9, 19, 23, 59, 59),
+            "", "208001");
+        string body = await form.ReadAsStringAsync();
+
+        using var clone = AppHttpCaptureHandler.CloneStringContent(form, body);
+
+        Assert.Equal(form.Headers.ContentType!.ToString(), clone.Headers.ContentType!.ToString());
+        Assert.Contains("boundary=----WebKitFormBoundary", clone.Headers.ContentType!.ToString());
+        Assert.Equal(body, await clone.ReadAsStringAsync());
     }
 
     // ── Lỗi nghiệp vụ nằm trong thân HTTP 200, không phải ở mã HTTP ────────────────

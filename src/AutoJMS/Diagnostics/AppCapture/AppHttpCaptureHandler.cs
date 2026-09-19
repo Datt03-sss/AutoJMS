@@ -115,14 +115,23 @@ namespace AutoJMS.Diagnostics.AppCapture
             }
         }
 
-        private static HttpContent CloneStringContent(HttpContent original, string body)
+        /// <summary>
+        /// Bản sao đọc lại được của một content đã bị đọc cạn, giữ NGUYÊN VĂN mọi header gốc.
+        /// <para>
+        /// Content-Type phải chép nguyên chuỗi chứ không được dựng lại từ mỗi
+        /// <c>MediaType</c>: làm vậy là đánh rơi toàn bộ tham số của nó. Với
+        /// <c>multipart/form-data</c> thì tham số bị rơi chính là <c>boundary</c> — server
+        /// hết đường tách các phần, và JMS trả <c>code 999005060 "NWM:Lỗi nội bộ hệ thống"</c>.
+        /// Bẫy ở chỗ nó chỉ nổ khi AppCapture đang bật, còn JSON thì không việc gì vì
+        /// <c>application/json</c> chẳng có tham số nào để mất.
+        /// </para>
+        /// </summary>
+        internal static HttpContent CloneStringContent(HttpContent original, string body)
         {
-            var content = new StringContent(body ?? "", Encoding.UTF8, original.Headers.ContentType?.MediaType ?? "application/json");
+            var content = new StringContent(body ?? "", Encoding.UTF8);
+            content.Headers.ContentType = null; // bỏ "text/plain; charset=utf-8" StringContent tự gắn
             foreach (var header in original.Headers)
-            {
-                if (string.Equals(header.Key, "Content-Type", StringComparison.OrdinalIgnoreCase)) continue;
                 content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-            }
             return content;
         }
 
