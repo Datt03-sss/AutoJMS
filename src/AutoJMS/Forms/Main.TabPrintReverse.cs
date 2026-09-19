@@ -111,7 +111,43 @@ namespace AutoJMS
             _reverseStaffDebounce = new System.Windows.Forms.Timer { Interval = ReverseStaffDebounceMs };
             _reverseStaffDebounce.Tick += ReverseStaffDebounce_Tick;
 
+            // "Làm mới" dọn phần dùng chung của tab IN ĐƠN trong print_LamMoi_Click; sáu ô nhập
+            // và nhân viên đã chọn của tab này thì chỉ file này biết. Đăng ký thêm ở đây chứ
+            // không sửa handler kia: hàm này chạy sau InitializeComponent nên handler của
+            // designer vẫn chạy trước, mình chỉ nối thêm phần của In Reverse.
+            if (tabPrint_btnLamMoi != null && !tabPrint_btnLamMoi.IsDisposed)
+                tabPrint_btnLamMoi.Click += (s, e) => ResetTabPrintInReverseState();
+
             ResetReverseTimeRange();
+        }
+
+        /// <summary>
+        /// Đưa tab về đúng trạng thái lúc vừa mở app: bỏ nhân viên đã chọn, xoá sáu ô nhập, trả
+        /// khoảng thời gian về hôm nay. Huỷ luôn hai lượt gọi đang bay — một lượt tìm kiếm về
+        /// muộn sẽ nạp lưới lại ngay sau khi người dùng vừa bấm Làm mới.
+        /// </summary>
+        private void ResetTabPrintInReverseState()
+        {
+            _reverseStaffCts?.Cancel();
+            _reverseSearchCts?.Cancel();
+            _reverseStaffDebounce?.Stop();
+            _reverseStaff = null;
+            HideReverseStaffPopup();
+
+            // Xoá ô tên sẽ bắn TextChanged; chặn lại kẻo Làm mới tự mở một lượt tra nhân viên.
+            _reverseSuppressLookup = true;
+            try
+            {
+                foreach (var box in new[] { tabPrint_tenNV, tabPrint_maCOD, tabPrint_sdtNG, tabPrint_sdtNN })
+                    if (box != null && !box.IsDisposed) box.Text = "";
+            }
+            finally
+            {
+                _reverseSuppressLookup = false;
+            }
+
+            ResetReverseTimeRange();
+            SetReverseStatus("Nhập tên nhân viên, chọn trong danh sách rồi bấm Tìm kiếm.");
         }
 
         /// <summary>Mặc định: trọn ngày hôm nay — đúng ca làm việc người dùng hay tra nhất.</summary>
