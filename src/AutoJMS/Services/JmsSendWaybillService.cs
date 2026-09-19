@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,10 +41,11 @@ namespace AutoJMS
 
         private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
 
-        // JMS trả tối đa vài trăm đơn cho một ca lấy hàng. Lấy từng trang lớn cho tới khi
-        // trang không còn đầy, chặn trên để một bộ lọc quá rộng không kéo về vô hạn.
-        private const int PageSize = 100;
-        private const int MaxPages = 10;
+        // Giữ đúng size=20 như giao diện JMS: đây là request DUY NHẤT đã biết chắc chạy được,
+        // nên không tự ý nống lên. Lấy từng trang cho tới khi trang không còn đầy, chặn trên
+        // để một bộ lọc quá rộng không kéo về vô hạn.
+        private const int PageSize = 20;
+        private const int MaxPages = 50;
 
         // networkId của bưu cục không đổi trong suốt phiên, mà tra nó tốn một lượt mạng.
         private static string _cachedNetworkId;
@@ -186,7 +188,7 @@ namespace AutoJMS
             });
         }
 
-        private static MultipartFormDataContent BuildListForm(
+        internal static MultipartFormDataContent BuildListForm(
             int current,
             string collectStaffCode,
             DateTime timeFrom,
@@ -198,7 +200,7 @@ namespace AutoJMS
 
             // Giữ đúng thứ tự và đủ 10 trường như cURL của giao diện JMS: thiếu một trường
             // rỗng (waybillNos/customerCodes) là backend trả 500.
-            var form = new MultipartFormDataContent();
+            var form = NewBrowserStyleForm();
             Add(form, "current", current.ToString(CultureInfo.InvariantCulture));
             Add(form, "size", PageSize.ToString(CultureInfo.InvariantCulture));
             // pickFinanceCode là mã TÀI CHÍNH của bưu cục (vd 208001 "Thái Nguyên"), KHÔNG
@@ -217,12 +219,47 @@ namespace AutoJMS
             return form;
         }
 
+        /// <summary>
+        /// MultipartFormDataContent bắt chước đúng cách trình duyệt sinh body, vì backend JMS
+        /// bóc form theo đúng chuẩn RFC 7578 chứ không đoán:
+        /// <list type="bullet">
+        /// <item>boundary trong header KHÔNG bọc nháy (.NET mặc định bọc: <c>boundary="..."</c>).</item>
+        /// <item>tên trường PHẢI bọc nháy — <c>name="current"</c>, không phải <c>name=current</c>.</item>
+        /// </list>
+        /// Sai một trong hai thì server bỏ qua toàn bộ trường, trả <c>code:1</c> với danh sách
+        /// rỗng — không hề báo lỗi, nên rất dễ tưởng là "hôm nay không có đơn".
+        /// </summary>
+        private static MultipartFormDataContent NewBrowserStyleForm()
+        {
+            string boundary = "----WebKitFormBoundary" + Guid.NewGuid().ToString("N").Substring(0, 16);
+            var form = new MultipartFormDataContent(boundary);
+
+            var contentType = form.Headers.ContentType;
+            if (contentType != null)
+            {
+                foreach (var p in contentType.Parameters)
+                {
+                    if (string.Equals(p.Name, "boundary", StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.Value = boundary;   // gán lại để bỏ cặp nháy .NET tự thêm
+                        break;
+                    }
+                }
+            }
+
+            return form;
+        }
+
         private static void Add(MultipartFormDataContent form, string name, string value)
         {
-            // Tên trường phải để trần, không bọc dấu nháy như mặc định của .NET.
             var part = new StringContent(value ?? "");
+            // Trình duyệt không gửi Content-Type cho từng phần text thường.
             part.Headers.ContentType = null;
-            form.Add(part, name);
+            part.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+            {
+                Name = "\"" + name + "\""
+            };
+            form.Add(part);
         }
 
         /// <summary>

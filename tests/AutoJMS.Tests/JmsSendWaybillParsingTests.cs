@@ -164,6 +164,44 @@ public sealed class JmsSendWaybillParsingTests
         Assert.False(data.GetProperty("pdfRelativePath").GetString()!.StartsWith("http"));
     }
 
+    // ── Body multipart phải giống hệt trình duyệt ──────────────────────────────────
+
+    [Fact]
+    public async Task BuildListForm_BocNhayTenTruongVaKhongBocNhayBoundary()
+    {
+        using var form = JmsSendWaybillService.BuildListForm(
+            1, "01989714",
+            new DateTime(2026, 9, 19, 0, 0, 0),
+            new DateTime(2026, 9, 19, 23, 59, 59),
+            "");
+
+        string contentType = form.Headers.ContentType!.ToString();
+        string body = await form.ReadAsStringAsync();
+
+        // .NET mặc định sinh boundary="..." và name=current (không nháy) — ngược hẳn với
+        // trình duyệt. Backend JMS bóc form đúng RFC 7578 nên sẽ BỎ QUA mọi trường có tên
+        // không bọc nháy, rồi trả code:1 kèm danh sách rỗng mà không báo lỗi gì.
+        Assert.DoesNotContain("boundary=\"", contentType);
+        Assert.DoesNotContain("name=current", body);
+        Assert.Contains("name=\"current\"", body);
+
+        foreach (string field in new[]
+                 {
+                     "current", "size", "pickFinanceCode", "collectStaffCode",
+                     "timeStart", "timeEnd", "inputTimeStart", "inputTimeEnd",
+                     "waybillNos", "customerCodes"
+                 })
+        {
+            Assert.Contains($"Content-Disposition: form-data; name=\"{field}\"", body);
+        }
+
+        // Phần text thường không kèm Content-Type, y như trình duyệt.
+        Assert.DoesNotContain("Content-Type: text/plain", body);
+        Assert.Contains("01989714", body);
+        Assert.Contains("2026-09-19 00:00:00", body);
+        Assert.Contains("2026-09-19 23:59:59", body);
+    }
+
     // ── Payload in: đúng 3 khoá như cURL của giao diện JMS ─────────────────────────
 
     [Fact]
