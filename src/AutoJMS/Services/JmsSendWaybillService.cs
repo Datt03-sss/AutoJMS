@@ -290,16 +290,17 @@ namespace AutoJMS
                 if (first.ValueKind == JsonValueKind.Object)
                 {
                     id = FirstText(first, "id", "networkId");
-                    // Cùng một bản ghi bưu cục CÓ THỂ mang mã tài chính của chi nhánh bao
-                    // ngoài. Tên trường chưa xác nhận bằng response thật, nên đọc kiểu
-                    // "được thì tốt": không thấy thì để rỗng, request vẫn chạy như cũ.
-                    finance = FirstText(first, "financeCode");
+                    // pickFinanceCode của shippingWaybillList lấy từ đây. Bản ghi bưu cục
+                    // gọi nó là "financial center": 214A02 có financialCenterDesc="Thái
+                    // Nguyên", đúng bằng pickFinanceName trong dòng vận đơn. KHÔNG có
+                    // trường nào tên "financeCode" cả — đã kiểm bằng response thật.
+                    finance = FirstText(first, "financialCenterCode");
 
                     // Không thấy thì liệt kê tên trường (CHỈ tên, không kèm giá trị) để lần
                     // chạy sau biết phải đọc ở đâu — khỏi phải đi xin lại cURL.
                     if (string.IsNullOrWhiteSpace(finance))
                     {
-                        AppLogger.Warning("[SendWaybill] ResolveNetworkId: không thấy financeCode. Các trường có trong bản ghi: "
+                        AppLogger.Warning("[SendWaybill] ResolveNetworkId: không thấy financialCenterCode. Các trường có trong bản ghi: "
                             + string.Join(", ", first.EnumerateObject().Select(p => p.Name)));
                     }
                 }
