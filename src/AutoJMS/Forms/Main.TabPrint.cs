@@ -81,6 +81,12 @@ namespace AutoJMS
         private UILabel _reprintStatus;
         private ToolTip _reprintTip;
 
+        /// <summary>
+        /// Viền vàng quanh tab con đang chọn. Phải giữ tham chiếu: NativeWindow không được
+        /// control giữ hộ, thả ra là GC dọn mất và viền biến mất giữa chừng.
+        /// </summary>
+        private AutoJMS.UI.PremiumTabAccent _printTabAccent;
+
         // ── state ──
         private byte[] _reprintOriginalPdf;
         private string _reprintCacheKey = "";
@@ -157,6 +163,8 @@ namespace AutoJMS
             tabPrint_printFunc.SizeChanged += (_, __) => FitPrintTabHeaders();
             tabPrint_printFunc.FontChanged += (_, __) => FitPrintTabHeaders();
             FitPrintTabHeaders();
+
+            _printTabAccent ??= AutoJMS.UI.PremiumTabAccent.Attach(tabPrint_printFunc);
         }
 
         /// <summary>

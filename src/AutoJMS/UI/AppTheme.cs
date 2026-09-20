@@ -325,36 +325,16 @@ namespace AutoJMS.UI
 
                 if (tab.Name == "tabPrint_printFunc")
                 {
-                    if (CurrentTheme == ThemeMode.Dark)
-                    {
-                        tab.TabBackColor = colors.AppBackground;
-                        tab.FillColor = colors.AppBackground;
-                        tab.TabSelectedColor = colors.PrimaryAccent;
-                        tab.TabSelectedForeColor = Color.White;
-                        tab.TabSelectedHighColor = colors.PrimaryAccent;
-                        tab.TabUnSelectedColor = colors.CardBackground;
-                        tab.TabUnSelectedForeColor = colors.TextSecondary;
-                    }
-                    else if (CurrentTheme == ThemeMode.Light)
-                    {
-                        tab.TabBackColor = colors.AppBackground;
-                        tab.FillColor = colors.AppBackground;
-                        tab.TabSelectedColor = colors.PrimaryAccent;
-                        tab.TabSelectedForeColor = Color.White;
-                        tab.TabSelectedHighColor = colors.PrimaryAccent;
-                        tab.TabUnSelectedColor = colors.CardBackground;
-                        tab.TabUnSelectedForeColor = colors.TextSecondary;
-                    }
-                    else // Red theme
-                    {
-                        tab.TabBackColor = colors.AppBackground;
-                        tab.FillColor = colors.AppBackground;
-                        tab.TabSelectedColor = colors.PrimaryAccent;
-                        tab.TabSelectedForeColor = Color.White;
-                        tab.TabSelectedHighColor = colors.PrimaryAccent;
-                        tab.TabUnSelectedColor = colors.CardBackground;
-                        tab.TabUnSelectedForeColor = colors.TextSecondary;
-                    }
+                    // Không rẽ theo chủ đề: cả ba chủ đề dùng cùng công thức, chỉ khác ở giá trị
+                    // trong `colors`. Tab con đang chọn còn được PremiumTabAccent viền vàng chồng
+                    // lên, nên nền ở đây cứ để một màu phẳng theo PrimaryAccent.
+                    tab.TabBackColor = colors.AppBackground;
+                    tab.FillColor = colors.AppBackground;
+                    tab.TabSelectedColor = colors.PrimaryAccent;
+                    tab.TabSelectedForeColor = Color.White;
+                    tab.TabSelectedHighColor = colors.PrimaryAccent;
+                    tab.TabUnSelectedColor = colors.CardBackground;
+                    tab.TabUnSelectedForeColor = colors.TextSecondary;
                 }
                 else
                 {
