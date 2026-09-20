@@ -25,6 +25,17 @@ namespace AutoJMS
         /// <summary>Mã tuyến gốc chưa tách, ví dụ <c>330-L214A02-001</c>; rỗng nếu JMS không trả.</summary>
         public string TerminalDispatchCode { get; init; } = "";
 
+        /// <summary>
+        /// Số lần JMS đã ghi nhận in tờ nhãn này (<c>printsNumber</c>); 0 khi không lấy được.
+        /// </summary>
+        public int PrintCount { get; init; }
+
+        /// <summary>
+        /// Lần in gần nhất JMS ghi nhận, nguyên dạng <c>2026-09-20 20:46:30</c>; rỗng nếu
+        /// chưa in lần nào hoặc JMS không trả.
+        /// </summary>
+        public string PrintTime { get; init; } = "";
+
         public bool HasUnmaskedPhone => !string.IsNullOrEmpty(Phone);
     }
 
@@ -45,6 +56,11 @@ namespace AutoJMS
         // Nguồn vá lại các trường bị che ở endpoint trên (POST, data.details {}).
         private const string OrderDetailEndpoint =
             "https://jmsgw.jtexpress.vn/operatingplatform/order/getOrderDetail";
+
+        // Sổ in của JMS — nguồn DUY NHẤT có printsNumber + printTime. Hai endpoint trên là
+        // đơn hàng/tuyến nên không biết gì về lịch sử in.
+        private const string PrintListEndpoint =
+            "https://jmsgw.jtexpress.vn/operatingplatform/expressPrint/listPage";
 
         private const string ReceiverUserAgent =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -90,6 +106,9 @@ namespace AutoJMS
                 string address = "";
                 string dispatchCode = "";
 
+                int printCount = 0;
+                string printTime = "";
+
                 string reverseJson = await GetJsonAsync(ReverseEndpoint + encoded, token, ct).ConfigureAwait(false);
                 MergeFrom(reverseJson, isOrderDetail: false, ref name, ref phone, ref maskedPhone, ref address, ref dispatchCode);
 
@@ -101,8 +120,14 @@ namespace AutoJMS
                     MergeFrom(orderJson, isOrderDetail: true, ref name, ref phone, ref maskedPhone, ref address, ref dispatchCode);
                 }
 
+                // Luôn gọi, khác hai nhánh trên: không endpoint nào khác biết lịch sử in, nên
+                // "đã đủ trường rồi" không bao giờ đúng với sổ in.
+                string printListJson = await PostPrintListAsync(code, token, ct).ConfigureAwait(false);
+                MergePrintHistory(printListJson, ref printCount, ref printTime);
+
                 if (name.Length == 0 && phone.Length == 0 && maskedPhone.Length == 0
-                    && address.Length == 0 && dispatchCode.Length == 0)
+                    && address.Length == 0 && dispatchCode.Length == 0
+                    && printCount == 0 && printTime.Length == 0)
                     return null;
 
                 if (maskedPhone.Length == 0 && phone.Length > 0) maskedPhone = Mask(phone);
@@ -112,7 +137,8 @@ namespace AutoJMS
                     $"[ReceiverContact] waybill={code} name={(name.Length > 0 ? "có" : "trống")} " +
                     $"phone={(phone.Length > 0 ? "đầy đủ" : "chỉ bản che")} " +
                     $"address={(address.Length > 0 ? "có" : "trống")} " +
-                    $"maTuyen={(dispatchCode.Length > 0 ? dispatchCode : "trống")}");
+                    $"maTuyen={(dispatchCode.Length > 0 ? dispatchCode : "trống")} " +
+                    $"soLanIn={printCount} lanInGanNhat={(printTime.Length > 0 ? printTime : "trống")}");
 
                 return new ReceiverContact
                 {
@@ -120,7 +146,9 @@ namespace AutoJMS
                     Phone = phone,
                     MaskedPhone = maskedPhone,
                     Address = address,
-                    TerminalDispatchCode = dispatchCode
+                    TerminalDispatchCode = dispatchCode,
+                    PrintCount = printCount,
+                    PrintTime = printTime
                 };
             }
             catch (OperationCanceledException)
@@ -224,6 +252,58 @@ namespace AutoJMS
                     return request;
                 },
                 token, ct).ConfigureAwait(false);
+        }
+
+        private static async Task<string> PostPrintListAsync(string code, string token, CancellationToken ct)
+        {
+            string bodyJson = JsonSerializer.Serialize(new
+            {
+                current = 1,
+                size = 20,
+                waybillNos = new[] { code },
+                countryId = "1"
+            });
+
+            return await SendWithAuthRetryAsync(
+                tok =>
+                {
+                    var request = new HttpRequestMessage(HttpMethod.Post, PrintListEndpoint);
+                    ApplyHeaders(request, tok, "Centerforplay");
+                    request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+                    return request;
+                },
+                token, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Bóc <c>printsNumber</c> + <c>printTime</c> khỏi <c>data.records[0]</c>. JMS trả lỗi
+        /// nghiệp vụ trong thân HTTP 200 với <c>data:null</c>, nên phải dò từng bậc thay vì tin
+        /// vào mã trạng thái.
+        /// </summary>
+        internal static void MergePrintHistory(string json, ref int printCount, ref string printTime)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("data", out var data)
+                    || data.ValueKind != JsonValueKind.Object
+                    || !data.TryGetProperty("records", out var records)
+                    || records.ValueKind != JsonValueKind.Array
+                    || records.GetArrayLength() == 0)
+                    return;
+
+                var record = records[0];
+                if (record.ValueKind != JsonValueKind.Object) return;
+
+                if (int.TryParse(Field(record, "printsNumber"), out int parsed)) printCount = parsed;
+                printTime = Field(record, "printTime");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warning($"[ReceiverContact] không đọc được sổ in: {ex.Message}");
+            }
         }
 
         /// <summary>

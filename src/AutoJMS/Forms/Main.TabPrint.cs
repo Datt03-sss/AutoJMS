@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -786,6 +787,23 @@ namespace AutoJMS
                                 : route[1]);
                 }
                 if (route.Length > 2 && route[2].Length > 0) SetReprintText(_reprintTxtRoute3, route[2]);
+
+                // Vùng 4 phải mở ra bằng đúng sổ in của JMS (printsNumber / printTime). Số mà
+                // PrefillReprintEditor điền trước đó chỉ là chỗ đứng tạm cho lúc JMS im lặng,
+                // nên chỉ đè khi thật sự lấy được — đè bằng 0 hay chuỗi rỗng là xoá mất nó.
+                if (contact != null && contact.PrintCount > 0)
+                    SetReprintText(_reprintTxtPrintTimes, contact.PrintCount.ToString(CultureInfo.InvariantCulture));
+
+                if (DateTime.TryParseExact(
+                        contact?.PrintTime ?? "",
+                        "yyyy-MM-dd HH:mm:ss",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var lastPrintedAt))
+                {
+                    SetReprintText(_reprintTxtPrintClock, lastPrintedAt.ToString("HH:mm", CultureInfo.InvariantCulture));
+                    SetReprintText(_reprintTxtPrintDate, lastPrintedAt.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture));
+                }
             }
             finally
             {
@@ -823,11 +841,10 @@ namespace AutoJMS
                 SetReprintText(_reprintTxtNote, Dash2Empty(row?.NoiDungHangHoa));
                 SetReprintText(_reprintTxtPrintCode, ResolveReprintNetworkCode(row));
 
-                // Owner chốt điền sẵn "1": tờ nhãn đang dựng là lần in đầu của nó, còn số
-                // JMS đang ghi nhận thì đếm cả những lần in trước đó. Ô vẫn sửa được.
+                // Ba ô dưới đây chỉ là chỗ đứng tạm: LoadReprintReceiverAsync chạy ngay sau
+                // và đè lại bằng printsNumber/printTime thật trong sổ in của JMS. Giữ lại để
+                // Vùng 4 vẫn có nội dung hợp lý khi sổ in không trả về gì.
                 SetReprintText(_reprintTxtPrintTimes, "1");
-
-                // Nhãn vừa được JMS sinh ra vài giây trước, nên "giữ như cũ" chính là lúc này.
                 SetReprintText(_reprintTxtPrintClock, DateTime.Now.ToString("HH:mm"));
                 SetReprintText(_reprintTxtPrintDate, DateTime.Now.ToString("dd-MM-yyyy"));
             }
