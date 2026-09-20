@@ -1061,9 +1061,9 @@ namespace AutoJMS
                 .Where(r => r != null)
                 .OrderByDescending(r => r.ThoiGianNhanHang ?? "", StringComparer.Ordinal));
 
-            // printsNumber của JMS chỉ đếm lượt printMode=2, nên lượt 4-5 đi đường xem trước
-            // không có ở đó — chỉ sổ dưới đĩa biết. Kéo số của sổ lên ngay lúc nạp để cột
-            // "Số bản in" hiện đúng con số mà nút IN sẽ đem so với trần năm lượt.
+            // printsNumber của JMS chỉ đếm lượt printMode=2, nên mọi lượt đi đường xem trước
+            // không có ở đó — chỉ lịch sử dưới đĩa biết. Kéo số của sổ lên ngay lúc nạp để cột
+            // "Số bản in" hiện đúng tổng số bản đã in ra giấy, không phải mỗi phần JMS đếm.
             foreach (var row in _reverseAllRows)
                 row.PrintCount = Math.Max(row.PrintCount, ReversePrintLedger.CountOf(row.WaybillNo));
 
@@ -1246,11 +1246,10 @@ namespace AutoJMS
         ///   <item>PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>, dọn theo ngày;</item>
         ///   <item>in xong giữ nguyên lưới, chỉ bỏ tick đúng những mã vừa in.</item>
         /// </list>
-        /// Giới hạn in là của tab này chứ không còn là của JMS: ba lượt đầu đi
-        /// <c>printMode=2</c> để JMS đếm như mọi tab khác, lượt thứ tư và thứ năm đi
-        /// <c>printMode=1</c> — cùng một PDF, nhưng JMS không tính lượt nên chỉ
-        /// <see cref="ReversePrintLedger"/> biết. Chạm <see cref="ReversePrintLedger.MaxPrints"/>
-        /// thì chặn ngay trước khi chạm mạng; mã vẫn còn trên lưới để bấm "Copy mã đã chọn".
+        /// KHÔNG có trần in: lượt nào cũng thử <c>printMode=2</c> trước để JMS đếm như mọi tab
+        /// khác, JMS từ chối vì quá ba lượt (code 121003005) thì lấy đúng bản xem trước
+        /// <c>printMode=1</c> — cùng một PDF, nhưng JMS không tính lượt nên không bao giờ hết.
+        /// Mỗi lượt in ra giấy ghi một dòng vào <see cref="ReversePrintLedger"/>.
         /// Không gọi <c>QueuePostPrintRefresh</c>: nguồn của lưới này là
         /// <see cref="JmsSendWaybillService"/> chứ không phải tracking, một lượt làm mới theo
         /// tracking chỉ ghi đè các cột bằng dữ liệu rỗng.
@@ -1261,18 +1260,6 @@ namespace AutoJMS
             if (selected == null || selected.Count == 0)
             {
                 SetReverseStatus("Chưa tick mã nào để in.", true);
-                return;
-            }
-
-            // Chặn TRƯỚC khi chạm JMS: quá trần thì không còn đường in nào hợp lệ, gọi lên chỉ
-            // tốn một lượt xem trước rồi vẫn phải báo lỗi.
-            string overLimit = selected.FirstOrDefault(
-                wb => ReversePrintedCount(wb) >= ReversePrintLedger.MaxPrints);
-            if (overLimit != null)
-            {
-                SetReverseStatus(
-                    $"Vận đơn {overLimit} đã đạt giới hạn in tối đa " +
-                    $"({ReversePrintLedger.MaxPrints} lần). Không thể in thêm.", true);
                 return;
             }
 
@@ -1289,18 +1276,18 @@ namespace AutoJMS
                 var job = ReuseReverseLastPrint(selected);
                 if (job == null)
                 {
-                    int mode = ReversePrintLedger.NextPrintMode(selected.Max(ReversePrintedCount));
-
                     SetReverseStatus($"Đang lấy bản in cho {selected.Count} đơn...");
-                    string body = await PostCenterPrintAsync(selected, mode, CancellationToken.None)
+                    string body = await PostCenterPrintAsync(
+                        selected, JmsSendWaybillService.CenterPrintModePrint, CancellationToken.None)
                         .ConfigureAwait(true);
 
                     // JMS nhét lỗi nghiệp vụ vào thân HTTP 200 — quá ba lượt in là code
-                    // 121003005. Sổ có thể tụt hậu so với JMS (in từ giao diện web, hoặc từ máy
-                    // khác), nên bị từ chối ở đường in thật thì lùi sang đường xem trước đúng
-                    // một lượt: người dùng vẫn còn quyền in theo trần của tab này.
+                    // 121003005. Đây là chỗ bypass: xin lại đúng bản xem trước, JMS trả cùng
+                    // một PDF mà không tính lượt nên in được bao nhiêu lần cũng được. Thử
+                    // printMode=2 trước chứ không đi thẳng đường này, để ba lượt đầu vẫn nằm
+                    // trong printsNumber của JMS — đó là số duy nhất còn lại sau khi sổ bị dọn.
                     string error = JmsSendWaybillService.ReadBusinessError(body);
-                    if (error != null && mode == JmsSendWaybillService.CenterPrintModePrint)
+                    if (error != null)
                     {
                         AppLogger.Warning(
                             $"[TabPrint] In Reverse: JMS từ chối in thật ({error}) — chuyển sang bản xem trước.");
@@ -1350,9 +1337,9 @@ namespace AutoJMS
                 _printService.SetSelected(selected, false);
                 if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = false;
 
-                // Cột "Số bản in" là ảnh chụp lúc tra, nhưng nút "Chưa in" và chốt chặn trần
-                // năm lượt đều đọc từ đây — không cộng thì vừa in xong bấm "Chưa in" lại tick
-                // đúng những mã vừa in ra. Cộng xong mới ghi sổ: sổ chép lại đúng con số này.
+                // Cột "Số bản in" là ảnh chụp lúc tra, nhưng nút "Chưa in" đọc từ đây — không
+                // cộng thì vừa in xong bấm "Chưa in" lại tick đúng những mã vừa in ra. Cộng
+                // xong mới ghi sổ: dòng lịch sử chép lại đúng con số này.
                 var printed = new HashSet<string>(selected, StringComparer.OrdinalIgnoreCase);
                 var printedRows = _reverseAllRows
                     .Where(r => printed.Contains(r.WaybillNo ?? "")).ToList();
@@ -1374,18 +1361,6 @@ namespace AutoJMS
                 _printLock.Release();
                 SetPrintButtonState(true);
             }
-        }
-
-        /// <summary>
-        /// Tổng số bản đã in của một vận đơn, lấy số lớn hơn giữa lưới và sổ. Lưới giữ số JMS
-        /// trả về lúc tra (cộng những lượt in trong phiên này), sổ giữ cả những lượt đi đường
-        /// xem trước mà JMS không đếm — bên nào cũng có thể là bên biết nhiều hơn.
-        /// </summary>
-        private int ReversePrintedCount(string waybillNo)
-        {
-            var row = _reverseAllRows.FirstOrDefault(
-                r => string.Equals(r.WaybillNo, waybillNo, StringComparison.OrdinalIgnoreCase));
-            return Math.Max(row?.PrintCount ?? 0, ReversePrintLedger.CountOf(waybillNo));
         }
 
         /// <summary>

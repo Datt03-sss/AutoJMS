@@ -4,182 +4,175 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using AutoJMS.Diagnostics;
 
 namespace AutoJMS
 {
     /// <summary>
-    /// Sổ đếm lượt in của tab IN ĐƠN &gt; In Reverse, giữ trong TSV
-    /// <c>AppData/logs/tab-print-reverse-reprints.tsv</c>.
+    /// Lịch sử in của tab IN ĐƠN &gt; In Reverse, ghi nối tiếp vào
+    /// <c>AppData/logs/tab-print-reverse-reprints.tsv</c> — mỗi lượt in một dòng:
+    /// <code>2026-09-20 14:32:11	845123456789	đã in 4 lần</code>
     ///
-    /// <para>JMS chỉ đếm lượt in thật (<c>printMode=2</c>) và chặn ở lượt thứ tư bằng
-    /// code 121003005. Owner chốt cho in thêm hai lượt nữa bằng đúng đường bản xem trước
-    /// (<c>printMode=1</c>) — cùng một PDF, nhưng JMS không tính lượt. Nghĩa là lượt thứ 4 và
-    /// thứ 5 không tồn tại ở phía JMS: giữ trong RAM thôi thì tắt app một cái là đếm lại từ
-    /// đầu, nên phải nằm dưới đĩa.</para>
+    /// <para>Đây là SỔ GHI, không phải chốt chặn. Owner chốt in không giới hạn: quá ba lượt
+    /// JMS đếm thì lượt sau đi đường bản xem trước (<c>printMode=1</c>, JMS không tính lượt)
+    /// chứ không chặn ai cả. Sổ chỉ để tra lại "mã này đã in mấy lần rồi" — thứ JMS không
+    /// trả lời được, vì chính nó không thấy những lượt đi đường xem trước.</para>
     ///
-    /// <para>Ghi số TUYỆT ĐỐI chứ không cộng dồn: cột "Số bản in" của lưới đã là tổng mà app
-    /// biết (số JMS trả về lúc tra, cộng những lượt app tự in thêm), nên chép thẳng số đó
-    /// xuống sổ là hai bên không bao giờ lệch nhau. Cộng dồn thì một lượt ghi hụt là sai
-    /// vĩnh viễn.</para>
-    ///
-    /// <para>Không bao giờ ném: hỏng sổ thì tệ nhất là in dư một bản, còn chặn người dùng in
-    /// vì lỗi đọc file thì hỏng cả ca làm việc.</para>
+    /// <para>Không bao giờ ném: hỏng sổ thì mất một dòng lịch sử, còn chặn người dùng in vì
+    /// lỗi ghi file thì hỏng cả ca làm việc.</para>
     /// </summary>
     public static class ReversePrintLedger
     {
-        /// <summary>Trần tuyệt đối Owner chốt: ba lượt của JMS cộng hai lượt đi đường xem trước.</summary>
-        public const int MaxPrints = 5;
-
-        /// <summary>Số lượt JMS tự đếm. Chạm mốc này thì lượt sau phải đi đường xem trước.</summary>
-        public const int JmsPrintLimit = 3;
-
         private const string FileName = "tab-print-reverse-reprints.tsv";
-        private const string HeaderLine = "waybillNo\tprintCount\tlastPrintedAt";
         private const string TimeFormat = "yyyy-MM-dd HH:mm:ss";
 
         /// <summary>
-        /// Dòng cũ hơn mốc này bị bỏ ở lượt ghi kế tiếp — nếu không thì file chỉ có lớn thêm.
-        /// Rộng hơn hẳn <c>ReversePrintRetentionDays</c> của thư mục PDF: mất bản in thì in
-        /// lại được, còn mất dòng sổ là mở lại hai lượt in mà JMS không hề hay biết.
+        /// Dòng cũ hơn mốc này bị bỏ ở lượt đọc kế tiếp — không dọn thì file chỉ có lớn thêm.
+        /// Tách khỏi <c>ReversePrintRetentionDays</c> của thư mục PDF: hai thứ Owner chốt hai
+        /// con số khác nhau, gộp lại là một lần đổi kéo theo cả cái kia.
         /// </summary>
-        private const int RetentionDays = 180;
+        private const int RetentionDays = 7;
 
         private static readonly string[] HeaderComment =
         {
-            "# Sổ lượt in của tab IN ĐƠN > In Reverse — app tự ghi, đừng sửa tay.",
-            "# printCount là TỔNG số bản đã in của vận đơn đó (kể cả ba lượt JMS tự đếm).",
-            $"# Chạm {MaxPrints} là app chặn không cho in thêm.",
+            "# Lịch sử in của tab IN ĐƠN > In Reverse — app tự ghi, đừng sửa tay.",
+            $"# Mỗi lượt in một dòng, tự xoá sau {RetentionDays} ngày.",
         };
 
+        /// <summary>Bóc số bản in ra khỏi phần chữ "đã in N lần".</summary>
+        private static readonly Regex CountText = new(@"\d+", RegexOptions.Compiled);
+
         private static readonly object Gate = new();
-        private static Dictionary<string, (int Count, DateTime At)> _rows;
+        private static Dictionary<string, int> _counts;
 
         private static string FilePath => Path.Combine(AppPaths.LogsDir, FileName);
 
-        /// <summary>Số bản đã in mà sổ ghi nhận cho vận đơn này; 0 nếu chưa có dòng nào.</summary>
+        /// <summary>
+        /// Số bản đã in mà sổ ghi nhận cho vận đơn này; 0 nếu chưa có dòng nào. Lấy số LỚN
+        /// NHẤT trong các dòng của mã đó, không phải số dòng: <c>n</c> của mỗi dòng đã là tổng
+        /// tính cả những lượt JMS in trước khi app biết tới mã này.
+        /// </summary>
         public static int CountOf(string waybillNo)
         {
             if (string.IsNullOrWhiteSpace(waybillNo)) return 0;
             lock (Gate)
             {
-                return Load().TryGetValue(waybillNo.Trim(), out var row) ? row.Count : 0;
+                return Load().TryGetValue(waybillNo.Trim(), out int count) ? count : 0;
             }
         }
 
-        /// <summary>
-        /// Chốt số bản in của một lượt vừa in xong rồi ghi thẳng xuống đĩa. Chỉ ghi đè khi số
-        /// mới LỚN HƠN: sổ đi một chiều, một lượt tra trả về số JMS cũ hơn không được phép kéo
-        /// lùi những lượt in mà app đã cho đi.
-        /// </summary>
+        /// <summary>Ghi một dòng cho mỗi vận đơn của lượt in vừa xong, nối vào cuối file.</summary>
         public static void Record(IEnumerable<(string WaybillNo, int PrintCount)> prints)
         {
             if (prints == null) return;
             lock (Gate)
             {
-                var rows = Load();
+                var counts = Load();
                 DateTime now = DateTime.Now;
-                bool changed = false;
+                var lines = new List<string>();
 
                 foreach (var (waybillNo, printCount) in prints)
                 {
                     if (string.IsNullOrWhiteSpace(waybillNo)) continue;
                     string key = waybillNo.Trim();
-                    if (rows.TryGetValue(key, out var old) && old.Count >= printCount) continue;
-
-                    rows[key] = (printCount, now);
-                    changed = true;
+                    lines.Add(FormatLine(now, key, printCount));
+                    if (!counts.TryGetValue(key, out int old) || old < printCount)
+                        counts[key] = printCount;
                 }
 
-                if (changed) Save(rows);
+                if (lines.Count == 0) return;
+                try
+                {
+                    Directory.CreateDirectory(AppPaths.LogsDir);
+                    if (!File.Exists(FilePath))
+                        File.WriteAllLines(FilePath, HeaderComment, Encoding.UTF8);
+                    File.AppendAllLines(FilePath, lines, Encoding.UTF8);
+                }
+                catch (Exception ex)
+                {
+                    // Giữ nguyên bản trong RAM: phiên này vẫn đếm đúng, chỉ mở lại app là mất.
+                    AppLogger.Warning($"[ReversePrintLedger] Không ghi được lịch sử: {ex.Message}");
+                }
             }
         }
-
-        /// <summary>
-        /// <c>printMode</c> cho lượt in kế tiếp của một vận đơn đã in <paramref name="printedSoFar"/>
-        /// bản. Còn trong ba lượt của JMS thì đi đường in thật để JMS đếm như mọi tab khác;
-        /// hết ba lượt thì chỉ còn đường xem trước, và lượt đó chỉ sổ này biết.
-        /// </summary>
-        public static int NextPrintMode(int printedSoFar) =>
-            printedSoFar >= JmsPrintLimit
-                ? JmsSendWaybillService.CenterPrintModePreview
-                : JmsSendWaybillService.CenterPrintModePrint;
 
         // ── internals ────────────────────────────────────────
 
-        private static Dictionary<string, (int Count, DateTime At)> Load()
+        internal static string FormatLine(DateTime at, string waybillNo, int printCount) =>
+            $"{at.ToString(TimeFormat, CultureInfo.InvariantCulture)}\t{waybillNo}\tđã in {printCount} lần";
+
+        private static Dictionary<string, int> Load()
         {
-            if (_rows != null) return _rows;
+            if (_counts != null) return _counts;
+
+            var lines = new List<string>();
             try
             {
-                _rows = File.Exists(FilePath)
-                    ? Parse(File.ReadAllLines(FilePath))
-                    : NewRows();
+                if (File.Exists(FilePath)) lines.AddRange(File.ReadAllLines(FilePath));
             }
             catch (Exception ex)
             {
-                // Đọc hỏng thì coi như sổ trắng: thà cho in thêm còn hơn khoá cứng nút IN.
-                AppLogger.Warning($"[ReversePrintLedger] Không đọc được sổ: {ex.Message}");
-                _rows = NewRows();
+                // Đọc hỏng thì coi như sổ trắng — cột "Số bản in" lùi về số JMS trả về, in vẫn chạy.
+                AppLogger.Warning($"[ReversePrintLedger] Không đọc được lịch sử: {ex.Message}");
             }
-            return _rows;
+
+            var kept = Prune(lines, DateTime.Now.Date.AddDays(-RetentionDays));
+            _counts = CountByWaybill(kept);
+
+            // Dọn ngay lúc đọc, và chỉ ghi lại khi thật sự có dòng bị bỏ: mọi lượt ghi sau đó
+            // chỉ nối thêm cuối file.
+            if (kept.Count != lines.Count(l => !IsComment(l))) Rewrite(kept);
+            return _counts;
         }
 
-        private static void Save(Dictionary<string, (int Count, DateTime At)> rows)
-        {
-            DateTime cutoff = DateTime.Now.Date.AddDays(-RetentionDays);
-            foreach (string key in rows.Where(p => p.Value.At.Date < cutoff).Select(p => p.Key).ToList())
-                rows.Remove(key);
+        /// <summary>Bỏ dòng chú thích, dòng rỗng và mọi dòng cũ hơn <paramref name="cutoff"/>.</summary>
+        internal static List<string> Prune(IEnumerable<string> lines, DateTime cutoff) =>
+            (lines ?? Array.Empty<string>())
+                .Where(l => !IsComment(l))
+                .Where(l => DateTime.TryParseExact(
+                                (l.Split('\t').FirstOrDefault() ?? "").Trim(),
+                                TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at)
+                            && at.Date >= cutoff.Date)
+                .ToList();
 
+        /// <summary>Số bản in lớn nhất từng ghi cho mỗi mã.</summary>
+        internal static Dictionary<string, int> CountByWaybill(IEnumerable<string> lines)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (string raw in lines ?? Array.Empty<string>())
+            {
+                string[] cols = (raw ?? "").Split('\t');
+                if (cols.Length < 3) continue;
+
+                string waybillNo = cols[1].Trim();
+                var match = CountText.Match(cols[2]);
+                if (waybillNo.Length == 0 || !match.Success) continue;
+
+                int count = int.Parse(match.Value, CultureInfo.InvariantCulture);
+                if (!counts.TryGetValue(waybillNo, out int old) || old < count)
+                    counts[waybillNo] = count;
+            }
+            return counts;
+        }
+
+        private static bool IsComment(string line)
+        {
+            string trimmed = (line ?? "").Trim();
+            return trimmed.Length == 0 || trimmed[0] == '#';
+        }
+
+        private static void Rewrite(List<string> kept)
+        {
             try
             {
                 Directory.CreateDirectory(AppPaths.LogsDir);
-                File.WriteAllLines(FilePath, Format(rows), Encoding.UTF8);
+                File.WriteAllLines(FilePath, HeaderComment.Concat(kept), Encoding.UTF8);
             }
             catch (Exception ex)
             {
-                // Giữ nguyên bản trong RAM: phiên này vẫn đếm đúng, chỉ mở lại app là mất.
-                AppLogger.Warning($"[ReversePrintLedger] Không ghi được sổ: {ex.Message}");
+                AppLogger.Warning($"[ReversePrintLedger] Không dọn được lịch sử: {ex.Message}");
             }
         }
-
-        /// <summary>Phần đọc thuần, tách ra để test không cần chạm đĩa.</summary>
-        internal static Dictionary<string, (int Count, DateTime At)> Parse(IEnumerable<string> lines)
-        {
-            var rows = NewRows();
-            foreach (string raw in lines ?? Array.Empty<string>())
-            {
-                string line = (raw ?? "").Trim();
-                if (line.Length == 0 || line[0] == '#') continue;
-
-                string[] cols = line.Split('\t');
-                if (cols.Length < 2) continue;
-
-                // Dòng tiêu đề đi chung một nhánh với dòng rác: cột số không đọc ra thì bỏ.
-                string waybillNo = cols[0].Trim();
-                if (waybillNo.Length == 0 || !int.TryParse(
-                        cols[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
-                    continue;
-
-                DateTime.TryParseExact(
-                    cols.Length > 2 ? cols[2].Trim() : "",
-                    TimeFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at);
-
-                rows[waybillNo] = (count, at);
-            }
-            return rows;
-        }
-
-        /// <summary>Phần ghi thuần, tách ra để test đối chiếu vòng ghi–đọc.</summary>
-        internal static IEnumerable<string> Format(Dictionary<string, (int Count, DateTime At)> rows) =>
-            HeaderComment
-                .Append(HeaderLine)
-                .Concat(rows
-                    .OrderBy(p => p.Key, StringComparer.Ordinal)
-                    .Select(p =>
-                        $"{p.Key}\t{p.Value.Count}\t{p.Value.At.ToString(TimeFormat, CultureInfo.InvariantCulture)}"));
-
-        private static Dictionary<string, (int Count, DateTime At)> NewRows() =>
-            new(StringComparer.OrdinalIgnoreCase);
     }
 }
