@@ -131,6 +131,15 @@ namespace AutoJMS
         private readonly List<TrackingRow> _reverseAllRows = new();
         private int _reversePageIndex;
 
+        /// <summary>
+        /// Bản in của lượt IN gần nhất và đúng bộ mã đã in ra nó. Bấm IN hai lần liền trên
+        /// cùng một danh sách thì dùng lại bytes này, khỏi xin JMS một bản PDF y hệt — nhưng
+        /// lượt in VẪN được ghi sổ, vì giấy vẫn ra khỏi máy in.
+        /// <para><c>ExpiresAt</c> của chính job là hạn dùng lại: hết hạn thì tải bản mới.</para>
+        /// </summary>
+        private PrintJobCacheEntry _reverseLastPrint;
+        private HashSet<string> _reverseLastPrintSet;
+
         private int ReversePageCount =>
             Math.Max(1, (_reverseAllRows.Count + ReversePageSize - 1) / ReversePageSize);
 
@@ -670,6 +679,8 @@ namespace AutoJMS
 
             _reverseAllRows.Clear();
             _reversePageIndex = 0;
+            _reverseLastPrint = null;
+            _reverseLastPrintSet = null;
             UpdateReversePagerUi();
 
             ResetReverseTimeRange();
@@ -1050,6 +1061,12 @@ namespace AutoJMS
                 .Where(r => r != null)
                 .OrderByDescending(r => r.ThoiGianNhanHang ?? "", StringComparer.Ordinal));
 
+            // printsNumber của JMS chỉ đếm lượt printMode=2, nên lượt 4-5 đi đường xem trước
+            // không có ở đó — chỉ sổ dưới đĩa biết. Kéo số của sổ lên ngay lúc nạp để cột
+            // "Số bản in" hiện đúng con số mà nút IN sẽ đem so với trần năm lượt.
+            foreach (var row in _reverseAllRows)
+                row.PrintCount = Math.Max(row.PrintCount, ReversePrintLedger.CountOf(row.WaybillNo));
+
             if (_reverseAllRows.Count == 0)
             {
                 _reversePageIndex = 0;
@@ -1229,8 +1246,11 @@ namespace AutoJMS
         ///   <item>PDF về thư mục riêng <c>Downloads/Thu hồi đã in</c>, dọn theo ngày;</item>
         ///   <item>in xong giữ nguyên lưới, chỉ bỏ tick đúng những mã vừa in.</item>
         /// </list>
-        /// Giới hạn ba lượt in của JMS giữ nguyên như mọi tab khác: hết lượt thì báo đúng câu
-        /// JMS trả về rồi dừng — nút "Copy mã đã chọn" để người dùng mang danh sách đi chỗ khác.
+        /// Giới hạn in là của tab này chứ không còn là của JMS: ba lượt đầu đi
+        /// <c>printMode=2</c> để JMS đếm như mọi tab khác, lượt thứ tư và thứ năm đi
+        /// <c>printMode=1</c> — cùng một PDF, nhưng JMS không tính lượt nên chỉ
+        /// <see cref="ReversePrintLedger"/> biết. Chạm <see cref="ReversePrintLedger.MaxPrints"/>
+        /// thì chặn ngay trước khi chạm mạng; mã vẫn còn trên lưới để bấm "Copy mã đã chọn".
         /// Không gọi <c>QueuePostPrintRefresh</c>: nguồn của lưới này là
         /// <see cref="JmsSendWaybillService"/> chứ không phải tracking, một lượt làm mới theo
         /// tracking chỉ ghi đè các cột bằng dữ liệu rỗng.
@@ -1244,6 +1264,18 @@ namespace AutoJMS
                 return;
             }
 
+            // Chặn TRƯỚC khi chạm JMS: quá trần thì không còn đường in nào hợp lệ, gọi lên chỉ
+            // tốn một lượt xem trước rồi vẫn phải báo lỗi.
+            string overLimit = selected.FirstOrDefault(
+                wb => ReversePrintedCount(wb) >= ReversePrintLedger.MaxPrints);
+            if (overLimit != null)
+            {
+                SetReverseStatus(
+                    $"Vận đơn {overLimit} đã đạt giới hạn in tối đa " +
+                    $"({ReversePrintLedger.MaxPrints} lần). Không thể in thêm.", true);
+                return;
+            }
+
             // Mượn đúng khoá của pipeline in mặc định: hai tab không bao giờ in chồng lên nhau.
             if (!await _printLock.WaitAsync(0).ConfigureAwait(true))
             {
@@ -1254,42 +1286,59 @@ namespace AutoJMS
             SetPrintButtonState(false);
             try
             {
-                SetReverseStatus($"Đang lấy bản in cho {selected.Count} đơn...");
-                string body = await PostCenterPrintAsync(
-                    selected, JmsSendWaybillService.CenterPrintModePrint, CancellationToken.None)
-                    .ConfigureAwait(true);
-
-                // JMS nhét lỗi nghiệp vụ vào thân HTTP 200 — quá ba lượt in là code 121003005.
-                // Dừng đúng ở đây và giữ nguyên tick: ba lượt là luật của JMS, tab này không
-                // tìm đường vòng. Mã vẫn còn trên lưới để bấm "Copy mã đã chọn".
-                string error = JmsSendWaybillService.ReadBusinessError(body);
-                if (error != null)
+                var job = ReuseReverseLastPrint(selected);
+                if (job == null)
                 {
-                    AppLogger.Warning($"[TabPrint] In Reverse: JMS từ chối lệnh in — {error}");
-                    SetReverseStatus($"In thất bại: {error}", true);
-                    return;
+                    int mode = ReversePrintLedger.NextPrintMode(selected.Max(ReversePrintedCount));
+
+                    SetReverseStatus($"Đang lấy bản in cho {selected.Count} đơn...");
+                    string body = await PostCenterPrintAsync(selected, mode, CancellationToken.None)
+                        .ConfigureAwait(true);
+
+                    // JMS nhét lỗi nghiệp vụ vào thân HTTP 200 — quá ba lượt in là code
+                    // 121003005. Sổ có thể tụt hậu so với JMS (in từ giao diện web, hoặc từ máy
+                    // khác), nên bị từ chối ở đường in thật thì lùi sang đường xem trước đúng
+                    // một lượt: người dùng vẫn còn quyền in theo trần của tab này.
+                    string error = JmsSendWaybillService.ReadBusinessError(body);
+                    if (error != null && mode == JmsSendWaybillService.CenterPrintModePrint)
+                    {
+                        AppLogger.Warning(
+                            $"[TabPrint] In Reverse: JMS từ chối in thật ({error}) — chuyển sang bản xem trước.");
+                        body = await PostCenterPrintAsync(
+                            selected, JmsSendWaybillService.CenterPrintModePreview, CancellationToken.None)
+                            .ConfigureAwait(true);
+                        error = JmsSendWaybillService.ReadBusinessError(body);
+                    }
+
+                    if (error != null)
+                    {
+                        AppLogger.Warning($"[TabPrint] In Reverse: JMS từ chối lệnh in — {error}");
+                        SetReverseStatus($"In thất bại: {error}", true);
+                        return;
+                    }
+
+                    string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, selected[0]), selected[0]);
+                    string localPath = await DownloadReversePdfAsync(pdfUrl, selected[0]).ConfigureAwait(true);
+
+                    byte[] pdfBytes = string.IsNullOrEmpty(localPath) ? null : File.ReadAllBytes(localPath);
+                    if (pdfBytes == null || pdfBytes.Length == 0)
+                    {
+                        SetReverseStatus("In thất bại: không tải được PDF từ JMS.", true);
+                        return;
+                    }
+
+                    job = new PrintJobCacheEntry
+                    {
+                        WaybillNo = selected[0],
+                        PdfBytes = pdfBytes,
+                        LocalPdfPath = localPath,
+                        CreatedAt = DateTime.Now,
+                        ExpiresAt = DateTime.Now.Add(ReprintJobTtl),
+                        PdfHash = ComputeSha256(pdfBytes)
+                    };
                 }
 
-                string pdfUrl = ResolvePrintPdfUrl(ParsePrintWaybillResponse(body, selected[0]), selected[0]);
-                string localPath = await DownloadReversePdfAsync(pdfUrl, selected[0]).ConfigureAwait(true);
-
-                byte[] pdfBytes = string.IsNullOrEmpty(localPath) ? null : File.ReadAllBytes(localPath);
-                if (pdfBytes == null || pdfBytes.Length == 0)
-                {
-                    SetReverseStatus("In thất bại: không tải được PDF từ JMS.", true);
-                    return;
-                }
-
-                var result = await SubmitPrintImmediatelyAsync(new PrintJobCacheEntry
-                {
-                    WaybillNo = selected[0],
-                    PdfBytes = pdfBytes,
-                    LocalPdfPath = localPath,
-                    CreatedAt = DateTime.Now,
-                    ExpiresAt = DateTime.Now.Add(ReprintJobTtl),
-                    PdfHash = ComputeSha256(pdfBytes)
-                }, selected[0]).ConfigureAwait(true);
-
+                var result = await SubmitPrintImmediatelyAsync(job, selected[0]).ConfigureAwait(true);
                 if (result == null || !result.CompletedBySpooler)
                 {
                     SetReverseStatus($"In thất bại: {result?.Reason ?? "máy in không nhận lệnh"}", true);
@@ -1301,11 +1350,17 @@ namespace AutoJMS
                 _printService.SetSelected(selected, false);
                 if (tabPrint_btnSelectAll != null) tabPrint_btnSelectAll.Checked = false;
 
-                // Cột "Số bản in" là ảnh chụp lúc tra, nhưng nút "Chưa in" đọc từ đây — không
-                // cộng thì vừa in xong bấm "Chưa in" lại tick đúng những mã vừa in ra.
+                // Cột "Số bản in" là ảnh chụp lúc tra, nhưng nút "Chưa in" và chốt chặn trần
+                // năm lượt đều đọc từ đây — không cộng thì vừa in xong bấm "Chưa in" lại tick
+                // đúng những mã vừa in ra. Cộng xong mới ghi sổ: sổ chép lại đúng con số này.
                 var printed = new HashSet<string>(selected, StringComparer.OrdinalIgnoreCase);
-                foreach (var row in _reverseAllRows.Where(r => printed.Contains(r.WaybillNo ?? "")))
-                    row.PrintCount++;
+                var printedRows = _reverseAllRows
+                    .Where(r => printed.Contains(r.WaybillNo ?? "")).ToList();
+                foreach (var row in printedRows) row.PrintCount++;
+                ReversePrintLedger.Record(printedRows.Select(r => (r.WaybillNo, r.PrintCount)));
+
+                _reverseLastPrint = job;
+                _reverseLastPrintSet = printed;
 
                 SetReverseStatus($"Đã in {selected.Count} đơn." + ReversePageSuffix);
             }
@@ -1319,6 +1374,36 @@ namespace AutoJMS
                 _printLock.Release();
                 SetPrintButtonState(true);
             }
+        }
+
+        /// <summary>
+        /// Tổng số bản đã in của một vận đơn, lấy số lớn hơn giữa lưới và sổ. Lưới giữ số JMS
+        /// trả về lúc tra (cộng những lượt in trong phiên này), sổ giữ cả những lượt đi đường
+        /// xem trước mà JMS không đếm — bên nào cũng có thể là bên biết nhiều hơn.
+        /// </summary>
+        private int ReversePrintedCount(string waybillNo)
+        {
+            var row = _reverseAllRows.FirstOrDefault(
+                r => string.Equals(r.WaybillNo, waybillNo, StringComparison.OrdinalIgnoreCase));
+            return Math.Max(row?.PrintCount ?? 0, ReversePrintLedger.CountOf(waybillNo));
+        }
+
+        /// <summary>
+        /// Bản in của lượt trước, nếu lượt này tick ĐÚNG bộ mã đó và bản in chưa hết hạn. JMS
+        /// dựng PDF theo danh sách mã, nên cùng bộ mã là cùng một file — xin lại chỉ tốn thêm
+        /// một lượt gọi mạng và một lượt tải. Lệch dù chỉ một mã là phải tải bản mới: thứ tự
+        /// trang trong PDF đi theo danh sách gửi lên.
+        /// </summary>
+        private PrintJobCacheEntry ReuseReverseLastPrint(List<string> selected)
+        {
+            if (_reverseLastPrint == null || _reverseLastPrintSet == null) return null;
+            if (DateTime.Now >= _reverseLastPrint.ExpiresAt) return null;
+            if (!_reverseLastPrintSet.SetEquals(selected)) return null;
+
+            AppLogger.Info(
+                $"[TabPrint] In Reverse: dùng lại bản in gần nhất cho {selected.Count} đơn " +
+                "— không gọi lại JMS.");
+            return _reverseLastPrint;
         }
 
         /// <summary>
