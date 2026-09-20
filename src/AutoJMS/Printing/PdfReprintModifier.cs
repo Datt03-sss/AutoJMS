@@ -295,10 +295,6 @@ public static class PdfReprintModifier
 
     private static void DrawRoute(XGraphics gfx, XPen pen, XRect rect, XSize page, PdfLabelGrid grid, ReprintOverlayContent c, ReprintLayoutOptions layout)
     {
-        gfx.DrawRectangle(XBrushes.White, rect);
-        // Mép trái đã được ReprintLayoutOptions.Normalize ghim trùng mép phải của Người nhận.
-        var frame = layout.DrawRouteBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
-
         // Vạch chia ô: lấy đúng vạch của nhãn nếu đọc được, không thì mới quy ra từ tỷ lệ.
         var dividers = grid.HorizontalInside(rect.Y, rect.Bottom, rect.X, rect.Right).ToList();
         if (dividers.Count == 0)
@@ -311,9 +307,6 @@ public static class PdfReprintModifier
                 .ToList();
         }
 
-        foreach (var y in dividers)
-            gfx.DrawLine(pen, frame.X, y, frame.Right, y);
-
         // N vạch chia tạo N+1 ô, đánh số từ 0 từ trên xuống.
         var bounds = new List<double> { rect.Y };
         bounds.AddRange(dividers);
@@ -322,6 +315,11 @@ public static class PdfReprintModifier
         var codes = new[] { c.Route1, c.Route2, c.Route3 };
         var cellIndexes = layout.RouteCellIndexes ?? Array.Empty<int>();
 
+        // Chỉ đè trắng ĐÚNG những ô sắp vẽ lại. Cách cũ đè trắng cả khung rồi vẽ lại cả ba
+        // đoạn — ở lô nhiều đơn thì chỉ đoạn 2 được sửa, nên đè cả khung là xoá mất mã tuyến
+        // thật của từng đơn ở đoạn 1 và 3. Ô để trống nay có nghĩa "giữ nguyên bản gốc",
+        // giống ô địa chỉ và ô ghi chú.
+        var targets = new List<(XRect Cell, string Code)>(codes.Length);
         for (int i = 0; i < codes.Length && i < cellIndexes.Length; i++)
         {
             var code = Clean(codes[i]);
@@ -330,13 +328,27 @@ public static class PdfReprintModifier
             int cell = cellIndexes[i];
             if (cell < 0 || cell >= bounds.Count - 1) continue;
 
-            var cellRect = new XRect(rect.X, bounds[cell], rect.Width, bounds[cell + 1] - bounds[cell]);
+            targets.Add((new XRect(rect.X, bounds[cell], rect.Width, bounds[cell + 1] - bounds[cell]), code));
+        }
 
-            var padded = Pad(cellRect, layout.Padding);
+        if (targets.Count == 0) return;
+
+        foreach (var target in targets)
+            gfx.DrawRectangle(XBrushes.White, target.Cell);
+
+        // Mép trái đã được ReprintLayoutOptions.Normalize ghim trùng mép phải của Người nhận.
+        // Khung và vạch chia vẽ SAU miếng đè trắng vì miếng đè liếm vào chính những nét đó.
+        var frame = layout.DrawRouteBorder ? DrawFrame(gfx, pen, rect, layout.LineWidth, page) : rect;
+        foreach (var y in dividers)
+            gfx.DrawLine(pen, frame.X, y, frame.Right, y);
+
+        foreach (var target in targets)
+        {
+            var padded = Pad(target.Cell, layout.Padding);
             if (padded.Width <= 1 || padded.Height <= 1) continue;
 
-            var font = FitFont(gfx, code, layout, layout.RouteFontSize, true, padded.Width, 5.0);
-            gfx.DrawString(code, font, XBrushes.Black, padded, XStringFormats.Center);
+            var font = FitFont(gfx, target.Code, layout, layout.RouteFontSize, true, padded.Width, 5.0);
+            gfx.DrawString(target.Code, font, XBrushes.Black, padded, XStringFormats.Center);
         }
     }
 

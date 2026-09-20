@@ -3600,11 +3600,6 @@ namespace AutoJMS
             BeginInvoke((MethodInvoker)(async () => await ExecuteTabPrintSearchAsync(input, newMode)));
         }
 
-        private void print_InChuyenHoan_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InHoan);
-        private void print_InChuyenTiep_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InChuyenTiep);
-        private void print_InLaiDon_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InLaiDon);
-        private void print_InReverse_Click(object sender, EventArgs e) => _printService.SetMode(PrintMode.InReverse);
-
         private string GetBaseWaybill(string waybill)
         {
             if (string.IsNullOrEmpty(waybill)) return "";
@@ -3614,33 +3609,36 @@ namespace AutoJMS
 
         private async void tabPrint_inputWaybill_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Enter)
-            {
-                e.SuppressKeyPress = true;
-                // "In lại đơn" bắt buộc phải xem trước bản in, nên không cho AutoMode in thẳng.
-                // "In Reverse" thì ô mã vận đơn không phải đầu vào của nó, nên cũng không.
-                if (tabPrint_AutoMode.Active && !IsReprintModeActive && !IsReverseModeActive)
-                {
-                    string input = tabPrint_inputWaybill.Text.Trim();
-                    if (string.IsNullOrWhiteSpace(input)) return;
+            if (e.KeyCode != Keys.Enter) return;
+            e.SuppressKeyPress = true;
 
-                    ClearPrintStatusSnapshot();
-                    await _printService.SearchAndLoadAsync(input, _printService.CurrentMode);
-                    _printService.SelectAll(true);
-                    tabPrint_btnSelectAll.Checked = true;
-                    var preloadTask = QueuePreloadPrintJobForCurrentSelection("AutoModeSearch");
-                    if (preloadTask != null)
-                        await preloadTask;
-                    await ExecutePrintAsync(true);
-                    tabPrint_inputWaybill.Text = "";
-                }
-                else
-                {
-                    string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
-                    if (string.IsNullOrWhiteSpace(input)) return;
-                    await ExecuteTabPrintSearchAsync(input);
-                }
+            string input = tabPrint_inputWaybill?.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(input) || _printService == null) return;
+
+            // Tab con đang mở là nguồn sự thật của mode, không phải CurrentMode — xem chú
+            // thích trong ExecuteTabPrintSearchAsync. Đọc CurrentMode ở đây từng làm Enter
+            // trong "In lại đơn" rơi nhầm vào nhánh AutoMode: in thẳng không xem trước rồi
+            // xoá ô mã, nên gõ xong Enter là mất mã mà bảng không ra dòng nào.
+            PrintMode mode = GetTabPrintModeFromSelectedTab();
+
+            // "In lại đơn" bắt buộc phải xem trước bản in, nên không cho AutoMode in thẳng.
+            // "In Reverse" thì ô mã vận đơn không phải đầu vào của nó, nên cũng không.
+            if (!tabPrint_AutoMode.Active || mode == PrintMode.InLaiDon || mode == PrintMode.InReverse)
+            {
+                await ExecuteTabPrintSearchAsync(input);
+                return;
             }
+
+            ClearPrintStatusSnapshot();
+            _printService.SetMode(mode);
+            await _printService.SearchAndLoadAsync(input, mode);
+            _printService.SelectAll(true);
+            tabPrint_btnSelectAll.Checked = true;
+            var preloadTask = QueuePreloadPrintJobForCurrentSelection("AutoModeSearch");
+            if (preloadTask != null)
+                await preloadTask;
+            await ExecutePrintAsync(true);
+            tabPrint_inputWaybill.Text = "";
         }
 
         private async void print_TimKiem_Click(object sender, EventArgs e)

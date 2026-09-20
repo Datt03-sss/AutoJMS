@@ -41,6 +41,11 @@ namespace AutoJMS
         private const int ReprintDebounceMs = 600;
         private const int ReprintPreviewFilesKept = 5;
 
+        // Trên ngưỡng này thì một lượt gõ đè lên quá nhiều nhãn để người dùng còn soát được
+        // từng bản, nên các vùng mang dữ liệu riêng của từng đơn bị khoá (xem
+        // ApplyReprintEditingState). Owner chốt mức 10.
+        private const int ReprintBulkEditLimit = 10;
+
         // FontAwesome: con mắt mở / con mắt gạch chéo.
         private const int ReprintSymbolEyeOpen = 61550;
         private const int ReprintSymbolEyeClosed = 61552;
@@ -560,6 +565,14 @@ namespace AutoJMS
         /// </summary>
         private void ApplyReprintEditingState()
         {
+            // Một lượt sửa đè CÙNG một giá trị lên MỌI nhãn trong lô: PdfReprintModifier duyệt
+            // hết các trang với đúng một ReprintOverlayContent. Tên/SĐT/địa chỉ/ghi chú là của
+            // riêng từng đơn nên quá ReprintBulkEditLimit đơn là chặn hẳn. Mã đoạn 2 (bưu cục
+            // đích) và dòng đếm lần in thì cả lô dùng chung nên vẫn sửa được.
+            bool bulk = (_reprintWaybills?.Count ?? 0) > ReprintBulkEditLimit;
+            SetReprintToggleAvailable(_reprintChkReceiver, !bulk);
+            SetReprintToggleAvailable(_reprintChkNotes, !bulk);
+
             bool receiver = _reprintChkReceiver?.Checked == true;
             bool route = _reprintChkRoute?.Checked == true;
             bool notes = _reprintChkNotes?.Checked == true;
@@ -571,14 +584,35 @@ namespace AutoJMS
 
             SetReprintFieldEnabled(_reprintTxtPhone, receiver);
             SetReprintFieldEnabled(_reprintTxtAddress, receiver);
-            SetReprintFieldEnabled(_reprintTxtRoute1, route);
+            SetReprintFieldEnabled(_reprintTxtRoute1, route && !bulk);
             SetReprintFieldEnabled(_reprintTxtRoute2, route);
-            SetReprintFieldEnabled(_reprintTxtRoute3, route);
+            SetReprintFieldEnabled(_reprintTxtRoute3, route && !bulk);
             SetReprintFieldEnabled(_reprintTxtNote, notes);
             SetReprintFieldEnabled(_reprintTxtPrintCode, printCount);
             SetReprintFieldEnabled(_reprintTxtPrintTimes, printCount);
             SetReprintFieldEnabled(_reprintTxtPrintClock, printCount);
             SetReprintFieldEnabled(_reprintTxtPrintDate, printCount);
+        }
+
+        /// <summary>
+        /// Bật/tắt một ô tick "Sửa …". Tắt thì bỏ tick luôn — để tick lại mà ô nhập đã khoá
+        /// thì <see cref="BuildReprintOverlayContent"/> vẫn coi là có sửa và đè vùng đó.
+        /// </summary>
+        private void SetReprintToggleAvailable(UICheckBox box, bool available)
+        {
+            if (box == null || box.IsDisposed) return;
+            box.Enabled = available;
+            if (available || !box.Checked) return;
+
+            _reprintSuppressEvents = true;
+            try
+            {
+                box.Checked = false;
+            }
+            finally
+            {
+                _reprintSuppressEvents = false;
+            }
         }
 
         private static void SetReprintFieldEnabled(UITextBox box, bool enabled)
@@ -627,6 +661,7 @@ namespace AutoJMS
             _reprintCacheKey = "";
             _reprintFirstWaybill = "";
             _reprintWaybills = new List<string>();
+            ApplyReprintEditingState();   // hết lô thì mở khoá lại các ô bị chặn ở chế độ hàng loạt
 
             if (!clearInputs) return;
 
@@ -681,6 +716,9 @@ namespace AutoJMS
 
         private static string ReadReprintText(UITextBox box) => (box?.Text ?? "").Trim();
 
+        private static string ReadReprintTextIfEditable(UITextBox box)
+            => box != null && !box.ReadOnly ? ReadReprintText(box) : "";
+
         // ==================================================================================
         // Pipeline
         // ==================================================================================
@@ -708,6 +746,7 @@ namespace AutoJMS
             _reprintOriginalPdf = null;
 
             PrefillReprintEditor(waybills);
+            ApplyReprintEditingState();   // lô mới, số đơn mới -> khoá/mở lại các vùng sửa
             SetReprintStatus($"Đang lấy bản in từ JMS ({waybills.Count} đơn)...");
 
             try
@@ -906,12 +945,42 @@ namespace AutoJMS
             return text == "-" ? "" : text;
         }
 
-        /// <summary>POSTs batchPrintPDF and downloads the returned label.</summary>
+        /// <summary>
+        /// Lấy đủ một nhãn cho mỗi mã đã chọn: gửi gộp cả danh sách một lượt, thiếu thì bù.
+        /// <para>
+        /// JMS nhận cả danh sách nhưng có khi chỉ dựng được vài nhãn, và nó KHÔNG nói thiếu mã
+        /// nào — <c>successNumber</c> chỉ là con số. Vì vậy lượt bù không ghép tiếp phần đuôi
+        /// (ghép mù là dán nhãn của đơn này sang đơn khác) mà gọi lại từng mã một: mỗi lượt
+        /// đúng một trang nên thứ tự trang chắc chắn khớp thứ tự mã.
+        /// </para>
+        /// </summary>
         private async Task<byte[]> FetchReprintLabelAsync(List<string> waybills)
         {
             await RefreshAuthTokenAsync().ConfigureAwait(true);
             if (!JmsAuthStateService.HasToken)
                 throw new InvalidOperationException("Không tìm thấy Token xác thực.");
+
+            byte[] batch = await PostReprintLabelAsync(waybills).ConfigureAwait(true);
+            if (waybills.Count <= 1) return batch;
+
+            int pages = ReprintPdfBatch.CountPages(batch);
+            if (pages >= waybills.Count) return batch;
+
+            AppLogger.Warning(
+                $"REPRINT_BATCH_SHORT requested={waybills.Count} pages={pages} — gọi bù từng mã");
+            SetReprintStatus($"JMS chỉ trả {pages}/{waybills.Count} nhãn, đang lấy bù từng đơn...");
+
+            var parts = new List<byte[]>(waybills.Count);
+            foreach (string waybill in waybills)
+                parts.Add(await PostReprintLabelAsync(new List<string> { waybill }).ConfigureAwait(true));
+
+            return ReprintPdfBatch.Merge(parts);
+        }
+
+        /// <summary>POSTs batchPrintPDF and downloads the returned label.</summary>
+        private async Task<byte[]> PostReprintLabelAsync(List<string> waybills)
+        {
+            string tag = waybills.Count == 1 ? waybills[0] : $"{waybills[0]}+{waybills.Count - 1}";
 
             var payload = new Dictionary<string, object>
             {
@@ -938,17 +1007,18 @@ namespace AutoJMS
                 body = await response.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(true) ?? "";
             }
 
-            AppLogger.Info($"REPRINT_API_RESPONSE waybill={_reprintFirstWaybill} http={statusCode} bodyLength={body.Length}");
+            AppLogger.Info($"REPRINT_API_RESPONSE waybill={tag} http={statusCode} bodyLength={body.Length}"
+                           + ReprintPdfBatch.DescribeCounts(body));
             if (!JmsResponseClassifier.IsSuccess(statusCode, body))
                 throw new InvalidOperationException($"JMS từ chối batchPrintPDF (HTTP {statusCode}).");
 
             string pdfUrl = ExtractReprintPdfUrl(body);
             if (string.IsNullOrWhiteSpace(pdfUrl))
-                throw new InvalidOperationException("Phản hồi JMS không có pdfUrl.");
+                throw new InvalidOperationException($"Phản hồi JMS không có pdfUrl ({tag}).");
 
             using var downloadCts = new CancellationTokenSource(ReprintDownloadTimeout);
             var bytes = await JmsApiClient.Instance.GetByteArrayAsync(pdfUrl, downloadCts.Token).ConfigureAwait(true);
-            AppLogger.Info($"REPRINT_PDF_DOWNLOADED waybill={_reprintFirstWaybill} bytes={bytes?.Length ?? 0}");
+            AppLogger.Info($"REPRINT_PDF_DOWNLOADED waybill={tag} bytes={bytes?.Length ?? 0}");
             return bytes;
         }
 
@@ -1012,16 +1082,22 @@ namespace AutoJMS
 
                 string missingReceiver = content.EditReceiver ? DescribeMissingReceiverParts(content) : "";
 
+                // Một lượt gõ đè y hệt lên mọi nhãn của lô, nên số nhãn bị ảnh hưởng phải hiện
+                // ra trước khi bấm IN — không thì chỉ trang đầu được soát mà cả lô đã bị sửa.
+                int labels = _reprintWaybills?.Count ?? 1;
+                string scope = labels > 1 ? $"{labels} đơn (từ {_reprintFirstWaybill})" : _reprintFirstWaybill;
+                string bulkNote = labels > 1 ? $" Nội dung đang sửa được đè y hệt lên cả {labels} nhãn." : "";
+
                 if (!string.IsNullOrEmpty(appliedError))
                     SetReprintStatus($"Không đè được nội dung ({appliedError}) — đang xem bản gốc.", true);
                 else if (missingReceiver.Length > 0)
                     SetReprintStatus(
-                        $"Đang chỉnh sửa {_reprintFirstWaybill}. Vui lòng điền chính xác thông tin trước khi in.",
+                        $"Đang chỉnh sửa {scope}. Vui lòng điền chính xác thông tin trước khi in.{bulkNote}",
                         true);
                 else if (content.HasAnyEdit)
-                    SetReprintStatus($"Đã xem trước bản sửa cho {_reprintFirstWaybill}. Bấm IN để in đúng bản này.");
+                    SetReprintStatus($"Đã xem trước bản sửa cho {scope}. Bấm IN để in đúng bản này.{bulkNote}");
                 else
-                    SetReprintStatus($"Đã xem trước bản gốc cho {_reprintFirstWaybill}. Tick ô \"Sửa\" nếu cần chỉnh.");
+                    SetReprintStatus($"Đã xem trước bản gốc cho {scope}. Tick ô \"Sửa\" nếu cần chỉnh.");
             }
             catch (Exception ex)
             {
@@ -1058,9 +1134,12 @@ namespace AutoJMS
             // Đúng thứ đang hiển thị: bản che khi chưa bấm con mắt, số đầy đủ khi đã bấm.
             ReceiverPhone = ReadReprintText(_reprintTxtPhone),
             ReceiverAddress = ReadReprintText(_reprintTxtAddress),
-            Route1 = ReadReprintText(_reprintTxtRoute1),
-            Route2 = ReadReprintText(_reprintTxtRoute2),
-            Route3 = ReadReprintText(_reprintTxtRoute3),
+            // Chỉ lấy đoạn nào đang thật sự mở cho sửa. Ở lô > ReprintBulkEditLimit đơn, đoạn 1
+            // và 3 bị khoá vì chúng khác nhau theo từng đơn; đọc chúng ra là đem mã của đơn
+            // đầu dán lên cả lô. Chuỗi rỗng ở đây nghĩa là "giữ nguyên ô gốc" (xem DrawRoute).
+            Route1 = ReadReprintTextIfEditable(_reprintTxtRoute1),
+            Route2 = ReadReprintTextIfEditable(_reprintTxtRoute2),
+            Route3 = ReadReprintTextIfEditable(_reprintTxtRoute3),
             Note = ReadReprintText(_reprintTxtNote),
             PrintCountNetworkCode = ReadReprintText(_reprintTxtPrintCode),
             PrintCountTimes = ReadReprintText(_reprintTxtPrintTimes),
