@@ -22,8 +22,8 @@ namespace AutoJMS.UI
     {
         private const int WM_PAINT = 0x000F;
 
-        /// <summary>Bề dày nét vàng. 2px đủ nổi ở 100% DPI mà chưa nuốt mất chữ.</summary>
-        private const int BorderWidth = 2;
+        /// <summary>Bề dày nét vàng ở 96 DPI; màn scaling cao được nhân lên theo DeviceDpi.</summary>
+        private const int BaseBorderWidth = 2;
 
         private readonly UITabControl _tab;
         private bool _drawFailureLogged;
@@ -79,17 +79,30 @@ namespace AutoJMS.UI
             int index = _tab.SelectedIndex;
             if (index < 0 || index >= _tab.TabCount) return;
 
-            // Lùi vào 1px để nét nằm gọn trong ô tab, không liếm sang ô bên cạnh.
-            var border = Rectangle.Inflate(_tab.GetTabRect(index), -1, -1);
+            // SunnyUI vẽ đầu tab từ gốc client, BỎ QUA cái lề mà tab control gốc của Windows
+            // chừa ra quanh dải đầu tab; GetTabRect thì lại trả toạ độ CÓ lề đó. Lấy thẳng
+            // GetTabRect là viền lệch đúng bằng bề rộng lề: đo trên máy Owner được 2px — mép
+            // trái hở 3px xanh, mép phải tràn hẳn ra ngoài ô. GetTabRect(0).Location chính là
+            // cái lề ấy, nên trừ đi là khớp, và khớp ở mọi mức scaling vì lề cũng co giãn theo.
+            var inlay = _tab.GetTabRect(0).Location;
+            var painted = _tab.GetTabRect(index);
+            painted.Offset(-inlay.X, -inlay.Y);
 
-            // Đầu tab thò xuống dưới vùng trang 2px (đo được: GetTabRect kết thúc ở y=41 trong
-            // khi DisplayRectangle bắt đầu ở y=40). Trang là một HWND con nên nó vẽ SAU control
-            // cha — cạnh dưới rơi vào đó là mất trắng. Kẹp lại để hình chữ nhật khép kín hẳn
-            // bên trong dải đầu tab.
-            int maxBottom = _tab.DisplayRectangle.Top - 1;
-            if (border.Bottom > maxBottom) border.Height = maxBottom - border.Y;
+            // Nét và khoảng lùi tính theo DPI: 2px cố định ở màn 150%/200% mảnh như sợi chỉ.
+            double dpiScale = _tab.DeviceDpi / 96.0;
+            int thickness = Math.Max(
+                BaseBorderWidth,
+                (int)Math.Round(BaseBorderWidth * dpiScale, MidpointRounding.AwayFromZero));
+            int inset = Math.Max(1, (int)Math.Round(dpiScale, MidpointRounding.AwayFromZero));
 
-            if (border.Width <= BorderWidth * 2 || border.Height <= BorderWidth * 2) return;
+            // Lùi vào để nét nằm gọn trong ô tab, không liếm sang ô bên cạnh.
+            var border = Rectangle.Inflate(painted, -inset, -inset);
+
+            // Trang là một HWND con nên nó vẽ SAU control cha — cạnh dưới rơi xuống vùng trang
+            // là mất trắng. Kẹp lại để hình chữ nhật khép kín hẳn trong dải đầu tab.
+            border.Height = Math.Min(border.Height, _tab.DisplayRectangle.Top - 1 - border.Y);
+
+            if (border.Width <= thickness * 2 || border.Height <= thickness * 2) return;
 
             var palette = Palette();
 
@@ -97,13 +110,13 @@ namespace AutoJMS.UI
 
             using (var gradient = new LinearGradientBrush(
                        border, palette.Top, palette.Bottom, LinearGradientMode.Vertical))
-            using (var pen = new Pen(gradient, BorderWidth) { Alignment = PenAlignment.Inset })
+            using (var pen = new Pen(gradient, thickness) { Alignment = PenAlignment.Inset })
             {
                 g.DrawRectangle(pen, border);
             }
 
             // Gờ sáng 1px nằm sát phía trong: chính nó tạo cảm giác dập nổi của viền kim loại.
-            var bevel = Rectangle.Inflate(border, -BorderWidth, -BorderWidth);
+            var bevel = Rectangle.Inflate(border, -thickness, -thickness);
             if (bevel.Width <= 0 || bevel.Height <= 0) return;
 
             using var bevelPen = new Pen(palette.Bevel, 1f);
