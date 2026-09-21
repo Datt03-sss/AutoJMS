@@ -425,7 +425,7 @@ Phần tử "quét trong 1–3 giây" quan trọng nhất của AutoJMS.
 | Quy tắc | Vì sao |
 |---|---|
 | **Chiều cao hàng cố định, `AutoSizeRowsMode = None`** | Cho phép grid tính vùng cuộn bằng phép nhân thay vì đo từng hàng |
-| **`AutoSizeColumnsMode = None` hoặc `DisplayedCells`** | **Không bao giờ `AllCells`/`AllCellsExceptHeader`** — chúng đo **mọi** dòng. `PrintService.cs:156` đang dùng `AllCells`, cần xử lý riêng. |
+| **`AutoSizeColumnsMode = None` (bề rộng cố định) hoặc `Fill` + `FillWeight`** | `ADataGridView` chốt `None` trong constructor. **Không** `DisplayedCells` — nó đo lại mọi ô đang hiện sau mỗi lần cuộn. **Không bao giờ** `AllCells`/`AllCellsExceptHeader` — chúng đo **mọi** dòng. `PrintService.cs:156` đang dùng `AllCells`, cần xử lý riêng. |
 | **`VirtualMode = true` khi > 5.000 dòng** | Hiện đang là `false` tường minh (`WaybillTrackingService.cs:68`). Cần chuyển cho đường 100k dòng. |
 | **`DoubleBuffered = true`** | Bắt buộc, nếu không sẽ nháy khi cuộn |
 | **`EnableHeadersVisualStyles = false`** | Cần thiết để header nhận màu theme |

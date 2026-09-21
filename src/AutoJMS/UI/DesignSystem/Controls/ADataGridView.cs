@@ -27,7 +27,10 @@ namespace AutoJMS.UI.DesignSystem
 
             // Hiệu năng - xem DESIGN.md §Q "ràng buộc cứng"
             AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
+            // KHÔNG dùng DisplayedCells: chế độ đó đo lại bề rộng của mọi ô đang hiện
+            // sau mỗi lần cuộn, đúng thứ làm giật bảng 100k dòng trên máy cấu hình thấp.
+            // Bề rộng lấy từ Column.Width (None) hoặc FillWeight (Fill) - đều không đo ô.
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
             AllowUserToResizeRows = false;
 

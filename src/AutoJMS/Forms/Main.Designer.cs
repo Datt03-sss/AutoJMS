@@ -34,11 +34,6 @@ namespace AutoJMS
             DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
             DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
-            DataGridViewCellStyle dataGridViewCellStyle6 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle7 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle8 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle9 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle10 = new DataGridViewCellStyle();
             uiIntegerUpDown1 = new Sunny.UI.UIIntegerUpDown();
             uiComboBox1 = new Sunny.UI.UIComboBox();
             tabAbout = new TabPage();
@@ -89,19 +84,19 @@ namespace AutoJMS
             tabTracking = new TabPage();
             uiTableLayoutPanel2 = new Sunny.UI.UITableLayoutPanel();
             uiFlowLayoutPanel1 = new Sunny.UI.UIFlowLayoutPanel();
-            tabTracking_btnSearch = new Sunny.UI.UISymbolButton();
-            tabTracking_btnExport = new Sunny.UI.UISymbolButton();
-            tabTracking_btnClear = new Sunny.UI.UISymbolButton();
-            tabTracking_btnDownload = new Sunny.UI.UISymbolButton();
-            tabTracking_btnSpeExport = new Sunny.UI.UISymbolButton();
-            tabTracking_btnUpload = new Sunny.UI.UISymbolButton();
+            tabTracking_btnSearch = new AutoJMS.UI.DesignSystem.AButton();
+            tabTracking_btnExport = new AutoJMS.UI.DesignSystem.AButton();
+            tabTracking_btnClear = new AutoJMS.UI.DesignSystem.AButton();
+            tabTracking_btnDownload = new AutoJMS.UI.DesignSystem.AButton();
+            tabTracking_btnSpeExport = new AutoJMS.UI.DesignSystem.AButton();
+            tabTracking_btnUpload = new AutoJMS.UI.DesignSystem.AButton();
             uiTableLayoutPanel11 = new Sunny.UI.UITableLayoutPanel();
             uiTableLayoutPanel12 = new Sunny.UI.UITableLayoutPanel();
             uiLabel6 = new Sunny.UI.UILabel();
             tabTracking_countSum = new Sunny.UI.UILabel();
-            tabTracking_inputWaybill = new Sunny.UI.UIRichTextBox();
+            tabTracking_inputWaybill = new AutoJMS.UI.DesignSystem.ATextBox();
             tabTracking_process = new Sunny.UI.UIProcessBar();
-            tabTracking_dataView = new Sunny.UI.UIDataGridView();
+            tabTracking_dataView = new AutoJMS.UI.DesignSystem.ADataGridView();
             tabDKCH = new TabPage();
             uiTableLayoutPanel1 = new Sunny.UI.UITableLayoutPanel();
             tabDKCH_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
@@ -1007,110 +1002,79 @@ namespace AutoJMS
             // 
             // tabTracking_btnSearch
             // 
-            tabTracking_btnSearch.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnSearch.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnSearch.ForeHoverColor = Color.Black;
+            // "Tìm kiếm" là hành động chính của tab TRA HÀNH TRÌNH nên là Primary DUY NHẤT
+            // của thanh này (DESIGN.md §K: tối đa một Primary mỗi vùng). Năm nút còn lại
+            // để mặc định Secondary. Bản SunnyUI tô cả sáu cùng một màu xanh nên nhìn
+            // vào thanh công cụ không biết nút nào là việc chính.
             tabTracking_btnSearch.Location = new Point(10, 5);
             tabTracking_btnSearch.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnSearch.MinimumSize = new Size(1, 1);
             tabTracking_btnSearch.Name = "tabTracking_btnSearch";
-            tabTracking_btnSearch.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnSearch.Size = new Size(110, 35);
             tabTracking_btnSearch.Symbol = 361442;
             tabTracking_btnSearch.SymbolSize = 16;
             tabTracking_btnSearch.TabIndex = 3;
             tabTracking_btnSearch.Text = "Tìm kiếm";
-            tabTracking_btnSearch.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabTracking_btnSearch.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
             tabTracking_btnSearch.Click += btnSearch_Click;
             // 
             // tabTracking_btnExport
             // 
-            tabTracking_btnExport.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnExport.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnExport.ForeHoverColor = Color.Black;
             tabTracking_btnExport.Location = new Point(130, 5);
             tabTracking_btnExport.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnExport.MinimumSize = new Size(1, 1);
             tabTracking_btnExport.Name = "tabTracking_btnExport";
-            tabTracking_btnExport.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnExport.Size = new Size(120, 35);
             tabTracking_btnExport.Symbol = 61787;
             tabTracking_btnExport.SymbolSize = 16;
             tabTracking_btnExport.TabIndex = 8;
             tabTracking_btnExport.Text = "Xuất dữ liệu";
-            tabTracking_btnExport.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabTracking_btnExport.Click += btn_Export_Click;
             // 
             // tabTracking_btnClear
             // 
-            tabTracking_btnClear.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnClear.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnClear.ForeHoverColor = Color.Black;
             tabTracking_btnClear.Location = new Point(260, 5);
             tabTracking_btnClear.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnClear.MinimumSize = new Size(1, 1);
             tabTracking_btnClear.Name = "tabTracking_btnClear";
-            tabTracking_btnClear.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnClear.Size = new Size(110, 35);
             tabTracking_btnClear.Symbol = 61470;
             tabTracking_btnClear.SymbolSize = 16;
             tabTracking_btnClear.TabIndex = 7;
             tabTracking_btnClear.Text = "Làm mới";
-            tabTracking_btnClear.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabTracking_btnClear.Click += btn_Clear_Click;
             // 
             // tabTracking_btnDownload
             // 
-            tabTracking_btnDownload.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnDownload.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnDownload.ForeHoverColor = Color.Black;
             tabTracking_btnDownload.Location = new Point(380, 5);
             tabTracking_btnDownload.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnDownload.MinimumSize = new Size(1, 1);
             tabTracking_btnDownload.Name = "tabTracking_btnDownload";
-            tabTracking_btnDownload.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnDownload.Size = new Size(110, 35);
             tabTracking_btnDownload.Symbol = 61465;
             tabTracking_btnDownload.SymbolSize = 16;
             tabTracking_btnDownload.TabIndex = 6;
             tabTracking_btnDownload.Text = "Tải xuống";
-            tabTracking_btnDownload.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabTracking_btnDownload.Click += btn_Download_Click;
             // 
             // tabTracking_btnSpeExport
             // 
-            tabTracking_btnSpeExport.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnSpeExport.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnSpeExport.ForeHoverColor = Color.Black;
             tabTracking_btnSpeExport.Location = new Point(500, 5);
             tabTracking_btnSpeExport.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnSpeExport.MinimumSize = new Size(1, 1);
             tabTracking_btnSpeExport.Name = "tabTracking_btnSpeExport";
-            tabTracking_btnSpeExport.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnSpeExport.Size = new Size(126, 35);
             tabTracking_btnSpeExport.Symbol = 361462;
             tabTracking_btnSpeExport.SymbolSize = 16;
             tabTracking_btnSpeExport.TabIndex = 5;
             tabTracking_btnSpeExport.Text = "Phát - Hoàn";
-            tabTracking_btnSpeExport.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabTracking_btnSpeExport.Click += btn_Export_Spe_Click;
             // 
             // tabTracking_btnUpload
             // 
-            tabTracking_btnUpload.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabTracking_btnUpload.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabTracking_btnUpload.ForeHoverColor = Color.Black;
             tabTracking_btnUpload.Location = new Point(636, 5);
             tabTracking_btnUpload.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_btnUpload.MinimumSize = new Size(1, 1);
             tabTracking_btnUpload.Name = "tabTracking_btnUpload";
-            tabTracking_btnUpload.RectHoverColor = Color.FromArgb(80, 160, 255);
             tabTracking_btnUpload.Size = new Size(110, 35);
             tabTracking_btnUpload.Symbol = 61678;
             tabTracking_btnUpload.SymbolSize = 16;
             tabTracking_btnUpload.TabIndex = 4;
             tabTracking_btnUpload.Text = "Tải lên";
-            tabTracking_btnUpload.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabTracking_btnUpload.Click += tabTracking_btnUpload_Click;
             // 
             // uiTableLayoutPanel11
@@ -1178,17 +1142,16 @@ namespace AutoJMS
             // 
             // tabTracking_inputWaybill
             // 
-            tabTracking_inputWaybill.FillColor = Color.White;
             tabTracking_inputWaybill.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             tabTracking_inputWaybill.Location = new Point(155, 0);
             tabTracking_inputWaybill.Margin = new Padding(5, 0, 5, 0);
-            tabTracking_inputWaybill.MinimumSize = new Size(1, 1);
+            // UIRichTextBox trước đây luôn nhiều dòng và luôn có thanh cuộn dọc. ATextBox
+            // mặc định một dòng, nên hai dòng này GIỮ LẠI hành vi dán nhiều mã vận đơn.
+            tabTracking_inputWaybill.Multiline = true;
             tabTracking_inputWaybill.Name = "tabTracking_inputWaybill";
-            tabTracking_inputWaybill.Padding = new Padding(2);
-            tabTracking_inputWaybill.ShowText = false;
+            tabTracking_inputWaybill.ScrollBars = ScrollBars.Vertical;
             tabTracking_inputWaybill.Size = new Size(240, 130);
             tabTracking_inputWaybill.TabIndex = 1;
-            tabTracking_inputWaybill.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabTracking_process
             // 
@@ -1204,52 +1167,18 @@ namespace AutoJMS
             // 
             // tabTracking_dataView
             // 
-            dataGridViewCellStyle6.BackColor = Color.White;
-            tabTracking_dataView.AlternatingRowsDefaultCellStyle = dataGridViewCellStyle6;
-            tabTracking_dataView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.ColumnHeader;
-            tabTracking_dataView.BackgroundColor = Color.White;
-            tabTracking_dataView.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle7.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle7.BackColor = Color.FromArgb(80, 160, 255);
-            dataGridViewCellStyle7.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle7.ForeColor = Color.White;
-            dataGridViewCellStyle7.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle7.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle7.WrapMode = DataGridViewTriState.True;
-            tabTracking_dataView.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle7;
-            tabTracking_dataView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dataGridViewCellStyle8.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle8.BackColor = SystemColors.Window;
-            dataGridViewCellStyle8.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle8.ForeColor = Color.FromArgb(48, 48, 48);
-            dataGridViewCellStyle8.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle8.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle8.WrapMode = DataGridViewTriState.False;
-            tabTracking_dataView.DefaultCellStyle = dataGridViewCellStyle8;
+            // Màu nền, màu lưới, font và cả 5 DataGridViewCellStyle cũ đã bỏ: ADataGridView
+            // tự đặt trong ApplyTheme() nên đổi theme là bảng đổi theo. Ở đây chỉ còn
+            // vị trí/kích thước — đúng phần Designer thật sự sở hữu.
             tabTracking_dataView.Dock = DockStyle.Fill;
-            tabTracking_dataView.EnableHeadersVisualStyles = false;
-            tabTracking_dataView.Font = new Font("Microsoft Sans Serif", 12F);
-            tabTracking_dataView.GridColor = Color.FromArgb(80, 160, 255);
             tabTracking_dataView.Location = new Point(5, 190);
             tabTracking_dataView.Margin = new Padding(5);
             tabTracking_dataView.Name = "tabTracking_dataView";
-            tabTracking_dataView.ReadOnly = true;
-            tabTracking_dataView.RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle9.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle9.BackColor = Color.FromArgb(235, 243, 255);
-            dataGridViewCellStyle9.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle9.ForeColor = Color.FromArgb(48, 48, 48);
-            dataGridViewCellStyle9.SelectionBackColor = Color.FromArgb(80, 160, 255);
-            dataGridViewCellStyle9.SelectionForeColor = Color.White;
-            dataGridViewCellStyle9.WrapMode = DataGridViewTriState.True;
-            tabTracking_dataView.RowHeadersDefaultCellStyle = dataGridViewCellStyle9;
-            tabTracking_dataView.RowHeadersVisible = false;
-            dataGridViewCellStyle10.BackColor = Color.White;
-            dataGridViewCellStyle10.Font = new Font("Microsoft Sans Serif", 12F);
-            tabTracking_dataView.RowsDefaultCellStyle = dataGridViewCellStyle10;
-            tabTracking_dataView.SelectedIndex = -1;
+            // Bảng hành trình có ~20 cột, trên ngưỡng 8 cột của DESIGN.md §Q nên kẻ cả
+            // đường dọc. ADataGridView mặc định chỉ kẻ ngang; để mặc định thì 20 cột chữ
+            // dính liền nhau, đọc kém hơn hẳn bảng SunnyUI đang chạy.
+            tabTracking_dataView.ShowVerticalLines = true;
             tabTracking_dataView.Size = new Size(1376, 518);
-            tabTracking_dataView.StripeOddColor = Color.White;
             tabTracking_dataView.TabIndex = 2;
             // 
             // tabDKCH
@@ -1785,19 +1714,19 @@ namespace AutoJMS
         private TabPage tabTracking;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel2;
         private Sunny.UI.UIFlowLayoutPanel uiFlowLayoutPanel1;
-        private Sunny.UI.UISymbolButton tabTracking_btnSearch;
-        private Sunny.UI.UISymbolButton tabTracking_btnExport;
-        private Sunny.UI.UISymbolButton tabTracking_btnClear;
-        private Sunny.UI.UISymbolButton tabTracking_btnDownload;
-        private Sunny.UI.UISymbolButton tabTracking_btnSpeExport;
-        private Sunny.UI.UISymbolButton tabTracking_btnUpload;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnSearch;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnExport;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnClear;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnDownload;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnSpeExport;
+        private AutoJMS.UI.DesignSystem.AButton tabTracking_btnUpload;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel11;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel12;
         private Sunny.UI.UILabel uiLabel6;
         private Sunny.UI.UILabel tabTracking_countSum;
-        private Sunny.UI.UIRichTextBox tabTracking_inputWaybill;
+        private AutoJMS.UI.DesignSystem.ATextBox tabTracking_inputWaybill;
         private Sunny.UI.UIProcessBar tabTracking_process;
-        private Sunny.UI.UIDataGridView tabTracking_dataView;
+        private AutoJMS.UI.DesignSystem.ADataGridView tabTracking_dataView;
         private TabPage tabDKCH;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel1;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabDKCH_webView;

@@ -305,7 +305,9 @@ namespace AutoJMS
 
             // ================= GẮN EVENT UI =================
             tabTracking_inputWaybill.KeyDown += tabTracking_inputWaybill_KeyDown;
-            GuardEnterNewLine(tabTracking_inputWaybill);
+            // .Inner: guard dời con nháy bằng SelectionStart/SelectionLength, mà hai thứ đó
+            // nằm trên TextBox ruột chứ không có ở lớp vỏ ATextBox.
+            GuardEnterNewLine(tabTracking_inputWaybill.Inner);
             tabTracking_inputWaybill.TextChanged += (s, e) => UpdateWaybillCount();
             tabDKCH_inputNewBill.TextChanged += (s, e) => QueueRefreshDkchCount();
             tabDKCH_sheetName.SelectedIndexChanged += (s, e) => QueueRefreshDkchCount();
@@ -3332,7 +3334,7 @@ namespace AutoJMS
         private void btn_Clear_Click(object sender, EventArgs e)
         {
             _trackingService?.ClearData();
-            tabTracking_inputWaybill.Clear();
+            tabTracking_inputWaybill.Inner.Clear();
         }
 
         private void btn_Export_Spe_Click(object sender, EventArgs e) => _trackingService.ExportSpecial();
@@ -3383,8 +3385,8 @@ namespace AutoJMS
                     if (!string.IsNullOrEmpty(cleaned))
                     {
                         // Dán khi con nháy đang giữa mã cũng cắt đôi mã đó — dời về cuối dòng trước.
-                        MoveCaretToEndOfLine(tabTracking_inputWaybill);
-                        tabTracking_inputWaybill.SelectedText = Environment.NewLine + cleaned;
+                        MoveCaretToEndOfLine(tabTracking_inputWaybill.Inner);
+                        tabTracking_inputWaybill.Inner.SelectedText = Environment.NewLine + cleaned;
                     }
                 }
             }

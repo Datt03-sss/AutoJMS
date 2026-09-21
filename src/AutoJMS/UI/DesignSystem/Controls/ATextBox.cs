@@ -92,6 +92,18 @@ namespace AutoJMS.UI.DesignSystem
             set { _inner.Multiline = value; PerformLayout(); }
         }
 
+        /// <summary>
+        /// Chỉ có tác dụng khi <see cref="Multiline"/> bật. Ô nhập mã vận đơn nhận
+        /// hàng trăm mã dán một lần nên PHẢI có thanh cuộn dọc, nếu không người dùng
+        /// mất hẳn phần mã nằm dưới đáy ô mà không có dấu hiệu gì.
+        /// </summary>
+        [DefaultValue(ScrollBars.None)]
+        public ScrollBars ScrollBars
+        {
+            get => _inner.ScrollBars;
+            set => _inner.ScrollBars = value;
+        }
+
         [DefaultValue(HorizontalAlignment.Left)]
         public HorizontalAlignment TextAlign
         {
