@@ -26,7 +26,9 @@ using Size = System.Drawing.Size;
 
 namespace AutoJMS
 {
-    public partial class Main : UIForm
+    // Phase 1 của việc gỡ Sunny.UI: Main kế thừa Form chuẩn, không còn UIForm.
+    // Thanh tiêu đề nay là thanh tiêu đề của Windows; dải tab cũ do TopNavigation thay.
+    public partial class Main : Form
     {
         private static string JmsHomeUrl => AppConfig.Current.JmsBaseUrl.TrimEnd('/');
         private static string AppsScriptUrl => AppConfig.Current.AppsScriptUrl;

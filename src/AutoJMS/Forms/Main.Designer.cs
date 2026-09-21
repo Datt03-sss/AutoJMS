@@ -130,7 +130,8 @@ namespace AutoJMS
             tabHome_btnReload = new Sunny.UI.UISymbolButton();
             tabHome_btnHome = new Sunny.UI.UISymbolButton();
             tabHome_urlBar = new Sunny.UI.UITextBox();
-            tabControl = new Sunny.UI.UITabControl();
+            tabControl = new AutoJMS.UI.DesignSystem.ATabControl();
+            topNav = new AutoJMS.UI.DesignSystem.TopNavigation();
             tabAbout.SuspendLayout();
             uiTableLayoutPanel5.SuspendLayout();
             uiTableLayoutPanel21.SuspendLayout();
@@ -1760,43 +1761,32 @@ namespace AutoJMS
             tabControl.Controls.Add(tabPrint);
             tabControl.Controls.Add(tabAbout);
             tabControl.Dock = DockStyle.Fill;
-            tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
-            tabControl.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabControl.ItemSize = new Size(135, 40);
-            tabControl.Location = new Point(0, 35);
-            tabControl.MainPage = "HOME";
             tabControl.Margin = new Padding(0);
-            tabControl.MenuStyle = Sunny.UI.UIMenuStyle.Custom;
             tabControl.Name = "tabControl";
             tabControl.Padding = new Point(0, 0);
             tabControl.SelectedIndex = 0;
             tabControl.Size = new Size(1386, 753);
-            tabControl.SizeMode = TabSizeMode.Fixed;
-            tabControl.TabBackColor = Color.Azure;
             tabControl.TabIndex = 1;
-            tabControl.TabPageTextAlignment = HorizontalAlignment.Center;
-            tabControl.TabSelectedColor = Color.White;
-            tabControl.TabSelectedForeColor = SystemColors.ControlText;
-            tabControl.TabSelectedHighColor = Color.Black;
-            tabControl.TabSelectedHighColorSize = 3;
-            tabControl.TabUnSelectedColor = Color.FromArgb(115, 179, 255);
-            tabControl.TabUnSelectedForeColor = Color.FromArgb(240, 240, 240);
-            tabControl.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabControl.SelectedIndexChanged += tabControl_SelectedIndexChanged;
-            // 
+            //
+            // topNav
+            //
+            topNav.Dock = DockStyle.Top;
+            topNav.Name = "topNav";
+            topNav.TabIndex = 0;
+            topNav.Target = tabControl;
+            //
             // Main
-            // 
+            //
             AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(1386, 788);
             Controls.Add(tabControl);
+            Controls.Add(topNav);
             Icon = (Icon)resources.GetObject("$this.Icon");
             MaximizeBox = false;
-            Movable = false;
             Name = "Main";
             Text = "AutoJMS";
-            TitleFont = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             WindowState = FormWindowState.Maximized;
-            ZoomScaleRect = new Rectangle(19, 19, 1554, 1024);
             FormClosing += Main_FormClosing;
             tabAbout.ResumeLayout(false);
             uiTableLayoutPanel5.ResumeLayout(false);
@@ -1947,7 +1937,8 @@ namespace AutoJMS
         private Sunny.UI.UISymbolButton tabHome_btnReload;
         private Sunny.UI.UISymbolButton tabHome_btnHome;
         private Sunny.UI.UITextBox tabHome_urlBar;
-        private Sunny.UI.UITabControl tabControl;
+        private AutoJMS.UI.DesignSystem.ATabControl tabControl;
+        private AutoJMS.UI.DesignSystem.TopNavigation topNav;
         //private Sunny.UI.UIComboBox tabChat_timeCheck;
     }
 }

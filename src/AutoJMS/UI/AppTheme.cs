@@ -148,7 +148,12 @@ namespace AutoJMS.UI
             }
         }
 
-        public static void Apply(UIForm form)
+        /// <summary>
+        /// Nhận <see cref="Form"/> chứ không còn chỉ <see cref="UIForm"/>: từ Phase 1 của việc
+        /// gỡ Sunny.UI, <c>Main</c> đã là Form chuẩn. Form nào vẫn là UIForm thì vẫn được tô
+        /// thanh tiêu đề như cũ nhờ nhánh dưới đây.
+        /// </summary>
+        public static void Apply(Form form)
         {
             if (form == null) return;
 
@@ -156,14 +161,19 @@ namespace AutoJMS.UI
 
             var colors = Colors;
 
-            // Apply base form style
-            form.Style = UIStyle.Custom;
-            form.StyleCustomMode = true;
-            form.TitleColor = colors.TitleColor;
-            form.TitleForeColor = colors.TitleForeColor;
-            form.RectColor = colors.RectColor;
-            form.ControlBoxForeColor = colors.TitleForeColor;
-            form.ControlBoxFillHoverColor = (CurrentTheme == ThemeMode.Dark) ? colors.CardBackground : Color.FromArgb(232, 244, 255);
+            // Thanh tiêu đề tự vẽ là của UIForm. Form chuẩn dùng thanh tiêu đề của Windows,
+            // không có thuộc tính nào tương ứng để gán.
+            if (form is UIForm uiForm)
+            {
+                uiForm.Style = UIStyle.Custom;
+                uiForm.StyleCustomMode = true;
+                uiForm.TitleColor = colors.TitleColor;
+                uiForm.TitleForeColor = colors.TitleForeColor;
+                uiForm.RectColor = colors.RectColor;
+                uiForm.ControlBoxForeColor = colors.TitleForeColor;
+                uiForm.ControlBoxFillHoverColor = (CurrentTheme == ThemeMode.Dark) ? colors.CardBackground : Color.FromArgb(232, 244, 255);
+            }
+
             form.BackColor = colors.AppBackground;
 
             EnableDoubleBuffer(form);
@@ -187,13 +197,19 @@ namespace AutoJMS.UI
                     continue;
 
                 // Control của design system tự lấy màu/cỡ chữ từ ThemeManager và tự vẽ lại
-                // khi đổi theme. Bỏ qua cả cây con: ApplyStyleToControl đè Font và màu của
-                // SunnyUI lên chúng thì mọi token trong ThemeTypography/ThemeColors thành vô nghĩa.
-                if (ctrl.GetType().Namespace == "AutoJMS.UI.DesignSystem")
-                    continue;
+                // khi đổi theme. ApplyStyleToControl đè Font và màu của SunnyUI lên chúng thì
+                // mọi token trong ThemeTypography/ThemeColors thành vô nghĩa — nên bỏ qua.
+                //
+                // Chỉ bỏ qua CHÍNH control đó, KHÔNG bỏ qua cây con: từ khi tabControl là
+                // ATabControl, cả 5 tab nằm trong nó. Bỏ cây con thì mọi control SunnyUI còn lại
+                // của app — tabPrint_printFunc trước tiên — mất sạch theme mà không báo lỗi gì.
+                bool isDesignSystem = ctrl.GetType().Namespace == "AutoJMS.UI.DesignSystem";
 
-                EnableDoubleBuffer(ctrl);
-                ApplyStyleToControl(ctrl, colors);
+                if (!isDesignSystem)
+                {
+                    EnableDoubleBuffer(ctrl);
+                    ApplyStyleToControl(ctrl, colors);
+                }
 
                 if (ctrl.Controls.Count > 0)
                 {
