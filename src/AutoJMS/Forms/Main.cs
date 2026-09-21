@@ -173,7 +173,6 @@ namespace AutoJMS
             // Phải chạy TRƯỚC mọi code đọc/ghi tabDKCH_inputNewBill / tabDKCH_newBillDone.
             BuildDkchNewbillSection();
             // Lớp giao diện mới của panel trái DKCH — xem Main.DkchDesignSystem.cs.
-            // Không xoá control cũ: tắt cờ DkchDesignSystemEnabled là về nguyên trạng.
             BuildDkchDesignSystem();
             if (tabDKCH_inputNewBill != null)
             {
@@ -384,7 +383,6 @@ namespace AutoJMS
             _appUserActionCapture.CaptureButton(tabDKCH_btnDKCH1, "tabDKCH", "DKCH1.Click");
             _appUserActionCapture.CaptureButton(tabDKCH_btnDKCH2, "tabDKCH", "DKCH2.Click");
             _appUserActionCapture.CaptureButton(tabDKCH_btnStop, "tabDKCH", "Stop.Click");
-            CaptureDkchDesignSystemButtons();   // nút A* đang thay ba nút trên — no-op khi tắt cờ
             _appUserActionCapture.CaptureTextEnter(tabDKCH_inputNewBill, "tabDKCH", "WaybillInput.Enter", () => tabDKCH_inputNewBill?.Text ?? "");
             _appUserActionCapture.CaptureButton(tabTracking_btnSearch, "tabTracking", "Search.Click");
             _appUserActionCapture.CaptureTextEnter(tabTracking_inputWaybill, "tabTracking", "WaybillInput.Enter", () => tabTracking_inputWaybill?.Text ?? "");
@@ -2604,7 +2602,6 @@ namespace AutoJMS
             tabDKCH_btnStop.Visible = isRunning;
             tabDKCH_btnStop.Enabled = isRunning;
             if (isRunning) tabDKCH_btnStop.BringToFront();
-            SyncDkchDesignSystem(isRunning);   // no-op khi tắt cờ
         }
 
         private enum DkchPageState

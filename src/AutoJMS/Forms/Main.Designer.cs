@@ -106,30 +106,30 @@ namespace AutoJMS
             uiTableLayoutPanel1 = new Sunny.UI.UITableLayoutPanel();
             tabDKCH_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
             tabHome_pnlLeft = new Sunny.UI.UIPanel();
-            uiTitlePanel2 = new Sunny.UI.UITitlePanel();
+            uiTitlePanel2 = new AutoJMS.UI.DesignSystem.APanel();
             uiTableLayoutPanel33 = new Sunny.UI.UITableLayoutPanel();
             splitContainer1 = new SplitContainer();
-            uiTitlePanel1 = new Sunny.UI.UITitlePanel();
+            uiTitlePanel1 = new AutoJMS.UI.DesignSystem.APanel();
             uiTableLayoutPanel9 = new Sunny.UI.UITableLayoutPanel();
             uiPanel1 = new Sunny.UI.UIPanel();
             uiTableLayoutPanel10 = new Sunny.UI.UITableLayoutPanel();
-            tabDKCH_btnDKCH1 = new Sunny.UI.UIButton();
-            tabDKCH_btnDKCH2 = new Sunny.UI.UIButton();
-            tabDKCH_btnStop = new Sunny.UI.UIButton();
-            tabDKCH_Home = new Sunny.UI.UISymbolButton();
+            tabDKCH_btnDKCH1 = new AutoJMS.UI.DesignSystem.AButton();
+            tabDKCH_btnDKCH2 = new AutoJMS.UI.DesignSystem.AButton();
+            tabDKCH_btnStop = new AutoJMS.UI.DesignSystem.AButton();
+            tabDKCH_Home = new AutoJMS.UI.DesignSystem.AButton();
             // Mục DATA (nhãn, dropdown Sheet/Chế độ, ô số Cột, toggle Dùng sheet, Tổng/OK)
             // KHÔNG còn dựng ở đây — xem Main.DkchData.cs (BuildDkchDataSection).
-            tabDKCH_dataSrc = new Sunny.UI.UITitlePanel();
+            tabDKCH_dataSrc = new AutoJMS.UI.DesignSystem.APanel();
             tabHome = new TabPage();
             tabHome_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
-            tabHome_navBar = new Sunny.UI.UIPanel();
+            tabHome_navBar = new AutoJMS.UI.DesignSystem.APanel();
             tabHome_txtAddress = new Sunny.UI.UITableLayoutPanel();
-            tabHome_btnMenu = new Sunny.UI.UISymbolButton();
-            tabHome_btnBack = new Sunny.UI.UISymbolButton();
-            tabHome_btnForward = new Sunny.UI.UISymbolButton();
-            tabHome_btnReload = new Sunny.UI.UISymbolButton();
-            tabHome_btnHome = new Sunny.UI.UISymbolButton();
-            tabHome_urlBar = new Sunny.UI.UITextBox();
+            tabHome_btnMenu = new AutoJMS.UI.DesignSystem.AButton();
+            tabHome_btnBack = new AutoJMS.UI.DesignSystem.AButton();
+            tabHome_btnForward = new AutoJMS.UI.DesignSystem.AButton();
+            tabHome_btnReload = new AutoJMS.UI.DesignSystem.AButton();
+            tabHome_btnHome = new AutoJMS.UI.DesignSystem.AButton();
+            tabHome_urlBar = new AutoJMS.UI.DesignSystem.ATextBox();
             tabControl = new AutoJMS.UI.DesignSystem.ATabControl();
             topNav = new AutoJMS.UI.DesignSystem.TopNavigation();
             tabAbout.SuspendLayout();
@@ -1321,13 +1321,13 @@ namespace AutoJMS
             uiTitlePanel2.Margin = new Padding(0);
             uiTitlePanel2.MinimumSize = new Size(1, 1);
             uiTitlePanel2.Name = "uiTitlePanel2";
+            // Padding trên 20px là chỗ của dải tiêu đề UITitlePanel cũ. UITitlePanel để
+            // ShowText = false nên chữ "NEWBILL" chưa bao giờ hiện; giữ nguyên 20px để
+            // mọi control con ở đúng toạ độ cũ. Text giữ lại để còn tìm được theo tên mục.
             uiTitlePanel2.Padding = new Padding(1, 20, 1, 1);
-            uiTitlePanel2.ShowText = false;
             uiTitlePanel2.Size = new Size(272, 1);
             uiTitlePanel2.TabIndex = 2;
             uiTitlePanel2.Text = "NEWBILL";
-            uiTitlePanel2.TextAlignment = ContentAlignment.MiddleLeft;
-            uiTitlePanel2.TitleHeight = 20;
             // 
             // uiTableLayoutPanel33
             // 
@@ -1373,12 +1373,9 @@ namespace AutoJMS
             uiTitlePanel1.MinimumSize = new Size(1, 1);
             uiTitlePanel1.Name = "uiTitlePanel1";
             uiTitlePanel1.Padding = new Padding(1, 20, 1, 1);
-            uiTitlePanel1.ShowText = false;
             uiTitlePanel1.Size = new Size(272, 140);
             uiTitlePanel1.TabIndex = 1;
             uiTitlePanel1.Text = "CONTROL";
-            uiTitlePanel1.TextAlignment = ContentAlignment.MiddleLeft;
-            uiTitlePanel1.TitleHeight = 20;
             // 
             // uiTableLayoutPanel9
             // 
@@ -1434,100 +1431,57 @@ namespace AutoJMS
             // 
             // tabDKCH_btnDKCH1
             // 
+            // Màu ba nút DKCH1 / DKCH2 / Dừng mang NGHĨA NGHIỆP VỤ, không phải trang trí
+            // (DESIGN.md §B): Success / Warning / Danger. Không đổi sang Primary.
             tabDKCH_btnDKCH1.Dock = DockStyle.Fill;
-            tabDKCH_btnDKCH1.FillColor = Color.FromArgb(128, 255, 128);
-            tabDKCH_btnDKCH1.FillColor2 = Color.FromArgb(128, 255, 128);
-            tabDKCH_btnDKCH1.FillDisableColor = Color.Gray;
-            tabDKCH_btnDKCH1.FillHoverColor = Color.Lime;
-            tabDKCH_btnDKCH1.FillPressColor = Color.Lime;
-            tabDKCH_btnDKCH1.FillSelectedColor = Color.Lime;
-            tabDKCH_btnDKCH1.Font = new Font("Segoe UI Semibold", 14.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabDKCH_btnDKCH1.ForeHoverColor = Color.Black;
-            tabDKCH_btnDKCH1.ForePressColor = Color.Black;
-            tabDKCH_btnDKCH1.ForeSelectedColor = Color.Black;
             tabDKCH_btnDKCH1.Location = new Point(3, 3);
-            tabDKCH_btnDKCH1.MinimumSize = new Size(1, 1);
             tabDKCH_btnDKCH1.Name = "tabDKCH_btnDKCH1";
-            tabDKCH_btnDKCH1.Radius = 15;
-            tabDKCH_btnDKCH1.RectColor = Color.Black;
+            tabDKCH_btnDKCH1.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabDKCH_btnDKCH1.Size = new Size(258, 37);
             tabDKCH_btnDKCH1.TabIndex = 1;
             tabDKCH_btnDKCH1.Text = "DKCH1";
-            tabDKCH_btnDKCH1.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabDKCH_btnDKCH1.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Success;
             tabDKCH_btnDKCH1.Click += tabDKCH_btnDKCH1_Click;
             // 
             // tabDKCH_btnDKCH2
             // 
             tabDKCH_btnDKCH2.Dock = DockStyle.Fill;
-            tabDKCH_btnDKCH2.FillColor = Color.FromArgb(255, 192, 128);
-            tabDKCH_btnDKCH2.FillColor2 = Color.FromArgb(255, 192, 128);
-            tabDKCH_btnDKCH2.FillDisableColor = Color.Gray;
-            tabDKCH_btnDKCH2.FillHoverColor = Color.FromArgb(255, 128, 0);
-            tabDKCH_btnDKCH2.FillPressColor = Color.FromArgb(255, 128, 0);
-            tabDKCH_btnDKCH2.FillSelectedColor = Color.FromArgb(255, 128, 0);
-            tabDKCH_btnDKCH2.Font = new Font("Segoe UI Semibold", 14.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabDKCH_btnDKCH2.ForeHoverColor = Color.Black;
-            tabDKCH_btnDKCH2.ForePressColor = Color.Black;
-            tabDKCH_btnDKCH2.ForeSelectedColor = Color.Black;
             tabDKCH_btnDKCH2.Location = new Point(3, 46);
-            tabDKCH_btnDKCH2.MinimumSize = new Size(1, 1);
             tabDKCH_btnDKCH2.Name = "tabDKCH_btnDKCH2";
-            tabDKCH_btnDKCH2.Radius = 15;
-            tabDKCH_btnDKCH2.RectColor = Color.Black;
+            tabDKCH_btnDKCH2.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabDKCH_btnDKCH2.Size = new Size(258, 37);
             tabDKCH_btnDKCH2.TabIndex = 1;
             tabDKCH_btnDKCH2.Text = "DKCH2";
-            tabDKCH_btnDKCH2.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabDKCH_btnDKCH2.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Warning;
             tabDKCH_btnDKCH2.Click += tabDKCH_btnDKCH2_Click;
             // 
             // tabDKCH_btnStop
             // 
             tabDKCH_btnStop.Dock = DockStyle.Fill;
-            tabDKCH_btnStop.FillColor = Color.FromArgb(255, 128, 128);
-            tabDKCH_btnStop.FillColor2 = Color.FromArgb(255, 128, 128);
-            tabDKCH_btnStop.FillHoverColor = Color.Red;
-            tabDKCH_btnStop.FillPressColor = Color.Red;
-            tabDKCH_btnStop.FillSelectedColor = Color.FromArgb(255, 128, 128);
-            tabDKCH_btnStop.Font = new Font("Segoe UI Semibold", 14.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabDKCH_btnStop.ForeHoverColor = Color.Black;
-            tabDKCH_btnStop.ForePressColor = Color.Black;
-            tabDKCH_btnStop.ForeSelectedColor = Color.Black;
             tabDKCH_btnStop.Location = new Point(0, 0);
             tabDKCH_btnStop.Margin = new Padding(5, 0, 5, 5);
-            tabDKCH_btnStop.MinimumSize = new Size(1, 1);
             tabDKCH_btnStop.Name = "tabDKCH_btnStop";
             tabDKCH_btnStop.Padding = new Padding(5);
-            tabDKCH_btnStop.Radius = 15;
-            tabDKCH_btnStop.RectColor = Color.Black;
+            tabDKCH_btnStop.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabDKCH_btnStop.Size = new Size(264, 86);
             tabDKCH_btnStop.TabIndex = 1;
             tabDKCH_btnStop.Text = "Dừng";
-            tabDKCH_btnStop.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabDKCH_btnStop.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Danger;
             tabDKCH_btnStop.Click += tabDKCH_btnStop_Click;
             // 
             // tabDKCH_Home
             // 
             tabDKCH_Home.Anchor = AnchorStyles.Top;
-            tabDKCH_Home.FillColor = Color.FromArgb(255, 192, 192);
-            tabDKCH_Home.FillColor2 = Color.Transparent;
-            tabDKCH_Home.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabDKCH_Home.ForeColor = Color.Black;
             tabDKCH_Home.Location = new Point(95, 3);
             tabDKCH_Home.Margin = new Padding(0, 3, 0, 3);
-            tabDKCH_Home.MinimumSize = new Size(1, 1);
             tabDKCH_Home.Name = "tabDKCH_Home";
-            tabDKCH_Home.Radius = 16;
-            tabDKCH_Home.RectColor = Color.Black;
+            tabDKCH_Home.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabDKCH_Home.Size = new Size(80, 24);
-            tabDKCH_Home.Symbol = 61461;
-            tabDKCH_Home.SymbolColor = Color.Black;
-            tabDKCH_Home.SymbolHoverColor = Color.FromArgb(128, 128, 255);
-            tabDKCH_Home.SymbolPressColor = Color.Black;
-            tabDKCH_Home.SymbolSelectedColor = Color.Black;
+            tabDKCH_Home.Symbol = 61461;   // fa-refresh
             tabDKCH_Home.SymbolSize = 18;
             tabDKCH_Home.TabIndex = 1;
             tabDKCH_Home.Text = "Home";
-            tabDKCH_Home.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabDKCH_Home.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             tabDKCH_Home.Click += btn_Refresh_Click;
             // 
             // tabDKCH_dataSrc
@@ -1541,12 +1495,9 @@ namespace AutoJMS
             tabDKCH_dataSrc.MinimumSize = new Size(1, 1);
             tabDKCH_dataSrc.Name = "tabDKCH_dataSrc";
             tabDKCH_dataSrc.Padding = new Padding(1, 20, 1, 1);
-            tabDKCH_dataSrc.ShowText = false;
             tabDKCH_dataSrc.Size = new Size(272, 153);
             tabDKCH_dataSrc.TabIndex = 0;
             tabDKCH_dataSrc.Text = "DATA";
-            tabDKCH_dataSrc.TextAlignment = ContentAlignment.MiddleLeft;
-            tabDKCH_dataSrc.TitleHeight = 20;
             // 
             // tabHome
             // 
@@ -1582,15 +1533,14 @@ namespace AutoJMS
             tabHome_navBar.Font = new Font("Microsoft Sans Serif", 12F);
             tabHome_navBar.Location = new Point(0, 0);
             tabHome_navBar.Margin = new Padding(0);
-            tabHome_navBar.MinimumSize = new Size(1, 1);
             tabHome_navBar.Name = "tabHome_navBar";
             tabHome_navBar.Padding = new Padding(2);
-            tabHome_navBar.Radius = 0;
-            tabHome_navBar.RectColor = Color.Azure;
+            // Thanh công cụ HOME: dải phẳng có viền hairline, KHÔNG bo góc. Bản SunnyUI
+            // để Radius = 0 ở Designer nhưng AppTheme ghi đè thành 8 lúc chạy; ở đây chỉ
+            // còn một chỗ khai báo nên thanh công cụ thôi bo góc.
+            tabHome_navBar.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.None;
             tabHome_navBar.Size = new Size(1386, 36);
             tabHome_navBar.TabIndex = 0;
-            tabHome_navBar.Text = null;
-            tabHome_navBar.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabHome_txtAddress
             // 
@@ -1618,140 +1568,78 @@ namespace AutoJMS
             // 
             // tabHome_btnMenu
             // 
-            tabHome_btnMenu.FillColor = Color.Transparent;
-            tabHome_btnMenu.FillColor2 = Color.Transparent;
-            tabHome_btnMenu.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabHome_btnMenu.ForeColor = Color.Black;
-            tabHome_btnMenu.ForeHoverColor = Color.Black;
-            tabHome_btnMenu.ForePressColor = Color.Black;
-            tabHome_btnMenu.ForeSelectedColor = Color.Black;
-            tabHome_btnMenu.IsCircle = true;
+            // Năm nút thanh điều hướng HOME là nút icon trong toolbar => Ghost (DESIGN.md §K).
+            // Bo góc Sm chứ không tròn: Pill chỉ dành cho badge trạng thái (ThemeRadius).
             tabHome_btnMenu.Location = new Point(1346, 0);
             tabHome_btnMenu.Margin = new Padding(0);
-            tabHome_btnMenu.MinimumSize = new Size(1, 1);
             tabHome_btnMenu.Name = "tabHome_btnMenu";
-            tabHome_btnMenu.Padding = new Padding(2);
-            tabHome_btnMenu.Radius = 18;
-            tabHome_btnMenu.RectColor = Color.Transparent;
-            tabHome_btnMenu.RectDisableColor = Color.Transparent;
+            tabHome_btnMenu.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnMenu.Size = new Size(32, 32);
             tabHome_btnMenu.Symbol = 61762;
-            tabHome_btnMenu.SymbolColor = Color.Black;
-            tabHome_btnMenu.SymbolDisableColor = Color.Transparent;
-            tabHome_btnMenu.SymbolHoverColor = Color.FromArgb(128, 128, 255);
-            tabHome_btnMenu.SymbolPressColor = Color.Transparent;
-            tabHome_btnMenu.SymbolSelectedColor = Color.Transparent;
             tabHome_btnMenu.SymbolSize = 18;
             tabHome_btnMenu.TabIndex = 2;
-            tabHome_btnMenu.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabHome_btnMenu.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             // 
             // tabHome_btnBack
             // 
-            tabHome_btnBack.FillColor = Color.Transparent;
-            tabHome_btnBack.FillColor2 = Color.Transparent;
-            tabHome_btnBack.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabHome_btnBack.Location = new Point(0, 0);
             tabHome_btnBack.Margin = new Padding(0);
-            tabHome_btnBack.MinimumSize = new Size(1, 1);
             tabHome_btnBack.Name = "tabHome_btnBack";
-            tabHome_btnBack.Padding = new Padding(2);
-            tabHome_btnBack.Radius = 32;
-            tabHome_btnBack.RectColor = Color.Transparent;
-            tabHome_btnBack.RectDisableColor = Color.Transparent;
-            tabHome_btnBack.RectHoverColor = Color.FromArgb(128, 128, 255);
-            tabHome_btnBack.RectPressColor = Color.FromArgb(128, 128, 255);
-            tabHome_btnBack.RectSelectedColor = Color.FromArgb(128, 128, 255);
+            tabHome_btnBack.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnBack.Size = new Size(32, 32);
             tabHome_btnBack.Symbol = 61536;
-            tabHome_btnBack.SymbolColor = Color.Black;
-            tabHome_btnBack.SymbolHoverColor = Color.FromArgb(128, 128, 255);
             tabHome_btnBack.SymbolSize = 18;
             tabHome_btnBack.TabIndex = 0;
-            tabHome_btnBack.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabHome_btnBack.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             tabHome_btnBack.Click += btnBack_Click;
             // 
             // tabHome_btnForward
             // 
-            tabHome_btnForward.FillColor = Color.Transparent;
-            tabHome_btnForward.FillColor2 = Color.Transparent;
-            tabHome_btnForward.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabHome_btnForward.Location = new Point(36, 0);
             tabHome_btnForward.Margin = new Padding(0);
-            tabHome_btnForward.MinimumSize = new Size(1, 1);
             tabHome_btnForward.Name = "tabHome_btnForward";
-            tabHome_btnForward.Padding = new Padding(2);
-            tabHome_btnForward.Radius = 32;
-            tabHome_btnForward.RectColor = Color.Transparent;
-            tabHome_btnForward.RectDisableColor = Color.Transparent;
-            tabHome_btnForward.RectHoverColor = Color.FromArgb(128, 128, 255);
-            tabHome_btnForward.RectPressColor = Color.FromArgb(128, 128, 255);
-            tabHome_btnForward.RectSelectedColor = Color.FromArgb(128, 128, 255);
+            tabHome_btnForward.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnForward.Size = new Size(32, 32);
             tabHome_btnForward.Symbol = 61537;
-            tabHome_btnForward.SymbolColor = Color.Black;
-            tabHome_btnForward.SymbolHoverColor = Color.FromArgb(128, 128, 255);
             tabHome_btnForward.SymbolSize = 18;
             tabHome_btnForward.TabIndex = 0;
-            tabHome_btnForward.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabHome_btnForward.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             tabHome_btnForward.Click += btnForward_Click;
             // 
             // tabHome_btnReload
             // 
-            tabHome_btnReload.FillColor = Color.Transparent;
-            tabHome_btnReload.FillColor2 = Color.Transparent;
-            tabHome_btnReload.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabHome_btnReload.Location = new Point(72, 0);
             tabHome_btnReload.Margin = new Padding(0);
-            tabHome_btnReload.MinimumSize = new Size(1, 1);
             tabHome_btnReload.Name = "tabHome_btnReload";
-            tabHome_btnReload.Padding = new Padding(2);
-            tabHome_btnReload.Radius = 32;
-            tabHome_btnReload.RectColor = Color.Transparent;
+            tabHome_btnReload.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnReload.Size = new Size(32, 32);
             tabHome_btnReload.Symbol = 61470;
-            tabHome_btnReload.SymbolColor = Color.Black;
-            tabHome_btnReload.SymbolHoverColor = Color.FromArgb(128, 128, 255);
             tabHome_btnReload.SymbolSize = 18;
             tabHome_btnReload.TabIndex = 0;
-            tabHome_btnReload.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabHome_btnReload.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             tabHome_btnReload.Click += btnReload_Click;
             // 
             // tabHome_btnHome
             // 
-            tabHome_btnHome.FillColor = Color.Transparent;
-            tabHome_btnHome.FillColor2 = Color.Transparent;
-            tabHome_btnHome.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabHome_btnHome.Location = new Point(108, 0);
             tabHome_btnHome.Margin = new Padding(0);
-            tabHome_btnHome.MinimumSize = new Size(1, 1);
             tabHome_btnHome.Name = "tabHome_btnHome";
-            tabHome_btnHome.Padding = new Padding(2);
-            tabHome_btnHome.Radius = 32;
-            tabHome_btnHome.RectColor = Color.Transparent;
+            tabHome_btnHome.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnHome.Size = new Size(32, 32);
             tabHome_btnHome.Symbol = 61461;
-            tabHome_btnHome.SymbolColor = Color.Black;
-            tabHome_btnHome.SymbolHoverColor = Color.FromArgb(128, 128, 255);
             tabHome_btnHome.SymbolSize = 18;
             tabHome_btnHome.TabIndex = 0;
-            tabHome_btnHome.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabHome_btnHome.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
             tabHome_btnHome.Click += btnHome_Click;
             // 
             // tabHome_urlBar
             // 
             tabHome_urlBar.Dock = DockStyle.Fill;
-            tabHome_urlBar.Font = new Font("Segoe UI", 12F);
             tabHome_urlBar.Location = new Point(144, 0);
             tabHome_urlBar.Margin = new Padding(0);
-            tabHome_urlBar.MinimumSize = new Size(1, 16);
             tabHome_urlBar.Name = "tabHome_urlBar";
-            tabHome_urlBar.Padding = new Padding(10, 2, 10, 2);
-            tabHome_urlBar.Radius = 16;
-            tabHome_urlBar.ShowText = false;
             tabHome_urlBar.Size = new Size(1202, 32);
             tabHome_urlBar.TabIndex = 1;
-            tabHome_urlBar.TextAlignment = ContentAlignment.MiddleLeft;
-            tabHome_urlBar.Watermark = "";
             // 
             // tabControl
             // 
@@ -1914,29 +1802,29 @@ namespace AutoJMS
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel1;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabDKCH_webView;
         private Sunny.UI.UIPanel tabHome_pnlLeft;
-        private Sunny.UI.UITitlePanel uiTitlePanel2;
+        private AutoJMS.UI.DesignSystem.APanel uiTitlePanel2;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel33;
         private SplitContainer splitContainer1;
-        private Sunny.UI.UITitlePanel uiTitlePanel1;
+        private AutoJMS.UI.DesignSystem.APanel uiTitlePanel1;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel9;
         private Sunny.UI.UIPanel uiPanel1;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel10;
-        private Sunny.UI.UIButton tabDKCH_btnDKCH1;
-        private Sunny.UI.UIButton tabDKCH_btnDKCH2;
-        private Sunny.UI.UIButton tabDKCH_btnStop;
-        private Sunny.UI.UISymbolButton tabDKCH_Home;
-        private Sunny.UI.UITitlePanel tabDKCH_dataSrc;
+        private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnDKCH1;
+        private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnDKCH2;
+        private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnStop;
+        private AutoJMS.UI.DesignSystem.AButton tabDKCH_Home;
+        private AutoJMS.UI.DesignSystem.APanel tabDKCH_dataSrc;
         // Các control BÊN TRONG tabDKCH_dataSrc được khai báo ở Main.DkchData.cs.
         private TabPage tabHome;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabHome_webView;
-        private Sunny.UI.UIPanel tabHome_navBar;
+        private AutoJMS.UI.DesignSystem.APanel tabHome_navBar;
         private Sunny.UI.UITableLayoutPanel tabHome_txtAddress;
-        private Sunny.UI.UISymbolButton tabHome_btnMenu;
-        private Sunny.UI.UISymbolButton tabHome_btnBack;
-        private Sunny.UI.UISymbolButton tabHome_btnForward;
-        private Sunny.UI.UISymbolButton tabHome_btnReload;
-        private Sunny.UI.UISymbolButton tabHome_btnHome;
-        private Sunny.UI.UITextBox tabHome_urlBar;
+        private AutoJMS.UI.DesignSystem.AButton tabHome_btnMenu;
+        private AutoJMS.UI.DesignSystem.AButton tabHome_btnBack;
+        private AutoJMS.UI.DesignSystem.AButton tabHome_btnForward;
+        private AutoJMS.UI.DesignSystem.AButton tabHome_btnReload;
+        private AutoJMS.UI.DesignSystem.AButton tabHome_btnHome;
+        private AutoJMS.UI.DesignSystem.ATextBox tabHome_urlBar;
         private AutoJMS.UI.DesignSystem.ATabControl tabControl;
         private AutoJMS.UI.DesignSystem.TopNavigation topNav;
         //private Sunny.UI.UIComboBox tabChat_timeCheck;

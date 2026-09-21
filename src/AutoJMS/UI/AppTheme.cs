@@ -245,11 +245,7 @@ namespace AutoJMS.UI
                 sbtn.Radius = 6;
                 sbtn.StyleCustomMode = true;
 
-                if (sbtn.Name == "tabDKCH_Home")
-                {
-                    ApplyThemeToSymbolButton(sbtn, colors, CurrentTheme);
-                }
-                else if (IsIconButton(sbtn.Name))
+                if (IsIconButton(sbtn.Name))
                 {
                     sbtn.FillColor = Color.Transparent;
                     sbtn.FillHoverColor = colors.AppBackground;
@@ -294,26 +290,18 @@ namespace AutoJMS.UI
                 btn.Radius = 6;
                 btn.StyleCustomMode = true;
 
-                // Special treatment for tabDKCH buttons (Home, DKCH1, DKCH2, Stop)
-                if (btn.Name == "tabDKCH_btnDKCH1" || btn.Name == "tabDKCH_btnDKCH2" || btn.Name == "tabDKCH_btnStop")
-                {
-                    ApplyThemeToButton(btn, colors, CurrentTheme);
-                }
-                else
-                {
-                    btn.FillColor = colors.PrimaryAccent;
-                    btn.FillHoverColor = colors.PrimaryPress;
-                    btn.FillPressColor = colors.PrimaryPress;
-                    btn.FillSelectedColor = colors.PrimaryPress;
-                    btn.RectColor = colors.PrimaryAccent;
-                    btn.RectHoverColor = colors.PrimaryPress;
-                    btn.RectPressColor = colors.PrimaryPress;
-                    btn.RectSelectedColor = colors.PrimaryPress;
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
+                btn.FillColor = colors.PrimaryAccent;
+                btn.FillHoverColor = colors.PrimaryPress;
+                btn.FillPressColor = colors.PrimaryPress;
+                btn.FillSelectedColor = colors.PrimaryPress;
+                btn.RectColor = colors.PrimaryAccent;
+                btn.RectHoverColor = colors.PrimaryPress;
+                btn.RectPressColor = colors.PrimaryPress;
+                btn.RectSelectedColor = colors.PrimaryPress;
+                btn.ForeColor = Color.White;
+                btn.ForeHoverColor = Color.White;
+                btn.ForePressColor = Color.White;
+                btn.ForeSelectedColor = Color.White;
             }
             else if (ctrl is UIImageButton imgBtn)
             {
@@ -696,126 +684,6 @@ namespace AutoJMS.UI
             {
                 sw.ActiveColor = colors.Success;
                 sw.InActiveColor = colors.SubtleBorder;
-            }
-        }
-
-        public static void ApplyThemeToButton(UIButton btn, ThemeColors colors, ThemeMode mode)
-        {
-            if (mode == ThemeMode.Dark)
-            {
-                if (btn.Name == "tabDKCH_btnStop")
-                {
-                    btn.FillColor = ColorTranslator.FromHtml("#7F1D1D");
-                    btn.FillHoverColor = ColorTranslator.FromHtml("#991B1B");
-                    btn.FillPressColor = ColorTranslator.FromHtml("#B91C1C");
-                    btn.RectColor = ColorTranslator.FromHtml("#EF4444");
-                    btn.RectHoverColor = ColorTranslator.FromHtml("#F87171");
-                    btn.RectPressColor = ColorTranslator.FromHtml("#B91C1C");
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-                else
-                {
-                    btn.FillColor = colors.InputBackground;
-                    btn.FillHoverColor = colors.PrimaryHoverTint;
-                    btn.FillPressColor = colors.PrimaryPress;
-                    btn.FillSelectedColor = colors.PrimaryPress;
-                    btn.RectColor = colors.SubtleBorder;
-                    btn.RectHoverColor = colors.PrimaryAccent;
-                    btn.RectPressColor = colors.PrimaryPress;
-                    btn.RectSelectedColor = colors.PrimaryPress;
-                    btn.ForeColor = colors.TextPrimary;
-                    btn.ForeHoverColor = colors.PrimaryAccent;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-            }
-            else
-            {
-                if (btn.Name == "tabDKCH_btnDKCH1")
-                {
-                    btn.FillColor = colors.Success;
-                    btn.FillHoverColor = ControlPaint.Light(colors.Success);
-                    btn.FillPressColor = ControlPaint.Dark(colors.Success);
-                    btn.RectColor = colors.Success;
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-                else if (btn.Name == "tabDKCH_btnDKCH2")
-                {
-                    btn.FillColor = colors.Warning;
-                    btn.FillHoverColor = ControlPaint.Light(colors.Warning);
-                    btn.FillPressColor = ControlPaint.Dark(colors.Warning);
-                    btn.RectColor = colors.Warning;
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-                else if (btn.Name == "tabDKCH_btnStop")
-                {
-                    btn.FillColor = colors.Danger;
-                    btn.FillHoverColor = ControlPaint.Light(colors.Danger);
-                    btn.FillPressColor = ControlPaint.Dark(colors.Danger);
-                    btn.RectColor = colors.Danger;
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-                else
-                {
-                    btn.FillColor = colors.PrimaryAccent;
-                    btn.FillHoverColor = colors.PrimaryHover;
-                    btn.FillPressColor = colors.PrimaryPress;
-                    btn.RectColor = colors.PrimaryAccent;
-                    btn.ForeColor = Color.White;
-                    btn.ForeHoverColor = Color.White;
-                    btn.ForePressColor = Color.White;
-                    btn.ForeSelectedColor = Color.White;
-                }
-            }
-        }
-
-        public static void ApplyThemeToSymbolButton(UISymbolButton sbtn, ThemeColors colors, ThemeMode mode)
-        {
-            if (mode == ThemeMode.Dark)
-            {
-                sbtn.FillColor = colors.InputBackground;
-                sbtn.FillHoverColor = colors.PrimaryHoverTint;
-                sbtn.FillPressColor = colors.PrimaryPress;
-                sbtn.FillSelectedColor = colors.PrimaryPress;
-                sbtn.RectColor = colors.SubtleBorder;
-                sbtn.RectHoverColor = colors.PrimaryAccent;
-                sbtn.RectPressColor = colors.PrimaryPress;
-                sbtn.RectSelectedColor = colors.PrimaryPress;
-                sbtn.ForeColor = colors.TextPrimary;
-                sbtn.ForeHoverColor = colors.PrimaryAccent;
-                sbtn.ForePressColor = Color.White;
-                sbtn.ForeSelectedColor = Color.White;
-                sbtn.SymbolColor = colors.TextPrimary;
-                sbtn.SymbolHoverColor = colors.PrimaryAccent;
-                sbtn.SymbolPressColor = Color.White;
-                sbtn.SymbolSelectedColor = Color.White;
-            }
-            else
-            {
-                sbtn.FillColor = colors.PrimaryAccent;
-                sbtn.FillHoverColor = colors.PrimaryHover;
-                sbtn.FillPressColor = colors.PrimaryPress;
-                sbtn.RectColor = colors.PrimaryAccent;
-                sbtn.ForeColor = Color.White;
-                sbtn.ForeHoverColor = Color.White;
-                sbtn.ForePressColor = Color.White;
-                sbtn.ForeSelectedColor = Color.White;
-                sbtn.SymbolColor = Color.White;
-                sbtn.SymbolHoverColor = Color.White;
-                sbtn.SymbolPressColor = Color.White;
-                sbtn.SymbolSelectedColor = Color.White;
             }
         }
 

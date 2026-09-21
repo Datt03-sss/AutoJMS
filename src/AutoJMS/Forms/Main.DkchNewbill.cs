@@ -210,7 +210,9 @@ namespace AutoJMS
                 int w = TextRenderer.MeasureText(_dkchModeText, f,
                             new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width + 14;
                 int h = 15;
-                int bar = Math.Max(h, uiTitlePanel2.TitleHeight);
+                // uiTitlePanel2 nay là APanel: dải tiêu đề cũ của UITitlePanel giờ là
+                // Padding.Top (vẫn đúng 20px), nên pill vẫn nằm đúng chỗ cũ.
+                int bar = Math.Max(h, uiTitlePanel2.Padding.Top);
                 var box = new Rectangle(Math.Max(2, uiTitlePanel2.ClientSize.Width - w - 7),
                                         (bar - h) / 2, w, h);
                 using (var path = DkchPaint.RoundRect(box, 3))
