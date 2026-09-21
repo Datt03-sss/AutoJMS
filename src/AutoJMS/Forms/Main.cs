@@ -217,7 +217,7 @@ namespace AutoJMS
             LayoutDkchDataSection();
             LayoutDkchNewbill();
 
-            tabPrint_AutoMode.Active = _settings.PrintDefaultAutoPrint;
+            tabPrint_AutoMode.Checked = _settings.PrintDefaultAutoPrint;
             _printerPreflightService = new PrinterPreflightService(() => _settings);
             _printerMaintenanceService = new PrinterMaintenanceService(_printerPreflightService);
 
@@ -314,7 +314,9 @@ namespace AutoJMS
             tabDKCH_sheetName.TextChanged += (s, e) => QueueRefreshDkchCount();
             tabDKCH_numRow.ValueChanged += (s, e) => QueueRefreshDkchCount();
             tabDKCH_useSheet.ActiveChanged += (s, e) => QueueRefreshDkchCount();
-            GuardEnterNewLine(tabPrint_inputWaybill);
+            // .Inner: guard dời con nháy bằng SelectionStart/SelectionLength, mà hai thứ đó
+            // nằm trên TextBox ruột chứ không có ở lớp vỏ ATextBox.
+            GuardEnterNewLine(tabPrint_inputWaybill.Inner);
             tabPrint_inputWaybill.KeyDown += tabPrint_inputWaybill_KeyDown;
             tabPrint_btnSelectAll.CheckedChanged += tabPrint_btnSelectAll_CheckedChanged;
             tabPrint_printFunc.SelectedIndexChanged += TabPrint_printFunc_SelectedIndexChanged;
@@ -414,36 +416,6 @@ namespace AutoJMS
 
         /// <summary>Dời con nháy về cuối dòng đang đứng; bỏ vùng chọn nếu có.</summary>
         private static void MoveCaretToEndOfLine(TextBoxBase box)
-        {
-            if (box == null || box.IsDisposed) return;
-            string text = box.Text ?? "";
-            int caret = Math.Max(0, Math.Min(box.SelectionStart, text.Length));
-            int end = caret;
-            while (end < text.Length && text[end] != '\n' && text[end] != '\r') end++;
-            if (box.SelectionLength != 0 || caret != end)
-            {
-                box.SelectionLength = 0;
-                box.SelectionStart = end;
-            }
-        }
-
-        /// <summary>
-        /// Bản dành cho Sunny.UI.UIRichTextBox — lớp này KHÔNG kế thừa TextBoxBase (nó là
-        /// UserControl bọc ngoài một RichTextBox) nên không dùng chung nạp chồng ở trên
-        /// được, dù có đủ Text/SelectionStart/SelectionLength.
-        /// </summary>
-        private static void GuardEnterNewLine(Sunny.UI.UIRichTextBox box)
-        {
-            if (box == null) return;
-            box.KeyDown += (s, e) =>
-            {
-                if (e.KeyCode != Keys.Enter || e.Shift || e.Control || e.Alt) return;
-                MoveCaretToEndOfLine(box);
-            };
-        }
-
-        /// <summary>Dời con nháy về cuối dòng đang đứng — bản cho UIRichTextBox.</summary>
-        private static void MoveCaretToEndOfLine(Sunny.UI.UIRichTextBox box)
         {
             if (box == null || box.IsDisposed) return;
             string text = box.Text ?? "";
@@ -1003,9 +975,10 @@ namespace AutoJMS
             grid.AllowUserToDeleteRows = false;
             grid.MultiSelect = true;
             grid.RowHeadersVisible = false;
-            grid.AutoSizeColumnsMode = grid == tabTracking_dataView
-                ? DataGridViewAutoSizeColumnsMode.None
-                : DataGridViewAutoSizeColumnsMode.DisplayedCells;
+            // Cả hai bảng nay là ADataGridView, vốn đã chốt None trong constructor —
+            // dòng này chỉ để đứng cạnh AutoSizeRowsMode cho dễ đọc. Bề rộng cột của bảng
+            // IN ĐƠN do PrintService.AutoSizePrintGridColumns() gán cứng từng cột.
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
             grid.RowTemplate.Height = 27;
             grid.ColumnHeadersHeight = 34;
@@ -1014,11 +987,6 @@ namespace AutoJMS
             grid.DefaultCellStyle.Font = new Font("Segoe UI", gridFontSize, FontStyle.Regular);
             grid.DataError -= MainGrid_DataError;
             grid.DataError += MainGrid_DataError;
-            if (grid is Sunny.UI.UIDataGridView uiGrid)
-            {
-                uiGrid.StripeOddColor = System.Drawing.Color.White;
-                uiGrid.StripeEvenColor = System.Drawing.Color.White;
-            }
         }
 
         private void MainGrid_DataError(object sender, DataGridViewDataErrorEventArgs e)
@@ -1295,6 +1263,11 @@ namespace AutoJMS
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
                         ApplyWaybillInputBoldFonts();
+                        // ADataGridView.ApplyTheme() đặt lại cỡ chữ ô về ThemeTypography.Grid (9F)
+                        // mỗi lần đổi theme, đè mất 8.5F/7.5F mà ApplyStandardGridSettings chọn
+                        // lúc dựng. Không gọi lại thì đổi theme là hai bảng nhảy cỡ chữ.
+                        ApplyStandardGridSettings(tabTracking_dataView);
+                        ApplyStandardGridSettings(tabPrint_dataView);
                         ApplyReverseTheme();       // cụm In Reverse dựng bằng code — theme không tự tô
                         LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
                         LayoutDkchNewbill();
@@ -3629,7 +3602,7 @@ namespace AutoJMS
 
             // "In lại đơn" bắt buộc phải xem trước bản in, nên không cho AutoMode in thẳng.
             // "In Reverse" thì ô mã vận đơn không phải đầu vào của nó, nên cũng không.
-            if (!tabPrint_AutoMode.Active || mode == PrintMode.InLaiDon || mode == PrintMode.InReverse)
+            if (!tabPrint_AutoMode.Checked || mode == PrintMode.InLaiDon || mode == PrintMode.InReverse)
             {
                 await ExecuteTabPrintSearchAsync(input);
                 return;
@@ -4380,7 +4353,7 @@ namespace AutoJMS
                     }
                 }
 
-                bool disablePrintUntilReady = tabPrint_AutoMode == null || !tabPrint_AutoMode.Active;
+                bool disablePrintUntilReady = tabPrint_AutoMode == null || !tabPrint_AutoMode.Checked;
                 if (disablePrintUntilReady)
                     SetPrintButtonState(false);
 

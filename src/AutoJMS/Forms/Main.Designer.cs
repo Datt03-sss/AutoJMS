@@ -28,11 +28,6 @@ namespace AutoJMS
         /// </summary>
         private void InitializeComponent()
         {
-            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle3 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle4 = new DataGridViewCellStyle();
-            DataGridViewCellStyle dataGridViewCellStyle5 = new DataGridViewCellStyle();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
             uiIntegerUpDown1 = new Sunny.UI.UIIntegerUpDown();
             uiComboBox1 = new Sunny.UI.UIComboBox();
@@ -51,30 +46,30 @@ namespace AutoJMS
             tabPrint = new TabPage();
             uiTableLayoutPanel6 = new Sunny.UI.UITableLayoutPanel();
             llllll = new Sunny.UI.UITableLayoutPanel();
-            tabPrint_dataView = new Sunny.UI.UIDataGridView();
+            tabPrint_dataView = new AutoJMS.UI.DesignSystem.ADataGridView();
             uiTableLayoutPanel25 = new Sunny.UI.UITableLayoutPanel();
             uiPanel19 = new Sunny.UI.UIPanel();
             tabPrint_countSelect = new Sunny.UI.UILabel();
             tabPrint_countSum = new Sunny.UI.UILabel();
             uiPanel20 = new Sunny.UI.UIPanel();
-            tabPrint_btnSelectAll = new Sunny.UI.UICheckBox();
+            tabPrint_btnSelectAll = new AutoJMS.UI.DesignSystem.ACheckBox();
             uiTableLayoutPanel23 = new Sunny.UI.UITableLayoutPanel();
             uiPanel21 = new Sunny.UI.UIPanel();
-            tabPrint_inputWaybill = new Sunny.UI.UIRichTextBox();
+            tabPrint_inputWaybill = new AutoJMS.UI.DesignSystem.ATextBox();
             uiLabel9 = new Sunny.UI.UILabel();
             tabPrint_printFunc = new Sunny.UI.UITabControl();
             tabPrint_inCH = new TabPage();
             uiTableLayoutPanel7 = new Sunny.UI.UITableLayoutPanel();
             uiPanel2 = new Sunny.UI.UIPanel();
-            tabPrint_AutoMode = new Sunny.UI.UISwitch();
+            tabPrint_AutoMode = new AutoJMS.UI.DesignSystem.AToggleSwitch();
             uiLabel15 = new Sunny.UI.UILabel();
             tabPrint_messLable = new Sunny.UI.UILabel();
             tabPrint_inCT = new TabPage();
             tabPrint_inLaiDon = new TabPage();
             tabPrint_inRV = new TabPage();
             uiTableLayoutPanel13 = new Sunny.UI.UITableLayoutPanel();
-            tabPrint_btnTimKiem = new Sunny.UI.UISymbolButton();
-            tabPrint_btnLamMoi = new Sunny.UI.UISymbolButton();
+            tabPrint_btnTimKiem = new AutoJMS.UI.DesignSystem.AButton();
+            tabPrint_btnLamMoi = new AutoJMS.UI.DesignSystem.AButton();
             uiTableLayoutPanel15 = new Sunny.UI.UITableLayoutPanel();
             uiLabel7 = new Sunny.UI.UILabel();
             uiPanel13 = new Sunny.UI.UIPanel();
@@ -466,50 +461,18 @@ namespace AutoJMS
             // 
             // tabPrint_dataView
             // 
-            dataGridViewCellStyle1.BackColor = Color.FromArgb(235, 243, 255);
-            tabPrint_dataView.AlternatingRowsDefaultCellStyle = dataGridViewCellStyle1;
-            tabPrint_dataView.BackgroundColor = Color.White;
-            tabPrint_dataView.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridViewCellStyle2.BackColor = Color.FromArgb(80, 160, 255);
-            dataGridViewCellStyle2.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle2.ForeColor = Color.White;
-            dataGridViewCellStyle2.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle2.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle2.WrapMode = DataGridViewTriState.True;
-            tabPrint_dataView.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle2;
-            tabPrint_dataView.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dataGridViewCellStyle3.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle3.BackColor = SystemColors.Window;
-            dataGridViewCellStyle3.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle3.ForeColor = Color.FromArgb(48, 48, 48);
-            dataGridViewCellStyle3.SelectionBackColor = SystemColors.Highlight;
-            dataGridViewCellStyle3.SelectionForeColor = SystemColors.HighlightText;
-            dataGridViewCellStyle3.WrapMode = DataGridViewTriState.False;
-            tabPrint_dataView.DefaultCellStyle = dataGridViewCellStyle3;
+            // Năm DataGridViewCellStyle cũ đã bỏ: ADataGridView tự đặt trong ApplyTheme()
+            // nên đổi theme là bảng đổi theo. RowHeaders vốn đã bị PrintService.SetupGrid
+            // tắt lúc chạy, nên RowHeadersWidth/RowHeadersDefaultCellStyle chưa bao giờ
+            // hiện ra. Ở đây chỉ còn vị trí/kích thước — đúng phần Designer thật sự sở hữu.
             tabPrint_dataView.Dock = DockStyle.Fill;
-            tabPrint_dataView.EnableHeadersVisualStyles = false;
-            tabPrint_dataView.Font = new Font("Microsoft Sans Serif", 12F);
-            tabPrint_dataView.GridColor = Color.FromArgb(80, 160, 255);
             tabPrint_dataView.Location = new Point(5, 240);
             tabPrint_dataView.Margin = new Padding(5);
             tabPrint_dataView.Name = "tabPrint_dataView";
-            tabPrint_dataView.RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
-            dataGridViewCellStyle4.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle4.BackColor = Color.FromArgb(235, 243, 255);
-            dataGridViewCellStyle4.Font = new Font("Microsoft Sans Serif", 12F);
-            dataGridViewCellStyle4.ForeColor = Color.FromArgb(48, 48, 48);
-            dataGridViewCellStyle4.SelectionBackColor = Color.FromArgb(80, 160, 255);
-            dataGridViewCellStyle4.SelectionForeColor = Color.White;
-            dataGridViewCellStyle4.WrapMode = DataGridViewTriState.True;
-            tabPrint_dataView.RowHeadersDefaultCellStyle = dataGridViewCellStyle4;
-            tabPrint_dataView.RowHeadersWidth = 51;
-            dataGridViewCellStyle5.BackColor = Color.White;
-            dataGridViewCellStyle5.Font = new Font("Microsoft Sans Serif", 12F);
-            tabPrint_dataView.RowsDefaultCellStyle = dataGridViewCellStyle5;
-            tabPrint_dataView.SelectedIndex = -1;
+            // Bảng in có 5-9 cột tuỳ tab con và bản SunnyUI kẻ cả đường dọc. Giữ nguyên:
+            // ADataGridView mặc định chỉ kẻ ngang, để mặc định là đổi bố cục đang chạy.
+            tabPrint_dataView.ShowVerticalLines = true;
             tabPrint_dataView.Size = new Size(1, 1);
-            tabPrint_dataView.StripeOddColor = Color.FromArgb(235, 243, 255);
             tabPrint_dataView.TabIndex = 4;
             // 
             // uiTableLayoutPanel25
@@ -595,8 +558,9 @@ namespace AutoJMS
             tabPrint_btnSelectAll.AutoSize = true;
             tabPrint_btnSelectAll.Dock = DockStyle.Left;
             tabPrint_btnSelectAll.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_btnSelectAll.ForeColor = Color.FromArgb(48, 48, 48);
             tabPrint_btnSelectAll.Location = new Point(5, 0);
+            // AutoSize của ACheckBox đo ô vuông + chữ ra ~125px; MinimumSize giữ đúng
+            // bề ngang 150 của bản SunnyUI để hai panel đếm số bên phải không bị xê.
             tabPrint_btnSelectAll.MinimumSize = new Size(150, 35);
             tabPrint_btnSelectAll.Name = "tabPrint_btnSelectAll";
             tabPrint_btnSelectAll.Size = new Size(150, 35);
@@ -640,17 +604,16 @@ namespace AutoJMS
             // tabPrint_inputWaybill
             // 
             tabPrint_inputWaybill.Dock = DockStyle.Fill;
-            tabPrint_inputWaybill.FillColor = Color.White;
             tabPrint_inputWaybill.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
             tabPrint_inputWaybill.Location = new Point(0, 23);
             tabPrint_inputWaybill.Margin = new Padding(5, 0, 5, 0);
-            tabPrint_inputWaybill.MinimumSize = new Size(1, 1);
+            // UIRichTextBox trước đây luôn nhiều dòng và luôn có thanh cuộn dọc. ATextBox
+            // mặc định một dòng, nên hai dòng này GIỮ LẠI hành vi dán nhiều mã vận đơn.
+            tabPrint_inputWaybill.Multiline = true;
             tabPrint_inputWaybill.Name = "tabPrint_inputWaybill";
-            tabPrint_inputWaybill.Padding = new Padding(2);
-            tabPrint_inputWaybill.ShowText = false;
+            tabPrint_inputWaybill.ScrollBars = ScrollBars.Vertical;
             tabPrint_inputWaybill.Size = new Size(240, 116);
             tabPrint_inputWaybill.TabIndex = 2;
-            tabPrint_inputWaybill.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // uiLabel9
             // 
@@ -739,10 +702,10 @@ namespace AutoJMS
             // 
             // tabPrint_AutoMode
             // 
-            tabPrint_AutoMode.ActiveText = "ON";
+            // ActiveText "ON" bỏ: AToggleSwitch chỉ vẽ công tắc, không in chữ trong núm.
+            // Nhãn "AutoPrint" nằm ngay bên trái (uiLabel15) nên vẫn đọc được ý nghĩa.
             tabPrint_AutoMode.Dock = DockStyle.Left;
             tabPrint_AutoMode.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_AutoMode.InActiveText = "";
             tabPrint_AutoMode.Location = new Point(95, 5);
             tabPrint_AutoMode.MinimumSize = new Size(50, 25);
             tabPrint_AutoMode.Name = "tabPrint_AutoMode";
@@ -819,40 +782,33 @@ namespace AutoJMS
             // 
             // tabPrint_btnTimKiem
             // 
+            // "Tìm kiếm" là hành động chính của tab IN ĐƠN nên là Primary DUY NHẤT của
+            // thanh này (DESIGN.md §K). "Làm mới" để mặc định Secondary.
             tabPrint_btnTimKiem.Dock = DockStyle.Fill;
-            tabPrint_btnTimKiem.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabPrint_btnTimKiem.FillPressColor = Color.FromArgb(80, 160, 255);
             tabPrint_btnTimKiem.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_btnTimKiem.ForeHoverColor = Color.Black;
             tabPrint_btnTimKiem.Location = new Point(5, 0);
             tabPrint_btnTimKiem.Margin = new Padding(5, 0, 5, 0);
-            tabPrint_btnTimKiem.MinimumSize = new Size(1, 1);
             tabPrint_btnTimKiem.Name = "tabPrint_btnTimKiem";
             tabPrint_btnTimKiem.Size = new Size(112, 39);
             tabPrint_btnTimKiem.Symbol = 361442;
             tabPrint_btnTimKiem.SymbolSize = 16;
             tabPrint_btnTimKiem.TabIndex = 10;
             tabPrint_btnTimKiem.Text = "Tìm kiếm";
-            tabPrint_btnTimKiem.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabPrint_btnTimKiem.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
             tabPrint_btnTimKiem.Click += print_TimKiem_Click;
             // 
             // tabPrint_btnLamMoi
             // 
             tabPrint_btnLamMoi.Dock = DockStyle.Fill;
-            tabPrint_btnLamMoi.FillHoverColor = Color.FromArgb(80, 160, 255);
-            tabPrint_btnLamMoi.FillPressColor = Color.FromArgb(80, 160, 255);
             tabPrint_btnLamMoi.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabPrint_btnLamMoi.ForeHoverColor = Color.Black;
             tabPrint_btnLamMoi.Location = new Point(127, 0);
             tabPrint_btnLamMoi.Margin = new Padding(5, 0, 5, 0);
-            tabPrint_btnLamMoi.MinimumSize = new Size(1, 1);
             tabPrint_btnLamMoi.Name = "tabPrint_btnLamMoi";
             tabPrint_btnLamMoi.Size = new Size(112, 39);
             tabPrint_btnLamMoi.Symbol = 61470;
             tabPrint_btnLamMoi.SymbolSize = 16;
             tabPrint_btnLamMoi.TabIndex = 9;
             tabPrint_btnLamMoi.Text = "Làm mới";
-            tabPrint_btnLamMoi.TipsFont = new Font("Microsoft Sans Serif", 9F);
             tabPrint_btnLamMoi.Click += print_LamMoi_Click;
             // 
             // uiTableLayoutPanel15
@@ -1681,30 +1637,30 @@ namespace AutoJMS
         private TabPage tabPrint;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel6;
         private Sunny.UI.UITableLayoutPanel llllll;
-        private Sunny.UI.UIDataGridView tabPrint_dataView;
+        private AutoJMS.UI.DesignSystem.ADataGridView tabPrint_dataView;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel25;
         private Sunny.UI.UIPanel uiPanel19;
         private Sunny.UI.UILabel tabPrint_countSelect;
         private Sunny.UI.UILabel tabPrint_countSum;
         private Sunny.UI.UIPanel uiPanel20;
-        private Sunny.UI.UICheckBox tabPrint_btnSelectAll;
+        private AutoJMS.UI.DesignSystem.ACheckBox tabPrint_btnSelectAll;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel23;
         private Sunny.UI.UIPanel uiPanel21;
-        private Sunny.UI.UIRichTextBox tabPrint_inputWaybill;
+        private AutoJMS.UI.DesignSystem.ATextBox tabPrint_inputWaybill;
         private Sunny.UI.UILabel uiLabel9;
         private Sunny.UI.UITabControl tabPrint_printFunc;
         private TabPage tabPrint_inCH;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel7;
         private Sunny.UI.UIPanel uiPanel2;
-        private Sunny.UI.UISwitch tabPrint_AutoMode;
+        private AutoJMS.UI.DesignSystem.AToggleSwitch tabPrint_AutoMode;
         private Sunny.UI.UILabel uiLabel15;
         private Sunny.UI.UILabel tabPrint_messLable;
         private TabPage tabPrint_inCT;
         private TabPage tabPrint_inLaiDon;
         private TabPage tabPrint_inRV;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel13;
-        private Sunny.UI.UISymbolButton tabPrint_btnTimKiem;
-        private Sunny.UI.UISymbolButton tabPrint_btnLamMoi;
+        private AutoJMS.UI.DesignSystem.AButton tabPrint_btnTimKiem;
+        private AutoJMS.UI.DesignSystem.AButton tabPrint_btnLamMoi;
         private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel15;
         private Sunny.UI.UILabel uiLabel7;
         private Sunny.UI.UIPanel uiPanel13;
