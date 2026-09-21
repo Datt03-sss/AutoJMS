@@ -16,6 +16,9 @@ namespace AutoJMS.UI
     {
         public static ThemeMode CurrentTheme { get; set; } = ThemeMode.Light;
 
+        /// <summary>Font mặc định cho control cũ (SunnyUI/WinForms). Tạo một lần, không dispose.</summary>
+        private static readonly Font DefaultControlFont = new Font("Segoe UI", 10F, FontStyle.Regular);
+
         public class ThemeColors
         {
             public Color AppBackground { get; set; }
@@ -166,6 +169,10 @@ namespace AutoJMS.UI
             EnableDoubleBuffer(form);
             ApplyToControls(form.Controls, colors);
 
+            // Control design system bị ApplyToControls bỏ qua có chủ ý, nên phải được
+            // báo riêng. Chúng đọc màu trực tiếp từ CurrentTheme - chỉ thiếu tín hiệu vẽ lại.
+            DesignSystem.ThemeManager.NotifyChanged();
+
             form.ResumeLayout(true);
         }
 
@@ -177,6 +184,12 @@ namespace AutoJMS.UI
             {
                 // Skip WebViews entirely to avoid breaking them
                 if (ctrl.GetType().FullName.Contains("WebView2"))
+                    continue;
+
+                // Control của design system tự lấy màu/cỡ chữ từ ThemeManager và tự vẽ lại
+                // khi đổi theme. Bỏ qua cả cây con: ApplyStyleToControl đè Font và màu của
+                // SunnyUI lên chúng thì mọi token trong ThemeTypography/ThemeColors thành vô nghĩa.
+                if (ctrl.GetType().Namespace == "AutoJMS.UI.DesignSystem")
                     continue;
 
                 EnableDoubleBuffer(ctrl);
@@ -205,8 +218,10 @@ namespace AutoJMS.UI
         {
             if (ctrl == null) return;
 
-            // Apply modern font globally (skip WebView2)
-            ctrl.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+            // Apply modern font globally (skip WebView2).
+            // Dùng một instance dùng chung: dòng này chạy cho MỌI control ở MỖI lần đổi
+            // theme, nên `new Font(...)` tại đây rò một handle GDI mỗi control mỗi lần.
+            ctrl.Font = DefaultControlFont;
 
             if (ctrl is UISymbolButton sbtn)
             {
