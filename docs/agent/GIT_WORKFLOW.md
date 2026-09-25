@@ -59,7 +59,8 @@ If this script fails, fix the errors or secrets before attempting to push.
 ### Step 5: Commit & Push Branch
 AI agents are allowed to push their feature branches to the remote repository for owner review:
 ```bash
-git add .
+git add <explicit paths>         # never "git add ."
+git diff --cached --name-only    # must list only this task's files
 git commit -m "feat(module): description of changes"
 git push origin agent/claude/task-name
 ```

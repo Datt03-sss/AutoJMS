@@ -21,16 +21,18 @@ This document describes the workflow for multiple AI agents (Antigravity, Claude
 ### Acquire the Write Lock
 1. Read the current `.agent-lock.md`.
 2. If `Current Writer` is `None`, update:
-   - `Current Writer`: your agent name
+   - `Current Writer`: `<agent name> (<session identifier>)`, e.g. `Claude Code (cleanup-tooling-rules)`
+     — the identifier is mandatory, see `AGENTS.md` § Workspace Lock Rules
    - `Mode`: `WRITE_ACTIVE`
    - `Scope`: short description of files you will edit
 
 ### Release the Write Lock
 After push succeeds:
-1. Reset:
+1. Re-read `.agent-lock.md`. If `Current Writer` is no longer yours, do not overwrite it — report to the Owner.
+2. Reset:
    - `Current Writer`: `None`
    - `Mode`: `READ_ONLY`
-   - `Scope`: `None`
+   - `Scope`: keep it, relabelled `Scope (đã xong ở <hash>, giữ để tra cứu):`
 
 ---
 
@@ -59,7 +61,8 @@ powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1
 ### Step 5: Commit & Push (only if build/verify pass)
 ```powershell
 git status
-git add .
+git add <explicit paths>         # never "git add ."
+git diff --cached --name-only    # must list only this task's files
 git commit -m "<clear commit message>"
 git push origin main
 git log --oneline -1

@@ -122,7 +122,8 @@ powershell -ExecutionPolicy Bypass -File .\eng\harness\verify.ps1
 ### Commit & Push — only if build/verify pass
 ```powershell
 git status
-git add .
+git add <explicit paths>         # never "git add ."
+git diff --cached --name-only    # must list only this task's files
 git commit -m "<clear commit message>"
 git push origin main
 git log --oneline -1

@@ -66,7 +66,8 @@ sequenceDiagram
    ```
 5. Commit and push (only if build/verify pass):
    ```powershell
-   git add .
+   git add <explicit paths>         # never "git add ."
+   git diff --cached --name-only    # must list only this task's files
    git commit -m "<clear message>"
    git push origin main
    ```

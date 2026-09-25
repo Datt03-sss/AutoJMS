@@ -42,7 +42,8 @@ Claude Code runs commands directly on the workspace. To prevent it from staging 
 ### Staging & Committing Changes
 While inside the worktree directory, you stage and commit just like in a normal repository. Git automatically tracks the correct feature branch:
 ```bash
-git add .
+git add <explicit paths>         # never "git add ."
+git diff --cached --name-only    # must list only this task's files
 git commit -m "feat(service): implement waybill query pagination"
 ```
 

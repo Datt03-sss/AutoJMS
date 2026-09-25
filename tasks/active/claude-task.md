@@ -53,7 +53,8 @@ powershell -ExecutionPolicy Bypass -File .\eng\agents\check-scope.ps1
 
 ## Commit command after build and scope check pass
 ```powershell
-git add .
+git add src/AutoJMS/Forms/Main.cs
+git diff --cached --name-only    # must list only src/AutoJMS/Forms/Main.cs
 git commit -m "fix(print): apply page size settings to default printer"
 git push origin main
 git log --oneline -1

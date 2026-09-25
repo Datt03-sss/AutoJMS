@@ -16,15 +16,19 @@ Before writing any code, Claude Code must read the active task specification:
 
 ## 2. Workspace Lock Protocol
 
-1. **Verify Lock**: Check `.agent-lock.md`. If `Current Writer` is another agent, stop immediately.
+Authority: `AGENTS.md` § Workspace Lock Rules.
+
+1. **Verify Lock**: Check `.agent-lock.md`. If `Current Writer` is anything other than `None` or your
+   own identifier — another Claude Code session included — stop and wait; never assume a stale lock.
 2. **Acquire Lock**: If `Current Writer` is `None`, write:
-   - `Current Writer: ClaudeCode`
+   - `Current Writer: Claude Code (<session identifier>)`, e.g. `Claude Code (cleanup-tooling-rules)`
    - `Mode: WRITE_ACTIVE`
    - `Scope: <targeted file paths>`
-3. **Release Lock**: Upon successful build, harness verify, commit, and push, restore `.agent-lock.md` to:
+3. **Release Lock**: Upon successful build, harness verify, commit, and push, re-read `.agent-lock.md`
+   (if `Current Writer` is no longer yours, do not overwrite it — report to the Owner), then set:
    - `Current Writer: None`
    - `Mode: READ_ONLY`
-   - `Scope: None`
+   - keep your `Scope`, relabelled `Scope (đã xong ở <hash>, giữ để tra cứu):`
 
 ---
 
@@ -53,7 +57,8 @@ If build and harness verify succeeded, stage and push the changes:
 
 ```powershell
 git status
-git add .
+git add <explicit paths>         # never "git add ."
+git diff --cached --name-only    # must list only this task's files
 git commit -m "<type>(scope): <descriptive commit message>"
 git push origin main
 git log --oneline -1
