@@ -1477,6 +1477,9 @@ namespace AutoJMS
             //
             topNav.Dock = DockStyle.Top;
             topNav.Name = "topNav";
+            // Thanh tiêu đề Windows đã mang icon + tên sản phẩm; vẽ lại ở đây là hai lần
+            // "AutoJMS" chồng nhau và chữ dính sát tab HOME.
+            topNav.ShowIdentity = false;
             topNav.TabIndex = 0;
             topNav.Target = tabControl;
             //

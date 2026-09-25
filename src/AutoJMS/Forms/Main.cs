@@ -983,8 +983,13 @@ namespace AutoJMS
             grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
             grid.RowTemplate.Height = 27;
             grid.ColumnHeadersHeight = 34;
+            // Cỡ chữ ĐẦU CỘT để một mình ADataGridView.ApplyTheme() giữ. Đặt thêm ở đây là
+            // hai nơi cùng ghi một thuộc tính với hai giá trị khác nhau, và bề rộng cột bảng
+            // IN ĐƠN lại chụp lấy giá trị đang có: AutoSizePrintGridColumns() đo bằng 7.5F
+            // (rộng 94px, cột thành 118px) trong khi bảng VẼ bằng ThemeTypography.GridHeader
+            // 9F (rộng 109px, chỗ dùng được chỉ 100px) - thiếu 9px nên đầu cột xuống dòng và
+            // vỡ giữa từ ("Nhân viên lấy h|àng"). Cỡ chữ Ô vẫn giữ 8.5F/7.5F như cũ.
             float gridFontSize = grid == tabTracking_dataView ? 8.5F : 7.5F;
-            grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI Semibold", gridFontSize, FontStyle.Bold);
             grid.DefaultCellStyle.Font = new Font("Segoe UI", gridFontSize, FontStyle.Regular);
             grid.DataError -= MainGrid_DataError;
             grid.DataError += MainGrid_DataError;
@@ -1061,20 +1066,27 @@ namespace AutoJMS
             lblNetworkStatus.AutoSize = true;
             lblNetworkStatus.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold);
             lblNetworkStatus.BackColor = Color.Transparent;
-            lblNetworkStatus.Parent = this;
-            lblNetworkStatus.BringToFront();
-            lblNetworkStatus.BringToFront();
-            this.Controls.Add(lblNetworkStatus);
+
+            // Cha là topNav, KHÔNG phải Form. Form cũ tự vẽ thanh tiêu đề NGAY TRONG vùng
+            // client nên toạ độ y=9 rơi đúng vào thanh đó; Form thường để thanh tiêu đề cho
+            // Windows lo, ở NGOÀI vùng client, nên y=9 tụt xuống dưới topNav/tabControl -
+            // hai control này vào Controls trước nên nằm trên và che hẳn nhãn.
+            // Nền Transparent trên control cha tự vẽ vẫn đúng: Label gọi lại OnPaint của cha.
+            lblNetworkStatus.Parent = topNav;
 
             UpdateNetworkUI(NetworkStatus.Online);
             NetworkState.OnChanged += UpdateNetworkUI;
-            this.SizeChanged += (s, e) => RepositionNetworkLabel();
+            topNav.SizeChanged += (s, e) => RepositionNetworkLabel();
         }
 
         private void RepositionNetworkLabel()
         {
-            if (lblNetworkStatus != null)
-                lblNetworkStatus.Location = new Point(this.Width - lblNetworkStatus.Width - 100, 9);
+            if (lblNetworkStatus == null || topNav == null) return;
+
+            // Nép sát mép phải thanh nav, cùng lề 12px mà TopNavigation dùng cho mép trái.
+            lblNetworkStatus.Location = new Point(
+                topNav.Width - lblNetworkStatus.Width - 12,
+                (topNav.Height - lblNetworkStatus.Height) / 2);
         }
 
         private void UpdateNetworkUI(NetworkStatus status)
@@ -1258,11 +1270,14 @@ namespace AutoJMS
             // Place the summary card inside the new stretchy row (row 6)
             // ACard tự tô nền/viền/bo góc theo token nên FillColor, RectColor và Radius
             // của UIPanel không còn chỗ đặt.
+            // Hàng 6 đã là Percent 100 nên thẻ đã lấy hết chỗ còn dư của bảng - vẫn không đủ
+            // cho 5 gạch đầu dòng. Bật AutoScroll để phần tràn cuộn tới được thay vì bị xén.
             var summaryPanel = new UI.DesignSystem.ACard
             {
                 Name = "tabAbout_summaryPanel",
                 Dock = DockStyle.Fill,
-                Margin = new Padding(10, 8, 10, 8)
+                Margin = new Padding(10, 8, 10, 8),
+                AutoScroll = true
             };
 
             var title = new Label
@@ -1285,7 +1300,11 @@ namespace AutoJMS
                 ForeColor = UI.AppTheme.Colors.TextSecondary,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.TopLeft,
-                Dock = DockStyle.Fill,
+                // Dock.Fill ghim Label đúng chiều cao ô nên chữ thừa bị xén mất.
+                // Dock.Top + AutoSize cho Label tự cao theo chữ đã ngắt dòng, phần vượt
+                // ra ngoài thẻ thì AutoScroll của summaryPanel lo.
+                Dock = DockStyle.Top,
+                AutoSize = true,
                 Padding = new Padding(0, 6, 0, 0)
             };
 
