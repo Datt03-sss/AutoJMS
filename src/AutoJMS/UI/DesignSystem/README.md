@@ -123,7 +123,7 @@ kiểm tra rồi tự đóng.
 |---|---|
 | Đổ bóng | WinForms phải tự composite alpha mỗi `WM_PAINT`; máy bưu cục không gánh nổi (DESIGN.md §I). `ThemeShadows` chỉ là thang `Elevation` đổi nền/viền. |
 | Animation, gradient, blur | Cùng lý do. `AToggleSwitch` nhảy, không trượt. `LoadingState` không có `Timer`. |
-| `FontManager` / `IconManager` | `ThemeTypography` đã là kho font cache sẵn; icon MDL2 chỉ là số `int` trong `ASymbols`. Thêm lớp bọc là thêm chỗ để sai. |
+| `FontManager` / `IconManager` | `ThemeTypography` đã là kho font cache sẵn; icon Lucide là số `int` trong `ASymbols`, font `lucide.ttf` nhúng sẵn qua `PrivateFontCollection`. Thêm lớp bọc là thêm chỗ để sai. |
 | `Theme/AppTheme.cs` | Trùng tên `AutoJMS.UI.AppTheme` → CS0104 ở mọi file dùng cả hai namespace. `ThemeColors` đã mang `Mode`. |
 
 Chưa viết vì chưa có chỗ dùng thật: `ADatePicker`, `FilterBar`, `ToolbarGroup`,

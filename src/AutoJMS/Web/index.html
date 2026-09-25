@@ -16,6 +16,13 @@
 <script src="react.production.min.js"></script>
 <script src="react-dom.production.min.js"></script>
 <script src="./support.js"></script>
+<!-- Icon: dữ liệu Lucide + custom element <aj-morph-icon> của morphicons.
+     `type="module"` chạy được vì tài liệu này phục vụ từ origin https thật
+     (autojms.local), không phải file://. Module script chạy sau khi parse xong
+     nhưng trước DOMContentLoaded — tức là trước khi support.js boot dc-runtime —
+     nên phần tử đã đăng ký kịp lần render đầu. Xem Web/aj-icons.js và
+     .agent/rules/11-icon-and-animation-rules.md. -->
+<script type="module" src="./aj-icons.js"></script>
 </head>
 <body>
 
@@ -134,8 +141,7 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
         <span style="font-size: 12px; font-weight: 700; letter-spacing: .6px; color: #6b7588; white-space: nowrap;">DANH SÁCH ĐƠN</span>
         <sc-if value="{{ canCopyLeft }}" hint-placeholder-val="{{ true }}">
         <span onclick="{{ copyList }}" title="Sao chép toàn bộ mã vận đơn trong danh sách" style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; color: {{ copyColor }}; border: 1px solid {{ copyBorder }}; background: {{ copyBg }}; border-radius: 7px; padding: 4px 9px; cursor: pointer;" style-hover="filter:brightness(0.97);">
-          <sc-if value="{{ copied }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
-          <sc-if value="{{ notCopied }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+          <aj-morph-icon icon="{{ copyIconD }}" size="12"></aj-morph-icon>
           {{ copyLabel }}
         </span>
         </sc-if>
@@ -250,8 +256,7 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
           <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.3px; color: #1f2937; background: #eef4ff; border: 1px solid #d3e0fb; border-radius: 7px; padding: 3px 10px;">{{ wbCode }}</span>
           <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
             <span onclick="{{ copyJourney }}" title="Sao chép hành trình vận chuyển" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: {{ journeyCopyColor }}; background: {{ journeyCopyBg }}; border: 1px solid {{ journeyCopyBorder }}; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef8f0; border-color: #1c8a3c; color: #1c8a3c;" style-active="background: #ddf0e2; border-color: #157032; transform: scale(0.96);">
-              <sc-if value="{{ journeyCopied }}" hint-placeholder-val="{{ false }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
-              <sc-if value="{{ journeyNotCopied }}" hint-placeholder-val="{{ true }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+              <aj-morph-icon icon="{{ journeyCopyIconD }}" size="14"></aj-morph-icon>
               {{ journeyCopyLabel }}
             </span>
             <span onclick="{{ refreshJourney }}" title="Làm mới hành trình" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #3a4555; background: #fff; border: 1px solid #d7dde6; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef4ff; border-color: #2f6fed; color: #2f6fed;" style-active="background: #dde9ff; border-color: #2a63d6; transform: scale(0.96);"><svg class="{{ refreshSpinClass }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Làm mới</span>
@@ -329,8 +334,7 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 19px; font-weight: 700; color: #1f2937;">{{ wbCode }}</span>
         <span onclick="{{ copyWaybill }}" title="Sao chép mã vận đơn" style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ wbCopyColor }}; border: 1px solid {{ wbCopyBorder }}; background: {{ wbCopyBg }}; border-radius: 6px; padding: 4px 9px; cursor: pointer;">
-          <sc-if value="{{ wbCopied }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"></polyline></svg></sc-if>
-          <sc-if value="{{ wbNotCopied }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></sc-if>
+          <aj-morph-icon icon="{{ wbCopyIconD }}" size="12"></aj-morph-icon>
           {{ wbCopyLabel }}
         </span>
         <span onclick="{{ toggleStar }}" style="display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ starColor }}; background: {{ starBg }}; border: 1px solid {{ starBorder }}; border-radius: 6px; padding: 5px 11px; cursor: pointer; font-weight: 600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="{{ starFill }}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> {{ starLabel }}</span>
@@ -609,6 +613,24 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
   &quot;density&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;Tiêu chuẩn&quot;, &quot;options&quot;: [&quot;Thoáng&quot;, &quot;Tiêu chuẩn&quot;, &quot;Gọn&quot;], &quot;tsType&quot;: &quot;string&quot; },
   &quot;showNav&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; }
 }">
+// Tra `d` của một icon Lucide để đưa vào thuộc tính `icon` của <aj-morph-icon>.
+// Khối này được dc-runtime biên dịch bằng `new Function`, không `import` được,
+// nên bảng icon đi qua window.AjIcons do Web/aj-icons.js công bố.
+// Thiếu bảng thì trả chuỗi rỗng: <aj-morph-icon> vẽ path rỗng và chờ icon đầu
+// tiên xuất hiện — mất icon còn hơn ném lỗi trong renderVals làm trắng dashboard.
+var AJ_ICON = (function () {
+  var warned = false;
+  return function (name) {
+    var table = window.AjIcons;
+    if (table && table[name]) return table[name];
+    if (!warned) {
+      warned = true;
+      console.error('[aj-icons] window.AjIcons chưa nạp hoặc thiếu icon:', name);
+    }
+    return '';
+  };
+})();
+
 class Component extends DCLogic {
   state = {
     starred: false,
@@ -1783,13 +1805,13 @@ class Component extends DCLogic {
       starCount: Object.keys(starredCodes).length,
       copyList: () => this.copyOrderList(leftCodes ? orders : leftTop),
       canCopyLeft: leftCodes || leftStats, cannotCopyLeft: !(leftCodes || leftStats),
-      copied: this.state.copied, notCopied: !this.state.copied,
+      copyIconD: AJ_ICON(this.state.copied ? 'check' : 'copy'),
       copyLabel: this.state.copied ? 'Đã copy' : 'Copy',
       copyColor: this.state.copied ? '#1c8a3c' : '#3a4555',
       copyBorder: this.state.copied ? '#bfe3c8' : '#d7dde6',
       copyBg: this.state.copied ? '#eef8f0' : '#fff',
       copyJourney: () => this.copyJourney(rows),
-      journeyCopied: this.state.journeyCopied, journeyNotCopied: !this.state.journeyCopied,
+      journeyCopyIconD: AJ_ICON(this.state.journeyCopied ? 'check' : 'copy'),
       journeyCopyLabel: this.state.journeyCopied ? 'Đã copy' : 'Copy',
       journeyCopyColor: this.state.journeyCopied ? '#1c8a3c' : '#3a4555',
       journeyCopyBorder: this.state.journeyCopied ? '#bfe3c8' : '#d7dde6',
@@ -1804,7 +1826,7 @@ class Component extends DCLogic {
       hasOrderMedia: orderMedia.length > 0, noOrderMedia: orderMedia.length === 0,
       viewOrderMedia: () => this.openPodOverlay(orderMedia),
       copyWaybill: this.copyWaybill,
-      wbCopied: this.state.wbCopied, wbNotCopied: !this.state.wbCopied,
+      wbCopyIconD: AJ_ICON(this.state.wbCopied ? 'check' : 'copy'),
       wbCopyLabel: this.state.wbCopied ? 'Đã copy' : 'Copy',
       wbCopyColor: this.state.wbCopied ? '#1c8a3c' : '#3a4555',
       wbCopyBorder: this.state.wbCopied ? '#bfe3c8' : '#d7dde6',

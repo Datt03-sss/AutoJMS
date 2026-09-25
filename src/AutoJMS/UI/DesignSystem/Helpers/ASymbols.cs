@@ -1,44 +1,149 @@
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Text;
+using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace AutoJMS.UI.DesignSystem
 {
     /// <summary>
-    /// Icon dạng chữ cho A*. Xem DesignReference/AutoJMS.DESIGN.md §H.
+    /// Icon dạng chữ cho A*. Xem DesignReference/AutoJMS.DESIGN.md §J
+    /// và .agent/rules/11-icon-and-animation-rules.md.
     ///
-    /// Dùng "Segoe MDL2 Assets", font có sẵn trong Windows 10/11, nên không thêm tệp
-    /// font nào vào bản cài. Máy thiếu font thì Windows thay bằng font mặc định và vẽ ra
-    /// ô vuông — chữ trên nút vẫn đọc được, không có ngoại lệ nào bị ném.
+    /// Dùng "lucide" — font vector nhúng sẵn trong Assembly, nạp qua
+    /// <see cref="PrivateFontCollection"/> từ embedded resource lúc khởi động.
+    /// Không phụ thuộc vào font Windows trên máy người dùng, hiển thị sắc nét
+    /// ở mọi DPI (100%–200%), hoạt động 100% offline.
     ///
-    /// Mã ở đây là codepoint MDL2, KHÔNG phải mã FontAwesome. Đặt thẳng số của bộ icon
-    /// khác vào <c>AButton.Symbol</c> sẽ ra hình khác — luôn dùng hằng trong lớp này.
+    /// Fallback: nếu embedded resource không tải được (ví dụ assembly bị strip),
+    /// hệ thống rơi về font "Segoe MDL2 Assets" của Windows 10/11 để nút vẫn vẽ
+    /// được thay vì ném lỗi — nhưng các codepoint dưới đây là của Lucide, không
+    /// trùng bảng mã MDL2, nên glyph sẽ SAI (hoặc ra ô vuông). Đây là đường thoát
+    /// hiểm, không phải chế độ hỗ trợ: thấy icon lạ trên diện rộng thì nghi
+    /// lucide.ttf không còn trong assembly trước khi nghi từng mã một.
+    ///
+    /// Mã ở đây là codepoint Lucide, KHÔNG phải mã FontAwesome hay MDL2.
+    /// Đặt thẳng số của bộ icon khác vào <c>AButton.Symbol</c> sẽ ra hình khác
+    /// — luôn dùng hằng trong lớp này.
     /// </summary>
     public static class ASymbols
     {
         public const int None = 0;
 
-        public const int Home = 0xE80F;
-        public const int Back = 0xE72B;
-        public const int Forward = 0xE72A;
-        public const int Refresh = 0xE72C;
-        public const int Search = 0xE721;
-        public const int Download = 0xE896;
-        public const int Upload = 0xE898;
-        public const int Export = 0xEDE1;
-        public const int Page = 0xE7C3;
-        public const int Copy = 0xE8C8;
-        public const int Settings = 0xE713;
-        public const int More = 0xE712;
-        public const int Calendar = 0xE787;
-        public const int Send = 0xE724;
-        public const int View = 0xE890;
-        public const int Hide = 0xED1A;
-        public const int Warning = 0xE7BA;
-        public const int Inbox = 0xE8A8;
-        public const int Print = 0xE749;
+        // ──────────────────────────────────────────────────
+        //  Lucide Icons — codepoints từ lucide-static font
+        //  Tên theo PascalCase khớp với lucide.dev/icons
+        //  Tra cứu: https://lucide.dev/icons/
+        // ──────────────────────────────────────────────────
 
-        private const string IconFamily = "Segoe MDL2 Assets";
+        // Navigation & Actions
+        public const int Home         = 0xE0F5;
+        public const int Back         = 0xE048; // arrow-left
+        public const int Forward      = 0xE049; // arrow-right
+        public const int Refresh      = 0xE145; // refresh-cw
+        public const int Search       = 0xE151;
+        public const int Download     = 0xE0B2;
+        public const int Upload       = 0xE19E;
+        public const int Export       = 0xE0B9; // external-link
+        public const int Share        = 0xE155;
+        public const int Send         = 0xE152;
+
+        // Content & Editing
+        public const int Copy         = 0xE09E;
+        public const int Check        = 0xE06C;
+        public const int Plus         = 0xE13D;
+        public const int Minus        = 0xE11C;
+        public const int Filter       = 0xE0DC;
+        public const int X            = 0xE1B2;
+        public const int Trash        = 0xE18E; // trash-2
+
+        // UI & Layout
+        public const int Settings     = 0xE154;
+        public const int More         = 0xE0B6; // ellipsis
+        public const int Menu         = 0xE115;
+        public const int Calendar     = 0xE063;
+        public const int Inbox        = 0xE0F7;
+        public const int Page         = 0xE129; // package
+
+        // Status & Feedback
+        public const int View         = 0xE0BA; // eye
+        public const int Hide         = 0xE0BB; // eye-off
+        public const int Warning      = 0xE193; // triangle-alert
+        public const int Print        = 0xE141; // printer
+
+        // Expand / Collapse
+        public const int ChevronDown  = 0xE06D;
+        public const int ChevronUp    = 0xE070;
+
+        // Media
+        public const int Play         = 0xE13C;
+        public const int Pause        = 0xE12E;
+
+        // ──────────────────────────────────────────────────
+        //  Font loading
+        // ──────────────────────────────────────────────────
+
+        private const string LucideFontResourceName = "AutoJMS.Resources.Fonts.lucide.ttf";
+        private const string FallbackFontFamily = "Segoe MDL2 Assets";
+
+        private static readonly PrivateFontCollection _privateCollection = new PrivateFontCollection();
+        private static readonly string _iconFontFamily;
+
+        // AddMemoryFont không copy: PrivateFontCollection đọc thẳng vùng nhớ này suốt
+        // vòng đời của nó. Giữ mảng ở field static và KHÔNG gọi handle.Free() —
+        // unpin rồi để biến cục bộ ra khỏi phạm vi là mở đường cho GC dọn/di chuyển
+        // vùng nhớ mà font vẫn đang trỏ tới (glyph rác hoặc AccessViolation ngẫu
+        // nhiên, thường chỉ lộ ra khi máy chịu áp lực bộ nhớ). Lớp static này sống
+        // hết tiến trình nên ghim vĩnh viễn là đúng, không phải rò rỉ.
+        private static byte[] _fontData;
+        private static System.Runtime.InteropServices.GCHandle _fontHandle;
+
+        static ASymbols()
+        {
+            _iconFontFamily = LoadLucideFont() ?? FallbackFontFamily;
+        }
+
+        /// <summary>
+        /// Font family thật đang vẽ icon. Bằng <c>"Segoe MDL2 Assets"</c> nghĩa là
+        /// lucide.ttf KHÔNG nạp được và mọi icon đang ra glyph sai — đây là chỗ duy
+        /// nhất quan sát được việc đó, vì <see cref="Draw"/> vẫn vẽ bình thường.
+        /// </summary>
+        public static string IconFontFamily => _iconFontFamily;
+
+        /// <summary>true khi đang dùng font Lucide nhúng (đường chạy đúng).</summary>
+        public static bool IsEmbeddedFontLoaded => _iconFontFamily != FallbackFontFamily;
+
+        /// <summary>
+        /// Nạp lucide.ttf từ embedded resource vào PrivateFontCollection.
+        /// Trả về tên font family nếu thành công, null nếu thất bại.
+        /// </summary>
+        private static string LoadLucideFont()
+        {
+            try
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+                using var stream = assembly.GetManifestResourceStream(LucideFontResourceName);
+                if (stream == null) return null;
+
+                // ReadExactly, không phải Read: Read được phép trả về ít hơn số byte
+                // yêu cầu, và bỏ qua giá trị trả về là cách nạp một font cụt.
+                _fontData = new byte[stream.Length];
+                stream.ReadExactly(_fontData, 0, _fontData.Length);
+
+                _fontHandle = System.Runtime.InteropServices.GCHandle.Alloc(_fontData,
+                    System.Runtime.InteropServices.GCHandleType.Pinned);
+                _privateCollection.AddMemoryFont(_fontHandle.AddrOfPinnedObject(), _fontData.Length);
+
+                return _privateCollection.Families.Length > 0
+                    ? _privateCollection.Families[0].Name
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
 
         // Một Font cho mỗi cỡ, dùng lại suốt phiên. Tạo font trong OnPaint thì mỗi lần
         // vẽ lại xin một handle GDI mới — trên máy yếu (mục tiêu của bản thiết kế này)
@@ -51,7 +156,16 @@ namespace AutoJMS.UI.DesignSystem
             {
                 if (!Fonts.TryGetValue(size, out var font))
                 {
-                    font = new Font(IconFamily, size, GraphicsUnit.Pixel);
+                    // Ưu tiên PrivateFontCollection (Lucide font nhúng)
+                    if (_privateCollection.Families.Length > 0)
+                    {
+                        font = new Font(_privateCollection.Families[0], size, FontStyle.Regular, GraphicsUnit.Pixel);
+                    }
+                    else
+                    {
+                        // Fallback: Segoe MDL2 Assets
+                        font = new Font(_iconFontFamily, size, GraphicsUnit.Pixel);
+                    }
                     Fonts[size] = font;
                 }
                 return font;

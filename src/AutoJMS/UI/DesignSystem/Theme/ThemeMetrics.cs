@@ -33,10 +33,15 @@ namespace AutoJMS.UI.DesignSystem
         public const int DialogWidthDefault = 480;
         public const int DialogWidthWide = 640;
 
-        // Icon
-        public const int IconSizeDefault = 16;
+        // Icon — thang 5 bậc, không có cỡ nào ngoài năm giá trị này
+        // (.agent/rules/11-icon-and-animation-rules.md §2). Truyền qua DpiHelper.Scale.
+        /// <summary>Nhãn/tag, badge đếm số.</summary>
+        public const int IconSizeTag = 12;
         public const int IconSizeDense = 14;
+        public const int IconSizeDefault = 16;
         public const int IconSizeNav = 20;
+        /// <summary>Icon dẫn dắt của trạng thái rỗng, dialog xác nhận.</summary>
+        public const int IconSizeHero = 24;
 
         /// <summary>Thanh tiến trình mảnh ở đỉnh vùng đang tải (DESIGN.md §V).</summary>
         public const int LoadingBarHeight = 2;

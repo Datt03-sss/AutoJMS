@@ -270,13 +270,34 @@ AutoJMS **không dùng đổ bóng**. Phân tầng bằng nền + viền.
 
 ## J. Phong cách icon
 
-- **Nguồn:** codepoint MDL2 khai báo trong `ASymbols`, vẽ qua `AButton.Symbol`. Không thêm bộ icon mới,
-  không thêm file ảnh.
-- **Kiểu:** nét viền (outline), không tô đặc — trừ khi icon đang biểu thị trạng thái active.
-- **Cỡ:** 16px mặc định, 14px trong toolbar dày đặc, 20px cho nav chính.
+- **Nguồn duy nhất:** [Lucide Icons](https://lucide.dev/icons/) — bộ 1.400+ vector icon đồng nhất,
+  grid 24×24, stroke-width 2px, stroke-linecap round, stroke-linejoin round, fill none.
+  Font `lucide.ttf` nhúng sẵn trong Assembly (Embedded Resource), nạp qua `PrivateFontCollection`
+  trong `ASymbols.cs`. Không phụ thuộc vào font Windows trên máy người dùng.
+  Trên WebView2 Dashboard: inline SVG Lucide trong markup; bảng đường `d` ở `Web/aj-icons.js`.
+- **Kiểu:** nét viền (outline stroke-based), không tô đặc — trừ khi icon đang biểu thị trạng thái active.
+- **Thang cỡ chuẩn:** 12px (badge/tag) · 14px (toolbar dày đặc) · **16px mặc định** · 20px (nav chính) · 24px (empty state).
+  Không dùng cỡ ngoài 5 nấc này.
 - **Màu:** `TextSecondary` ở trạng thái thường, `Primary` khi active, `OnPrimary` khi nằm trên nền accent.
+  Không hardcode mã hex cho icon — luôn lấy từ `ThemeColors`.
 - **Icon một mình phải có tooltip.** Không có ngoại lệ — đây là yêu cầu accessibility, không phải góp ý.
 - **Không icon nhiều màu.** Không emoji trong chrome.
+
+### Animation micro-feedback *(ngoại lệ có kiểm soát)*
+
+Thư viện [Morphicons](https://www.morphicons.com/) cho phép icon chuyển đổi trạng thái mượt mà
+trên WebView2 Dashboard. Đây là **ngoại lệ duy nhất** với nguyên tắc "Yên tĩnh" (§A.4):
+
+- **Chỉ trên WebView2.** WinForms vẽ icon bằng glyph của font, không có đường SVG để nội suy, và §I
+  đã cấm animation ở lớp native. Bên đó icon vẫn **đổi hình** theo trạng thái (đổi hằng `ASymbols`),
+  chỉ là đổi tức thì — cùng bộ icon, cùng cặp trạng thái, khác cách chuyển.
+- **Chỉ dùng cho phản hồi tương tác** — icon morph khi người dùng bấm nút hoặc khi tiến trình đổi trạng thái.
+- **Thời lượng:** 250ms – 350ms, spring physics (stiffness 200 / damping 20), interruptible.
+  Không phải easing cubic-bezier — chuyển động do lò xo quyết định, không có "duration" cố định.
+- **CẤM animation lặp vô tận** (ngoại trừ spinner khi đang fetch dữ liệu).
+- Các cặp chuyển trạng thái cho phép: `copy`→`check`, `refresh-cw`→`check`/`triangle-alert`,
+  `search`→`x`, `eye`→`eye-off`, `chevron-down`→`chevron-up`, `play`→`pause`.
+- Quy tắc đầy đủ: `.agent/rules/11-icon-and-animation-rules.md`.
 
 ---
 

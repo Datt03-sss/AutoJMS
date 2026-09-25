@@ -1,9 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    Node test gate for the Render license server.
+    Node gate: Render license server + WebView2 Dashboard icons.
 .DESCRIPTION
     Runs `npm run check` (syntax) and `npm test` (node:test suite) for
-    backend/render-license-server.
+    backend/render-license-server, then check-dashboard-icons.mjs for
+    src/AutoJMS/Web.
+
+    The dashboard step rides along here because it is the same toolchain and the
+    same blind spot: src/AutoJMS/Web has no build: a broken `import` or an icon
+    binding with no producer survives `dotnet build` untouched and only surfaces
+    when a post-office clerk opens the Dashboard tab.
 
     This lives in the harness rather than directly in .github/workflows/verify.yml
     on purpose. verify.yml states the invariant it exists to protect — the harness
@@ -33,7 +39,7 @@ $ServerDir = Join-Path $Root 'backend\render-license-server'
 
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host '  AutoJMS Node Test Harness' -ForegroundColor Cyan
-Write-Host '  backend/render-license-server' -ForegroundColor Cyan
+Write-Host '  backend/render-license-server + src/AutoJMS/Web' -ForegroundColor Cyan
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
@@ -96,6 +102,25 @@ try {
 finally {
     Pop-Location
 }
+
+# Not a license-server step, hence outside the Push-Location above. The script
+# resolves the repo root from its own path, so the working directory is irrelevant.
+$IconGate = Join-Path $PSScriptRoot 'check-dashboard-icons.mjs'
+if (-not (Test-Path $IconGate -PathType Leaf)) {
+    Write-Host "ERROR: $IconGate not found." -ForegroundColor Red
+    Write-Host '  The dashboard icon gate is tracked; its absence is a broken checkout.' -ForegroundColor Red
+    exit 1
+}
+
+Write-Host 'Running: node eng/harness/check-dashboard-icons.mjs  (Lucide + morphicons)' -ForegroundColor Yellow
+& node $IconGate 2>&1 | ForEach-Object { Write-Host "  $_" }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '  ERROR: dashboard icon gate failed.' -ForegroundColor Red
+    $exitCode = 1
+} else {
+    Write-Host '  Dashboard icons OK.' -ForegroundColor Green
+}
+Write-Host ''
 
 if ($exitCode -ne 0) {
     Write-Host 'Node test harness FAILED.' -ForegroundColor Red

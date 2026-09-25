@@ -108,6 +108,10 @@
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <!-- Lucide icon font — nhúng sẵn vào Assembly, nạp qua PrivateFontCollection
+         trong ASymbols.cs. Không phụ thuộc vào font Windows trên máy người dùng.
+         Xem .agent/rules/11-icon-and-animation-rules.md. -->
+    <EmbeddedResource Include="Resources\Fonts\lucide.ttf" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <Optimize>false</Optimize>
