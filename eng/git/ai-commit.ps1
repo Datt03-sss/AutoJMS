@@ -106,7 +106,8 @@ try {
     $remotes = & git remote
     if ($remotes -contains 'origin') {
         Write-Host "Pushing commits to origin/main..." -ForegroundColor Yellow
-        & git push origin main 2>&1 | ForEach-Object { Write-Host "  $_" }
+        # No 2>&1 either: push always writes "To <url>" to stderr, even on success.
+        & git push origin main | ForEach-Object { Write-Host "  $_" }
         if ($LASTEXITCODE -ne 0) {
             Write-Host "ERROR: Git push to origin/main failed." -ForegroundColor Red
             exit 1

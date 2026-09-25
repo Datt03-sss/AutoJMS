@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS
-    Safely discards all uncommitted modifications and untracked files.
+    Safely discards uncommitted modifications to tracked files.
 .DESCRIPTION
-    Previews untracked file deletions, prompts the user to type 'DISCARD'
-    for confirmation, then runs git restore and git clean.
+    Previews modified tracked files, lists untracked files, prompts the user to
+    type 'DISCARD' for confirmation, then runs git restore. Untracked files are
+    never deleted (agents must not delete files) - review them with the Owner.
 .PARAMETER Force
     If set, bypasses confirmation prompts.
 .EXAMPLE
@@ -50,21 +51,22 @@ try {
 Write-Host "Modified Tracked Files:" -ForegroundColor Gray
 try {
     Push-Location $Root
-    & git diff --name-status 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    # No 2>&1: under 'Stop', PS 5.1 turns any git stderr line (CRLF warnings) into a throw.
+    & git diff --name-status | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
 } finally {
     Pop-Location
 }
 Write-Host ''
 
-# 4. Preview untracked files
-Write-Host "Untracked Files to Delete (Preview):" -ForegroundColor Gray
+# 4. List untracked files (kept, never deleted)
+Write-Host "Untracked Files (kept, not deleted):" -ForegroundColor Gray
 try {
     Push-Location $Root
-    $cleanPreview = & git clean -fdn 2>&1
-    if ($cleanPreview) {
-        $cleanPreview | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    $untracked = & git ls-files --others --exclude-standard
+    if ($untracked) {
+        $untracked | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
     } else {
-        Write-Host "  No untracked files to delete." -ForegroundColor Green
+        Write-Host "  No untracked files." -ForegroundColor Green
     }
 } finally {
     Pop-Location
@@ -73,7 +75,7 @@ Write-Host ''
 
 # 5. Confirmation prompt
 if (-not $Force) {
-    Write-Host "WARNING: This action is DESTRUCTIVE. All uncommitted changes will be lost!" -ForegroundColor Yellow
+    Write-Host "WARNING: This action is DESTRUCTIVE. All uncommitted changes to tracked files will be lost!" -ForegroundColor Yellow
     $confirm = Read-Host "To confirm, please type exactly 'DISCARD'"
     if ($confirm -ne 'DISCARD') {
         Write-Host "Discard cancelled by user." -ForegroundColor Red
@@ -85,12 +87,10 @@ if (-not $Force) {
 try {
     Push-Location $Root
     Write-Host "Reverting modified tracked files..." -ForegroundColor Yellow
-    & git restore . 2>&1
-    
-    Write-Host "Deleting untracked files and folders..." -ForegroundColor Yellow
-    & git clean -fd 2>&1 | ForEach-Object { Write-Host "  $_" }
-    
-    Write-Host "Workspace reset complete." -ForegroundColor Green
+    & git restore .
+    if ($LASTEXITCODE -ne 0) { throw "git restore exited with code $LASTEXITCODE" }
+
+    Write-Host "Workspace reset complete. Untracked files were kept - ask the Owner before removing any." -ForegroundColor Green
 } catch {
     Write-Host "ERROR: Discard operation failed: $_" -ForegroundColor Red
     exit 1
