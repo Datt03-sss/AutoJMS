@@ -7,6 +7,7 @@ namespace AutoJMS.UI.DesignSystem
     public static class ThemeMetrics
     {
         // Chrome
+        public const int TitleBarHeight = 32;
         public const int NavHeight = 40;
         public const int ToolbarHeight = 32;
         public const int SubTabHeight = 30;

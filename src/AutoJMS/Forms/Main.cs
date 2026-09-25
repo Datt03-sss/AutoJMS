@@ -26,8 +26,8 @@ using Size = System.Drawing.Size;
 
 namespace AutoJMS
 {
-    // Main kế thừa Form chuẩn: thanh tiêu đề là thanh tiêu đề của Windows,
-    // dải tab do TopNavigation vẽ.
+    // Main kế thừa Form chuẩn nhưng bỏ viền (FormBorderStyle.None): thanh tiêu đề do
+    // AppTitleBar vẽ, dải tab do TopNavigation vẽ.
     public partial class Main : Form
     {
         private static string JmsHomeUrl => AppConfig.Current.JmsBaseUrl.TrimEnd('/');
@@ -152,6 +152,7 @@ namespace AutoJMS
         private static readonly TimeSpan DkchReadyTimeout = TimeSpan.FromSeconds(15);
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         private UI.DesignSystem.TopNavigation topNav;
+        private UI.DesignSystem.AppTitleBar titleBar;
         private Label lblNetworkStatus;
         private NetworkStatus _currentNetworkStatus = NetworkStatus.Online;
 
@@ -168,6 +169,7 @@ namespace AutoJMS
 
             InitializeComponent();
             BuildTopNavigation();
+            BuildTitleBar();
             // Mục DATA của tab DKCH được dựng bằng code (không qua designer) để bề rộng
             // luôn khớp bề rộng chữ thật. Phải chạy TRƯỚC mọi code đọc/ghi các control đó.
             BuildDkchDataSection();
@@ -1081,6 +1083,16 @@ namespace AutoJMS
             Controls.Add(topNav);
         }
 
+        /// <summary>
+        /// Thanh tiêu đề thay cho thanh của Windows (Main.Designer.cs đặt FormBorderStyle.None).
+        /// Thêm SAU topNav nên được dock trước nữa: nằm trên cùng, trên cả thanh tab.
+        /// </summary>
+        private void BuildTitleBar()
+        {
+            titleBar = new UI.DesignSystem.AppTitleBar(this) { Name = "titleBar" };
+            Controls.Add(titleBar);
+        }
+
         private void InitNetworkUI()
         {
             lblNetworkStatus = new Label();
@@ -1093,26 +1105,20 @@ namespace AutoJMS
             lblNetworkStatus.Font = ThemeTypography.BodyStrong;
             lblNetworkStatus.BackColor = Color.Transparent;
 
-            // Cha là topNav, KHÔNG phải Form. Form cũ tự vẽ thanh tiêu đề NGAY TRONG vùng
-            // client nên toạ độ y=9 rơi đúng vào thanh đó; Form thường để thanh tiêu đề cho
-            // Windows lo, ở NGOÀI vùng client, nên y=9 tụt xuống dưới topNav/tabControl -
-            // hai control này vào Controls trước nên nằm trên và che hẳn nhãn.
+            // Nằm trên thanh tiêu đề, sát bên trái nút Thu nhỏ. Dock = Right là đủ: AppTitleBar
+            // đã chừa chỗ cho cặp nút trong DisplayRectangle, AutoSize cho bề ngang theo chữ
+            // mỗi lần đổi trạng thái - không còn hàm tự tính toạ độ nào phải gọi lại khi thanh
+            // đổi cỡ hay đổi DPI. Nhưng Label AutoSize dock Right vẫn giữ chiều cao của CHÍNH
+            // nó (đã thấy trên màn hình: chữ dính mép trên), nên MinimumSize kéo chiều cao lên
+            // bằng thanh để MiddleLeft căn giữa dọc. MinimumSize được nhân cùng thanh khi đổi DPI.
             // Nền Transparent trên control cha tự vẽ vẫn đúng: Label gọi lại OnPaint của cha.
-            lblNetworkStatus.Parent = topNav;
+            lblNetworkStatus.Dock = DockStyle.Right;
+            lblNetworkStatus.TextAlign = ContentAlignment.MiddleLeft;
+            lblNetworkStatus.MinimumSize = new Size(0, titleBar.Height);
+            lblNetworkStatus.Parent = titleBar;
 
             UpdateNetworkUI(NetworkStatus.Online);
             NetworkState.OnChanged += UpdateNetworkUI;
-            topNav.SizeChanged += (s, e) => RepositionNetworkLabel();
-        }
-
-        private void RepositionNetworkLabel()
-        {
-            if (lblNetworkStatus == null || topNav == null) return;
-
-            // Nép sát mép phải thanh nav, cùng lề 12px mà TopNavigation dùng cho mép trái.
-            lblNetworkStatus.Location = new Point(
-                topNav.Width - lblNetworkStatus.Width - 12,
-                (topNav.Height - lblNetworkStatus.Height) / 2);
         }
 
         private void UpdateNetworkUI(NetworkStatus status)
@@ -1125,7 +1131,7 @@ namespace AutoJMS
 
             _currentNetworkStatus = status;
 
-            // KHÔNG tách nhánh riêng cho theme Red: TopNavigation tô nền thanh nav bằng
+            // KHÔNG tách nhánh riêng cho theme Red: AppTitleBar tô nền thanh bằng
             // c.Surface, mà ThemeColors.Red.Surface trùng từng byte với Light ("#F5F7FA").
             // Hai theme cùng nền thì phải cùng màu chữ — bảng màu đỏ riêng là di sản thời
             // SunnyUI, khi header còn nền đỏ thật, và nó làm chữ trắng nằm trên nền gần
@@ -1148,8 +1154,6 @@ namespace AutoJMS
                     lblNetworkStatus.ForeColor = isDark ? Color.Red : Color.FromArgb(252, 115, 115);
                     break;
             }
-
-            RepositionNetworkLabel();
         }
 
 
@@ -1862,6 +1866,58 @@ namespace AutoJMS
                 _pendingReapplyMaximize = false;
                 ReapplyMaximize();
             }
+
+            // Bỏ viền rồi thì trạng thái Normal không còn đường quay về: không nút phóng to,
+            // không nhấp đúp thanh tiêu đề. Mà vẫn có kẻ đưa cửa sổ về Normal -
+            // Program.BringExistingInstanceToFront gọi ShowWindow(SW_RESTORE) mỗi lần mở app
+            // lần hai, Win+Mũi tên xuống cũng vậy. Nên cứ về Normal là phóng to lại.
+            // BeginInvoke chứ không gán ngay: đang ở giữa WM_SIZE của chính lệnh đổi trạng thái,
+            // gán lồng vào đó là ShowWindow lồng ShowWindow. Tới lượt chạy mới xét lại, nên
+            // ReapplyMaximize (đi qua Normal rồi Maximized liền một mạch) không bị đụng.
+            if (WindowState == FormWindowState.Normal && IsHandleCreated)
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    if (!IsDisposed && WindowState == FormWindowState.Normal)
+                        WindowState = FormWindowState.Maximized;
+                }));
+            }
+        }
+
+        /// <summary>
+        /// Bỏ viền là mất luôn WS_MINIMIZEBOX, và thiếu cờ đó thì bấm nút trên taskbar KHÔNG
+        /// thu nhỏ được cửa sổ. Trả cờ lại: nó không vẽ gì khi không có thanh tiêu đề.
+        /// </summary>
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                const int WS_MINIMIZEBOX = 0x00020000;
+                var cp = base.CreateParams;
+                cp.Style |= WS_MINIMIZEBOX;
+                return cp;
+            }
+        }
+
+        /// <summary>
+        /// Cửa sổ không viền mà phóng to thì Windows cho phủ kín màn hình, đè lên taskbar. Mỗi
+        /// lần Windows hỏi khung phóng to (WM_GETMINMAXINFO) thì trả về vùng làm việc của đúng
+        /// màn hình đang chứa cửa sổ; Form.WndProc tự chép MaximizedBounds vào MINMAXINFO.
+        /// Toạ độ tính từ góc màn hình đó chứ không phải toạ độ toàn cục - Windows hiểu
+        /// ptMaxPosition theo màn hình, nên dùng thẳng WorkingArea là lệch ở màn hình phụ.
+        /// </summary>
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_GETMINMAXINFO = 0x0024;
+            if (m.Msg == WM_GETMINMAXINFO)
+            {
+                // m.HWnd chứ không phải Handle: tin này tới cả khi handle còn đang được tạo.
+                var screen = Screen.FromHandle(m.HWnd);
+                Rectangle work = screen.WorkingArea;
+                MaximizedBounds = new Rectangle(
+                    work.X - screen.Bounds.X, work.Y - screen.Bounds.Y, work.Width, work.Height);
+            }
+            base.WndProc(ref m);
         }
 
         private void Main_DisplaySettingsChanged(object sender, EventArgs e) => ReapplyMaximize();

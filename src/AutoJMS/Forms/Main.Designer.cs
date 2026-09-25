@@ -1428,6 +1428,11 @@ namespace AutoJMS
             AutoScaleMode = AutoScaleMode.Dpi;
             ClientSize = new Size(1386, 788);
             Controls.Add(tabControl);
+            // Bỏ viền + thanh tiêu đề của Windows: Main tự vẽ thanh tiêu đề (AppTitleBar, dựng
+            // bằng code trong Main.cs). Phần Windows không còn làm hộ - thu nhỏ bằng taskbar,
+            // phóng to chừa taskbar, luôn giữ phóng to - nằm ở mục "LUÔN GIỮ CỬA SỔ Ở TRẠNG THÁI
+            // MAXIMIZE" của Main.cs.
+            FormBorderStyle = FormBorderStyle.None;
             Icon = (Icon)resources.GetObject("$this.Icon");
             MaximizeBox = false;
             Name = "Main";

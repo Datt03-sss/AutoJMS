@@ -110,7 +110,8 @@ the full control list and its traps are in
 ```csharp
 using AutoJMS.UI.DesignSystem;
 
-// Form base: plain WinForms Form (the Windows title bar is real, not painted)
+// Form base: plain WinForms Form. Main (AppTitleBar) and ADialog are borderless and paint their
+// own title; FullStackOperation, frmLogin, TermsDialog, UpdateChannelDialog keep the Windows one.
 public partial class Main : Form { }
 
 // Grid

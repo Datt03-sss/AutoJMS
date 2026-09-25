@@ -347,19 +347,37 @@ trên WebView2 Dashboard. Đây là **ngoại lệ duy nhất** với nguyên t�
 
 ## M. Điều hướng
 
-Thanh nav chính, cao 40px, dính trên cùng.
+Cửa sổ chính bỏ viền của Windows (`FormBorderStyle.None`) và luôn phóng to kín vùng làm việc
+của màn hình — thanh taskbar vẫn hiện. Trên cùng là hai thanh xếp chồng, mỗi thanh có đường
+đáy 1px `Border`:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ [icon] AutoJMS │ HOME  CHUYỂN HOÀN  TRA HÀNH TRÌNH  IN ĐƠN  ABOUT │ ● Online  [user] │ ─ □ ✕ │
+│ [icon] AutoJMS                                  ● Online │  ─  │  ✕  │  AppTitleBar, 32px
+├──────────────────────────────────────────────────────────────────────┤
+│ HOME  CHUYỂN HOÀN  TRA HÀNH TRÌNH  IN ĐƠN  ABOUT                     │  TopNavigation, 40px
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+### Thanh tiêu đề (`AppTitleBar`)
+
 | Vùng | Nội dung |
 |---|---|
-| Trái | Icon + chữ "AutoJMS" — nhận diện, không phải nút |
-| Giữa | Tab điều hướng chính |
-| Phải | Trạng thái kết nối · tài khoản · nút cửa sổ |
+| Trái | Icon cửa sổ 16px + `Text` của Form, chữ `BodyStrong` — nhận diện, không phải nút |
+| Phải | Nhãn trạng thái kết nối · cách `Sm` · Thu nhỏ · Đóng |
+
+- **Không có nút phóng to, không kéo, không nhấp đúp.** Cửa sổ luôn phóng to; giữ trạng thái
+  đó là việc của `Main`, không phải của thanh.
+- **Nút cửa sổ rộng 46px, cao hết thanh, dính sát góc phải** — đúng cỡ nút tiêu đề của
+  Windows, và góc màn hình là chỗ chuột dễ trúng nhất.
+- **Thu nhỏ:** hover nền `Border`, nhấn `BorderStrong`. Không lấy `SurfaceAlt` của nút Ghost —
+  ở theme sáng nó còn sáng hơn nền `Surface` của thanh, rê chuột không thấy gì.
+- **Đóng:** hover nền `Danger`, ký hiệu `OnPrimary`. Bấm đi qua `Form.Close()`, nên hộp
+  "Đóng ứng dụng" vẫn hiện như với nút X cũ của Windows.
+- **Tiêu đề đọc lại `Form.Text` mỗi lần vẽ** — tiến độ tải cập nhật ghi vào đó vẫn hiện trên
+  thanh. Cửa sổ mất focus thì chữ chuyển `TextMuted`.
+
+### Thanh nav (`TopNavigation`)
 
 - **Active:** chữ `Text` + `BodyStrong` + gạch dưới 2px `Primary`.
 - **Inactive:** chữ `TextSecondary`, không viền.

@@ -153,9 +153,10 @@ namespace AutoJMS.UI
 
         /// <summary>
         /// Mọi Form của app nay đều là <see cref="Form"/> chuẩn. Nhánh tô thanh tiêu đề
-        /// của UIForm bỏ hẳn: thanh tiêu đề giờ là của Windows, không có thuộc tính nào
-        /// để gán. TitleColor/TitleForeColor/RectColor trong bảng màu vì thế chỉ còn
-        /// phục vụ các nhánh khác.
+        /// của UIForm bỏ hẳn: thanh tiêu đề là của Windows, riêng Main bỏ viền và dùng
+        /// AppTitleBar - control A* tự tô theo ThemeManager, ApplyToControls bỏ qua nó.
+        /// Không có thuộc tính nào để gán. TitleColor/TitleForeColor/RectColor trong bảng
+        /// màu vì thế chỉ còn phục vụ các nhánh khác.
         /// </summary>
         public static void Apply(Form form)
         {

@@ -15,11 +15,11 @@ namespace AutoJMS.UI.DesignSystem
     ///
     /// Nav chỉ VẼ nhãn của TabPage. Không control nghiệp vụ nào bị di chuyển vào đây.
     ///
-    /// CHỈ vẽ đầu tab, KHÔNG vẽ icon + tên sản phẩm ở góc trái: thanh tiêu đề của Windows
-    /// đã mang sẵn cả hai, vẽ lại ở đây là hai lần "AutoJMS" chồng nhau và chữ dính sát tab
-    /// đầu tiên. Nhờ vậy cùng một lớp dùng được cho cả thanh nav chính lẫn dải tab CON bên
-    /// trong một trang (4 chế độ in của tab IN ĐƠN) — một thanh chứ không phải hai lớp gần
-    /// giống nhau.
+    /// CHỈ vẽ đầu tab, KHÔNG vẽ icon + tên sản phẩm ở góc trái: thanh tiêu đề (AppTitleBar ở
+    /// Main, thanh của Windows ở FullStackOperation) đã mang sẵn cả hai, vẽ lại ở đây là hai lần
+    /// "AutoJMS" chồng nhau và chữ dính sát tab đầu tiên. Nhờ vậy cùng một lớp dùng được cho cả
+    /// thanh nav chính lẫn dải tab CON bên trong một trang (4 chế độ in của tab IN ĐƠN) — một
+    /// thanh chứ không phải hai lớp gần giống nhau.
     /// </summary>
     public sealed class TopNavigation : AControl
     {
@@ -33,11 +33,13 @@ namespace AutoJMS.UI.DesignSystem
 
         public TopNavigation()
         {
-            // Giá trị 96-DPI thô, KHÔNG qua S(). Main đã bật AutoScaleMode.Dpi, mà thanh này
-            // được dựng trong hàm khởi tạo của Main - tức là đã nằm trong cây control trước
-            // lượt PerformAutoScale đầu tiên, nên chính WinForms sẽ nhân chiều cao này lên.
-            // Gọi thêm S() ở đây là nhân hai lần. Chỉ control dựng SAU OnLoad mới cần S().
-            Height = ThemeMetrics.NavHeight;
+            // PHẢI qua S(). Lượt auto-scale của Form chỉ chạy một lần, ở ResumeLayout cuối
+            // InitializeComponent; control vào cây SAU đó - kể cả ngay trong constructor - KHÔNG
+            // được nhân (đã đo bằng app thử: trong InitializeComponent 40 -> 80 ở hệ số 2, thêm
+            // trong constructor hay OnLoad vẫn 40). Main.topNav và dải tab của FullStackOperation
+            // đều dựng bằng code nên cần S(). Bản đặt trong Designer (tabPrint_printTabs) gán lại
+            // Height bên trong InitializeComponent, nên vẫn được nhân như mọi control Designer.
+            Height = S(ThemeMetrics.NavHeight);
             Dock = DockStyle.Top;
             TabStop = true;
         }
@@ -112,21 +114,21 @@ namespace AutoJMS.UI.DesignSystem
 
             _itemRects.Clear();
 
-            int left = EdgePaddingX;
+            int left = S(EdgePaddingX);
 
             var widths = new int[ItemCount];
             int total = 0;
             for (int i = 0; i < ItemCount; i++)
             {
                 widths[i] = TextRenderer.MeasureText(g, _target.TabPages[i].Text, ThemeTypography.BodyStrong).Width
-                          + (ItemPaddingX * 2);
+                          + (S(ItemPaddingX) * 2);
                 total += widths[i];
             }
 
             // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải hoặc
             // giấu sau cặp mũi tên ‹ › — giấu là "In Reverse" biến mất hẳn trên màn hẹp.
             // Co lại thì chữ hụt nhưng tab vẫn bấm được.
-            int available = Width - left - EdgePaddingX;
+            int available = Width - left - S(EdgePaddingX);
             int x = left;
             for (int i = 0; i < ItemCount; i++)
             {
@@ -191,10 +193,9 @@ namespace AutoJMS.UI.DesignSystem
 
             if (isSelected)
             {
+                int indicator = S(ThemeMetrics.TabIndicatorHeight);
                 using (var accent = new SolidBrush(c.Primary))
-                    g.FillRectangle(accent,
-                        rect.X, Height - ThemeMetrics.TabIndicatorHeight,
-                        rect.Width, ThemeMetrics.TabIndicatorHeight);
+                    g.FillRectangle(accent, rect.X, Height - indicator, rect.Width, indicator);
             }
 
             // Viền focus bàn phím: cố ý dùng Focus, KHÔNG dùng Primary (DESIGN.md §S).
