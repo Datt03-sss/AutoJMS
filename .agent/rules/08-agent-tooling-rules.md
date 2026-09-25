@@ -70,8 +70,9 @@ Useful non-repo paths on the owner's machine:
    `first4...last4`.
 4. **Never delete.** No `rm`, `del`, `Remove-Item`, no emptying trash, no `move_file` that clobbers a
    tracked file. This repo's rule is "do not delete old files".
-5. **Never edit Protected Files** via `edit_block`/`write_file` — the list in CLAUDE.md applies
-   identically regardless of which tool does the writing.
+5. **Protected Files follow the same rule whatever the tool** — `edit_block`/`write_file` get exactly
+   the permission the built-in `Edit` has under CLAUDE.md § Protected Files & Areas (standing grant
+   for Claude Code, explicit owner request for every other agent).
 6. **Never `git add .`** — the working tree is routinely dirty with other agents' work. Add explicit
    paths only.
 7. **Respect the lock.** Read `.agent-lock.md` before the first write of any kind. If

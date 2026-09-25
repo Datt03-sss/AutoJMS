@@ -59,10 +59,11 @@ nothing: `src/AutoJMS.DataHub.Api/Properties/AssemblyInfo.cs` uses it for
 
 1. **Minimal Edit Rule beats refactoring.** CLAUDE.md: apply the smallest change that does the job;
    do not reorganise large files unless asked. Reject that part of a generated plan.
-2. **Protected Files stay protected.** A plan naming `Program.cs`, `Main.cs`, `TierRuntimePolicy.cs`,
+2. **A plan is not a task.** A plan naming `Program.cs`, `Main.cs`, `TierRuntimePolicy.cs`,
    `LicenseApiService.cs`, `JmsAuthTokenService.cs`, `VelopackUpdateService.cs`,
-   `release/build-release.ps1` or `installer/inno/AutoJMS.iss` needs an explicit owner request for
-   that specific file first.
+   `release/build-release.ps1` or `installer/inno/AutoJMS.iss` is no reason to edit them. Claude Code
+   holds the Owner's standing grant for these files (CLAUDE.md § Protected Files & Areas), but drop
+   the plan step unless the Owner's task needs it, and name the file in the Final Report.
 3. **`execute-plan` finishing is not permission to push.** `dotnet build -c Release` and
    `eng/harness/verify.ps1` still gate the commit.
 4. **Never guess a selector.** Any WebView2/JMS step must follow

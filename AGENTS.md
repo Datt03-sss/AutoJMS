@@ -189,7 +189,9 @@ Agents **must never** perform these actions under any circumstances:
 
 ## Protected Files (Frozen)
 
-Never edit without explicit owner request for that specific task:
+Never edit without explicit owner request for that specific task. Exception: Claude Code has the
+Owner's standing grant of 2026-09-26 to edit every file below when the task needs it — conditions
+in `CLAUDE.md` § Protected Files & Areas. Every other agent: unchanged.
 
 - `src/AutoJMS/Program.cs`
 - `src/AutoJMS/Forms/Main.cs` / `src/AutoJMS/Forms/Main.Designer.cs`

@@ -18,7 +18,8 @@ make the script fail, and how to verify.
 
 `CLAUDE.md` marks "Build/upload production release" and "Bump version number" as **❌ unless owner
 requests**. Do not run this skill speculatively. `release/build-release.ps1` is also a Protected
-File — you may *run* it, never edit it without a specific owner request.
+File: Claude Code may edit it under its standing grant (CLAUDE.md § Protected Files & Areas), any
+other agent needs a specific owner request. Running it for a release stays owner-request only.
 
 ## Non-negotiable facts (each one has bitten a previous run)
 

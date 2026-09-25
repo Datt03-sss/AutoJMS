@@ -43,7 +43,7 @@ Khi Antigravity cần Claude viết/sửa code, tạo prompt theo format:
 
 1. **Prompt phải self-contained**: Claude phải có đủ context để làm mà không cần hỏi thêm.
 2. **Prompt không override rules**: Mọi rule trong `AGENTS.md`/`CLAUDE.md` vẫn áp dụng.
-3. **Protected Files phải được ghi rõ**: Nếu prompt yêu cầu sửa Protected Files, phải note rõ và Owner phải xác nhận trong chat với Claude.
+3. **Protected Files phải được ghi rõ**: Nếu prompt yêu cầu sửa Protected Files, phải note rõ. Từ 2026-09-26 Claude Code có quyền thường trực sửa Protected Files (xem `CLAUDE.md`) nên Owner không cần xác nhận lại trong chat; phát hành, bump version và DataHub production thì vẫn phải Owner xác nhận.
 4. **Verification trước VPS deploy**: Claude push xong, Antigravity mới pull và deploy trên VPS.
 5. **Rollback path**: Prompt nên mô tả cách rollback nếu thay đổi gây lỗi.
 6. **Lưu Prompt Proposal dưới dạng file `.md`**: Antigravity lưu mọi Claude Prompt Proposal vào thư mục `eng/prompts/` (định dạng `eng/prompts/claude-prompt-YYYY-MM-DD-<topic>.md`) để Owner dễ dàng xem trực tiếp trên IDE hoặc chuyển tiếp cho Claude Code.

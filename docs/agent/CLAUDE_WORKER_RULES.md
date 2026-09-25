@@ -68,7 +68,8 @@ git log --oneline -1
 
 ## 5. Frozen / Protected Files
 
-Never modify these files unless the active task spec explicitly requests changes in their paths:
+Claude Code may edit these without a per-task owner request (standing grant, 2026-09-26), but only
+when the task needs it — conditions in `CLAUDE.md` § Protected Files & Areas:
 - `src/AutoJMS/Program.cs`
 - `src/AutoJMS/Forms/Main.cs` / `src/AutoJMS/Forms/Main.Designer.cs`
 - `src/AutoJMS/Licensing/` (all files)

@@ -79,8 +79,8 @@ get_more_search_results ... / stop_search
 ### Editing with `edit_block`
 
 Same discipline as the built-in `Edit`: one surgical change, unique search text, keep existing style,
-never touch a Protected File. Use `expected_replacements` when a pattern legitimately repeats — never
-to blanket-replace across a file.
+and the same Protected Files rule (CLAUDE.md § Protected Files & Areas). Use `expected_replacements`
+when a pattern legitimately repeats — never to blanket-replace across a file.
 
 ## Prohibitions (short form — full list in the rules file)
 

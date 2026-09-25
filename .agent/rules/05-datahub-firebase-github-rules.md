@@ -80,6 +80,8 @@ new behaviour belongs in an endpoint where it can be authenticated, rate-limited
 1. Never edit an applied migration. Add a new numbered file.
 2. Never write a migration that does not record its own marker.
 3. Database schema migrations are Protected Files (see `CLAUDE.md`) — owner request required.
+   Claude Code's standing grant (2026-09-26) covers writing migration files in the repo; applying
+   one to the production DB still needs an owner request.
 
 ### Manifest control plane
 

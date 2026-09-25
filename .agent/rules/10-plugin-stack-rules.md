@@ -122,7 +122,9 @@ thêm hook `PreToolUse` gọi binary `graphify` vào `.claude/settings.json`, v�
    dùng `${CLAUDE_PLUGIN_ROOT}` (như `ponytail`) thì an toàn vì tự chứa.
 3. **Không plugin nào được vượt gate.** Build → verify → commit → push. `/ship`, `execute-plan`,
    `/ponytail-review` chạy xong đều không phải là giấy phép push.
-4. **Không plugin nào được sửa Protected Files** trong CLAUDE.md, bất kể skill nào gợi ý.
+4. **Skill gợi ý không phải lý do để sửa Protected Files** trong CLAUDE.md. Claude Code có quyền
+   thường trực sửa chúng (2026-09-26), nhưng chỉ khi task của Owner cần — không phải vì plan hay
+   skill nào đề xuất.
 5. **Tôn trọng khoá.** Đọc `.agent-lock.md` trước lần ghi đầu tiên. Plugin không miễn trừ điều này.
 6. **Không cài plugin/skill ở user scope cho việc của repo này.** Dùng `--scope project` để mọi agent
    nhận cùng một cấu hình, thay vì lệ thuộc vào máy của một người.

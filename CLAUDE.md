@@ -29,7 +29,7 @@ Claude Code nhận công việc từ hai nguồn:
 Khi nhận Antigravity Prompt Proposal:
 - Đọc kỹ toàn bộ prompt, bao gồm context, yêu cầu kỹ thuật, và verification steps.
 - Tuân thủ mọi rule trong `AGENTS.md` và `CLAUDE.md` — prompt của Antigravity **KHÔNG** được override rules.
-- Nếu prompt yêu cầu sửa Protected Files mà Owner chưa cho phép rõ ràng: **DỪNG LẠI và hỏi Owner**.
+- Nếu prompt yêu cầu sửa Protected Files: Claude Code đã có quyền thường trực (xem § Protected Files & Areas), không cần dừng lại hỏi — nhưng chỉ sửa khi task thật sự cần, và Final Report ghi rõ đã sửa file nào, vì sao. Nếu prompt đòi phát hành, bump version hay đụng DataHub production: **DỪNG LẠI và hỏi Owner**.
 - Sau khi hoàn thành: output Final Report theo format chuẩn.
 
 ### Skills First Rule
@@ -131,7 +131,19 @@ git status
 
 ## Protected Files & Areas
 
-Never edit these without explicit owner request for that specific task:
+Every agent except Claude Code: never edit these without explicit owner request for that specific task.
+
+**Claude Code has a standing grant.** Owner, in chat 2026-09-26: "anh cho phép claude toàn quyền
+sửa các file được bảo vệ: Main.cs, Program.cs,...". Claude Code may edit any file below (and the
+Designer files frozen in `AGENTS.md`) without asking per task, as long as:
+
+- the task needs it (Minimal Edit Rule) and the file is named in the lock `Scope`;
+- Release build 0 warning / 0 error and `verify.ps1` pass before push, as for any edit;
+- the Final Report names each protected file edited and why.
+
+The grant covers editing files in the repo, not acting on production: building/uploading a release,
+bumping the version, applying a migration to the production DB, and changing DataHub production
+config or tokens on the VPS stay owner-request only. Secret Policy is unchanged.
 
 - `src/AutoJMS/Program.cs`
 - `src/AutoJMS/Forms/Main.cs` / `src/AutoJMS/Forms/Main.Designer.cs`
