@@ -37,9 +37,9 @@ Prints active branch (`main`), git status, and the last 10 local commits.
 
 ### Stage and commit changes safely:
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\eng\git\ai-commit.ps1 -Message "fix(tab-print): resolve double printing spacing"
+powershell -ExecutionPolicy Bypass -File .\eng\git\ai-commit.ps1 -Message "fix(tab-print): resolve double printing spacing" -Paths "src/AutoJMS/Printing/PrintService.cs"
 ```
-Restores dependencies, compiles in Release mode, executes verification tests, stages files, and commits them locally.
+Restores dependencies, compiles in Release mode, executes verification tests, stages only the comma-separated `-Paths` (never `.`), and commits them locally.
 
 ### Revert the latest commit:
 If the Owner reports that the latest commit broke application execution:

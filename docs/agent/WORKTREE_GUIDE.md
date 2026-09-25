@@ -69,7 +69,7 @@ git rebase origin/main
 To discard all local changes made in the worktree:
 ```bash
 git reset --hard HEAD
-git clean -fd
+git status --short   # untracked (??) files are kept — never delete them; ask the Owner
 ```
 
 ### Removing the Worktree

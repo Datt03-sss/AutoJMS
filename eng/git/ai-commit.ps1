@@ -3,20 +3,28 @@
     Automated Git commit and push helper for the GitHub Shared-Main workflow.
 .DESCRIPTION
     Checks active branch is main, triggers full project verification,
-    stages all files, commits them locally, and pushes to origin/main.
+    stages and commits only the paths given in -Paths, and pushes to origin/main.
 .PARAMETER Message
     Commit description message.
+.PARAMETER Paths
+    Repo-relative files or folders to commit, comma-separated. Never "." - untracked
+    files must not be swept into this PUBLIC repo.
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\eng\git\ai-commit.ps1 -Message "fix(tab-print): adjust labels spacing"
+    powershell -ExecutionPolicy Bypass -File .\eng\git\ai-commit.ps1 -Message "fix(tab-print): adjust labels spacing" -Paths "src/AutoJMS/Printing/PrintService.cs,src/AutoJMS/Forms/Main.cs"
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Message
+    [string]$Message,
+
+    [Parameter(Mandatory = $true)]
+    [string[]]$Paths
 )
 
 $ErrorActionPreference = 'Stop'
 $Root = Resolve-Path (Join-Path $PSScriptRoot '..\..') | Select-Object -ExpandProperty Path
+# -File hands "a,b" over as one string, so split it here.
+$Paths = $Paths | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }
 
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host '  AutoJMS AI Commit & Push Main' -ForegroundColor Cyan
@@ -80,10 +88,15 @@ Write-Host ''
 try {
     Push-Location $Root
     Write-Host "Staging files..." -ForegroundColor Yellow
-    & git add . 2>&1
+    & git add -- $Paths
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Git add failed." -ForegroundColor Red
+        exit 1
+    }
     
     Write-Host "Committing changes to local main..." -ForegroundColor Yellow
-    & git commit -m $Message 2>&1 | ForEach-Object { Write-Host "  $_" }
+    # No 2>&1: under 'Stop', PS 5.1 turns any git stderr line (CRLF warnings) into a throw.
+    & git commit -m $Message -- $Paths | ForEach-Object { Write-Host "  $_" }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Git commit failed." -ForegroundColor Red
         exit 1

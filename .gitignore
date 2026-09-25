@@ -163,3 +163,8 @@ tools/render-cli/bin/
 docs/manual/samples/
 docs/manual/waybilltest.xlsx
 docs/manual/tonkho30ngay.xlsx
+
+# Key license admin để test/debug trên máy Owner. Thư mục này từng nằm untracked mà không bị
+# ignore, nên chỉ một lần `git add .` là key lên repo PUBLIC này. Owner cho phép Claude Code
+# đọc khi debug cần license (chat 2026-09-26), nhưng không bao giờ commit.
+tests/AutoJMS.Tests/AdminLicenseTest/

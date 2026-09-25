@@ -83,7 +83,7 @@ Resolve any conflicts, test, and push the updated branch.
 To discard all uncommitted changes and return to the latest commit:
 ```bash
 git reset --hard HEAD
-git clean -fd
+git status --short   # untracked (??) files are kept — never delete them; ask the Owner
 ```
 
 ### Case B: Deleting a Worktree Folder
