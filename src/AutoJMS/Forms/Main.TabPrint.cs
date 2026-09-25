@@ -113,7 +113,7 @@ namespace AutoJMS
                 ColumnCount = 4,
                 RowCount = 2,
                 Margin = new Padding(0),
-                Padding = new Padding(4, 2, 4, 2),
+                Padding = new Padding(S(4), S(2), S(4), S(2)),
                 BackColor = Color.Transparent
             };
             _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
@@ -121,7 +121,7 @@ namespace AutoJMS
             _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
             _reprintRoot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 27F));
             _reprintRoot.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            _reprintRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+            _reprintRoot.RowStyles.Add(new RowStyle(SizeType.Absolute, S(22)));
 
             _reprintRoot.Controls.Add(BuildReprintReceiverCard(), 0, 0);
             _reprintRoot.Controls.Add(BuildReprintRouteCard(), 1, 0);
@@ -137,7 +137,7 @@ namespace AutoJMS
                 // Grid = Segoe UI 9F, đúng cỡ chữ cũ. Body là 9.75F, to hơn, mà dải này chỉ
                 // cao khoảng 120px nên giữ nguyên cỡ để bố cục không đổi.
                 Font = ThemeTypography.Grid,
-                Margin = new Padding(2, 0, 2, 0)
+                Margin = new Padding(S(2), 0, S(2), 0)
             };
             _reprintRoot.Controls.Add(_reprintStatus, 0, 1);
             _reprintRoot.SetColumnSpan(_reprintStatus, 4);
@@ -157,8 +157,8 @@ namespace AutoJMS
         private Control BuildReprintReceiverCard()
         {
             var card = NewReprintCard("tabPrint_reprintCardReceiver", 3, out var body);
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 27F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, S(23)));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, S(27)));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _reprintChkReceiver = NewReprintCheckBox("tabPrint_reprintChkReceiver", "Sửa Người nhận");
@@ -167,7 +167,7 @@ namespace AutoJMS
             // đúng tên của nhãn gốc. Trước đây ô này luôn rỗng nên tick "Sửa" là mất tên.
             _reprintTxtName = NewReprintTextBox("tabPrint_reprintTxtName", "Tên người nhận", false);
             _reprintTxtPhone = NewReprintTextBox("tabPrint_reprintTxtPhone", "Số điện thoại", false);
-            _reprintTxtPhone.Margin = new Padding(4, 1, 0, 2);
+            _reprintTxtPhone.Margin = new Padding(S(4), S(1), 0, S(2));
             _reprintBtnRevealPhone = NewReprintRevealButton();
             _reprintTxtAddress = NewReprintTextBox("tabPrint_reprintTxtAddress", "Địa chỉ người nhận", true);
 
@@ -186,7 +186,7 @@ namespace AutoJMS
         private Control BuildReprintRouteCard()
         {
             var card = NewReprintCard("tabPrint_reprintCardRoute", 4, out var body);
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, S(23)));
 
             // Ba ô chia đều phần còn lại thay vì cao cố định 25px rồi nhường chỗ thừa cho một
             // hàng đệm ở đáy: hàng đệm ấy chính là dải trống Owner thấy dưới ô "Mã tuyến 3".
@@ -215,7 +215,7 @@ namespace AutoJMS
         private Control BuildReprintNotesCard()
         {
             var card = NewReprintCard("tabPrint_reprintCardNotes", 2, out var body);
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, S(23)));
             body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _reprintChkNotes = NewReprintCheckBox("tabPrint_reprintChkNotes", "Sửa Ghi chú");
@@ -232,7 +232,7 @@ namespace AutoJMS
         private Control BuildReprintPrintCountCard()
         {
             var card = NewReprintCard("tabPrint_reprintCardPrintCount", 4, out var body);
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 23F));
+            body.RowStyles.Add(new RowStyle(SizeType.Absolute, S(23)));
 
             // Chia làm BA phần dù chỉ dùng hai: Owner chốt ô ở đây phải cao bằng ô thẻ Mã tuyến
             // bên cạnh, mà thẻ ấy chia phần còn lại cho ba hàng. Chia đôi (Percent 50F) thì hết
@@ -245,13 +245,13 @@ namespace AutoJMS
             _reprintChkPrintCount = NewReprintCheckBox("tabPrint_reprintChkPrintCount", "Sửa dòng đếm lần in");
             _reprintTxtPrintCode = NewReprintTextBox("tabPrint_reprintTxtPrintCode", "Mã bưu cục", false);
             _reprintTxtPrintTimes = NewReprintTextBox("tabPrint_reprintTxtPrintTimes", "Lần in", false);
-            _reprintTxtPrintTimes.Margin = new Padding(4, 1, 0, 2);
+            _reprintTxtPrintTimes.Margin = new Padding(S(4), S(1), 0, S(2));
 
             // Owner chốt tách mốc thời gian thành hai ô rời: giờ và ngày sửa độc lập, khi in
             // thì ghép lại bằng một dấu cách ("21:40" + "12-09-2026" → "21:40 12-09-2026").
             _reprintTxtPrintClock = NewReprintTextBox("tabPrint_reprintTxtPrintClock", "HH:MM", false);
             _reprintTxtPrintDate = NewReprintTextBox("tabPrint_reprintTxtPrintDate", "dd-MM-yyyy", false);
-            _reprintTxtPrintDate.Margin = new Padding(4, 1, 0, 2);
+            _reprintTxtPrintDate.Margin = new Padding(S(4), S(1), 0, S(2));
 
             var header = NewReprintFieldRow();
             AddReprintCell(header, _reprintTxtPrintCode, 96);
@@ -274,16 +274,16 @@ namespace AutoJMS
         /// Ô tick nằm ở dòng đầu và đóng luôn vai tiêu đề, nên không tốn thêm dòng cho chữ
         /// tiêu đề riêng — chiều cao khả dụng của dải này chỉ khoảng 120px.
         /// </summary>
-        private static ACard NewReprintCard(string name, int rowCount, out TableLayoutPanel body)
+        private ACard NewReprintCard(string name, int rowCount, out TableLayoutPanel body)
         {
             var card = new ACard
             {
                 Name = name,
                 Dock = DockStyle.Fill,
-                Margin = new Padding(3, 0, 3, 0),
+                Margin = new Padding(S(3), 0, S(3), 0),
                 // Đè Padding mặc định của ACard (ThemeSpacing.Md = 12): dải này quá thấp cho
                 // lề 12px, giữ nguyên 6/4 như bản cũ.
-                Padding = new Padding(6, 4, 6, 4)
+                Padding = new Padding(S(6), S(4), S(6), S(4))
             };
 
             body = new TableLayoutPanel
@@ -322,12 +322,12 @@ namespace AutoJMS
         /// Thêm một cột vào <paramref name="row"/>. <paramref name="fixedWidth"/> ≤ 0 nghĩa là
         /// cột co giãn; <paramref name="control"/> null tạo cột đệm để đẩy phần dư sang phải.
         /// </summary>
-        private static void AddReprintCell(TableLayoutPanel row, Control control, int fixedWidth)
+        private void AddReprintCell(TableLayoutPanel row, Control control, int fixedWidth)
         {
             int index = row.ColumnCount;
             row.ColumnCount = index + 1;
             row.ColumnStyles.Add(fixedWidth > 0
-                ? new ColumnStyle(SizeType.Absolute, fixedWidth)
+                ? new ColumnStyle(SizeType.Absolute, S(fixedWidth))
                 : new ColumnStyle(SizeType.Percent, 100F));
 
             if (control != null) row.Controls.Add(control, index, 0);
@@ -343,7 +343,7 @@ namespace AutoJMS
                 Symbol = ReprintSymbolEyeOpen,
                 SymbolSize = 16,
                 Radius = 6,
-                Margin = new Padding(4, 1, 0, 2),
+                Margin = new Padding(S(4), S(1), 0, S(2)),
                 MinimumSize = new Size(1, 1)
             };
             button.Click += Reprint_RevealPhoneClicked;
@@ -359,7 +359,7 @@ namespace AutoJMS
                 Dock = DockStyle.Fill,
                 Checked = false,
                 Font = ThemeTypography.Grid,
-                Margin = new Padding(0, 1, 0, 1)
+                Margin = new Padding(0, S(1), 0, S(1))
             };
             box.CheckedChanged += Reprint_EditToggleChanged;
             return box;
@@ -378,7 +378,7 @@ namespace AutoJMS
                 Multiline = multiline,
                 PlaceholderText = watermark,
                 Font = ThemeTypography.Grid,
-                Margin = new Padding(0, 1, 0, 2),
+                Margin = new Padding(0, S(1), 0, S(2)),
                 MinimumSize = new Size(1, 1)
             };
             box.TextChanged += Reprint_FieldTextChanged;

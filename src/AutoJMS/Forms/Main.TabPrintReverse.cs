@@ -287,7 +287,7 @@ namespace AutoJMS
                 Text = ReverseHint,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = ReverseUiFont,
-                Margin = new Padding(ThemeSpacing.Sm, 0, ThemeSpacing.Sm, 0)
+                Margin = new Padding(S(ThemeSpacing.Sm), 0, S(ThemeSpacing.Sm), 0)
             };
 
             var layout = new TableLayoutPanel
@@ -305,8 +305,8 @@ namespace AutoJMS
                 layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             // Hai hàng nhập cao CỐ ĐỊNH, chỗ thừa dồn hết xuống dòng trạng thái. Chia phần trăm
             // thì phần thừa rơi vào đáy từng ô, tách nhãn khỏi ô nhập — đúng khoảng trống Owner báo.
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, ReverseRowHeight));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, S(ReverseRowHeight)));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, S(ReverseRowHeight)));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             // Chuỗi mẫu quyết định bề ngang từng ô — đo bằng font thật lúc dựng. Ô thời gian
@@ -345,7 +345,7 @@ namespace AutoJMS
         {
             var dateBox = NewReverseBox(date, ReverseInputBox.Glyph.Calendar, null, "2026-09-20", 0);
             var timeBox = NewReverseBox(
-                time, ReverseInputBox.Glyph.Clock, null, "00:00:00", dateBox.Right + ReverseBoxGap);
+                time, ReverseInputBox.Glyph.Clock, null, "00:00:00", dateBox.Right + S(ReverseBoxGap));
 
             var cell = NewReverseCell();
             cell.Controls.Add(timeBox);
@@ -366,9 +366,9 @@ namespace AutoJMS
                 tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng", 0);
 
             tabPrint_reverseFlag.Location =
-                new Point(codeBox.Right + ReverseBoxGap, ReverseCaptionHeight);
+                new Point(codeBox.Right + S(ReverseBoxGap), S(ReverseCaptionHeight));
             tabPrint_reverseFlag.Size = new Size(
-                DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont), ReverseInputHeight);
+                DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont), S(ReverseInputHeight));
 
             var flagCaption = NewReverseCaption("Dấu Reverse:");
             flagCaption.Left = tabPrint_reverseFlag.Left;
@@ -406,11 +406,11 @@ namespace AutoJMS
         {
             var box = new ReverseInputBox(input, glyph, trailing)
             {
-                Location = new Point(x, ReverseCaptionHeight),
+                Location = new Point(x, S(ReverseCaptionHeight)),
                 Margin = Padding.Empty,
                 Width = ReverseInputBox.MeasureWidth(
                     widthSample, ReverseFieldFont, glyph, trailing != null, input is DateTimePicker),
-                Height = ReverseInputHeight
+                Height = S(ReverseInputHeight)
             };
             _reverseFields.Add(box);
             return box;
@@ -421,12 +421,12 @@ namespace AutoJMS
         /// bên trong, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải rộng hơn lề
         /// trái để hai cột cạnh nhau không dính vào nhau.
         /// </summary>
-        private static Panel NewReverseCell() => new()
+        private Panel NewReverseCell() => new()
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             BackColor = Color.Transparent,
-            Margin = new Padding(ThemeSpacing.Xs, 0, ThemeSpacing.Md, 0)
+            Margin = new Padding(S(ThemeSpacing.Xs), 0, S(ThemeSpacing.Md), 0)
         };
 
         // Không viền: viền duy nhất nhìn thấy là khung bo góc do ReverseInputBox vẽ.
@@ -478,8 +478,8 @@ namespace AutoJMS
             {
                 Name = "tabPrint_reversePageLabel",
                 AutoSize = false,
-                Size = new Size(56, ThemeMetrics.ControlHeight),
-                Margin = new Padding(0, ThemeSpacing.Xs, 0, ThemeSpacing.Xs),
+                Size = new Size(S(56), S(ThemeMetrics.ControlHeight)),
+                Margin = new Padding(0, S(ThemeSpacing.Xs), 0, S(ThemeSpacing.Xs)),
                 Text = "0/0",
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = ReverseUiFont
@@ -525,8 +525,8 @@ namespace AutoJMS
             {
                 Name = name,
                 Text = text,
-                Size = new Size(width, ThemeMetrics.ControlHeight),
-                Margin = new Padding(ThemeSpacing.Sm, ThemeSpacing.Xs, 0, ThemeSpacing.Xs),
+                Size = new Size(S(width), S(ThemeMetrics.ControlHeight)),
+                Margin = new Padding(S(ThemeSpacing.Sm), S(ThemeSpacing.Xs), 0, S(ThemeSpacing.Xs)),
                 Font = ThemeTypography.Button
             };
             _reverseToolbarButtons.Add((button, warning));
@@ -875,8 +875,8 @@ namespace AutoJMS
             _reverseStaffList.Bounds = new Rectangle(
                 anchor.X,
                 anchor.Y,
-                Math.Max(host.Width, 200),
-                Math.Max(_reverseStaffList.ItemHeight * rows + 4, 24));
+                Math.Max(host.Width, S(200)),
+                Math.Max(_reverseStaffList.ItemHeight * rows + S(4), S(24)));
             _reverseStaffList.SelectedIndex = 0;
             _reverseStaffList.Visible = true;
             _reverseStaffList.BringToFront();

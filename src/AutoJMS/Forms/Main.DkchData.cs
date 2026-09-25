@@ -97,7 +97,7 @@ namespace AutoJMS
             tabDKCH_divider = new Panel
             {
                 Name = "tabDKCH_divider",
-                Height = 1,
+                Height = S(1),
                 Margin = new Padding(0),
                 TabStop = false
             };
@@ -119,7 +119,7 @@ namespace AutoJMS
             tabDKCH_useSheet = new DkchToggle
             {
                 Name = "tabDKCH_useSheet",
-                Size = new Size(DkchSwitchW, DkchSwitchH),
+                Size = new Size(S(DkchSwitchW), S(DkchSwitchH)),
                 Margin = new Padding(0),
                 TabIndex = 13
             };
@@ -184,7 +184,7 @@ namespace AutoJMS
             try
             {
                 int avail = tabDKCH_dataHost.ClientSize.Width;
-                if (avail < 120) avail = DkchDesignWidth;   // chưa có handle
+                if (avail < S(120)) avail = S(DkchDesignWidth);   // chưa có handle
 
                 // Ô số phải hiện đủ số chữ số của Maximum (tối thiểu 2 chữ số: "99").
                 int digits = Math.Max(2, ((int)tabDKCH_numRow.Maximum).ToString().Length);
@@ -219,11 +219,11 @@ namespace AutoJMS
                             spinW = DkchSpin.WidthFor(probe, widestNum);
                             // Trong nhóm phải, mỗi control bám sát nhãn CỦA NÓ. Nếu dóng cả
                             // hai vào một cột chung thì "Cột" (ngắn) sẽ bị đẩy xa khỏi ô số.
-                            rightGroupW = Math.Max(useSheetLblW + DkchGapLabel + DkchSwitchW,
-                                                   colLblW + DkchGapLabel + spinW);
+                            rightGroupW = Math.Max(useSheetLblW + S(DkchGapLabel) + S(DkchSwitchW),
+                                                   colLblW + S(DkchGapLabel) + spinW);
                         }
 
-                        int total = leftLblW + DkchGapLabel + ddW + DkchGapGroup + rightGroupW;
+                        int total = leftLblW + S(DkchGapLabel) + ddW + S(DkchGapGroup) + rightGroupW;
                         if (total <= avail) { useSheetText = attempt.Text; fits = true; break; }
                     }
                     if (fits) break;
@@ -264,56 +264,56 @@ namespace AutoJMS
                 leftLblW = Math.Max(leftLblW, ActualWidest(tabDKCH_lblMode, tabDKCH_lblSheet));
                 useSheetLblW = Math.Max(useSheetLblW, ActualWidest(tabDKCH_lblUseSheet));
                 colLblW = Math.Max(colLblW, ActualWidest(tabDKCH_lblCol));
-                rightGroupW = Math.Max(useSheetLblW + DkchGapLabel + DkchSwitchW,
-                                       colLblW + DkchGapLabel + spinW);
+                rightGroupW = Math.Max(useSheetLblW + S(DkchGapLabel) + S(DkchSwitchW),
+                                       colLblW + S(DkchGapLabel) + spinW);
 
                 ApplyDkchDataColors();
 
-                int fieldH = Math.Max(24, newFont.Height + 8);
+                int fieldH = Math.Max(S(24), newFont.Height + S(8));
                 tabDKCH_sheetName.ItemHeight = fieldH;
                 tabDKCH_guideMode.ItemHeight = fieldH;
 
-                int rowH = Math.Max(fieldH, Math.Max(newFont.Height + 4, DkchSwitchH));
+                int rowH = Math.Max(fieldH, Math.Max(newFont.Height + S(4), S(DkchSwitchH)));
 
                 // Chốt chặn cuối: nếu vẫn quá khổ thì dropdown là thứ DUY NHẤT chịu co —
                 // nó có sẵn "…" khi thiếu chỗ, còn nhãn thì không được phép cắt.
-                int over = leftLblW + DkchGapLabel + ddW + DkchGapGroup + rightGroupW - avail;
-                if (over > 0) ddW = Math.Max(48, ddW - over);
+                int over = leftLblW + S(DkchGapLabel) + ddW + S(DkchGapGroup) + rightGroupW - avail;
+                if (over > 0) ddW = Math.Max(S(48), ddW - over);
 
-                int xCtrlLeft = leftLblW + DkchGapLabel;
-                int xLblRight = xCtrlLeft + ddW + DkchGapGroup;
+                int xCtrlLeft = leftLblW + S(DkchGapLabel);
+                int xLblRight = xCtrlLeft + ddW + S(DkchGapGroup);
                 int y = 0;
 
                 // Hàng 1 — Chế độ | dropdown        Dùng sheet | toggle
                 PlaceLabel(tabDKCH_lblMode, 0, y, rowH);
                 Place(tabDKCH_guideMode, xCtrlLeft, y + (rowH - fieldH) / 2, ddW, fieldH);
                 PlaceLabel(tabDKCH_lblUseSheet, xLblRight, y, rowH);
-                Place(tabDKCH_useSheet, xLblRight + useSheetLblW + DkchGapLabel,
-                      y + (rowH - DkchSwitchH) / 2, DkchSwitchW, DkchSwitchH);
-                y += rowH + DkchRowGap;
+                Place(tabDKCH_useSheet, xLblRight + useSheetLblW + S(DkchGapLabel),
+                      y + (rowH - S(DkchSwitchH)) / 2, S(DkchSwitchW), S(DkchSwitchH));
+                y += rowH + S(DkchRowGap);
 
                 // Hàng 2 — Sheet | dropdown         Cột | ô số
                 PlaceLabel(tabDKCH_lblSheet, 0, y, rowH);
                 Place(tabDKCH_sheetName, xCtrlLeft, y + (rowH - fieldH) / 2, ddW, fieldH);
                 PlaceLabel(tabDKCH_lblCol, xLblRight, y, rowH);
-                Place(tabDKCH_numRow, xLblRight + colLblW + DkchGapLabel,
+                Place(tabDKCH_numRow, xLblRight + colLblW + S(DkchGapLabel),
                       y + (rowH - fieldH) / 2, spinW, fieldH);
-                y += rowH + 2;
+                y += rowH + S(2);
 
                 // Đường kẻ ngăn phần đếm — kéo sát lên trên, hàng đếm chỉ có chữ nên
                 // không cần cao bằng hàng có dropdown (rowH ~27px là quá thừa).
-                int lineW = Math.Max(40, Math.Min(avail, xLblRight + rightGroupW));
-                Place(tabDKCH_divider, 0, y, lineW, 1);
-                y += 4;
+                int lineW = Math.Max(S(40), Math.Min(avail, xLblRight + rightGroupW));
+                Place(tabDKCH_divider, 0, y, lineW, S(1));
+                y += S(4);
 
                 // Hàng 3 — Tổng / OK, "OK" thẳng cột với nhóm bên phải.
-                int countH = countFont.Height + 1;
+                int countH = countFont.Height + S(1);
                 PlaceLabel(tabDKCH_countSum, 0, y, countH);
                 PlaceLabel(tabDKCH_countSave, xLblRight, y, countH);
                 y += countH;
 
                 // Panel cao đúng nội dung (Dock=Top nên đổi Height là an toàn).
-                int wanted = tabDKCH_dataSrc.Padding.Top + y + tabDKCH_dataSrc.Padding.Bottom + 2;
+                int wanted = tabDKCH_dataSrc.Padding.Top + y + tabDKCH_dataSrc.Padding.Bottom + S(2);
                 if (tabDKCH_dataSrc.Height != wanted) tabDKCH_dataSrc.Height = wanted;
 
                 AppLogger.Info($"[DKCH] bố cục DATA: {pt:0.#}pt, rộng {avail}px, nhãn trái {leftLblW}, " +
@@ -383,6 +383,12 @@ namespace AutoJMS
                 tabDKCH_useSheet.Invalidate();
             }
         }
+
+        /// <summary>
+        /// Hằng pixel 96-DPI → DPI thật. Lượt AutoScale của Form chỉ nhân control có sẵn lúc
+        /// InitializeComponent xong; control dựng bằng code sau đó phải tự qua đây.
+        /// </summary>
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(this, value);
 
         private static void Place(Control c, int x, int y, int w, int h)
         {

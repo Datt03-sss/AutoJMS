@@ -1168,18 +1168,18 @@ namespace AutoJMS
             if (tabDKCH_Home != null && tabDKCH_btnDKCH1 != null && tabDKCH_btnDKCH2 != null && uiTableLayoutPanel9 != null)
             {
                 tabDKCH_Home.Dock = DockStyle.Fill;
-                tabDKCH_Home.Margin = new Padding(3, 3, 3, 3);
-                tabDKCH_Home.Size = new Size(258, 32);
+                tabDKCH_Home.Margin = new Padding(S(3), S(3), S(3), S(3));
+                tabDKCH_Home.Size = new Size(S(258), S(32));
 
-                tabDKCH_btnDKCH1.Margin = new Padding(3, 4, 3, 4);
-                tabDKCH_btnDKCH2.Margin = new Padding(3, 4, 3, 4);
+                tabDKCH_btnDKCH1.Margin = new Padding(S(3), S(4), S(3), S(4));
+                tabDKCH_btnDKCH2.Margin = new Padding(S(3), S(4), S(3), S(4));
 
-                tabDKCH_btnDKCH1.Height = 32;
-                tabDKCH_btnDKCH2.Height = 32;
+                tabDKCH_btnDKCH1.Height = S(32);
+                tabDKCH_btnDKCH2.Height = S(32);
 
                 if (uiTableLayoutPanel9.RowStyles.Count > 0)
                 {
-                    uiTableLayoutPanel9.RowStyles[0] = new RowStyle(SizeType.Absolute, 38F);
+                    uiTableLayoutPanel9.RowStyles[0] = new RowStyle(SizeType.Absolute, S(38));
                 }
             }
         }
@@ -1214,10 +1214,10 @@ namespace AutoJMS
 
                 if (uiTableLayoutPanel22.RowStyles.Count == 7)
                 {
-                    uiTableLayoutPanel22.RowStyles.Insert(5, new RowStyle(SizeType.Absolute, 50F)); // Theme selector row
+                    uiTableLayoutPanel22.RowStyles.Insert(5, new RowStyle(SizeType.Absolute, S(50))); // Theme selector row
                     uiTableLayoutPanel22.RowStyles.Insert(6, new RowStyle(SizeType.Percent, 100F)); // Stretchy summary row
-                    uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
-                    uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
+                    uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, S(60)));
+                    uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, S(60)));
                 }
                 uiTableLayoutPanel22.RowCount = 9;
             }
@@ -1226,9 +1226,9 @@ namespace AutoJMS
             var themePanel = new Panel
             {
                 Name = "tabAbout_themePanel",
-                Height = 40,
+                Height = S(40),
                 Dock = DockStyle.Fill,
-                Margin = new Padding(10, 0, 10, 0),
+                Margin = new Padding(S(10), 0, S(10), 0),
                 BackColor = Color.Transparent
             };
 
@@ -1236,8 +1236,8 @@ namespace AutoJMS
             {
                 Name = "tabAbout_lblTheme",
                 Text = "Theme:",
-                Size = new Size(150, 30),
-                Location = new Point(45, 5),
+                Size = new Size(S(150), S(30)),
+                Location = new Point(S(45), S(5)),
                 TextAlign = ContentAlignment.MiddleRight,
                 ForeColor = UI.AppTheme.Colors.TextPrimary,
                 BackColor = Color.Transparent,
@@ -1248,8 +1248,8 @@ namespace AutoJMS
             var cboTheme = new UI.DesignSystem.AComboBox
             {
                 Name = "tabAbout_cboTheme",
-                Size = new Size(150, 30),
-                Location = new Point(195, 5)
+                Size = new Size(S(150), S(30)),
+                Location = new Point(S(195), S(5))
             };
             cboTheme.Items.Add("Light");
             cboTheme.Items.Add("Red");
@@ -1309,7 +1309,10 @@ namespace AutoJMS
             {
                 Name = "tabAbout_summaryPanel",
                 Dock = DockStyle.Fill,
-                Margin = new Padding(10, 8, 10, 8),
+                Margin = new Padding(S(10), S(8), S(10), S(8)),
+                // ACard tự đặt Padding 12 THÔ trong constructor (đúng cho thẻ của Designer, vốn
+                // được AutoScale nhân); thẻ dựng bằng code phải tự đặt bản đã scale.
+                Padding = DpiHelper.Uniform(this, ThemeSpacing.Md),
                 AutoScroll = true
             };
 
@@ -1322,7 +1325,7 @@ namespace AutoJMS
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Dock = DockStyle.Top,
-                Height = 26
+                Height = S(26)
             };
 
             var body = new Label
@@ -1344,7 +1347,7 @@ namespace AutoJMS
                 // "quy|ền", "vận hà|nh", "th|ực tế". Dựng lại ngoài app ở bề rộng 420px thì GDI
                 // vỡ y hệt còn GDI+ ngắt đúng chỗ có dấu cách. Cùng gốc với vụ đầu cột IN ĐƠN.
                 UseCompatibleTextRendering = true,
-                Padding = new Padding(0, 6, 0, 0)
+                Padding = new Padding(0, S(6), 0, 0)
             };
 
             // AutoSize=true MỘT MÌNH lại TẮT ngắt dòng: Label.GetPreferredSize bỏ qua bề rộng
@@ -1368,7 +1371,7 @@ namespace AutoJMS
             }
             else
             {
-                summaryPanel.Location = new Point(30, 320);
+                summaryPanel.Location = new Point(S(30), S(320));
                 tabAbout.Controls.Add(summaryPanel);
             }
         }

@@ -131,13 +131,13 @@ namespace AutoJMS
 
                 int w = tabDKCH_newbillHost.ClientSize.Width;
                 int h = tabDKCH_newbillHost.ClientSize.Height;
-                if (w < 80) w = 270;
-                if (h < 80) h = 420;
+                if (w < S(80)) w = S(270);
+                if (h < S(80)) h = S(420);
 
-                int x = DkchNbPad;
-                int inner = Math.Max(60, w - DkchNbPad * 2);
-                int half = (inner - DkchNbGap) / 2;
-                int y = DkchNbPad;
+                int x = S(DkchNbPad);
+                int inner = Math.Max(S(60), w - S(DkchNbPad) * 2);
+                int half = (inner - S(DkchNbGap)) / 2;
+                int y = S(DkchNbPad);
 
                 // Ở cửa sổ nhỏ nhất (MinimumSize 1024x700) tổng chiều cao mong muốn vượt
                 // chỗ có thật, nên hai ô danh sách chịu co trước — chúng có thanh cuộn,
@@ -146,9 +146,9 @@ namespace AutoJMS
                 // thứ nhìn nhiều nhất — lại bị cắt. Rỗng thì co, có mã thì giãn.
                 bool hasCodes = (tabDKCH_inputNewBill != null && tabDKCH_inputNewBill.TextLength > 0)
                              || (tabDKCH_newBillDone != null && tabDKCH_newBillDone.TextLength > 0);
-                int listH = hasCodes ? DkchNbListH : DkchNbListMinH;
-                int wantH = DkchNbPad * 2 + listH + DkchNbGap * 3 + 135 + 54 + 90;
-                if (h < wantH) listH = Math.Max(64, listH - (wantH - h));
+                int listH = hasCodes ? S(DkchNbListH) : S(DkchNbListMinH);
+                int wantH = S(DkchNbPad) * 2 + listH + S(DkchNbGap) * 3 + S(135) + S(54) + S(90);
+                if (h < wantH) listH = Math.Max(S(64), listH - (wantH - h));
 
                 // Hai ô ghép SÁT thành một khối: chồng nhau 1px để hai đường viền
                 // giáp nhau trùng làm một, mỗi ô chỉ bo phía ngoài cùng.
@@ -156,24 +156,24 @@ namespace AutoJMS
                 tabDKCH_cardDone.RoundLeft = false; tabDKCH_cardDone.RoundRight = true;
                 Place(tabDKCH_cardInput, x, y, half, listH);
                 Place(tabDKCH_cardDone, x + half - 1, y, inner - half + 1, listH);
-                y += listH + DkchNbGap;
+                y += listH + S(DkchNbGap);
 
                 int resultH = tabDKCH_cardResult.MeasureHeight(inner);
                 Place(tabDKCH_cardResult, x, y, inner, resultH);
-                y += resultH + DkchNbGap;
+                y += resultH + S(DkchNbGap);
 
                 // Đặt VÔ ĐIỀU KIỆN. Bản trước bỏ qua khi đang ẩn nên nó giữ nguyên toạ độ
                 // của lượt xếp trước; lúc hiện lại thì nằm chồng lên thẻ Hành trình.
                 int tipH = tabDKCH_tipBar.Visible ? tabDKCH_tipBar.MeasureHeight(inner) : 1;
                 Place(tabDKCH_tipBar, x, y, inner, tipH);
-                if (tabDKCH_tipBar.Visible) y += tipH + DkchNbGap;
+                if (tabDKCH_tipBar.Visible) y += tipH + S(DkchNbGap);
 
                 int progH = tabDKCH_cardProgress.MeasureHeight();
                 Place(tabDKCH_cardProgress, x, y, inner, progH);
-                y += progH + DkchNbGap;
+                y += progH + S(DkchNbGap);
 
                 // Hành trình ăn hết phần còn lại; tối thiểu 70px để không bẹp thành gạch.
-                int journeyH = Math.Max(70, h - y - DkchNbPad);
+                int journeyH = Math.Max(S(70), h - y - S(DkchNbPad));
                 Place(tabDKCH_cardJourney, x, y, inner, journeyH);
 
                 if (!_dkchNbPending) break;   // không ai yêu cầu xếp lại → xong
