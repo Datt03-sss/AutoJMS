@@ -121,7 +121,6 @@ namespace AutoJMS
             tabHome_btnHome = new AutoJMS.UI.DesignSystem.AButton();
             tabHome_urlBar = new AutoJMS.UI.DesignSystem.ATextBox();
             tabControl = new AutoJMS.UI.DesignSystem.ATabControl();
-            topNav = new AutoJMS.UI.DesignSystem.TopNavigation();
             tabAbout.SuspendLayout();
             uiTableLayoutPanel5.SuspendLayout();
             uiTableLayoutPanel21.SuspendLayout();
@@ -1471,24 +1470,16 @@ namespace AutoJMS
             tabControl.Size = new Size(1386, 753);
             tabControl.TabIndex = 1;
             tabControl.SelectedIndexChanged += tabControl_SelectedIndexChanged;
-            //
-            // topNav
-            //
-            topNav.Dock = DockStyle.Top;
-            topNav.Name = "topNav";
-            topNav.TabIndex = 0;
-            // Cặp topNav/tabControl KHÔNG trùng nhau: ATabControl nuốt TCM_ADJUSTRECT nên dải
-            // tab gốc của Windows bị trang phủ kín lúc CHẠY, còn topNav vẽ đầu tab thay nó.
-            // Trên mặt Designer thì thấy CẢ HAI vì ATabControl chỉ nuốt khi !DesignMode - cố ý,
-            // không còn dải tab gốc thì không kéo-thả sửa được 5 TabPage nữa.
-            topNav.Target = tabControl;
+            // topNav KHÔNG nằm ở đây: nó được dựng bằng code trong constructor Main.cs. Để trong
+            // Designer thì mặt Designer vẽ cả thanh nav mới LẪN dải tab gốc của comctl32 - hai
+            // thanh chồng nhau, trong khi lúc chạy chỉ có một. Dải tab gốc phải ở lại vì đó là
+            // chỗ duy nhất bấm để kéo-thả sửa 5 TabPage.
             //
             // Main
             //
             AutoScaleMode = AutoScaleMode.None;
             ClientSize = new Size(1386, 788);
             Controls.Add(tabControl);
-            Controls.Add(topNav);
             Icon = (Icon)resources.GetObject("$this.Icon");
             MaximizeBox = false;
             Name = "Main";
@@ -1645,6 +1636,5 @@ namespace AutoJMS
         private AutoJMS.UI.DesignSystem.AButton tabHome_btnHome;
         private AutoJMS.UI.DesignSystem.ATextBox tabHome_urlBar;
         private AutoJMS.UI.DesignSystem.ATabControl tabControl;
-        private AutoJMS.UI.DesignSystem.TopNavigation topNav;
     }
 }

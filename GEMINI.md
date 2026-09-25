@@ -63,6 +63,7 @@ When code changes are needed (new endpoint, migration SQL, bug fix):
 2. Create a **Claude Prompt Proposal** — a complete prompt that Owner can copy-paste to Claude.
 3. Follow the standard format in `.agent/rules/09-cross-agent-collaboration.md`.
 4. The prompt MUST contain enough context for Claude to implement without asking additional questions.
+5. **Format Prompt dưới dạng `.md`**: Mọi Claude Prompt Proposal phải được lưu trực tiếp thành file `.md` độc lập trong thư mục `eng/prompts/` (định dạng `eng/prompts/claude-prompt-YYYY-MM-DD-<topic>.md`) để Owner dễ dàng mở, duyệt và copy.
 
 ### 2.6 Code Review & Rule Compliance Auditing
 - Review proposed or existing changes against project guidelines (`AGENTS.md`, `.agent/rules/*`, Minimal Edit Rule, Protected Files, Secret Policy).

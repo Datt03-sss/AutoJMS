@@ -151,6 +151,7 @@ namespace AutoJMS
         private static string DkchTargetUrl => AppConfig.Current.BuildJmsUrl(DkchRoutePath);
         private static readonly TimeSpan DkchReadyTimeout = TimeSpan.FromSeconds(15);
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        private UI.DesignSystem.TopNavigation topNav;
         private Label lblNetworkStatus;
         private NetworkStatus _currentNetworkStatus = NetworkStatus.Online;
 
@@ -166,6 +167,7 @@ namespace AutoJMS
                 : TierRuntimePolicy.Resolve(CurrentTier);
 
             InitializeComponent();
+            BuildTopNavigation();
             // Mục DATA của tab DKCH được dựng bằng code (không qua designer) để bề rộng
             // luôn khớp bề rộng chữ thật. Phải chạy TRƯỚC mọi code đọc/ghi các control đó.
             BuildDkchDataSection();
@@ -1056,6 +1058,27 @@ namespace AutoJMS
             return AConfirmDialog.Confirm(this,
                 "Cứ ngỡ cống hiến trăm năm...\nAi ngờ 5h00.pm",
                 "Đóng ứng dụng", "Thoát ngay", "Hủy bỏ", destructive: true);
+        }
+
+        /// <summary>
+        /// Dựng thanh điều hướng bằng code chứ KHÔNG để trong Designer. Lý do: ATabControl chỉ
+        /// nuốt TCM_ADJUSTRECT khi !DesignMode, nên trên mặt Designer dải tab gốc của comctl32
+        /// vẫn hiện — để topNav ở đó nữa là thấy HAI thanh chồng nhau, dù lúc chạy chỉ có một.
+        /// Dải tab gốc phải ở lại Designer (chỗ duy nhất bấm để kéo-thả sửa 5 TabPage), nên
+        /// thanh đi ra là topNav. Giống hệt cách FullStackOperation.BuildUiInCode đang làm.
+        /// </summary>
+        private void BuildTopNavigation()
+        {
+            topNav = new UI.DesignSystem.TopNavigation
+            {
+                Name = "topNav",
+                Dock = DockStyle.Top,
+                TabIndex = 0,
+                Target = tabControl
+            };
+            // Thêm SAU tabControl: WinForms dock ngược thứ tự Controls, nên control vào sau được
+            // chia chỗ trước và chiếm đỉnh, phần còn lại mới tới tabControl (Dock.Fill).
+            Controls.Add(topNav);
         }
 
         private void InitNetworkUI()
