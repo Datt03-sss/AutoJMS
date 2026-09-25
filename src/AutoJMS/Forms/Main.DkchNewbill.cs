@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using AutoJMS.UI.DesignSystem;
 
 // Lớp Main nằm ở namespace "AutoJMS" (không phải "AutoJMS.Forms") dù file ở thư mục Forms/.
 namespace AutoJMS
@@ -1094,7 +1095,6 @@ namespace AutoJMS
                 g.DrawPath(pen, path);   // nền trắng thì phải có viền mới thấy tấm
             }
             using (var fCode = Mono(UiPtLead, FontStyle.Bold))
-            using (var fIcon = Ui(UiPtMax, FontStyle.Bold))
             {
                 _copyBox = new Rectangle(box1.Right - DkchRowPad - 26, box1.Y + (box1.Height - 26) / 2, 26, 26);
 
@@ -1112,7 +1112,9 @@ namespace AutoJMS
                     g.FillPath(brush, path);
                     g.DrawPath(pen, path);
                 }
-                Draw(g, _copyOk ? "✓" : "⧉", fIcon, _copyBox, btnInk, TextFormatFlags.HorizontalCenter);
+                // copy -> check là cặp đổi trạng thái của .agent/rules/11: bấm xong đổi ngay
+                // sang dấu tích, không hoạt ảnh (morph chỉ áp cho Dashboard WebView2).
+                ASymbols.Draw(g, _copyOk ? ASymbols.Check : ASymbols.Copy, 15, btnInk, _copyBox);
             }
             y += DkchCodeRowH + 6;
 
@@ -1340,10 +1342,7 @@ namespace AutoJMS
             }
 
             int x = 12;
-            using (var fMark = Ui(9f, FontStyle.Bold))
-            {
-                Draw(g, "▶", fMark, new Rectangle(x, 6, 12, 13), Skin.TipLabel);
-            }
+            ASymbols.Draw(g, ASymbols.Play, 11, Skin.TipLabel, new Rectangle(x, 6, 12, 13));
             x += 14;
             int w = Math.Max(30, Width - x - 9);
             using (var fLabel = Ui(6.4f, FontStyle.Bold))

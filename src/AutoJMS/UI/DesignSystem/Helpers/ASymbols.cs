@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Text;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace AutoJMS.UI.DesignSystem
@@ -63,6 +64,7 @@ namespace AutoJMS.UI.DesignSystem
         public const int More         = 0xE0B6; // ellipsis
         public const int Menu         = 0xE115;
         public const int Calendar     = 0xE063;
+        public const int Clock        = 0xE087; // clock-4 — bí danh của "clock" trong lucide.ttf
         public const int Inbox        = 0xE0F7;
         public const int Page         = 0xE129; // package
 
@@ -71,10 +73,14 @@ namespace AutoJMS.UI.DesignSystem
         public const int Hide         = 0xE0BB; // eye-off
         public const int Warning      = 0xE193; // triangle-alert
         public const int Print        = 0xE141; // printer
+        public const int TrendingUp   = 0xE191;
+        public const int TrendingDown = 0xE190;
 
         // Expand / Collapse
         public const int ChevronDown  = 0xE06D;
         public const int ChevronUp    = 0xE070;
+        public const int ChevronLeft  = 0xE06E;
+        public const int ChevronRight = 0xE06F;
 
         // Media
         public const int Play         = 0xE13C;
@@ -97,7 +103,17 @@ namespace AutoJMS.UI.DesignSystem
         // nhiên, thường chỉ lộ ra khi máy chịu áp lực bộ nhớ). Lớp static này sống
         // hết tiến trình nên ghim vĩnh viễn là đúng, không phải rò rỉ.
         private static byte[] _fontData;
-        private static System.Runtime.InteropServices.GCHandle _fontHandle;
+        private static GCHandle _fontHandle;
+
+        // PrivateFontCollection chỉ tồn tại với GDI+. Draw() lại vẽ bằng
+        // TextRenderer, tức GDI — GDI tra tên family "lucide" trong bảng font hệ
+        // thống, không thấy, rồi ÂM THẦM thay bằng font mặc định. Font mặc định
+        // không có glyph nào trong Private Use Area, nên mọi icon ra ô vuông
+        // trong khi IsEmbeddedFontLoaded vẫn true và build vẫn 0 Warning.
+        // AddFontMemResourceEx đăng ký đúng buffer đó cho GDI, phạm vi tiến trình.
+        // Không gọi RemoveFontMemResourceEx: lớp static này sống hết tiến trình.
+        [DllImport("gdi32.dll", ExactSpelling = true)]
+        private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, out uint pcFonts);
 
         static ASymbols()
         {
@@ -131,9 +147,11 @@ namespace AutoJMS.UI.DesignSystem
                 _fontData = new byte[stream.Length];
                 stream.ReadExactly(_fontData, 0, _fontData.Length);
 
-                _fontHandle = System.Runtime.InteropServices.GCHandle.Alloc(_fontData,
-                    System.Runtime.InteropServices.GCHandleType.Pinned);
-                _privateCollection.AddMemoryFont(_fontHandle.AddrOfPinnedObject(), _fontData.Length);
+                _fontHandle = GCHandle.Alloc(_fontData, GCHandleType.Pinned);
+                var ptr = _fontHandle.AddrOfPinnedObject();
+
+                _privateCollection.AddMemoryFont(ptr, _fontData.Length);          // GDI+
+                AddFontMemResourceEx(ptr, (uint)_fontData.Length, IntPtr.Zero, out _); // GDI
 
                 return _privateCollection.Families.Length > 0
                     ? _privateCollection.Families[0].Name

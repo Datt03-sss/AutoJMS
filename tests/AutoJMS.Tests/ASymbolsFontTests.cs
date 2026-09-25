@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Reflection;
 using AutoJMS.UI.DesignSystem;
 using Xunit;
@@ -44,5 +45,40 @@ public sealed class ASymbolsFontTests
             Assert.True(cp >= 0xE000 && cp <= 0xF8FF,
                 $"ASymbols.{f.Name} = 0x{cp:X4} nằm ngoài Private Use Area (0xE000–0xF8FF).");
         }
+    }
+
+    // Ba test trên đều PASS trong khi từng icon trong app là một ô vuông rỗng:
+    // font nạp đúng, codepoint đúng, nhưng Draw() vẽ bằng TextRenderer (GDI) còn
+    // PrivateFontCollection chỉ tồn tại với GDI+, nên GDI thay font mặc định và
+    // mọi codepoint PUA ra .notdef. Cách duy nhất thấy được là vẽ thật rồi so pixel.
+    //
+    // 0xF8FF nằm trong PUA nhưng ngoài cmap của lucide.ttf (hết ở 0xE78C), nên nó
+    // LUÔN là .notdef. Glyph thật khác .notdef thì font đã tới được GDI; giống nhau
+    // nghĩa là cả hai đang ra cùng một ô vuông.
+    [Fact]
+    public void Draw_RendersRealGlyph_NotNotdefBox()
+    {
+        var real = RenderToBytes(ASymbols.Check);
+        var notdef = RenderToBytes(0xF8FF);
+
+        Assert.False(real.SequenceEqual(notdef),
+            "ASymbols.Check vẽ ra đúng hình mà một codepoint không có trong font vẽ ra. " +
+            "GDI không thấy font 'lucide' — kiểm AddFontMemResourceEx trong ASymbols.LoadLucideFont.");
+    }
+
+    private static byte[] RenderToBytes(int symbol)
+    {
+        using var bmp = new Bitmap(32, 32);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.Clear(Color.White);
+            ASymbols.Draw(g, symbol, 24, Color.Black, new Rectangle(0, 0, 32, 32));
+        }
+
+        var bytes = new byte[32 * 32];
+        for (int y = 0, i = 0; y < 32; y++)
+            for (int x = 0; x < 32; x++, i++)
+                bytes[i] = bmp.GetPixel(x, y).R;
+        return bytes;
     }
 }

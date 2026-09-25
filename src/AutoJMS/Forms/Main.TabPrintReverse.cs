@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AutoJMS.UI.DesignSystem;
 
 namespace AutoJMS
 {
@@ -262,7 +263,8 @@ namespace AutoJMS
             _reverseClearStaff = new ReverseRoundButton
             {
                 Name = "tabPrint_reverseClearStaff",
-                Text = "✕",
+                Symbol = ASymbols.X,
+                SymbolSize = 13,   // ô 22px nằm trong ô nhập, icon phải nhỏ hơn nút toolbar
                 TabStop = false,
                 Font = ReverseUiFont
             };
@@ -465,7 +467,8 @@ namespace AutoJMS
             var unprinted = NewReverseToolbarButton("tabPrint_reverseUnprinted", "Chưa in", 84, warning: true);
             unprinted.Click += (s, e) => SelectReverseUnprintedOnPage();
 
-            _reversePrevPage = NewReverseToolbarButton("tabPrint_reversePrevPage", "‹", 34, warning: false);
+            _reversePrevPage = NewReverseToolbarButton("tabPrint_reversePrevPage", "", 34, warning: false);
+            _reversePrevPage.Symbol = ASymbols.ChevronLeft;
             _reversePrevPage.Click += (s, e) => _ = TurnReversePageAsync(-1);
 
             _reversePageLabel = new Label
@@ -479,7 +482,8 @@ namespace AutoJMS
                 Font = ReverseUiFont
             };
 
-            _reverseNextPage = NewReverseToolbarButton("tabPrint_reverseNextPage", "›", 34, warning: false);
+            _reverseNextPage = NewReverseToolbarButton("tabPrint_reverseNextPage", "", 34, warning: false);
+            _reverseNextPage.Symbol = ASymbols.ChevronRight;
             _reverseNextPage.Click += (s, e) => _ = TurnReversePageAsync(1);
 
             var copy = NewReverseToolbarButton("tabPrint_reverseCopy", "Copy mã đã chọn", 132, warning: false);
@@ -1579,42 +1583,19 @@ namespace AutoJMS
 
             if (_glyph == Glyph.None) return;
 
-            // Biểu tượng vẽ bằng hình học chứ không bằng ký tự font: font hệ thống thiếu glyph
-            // thì ra ô vuông tofu, và ký tự thoát \uXXXX trong file nguồn dễ bị công cụ sửa
-            // file biến thành byte điều khiển thật.
+            // Trước đây ba biểu tượng này dựng bằng Pen vì font hệ thống thiếu glyph thì ra ô
+            // vuông tofu. Nay lucide.ttf đi kèm assembly và ASymbols đăng ký nó cho cả GDI, nên
+            // vẽ thẳng glyph thật. Hằng ASymbols là số codepoint, không phải ký tự trong mã
+            // nguồn, nên cũng không dính chuyện \uXXXX bị công cụ sửa file biến thành byte thật.
             int side = 14;
             var cell = new Rectangle(8, (Height - side) / 2, side, side);
-            using (var pen = new Pen(GlyphColor, 1.4f))
+            int symbol = _glyph switch
             {
-                if (_glyph == Glyph.Clock) DrawClock(g, pen, cell);
-                else if (_glyph == Glyph.Calendar) DrawCalendar(g, pen, cell);
-                else DrawSearch(g, pen, cell);
-            }
-        }
-
-        private static void DrawClock(Graphics g, Pen pen, Rectangle r)
-        {
-            g.DrawEllipse(pen, r.X, r.Y, r.Width - 1, r.Height - 1);
-            float cx = r.X + r.Width / 2f;
-            float cy = r.Y + r.Height / 2f;
-            g.DrawLine(pen, cx, cy, cx, cy - r.Height * 0.28f);   // kim giờ
-            g.DrawLine(pen, cx, cy, cx + r.Width * 0.22f, cy);    // kim phút
-        }
-
-        private static void DrawCalendar(Graphics g, Pen pen, Rectangle r)
-        {
-            var body = new Rectangle(r.X, r.Y + 2, r.Width - 1, r.Height - 3);
-            g.DrawRectangle(pen, body);
-            g.DrawLine(pen, body.X, body.Y + 4, body.Right, body.Y + 4);        // vạch ngăn phần đầu
-            g.DrawLine(pen, body.X + 3, r.Y, body.X + 3, body.Y + 1);           // vòng treo trái
-            g.DrawLine(pen, body.Right - 3, r.Y, body.Right - 3, body.Y + 1);   // vòng treo phải
-        }
-
-        private static void DrawSearch(Graphics g, Pen pen, Rectangle r)
-        {
-            int d = (int)(r.Width * 0.72f);
-            g.DrawEllipse(pen, r.X, r.Y, d, d);
-            g.DrawLine(pen, r.X + d * 0.82f, r.Y + d * 0.82f, r.Right - 1, r.Bottom - 1);
+                Glyph.Clock => ASymbols.Clock,
+                Glyph.Calendar => ASymbols.Calendar,
+                _ => ASymbols.Search
+            };
+            ASymbols.Draw(g, symbol, side, GlyphColor, cell);
         }
 
         protected override void OnLayout(LayoutEventArgs e)
@@ -1678,6 +1659,16 @@ namespace AutoJMS
         public Color DisabledFill { get; set; } = Color.Gainsboro;
         public Color DisabledForeColor { get; set; } = Color.Gray;
 
+        /// <summary>
+        /// Icon Lucide vẽ THAY cho <see cref="Control.Text"/>. <c>ASymbols.None</c> (mặc định)
+        /// thì nút vẽ chữ như cũ. Nút chỉ có icon vẫn nên đặt <c>Text</c> rỗng chứ không đặt ký
+        /// tự mô phỏng — <c>Text</c> còn là tên nút với trình đọc màn hình.
+        /// </summary>
+        public int Symbol { get; set; } = ASymbols.None;
+
+        /// <summary>Cạnh ô icon, pixel. Nút toolbar cao 29 nên 16 là vừa.</summary>
+        public int SymbolSize { get; set; } = 16;
+
         public ReverseRoundButton()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
@@ -1700,11 +1691,19 @@ namespace AutoJMS
             using (var brush = new SolidBrush(tone))
                 g.FillPath(brush, path);
 
-            // SingleLine bắt buộc đi kèm VerticalCenter — thiếu nó thì DrawText chuyển sang chế
-            // độ nhiều dòng và bỏ qua luôn việc căn giữa theo chiều dọc.
-            TextRenderer.DrawText(g, Text, Font, body, Enabled ? ForeColor : DisabledForeColor,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
-                | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            var ink = Enabled ? ForeColor : DisabledForeColor;
+            if (Symbol != ASymbols.None)
+            {
+                ASymbols.Draw(g, Symbol, SymbolSize, ink, body);
+            }
+            else
+            {
+                // SingleLine bắt buộc đi kèm VerticalCenter — thiếu nó thì DrawText chuyển sang chế
+                // độ nhiều dòng và bỏ qua luôn việc căn giữa theo chiều dọc.
+                TextRenderer.DrawText(g, Text, Font, body, ink,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+            }
 
             if (Focused && Enabled)
                 ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(body, -4, -4));

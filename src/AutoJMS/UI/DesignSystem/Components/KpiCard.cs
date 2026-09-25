@@ -11,7 +11,7 @@ namespace AutoJMS.UI.DesignSystem
     /// Phần tử "quét trong 1-3 giây" quan trọng nhất của AutoJMS:
     ///  - SỐ là thứ to nhất; nhãn nhỏ, nằm trên, màu TextSecondary.
     ///  - Số dùng font ĐỀU để nhiều thẻ xếp cạnh nhau thẳng cột.
-    ///  - Delta luôn kèm ký hiệu tam giác, không chỉ dựa vào màu.
+    ///  - Delta luôn kèm mũi tên xu hướng (Lucide), không chỉ dựa vào màu.
     ///  - Không viền accent, không nền màu - viền hairline như mọi card khác.
     /// </summary>
     [ToolboxItem(true)]
@@ -68,14 +68,14 @@ namespace AutoJMS.UI.DesignSystem
             set { _direction = value; Invalidate(); }
         }
 
-        private string DirectionGlyph()
+        private int DirectionSymbol()
         {
             switch (_direction)
             {
-                case DeltaDirection.Up: return "▲ ";
-                case DeltaDirection.Down: return "▼ ";
-                case DeltaDirection.Flat: return "— ";
-                default: return string.Empty;
+                case DeltaDirection.Up: return ASymbols.TrendingUp;
+                case DeltaDirection.Down: return ASymbols.TrendingDown;
+                case DeltaDirection.Flat: return ASymbols.Minus;
+                default: return ASymbols.None;
             }
         }
 
@@ -104,9 +104,19 @@ namespace AutoJMS.UI.DesignSystem
             if (string.IsNullOrEmpty(_delta)) return;
 
             y += S(ThemeSpacing.Xs);
-            TextRenderer.DrawText(g, DirectionGlyph() + _delta, ThemeTypography.Small,
-                new Rectangle(x, y, w, ThemeTypography.Small.Height),
-                ABadge.ColorFor(_deltaStatus, c), ControlStyler.TextLeft);
+            int deltaH = ThemeTypography.Small.Height;
+            var deltaInk = ABadge.ColorFor(_deltaStatus, c);
+
+            // Mũi tên vẽ riêng bằng ASymbols chứ không nối vào chuỗi: glyph Lucide nằm
+            // trong Private Use Area, font chữ của ThemeTypography.Small không có nó.
+            int iconW = _direction == DeltaDirection.None ? 0 : deltaH;
+            if (iconW > 0)
+                ASymbols.Draw(g, DirectionSymbol(), S(ThemeMetrics.IconSizeTag), deltaInk,
+                    new Rectangle(x, y, iconW, deltaH));
+
+            TextRenderer.DrawText(g, _delta, ThemeTypography.Small,
+                new Rectangle(x + iconW, y, Math.Max(1, w - iconW), deltaH),
+                deltaInk, ControlStyler.TextLeft);
         }
 
         public override Size GetPreferredSize(Size proposedSize)
