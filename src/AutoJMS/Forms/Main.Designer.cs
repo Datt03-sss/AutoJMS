@@ -586,7 +586,6 @@ namespace AutoJMS
             tabPrint_printTabs.Dock = DockStyle.Top;
             tabPrint_printTabs.Height = 40;
             tabPrint_printTabs.Name = "tabPrint_printTabs";
-            tabPrint_printTabs.ShowIdentity = false;
             tabPrint_printTabs.TabIndex = 0;
             tabPrint_printTabs.Target = tabPrint_printFunc;
             //
@@ -1477,10 +1476,11 @@ namespace AutoJMS
             //
             topNav.Dock = DockStyle.Top;
             topNav.Name = "topNav";
-            // Thanh tiêu đề Windows đã mang icon + tên sản phẩm; vẽ lại ở đây là hai lần
-            // "AutoJMS" chồng nhau và chữ dính sát tab HOME.
-            topNav.ShowIdentity = false;
             topNav.TabIndex = 0;
+            // Cặp topNav/tabControl KHÔNG trùng nhau: ATabControl nuốt TCM_ADJUSTRECT nên dải
+            // tab gốc của Windows bị trang phủ kín lúc CHẠY, còn topNav vẽ đầu tab thay nó.
+            // Trên mặt Designer thì thấy CẢ HAI vì ATabControl chỉ nuốt khi !DesignMode - cố ý,
+            // không còn dải tab gốc thì không kéo-thả sửa được 5 TabPage nữa.
             topNav.Target = tabControl;
             //
             // Main

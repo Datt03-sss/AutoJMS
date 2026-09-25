@@ -58,7 +58,6 @@ namespace AutoJMS
         public static string GoogleServiceAccountJson => Path.Combine(UserDataDir, "service_account.json");
         public static string EncryptedGoogleServiceAccount => Path.Combine(SecretsDir, "service_account.sec");
         public static string SecureFile => Path.Combine(SecureDir, "AutoJMS.secure");
-        public static string SecureTempFile => Path.Combine(SecureDir, "AutoJMS.secure.tmp");
         public static string ConfigEncFile => Path.Combine(SecureDir, "AutoJMS.config.enc");
         public static string LicenseDatFile => Path.Combine(SecureDir, "license.dat");
         public static string RuntimeConfigCache => Path.Combine(CacheDir, "runtime-config.cache");

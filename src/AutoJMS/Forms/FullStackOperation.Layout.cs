@@ -55,7 +55,6 @@ namespace AutoJMS
                 uiTabControl1Strip = new TopNavigation
                 {
                     Dock = DockStyle.Top,
-                    ShowIdentity = false,
                     Target = uiTabControl1
                 };
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -15,17 +14,21 @@ namespace AutoJMS.UI.DesignSystem
     /// là lỗi mà ThemeManager đã cố ý tránh (xem DesignSystem/README.md § Theme).
     ///
     /// Nav chỉ VẼ nhãn của TabPage. Không control nghiệp vụ nào bị di chuyển vào đây.
+    ///
+    /// CHỈ vẽ đầu tab, KHÔNG vẽ icon + tên sản phẩm ở góc trái: thanh tiêu đề của Windows
+    /// đã mang sẵn cả hai, vẽ lại ở đây là hai lần "AutoJMS" chồng nhau và chữ dính sát tab
+    /// đầu tiên. Nhờ vậy cùng một lớp dùng được cho cả thanh nav chính lẫn dải tab CON bên
+    /// trong một trang (4 chế độ in của tab IN ĐƠN) — một thanh chứ không phải hai lớp gần
+    /// giống nhau.
     /// </summary>
     public sealed class TopNavigation : AControl
     {
-        private const int IdentityGap = 12;   // khoảng cách chữ "AutoJMS" tới tab đầu tiên
         private const int ItemPaddingX = 16;  // đệm trái/phải trong một tab
         private const int EdgePaddingX = 12;  // lề trái của cả thanh
 
         private readonly List<Rectangle> _itemRects = new List<Rectangle>();
         private TabControl _target;
         private bool _layoutDirty = true;
-        private bool _showIdentity = true;
         private int _hotIndex = -1;
 
         public TopNavigation()
@@ -72,28 +75,6 @@ namespace AutoJMS.UI.DesignSystem
             }
         }
 
-        /// <summary>Tên sản phẩm ở góc trái. Nhận diện, KHÔNG phải nút (DESIGN.md §M).</summary>
-        public string ProductTitle { get; set; } = "AutoJMS";
-
-        /// <summary>
-        /// Tắt để dùng thanh này làm dải tab CON bên trong một trang (ví dụ 4 chế độ in
-        /// của tab IN ĐƠN): bỏ icon + tên sản phẩm, chỉ còn các đầu tab. Một thanh chứ
-        /// không phải hai lớp gần giống nhau — cùng cách chọn, cùng cách vẽ, cùng
-        /// "không giữ trạng thái, Target là nguồn sự thật".
-        /// </summary>
-        [DefaultValue(true)]
-        public bool ShowIdentity
-        {
-            get => _showIdentity;
-            set
-            {
-                if (_showIdentity == value) return;
-                _showIdentity = value;
-                _layoutDirty = true;
-                Invalidate();
-            }
-        }
-
         private int SelectedIndex => _target?.SelectedIndex ?? -1;
 
         private int ItemCount => _target?.TabPages.Count ?? 0;
@@ -132,8 +113,6 @@ namespace AutoJMS.UI.DesignSystem
             _itemRects.Clear();
 
             int left = EdgePaddingX;
-            if (_showIdentity)
-                left += TextRenderer.MeasureText(g, ProductTitle, ThemeTypography.H2).Width + IdentityGap;
 
             var widths = new int[ItemCount];
             int total = 0;
@@ -178,8 +157,6 @@ namespace AutoJMS.UI.DesignSystem
             using (var back = new SolidBrush(c.Surface))
                 g.FillRectangle(back, ClientRectangle);
 
-            if (_showIdentity) DrawIdentity(g, c);
-
             int selected = SelectedIndex;
             for (int i = 0; i < _itemRects.Count; i++)
                 DrawItem(g, c, i, i == selected);
@@ -187,24 +164,6 @@ namespace AutoJMS.UI.DesignSystem
             // Đường phân cách nav / nội dung. 1px, không đổ bóng (DESIGN.md §I).
             using (var border = new Pen(c.Border))
                 g.DrawLine(border, 0, Height - 1, Width, Height - 1);
-        }
-
-        private void DrawIdentity(Graphics g, ThemeColors c)
-        {
-            var icon = FindForm()?.Icon;
-            int x = EdgePaddingX;
-
-            if (icon != null)
-            {
-                int size = ThemeMetrics.IconSizeNav;
-                using (var bmp = icon.ToBitmap())
-                    g.DrawImage(bmp, new Rectangle(x, (Height - size) / 2, size, size));
-                x += size + 8;
-            }
-
-            TextRenderer.DrawText(g, ProductTitle, ThemeTypography.H2,
-                new Rectangle(x, 0, Width - x, Height), c.Text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 
         private void DrawItem(Graphics g, ThemeColors c, int index, bool isSelected)
