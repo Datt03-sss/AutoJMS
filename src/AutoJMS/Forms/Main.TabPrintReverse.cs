@@ -369,6 +369,8 @@ namespace AutoJMS
                 new Point(codeBox.Right + S(ReverseBoxGap), S(ReverseCaptionHeight));
             tabPrint_reverseFlag.Size = new Size(
                 DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont), S(ReverseInputHeight));
+            // ItemHeight là pixel thật (dòng trong popup); constructor chỉ đặt số 96-DPI.
+            tabPrint_reverseFlag.ItemHeight = S(26);
 
             var flagCaption = NewReverseCaption("Dấu Reverse:");
             flagCaption.Left = tabPrint_reverseFlag.Left;
@@ -409,7 +411,7 @@ namespace AutoJMS
                 Location = new Point(x, S(ReverseCaptionHeight)),
                 Margin = Padding.Empty,
                 Width = ReverseInputBox.MeasureWidth(
-                    widthSample, ReverseFieldFont, glyph, trailing != null, input is DateTimePicker),
+                    this, widthSample, ReverseFieldFont, glyph, trailing != null, input is DateTimePicker),
                 Height = S(ReverseInputHeight)
             };
             _reverseFields.Add(box);
@@ -1553,15 +1555,19 @@ namespace AutoJMS
         /// Bề ngang vừa đủ cho một chuỗi mẫu: máng biểu tượng trái (hoặc lề trái) + chữ + lề
         /// phải, cộng chỗ cho nút phụ và cho nút xổ lịch của <see cref="DateTimePicker"/>. Đo
         /// bằng chính font sẽ dùng nên đổi DPI hay đổi cỡ chữ là tự khớp, không phải sửa số.
+        /// Các lề là số 96-DPI, quy đổi theo <paramref name="ctx"/> và cộng từng số một y như
+        /// <see cref="OnLayout"/> — quy đổi cả tổng thì làm tròn lệch, chữ hụt 1px.
         /// </summary>
-        public static int MeasureWidth(string sample, Font font, Glyph glyph, bool hasTrailing, bool isPicker)
+        public static int MeasureWidth(Control ctx, string sample, Font font, Glyph glyph, bool hasTrailing, bool isPicker)
         {
-            int width = (glyph == Glyph.None ? TextPad : GlyphGutter)
-                + TextRenderer.MeasureText(sample, font).Width + TextPad;
-            if (hasTrailing) width += TrailingWidth;
+            int width = DpiHelper.Scale(ctx, glyph == Glyph.None ? TextPad : GlyphGutter)
+                + TextRenderer.MeasureText(sample, font).Width + DpiHelper.Scale(ctx, TextPad);
+            if (hasTrailing) width += DpiHelper.Scale(ctx, TrailingWidth);
             if (isPicker) width += SystemInformation.VerticalScrollBarWidth; // bề ngang nút xổ lịch
             return width;
         }
+
+        private int S(int value) => DpiHelper.Scale(this, value);
 
         private void SetHot(bool hot)
         {
@@ -1576,7 +1582,7 @@ namespace AutoJMS
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
             var box = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (var path = DkchPaint.RoundRect(box, Radius))
+            using (var path = DkchPaint.RoundRect(box, S(Radius)))
             using (var fill = new SolidBrush(FieldBackColor))
             using (var pen = new Pen(_hot ? FocusBorderColor : BorderColor, _hot ? 1.4f : 1f))
             {
@@ -1590,8 +1596,8 @@ namespace AutoJMS
             // vuông tofu. Nay lucide.ttf đi kèm assembly và ASymbols đăng ký nó cho cả GDI, nên
             // vẽ thẳng glyph thật. Hằng ASymbols là số codepoint, không phải ký tự trong mã
             // nguồn, nên cũng không dính chuyện \uXXXX bị công cụ sửa file biến thành byte thật.
-            int side = 14;
-            var cell = new Rectangle(8, (Height - side) / 2, side, side);
+            int side = S(14);
+            var cell = new Rectangle(S(8), (Height - side) / 2, side, side);
             int symbol = _glyph switch
             {
                 Glyph.Clock => ASymbols.Clock,
@@ -1606,16 +1612,16 @@ namespace AutoJMS
             base.OnLayout(e);
             if (Width <= 0 || Height <= 0) return;
 
-            int left = _glyph == Glyph.None ? TextPad : GlyphGutter;
-            int right = Width - TextPad;
+            int left = S(_glyph == Glyph.None ? TextPad : GlyphGutter);
+            int right = Width - S(TextPad);
 
             if (_trailing != null)
             {
-                right -= TrailingWidth;
-                _trailing.Bounds = new Rectangle(right + 2, 3, TrailingWidth, Height - 6);
+                right -= S(TrailingWidth);
+                _trailing.Bounds = new Rectangle(right + S(2), S(3), S(TrailingWidth), Height - S(3) * 2);
             }
 
-            int width = Math.Max(right - left, 8);
+            int width = Math.Max(right - left, S(8));
             if (_input is DateTimePicker)
             {
                 // Cắt 2px mỗi phía: phần bị cắt đúng là viền vuông của control, chữ bên trong
@@ -1669,8 +1675,10 @@ namespace AutoJMS
         /// </summary>
         public int Symbol { get; set; } = ASymbols.None;
 
-        /// <summary>Cạnh ô icon, pixel. Nút toolbar cao 29 nên 16 là vừa.</summary>
+        /// <summary>Cạnh ô icon, pixel 96-DPI (lúc vẽ tự quy đổi). Nút toolbar cao 29 nên 16 là vừa.</summary>
         public int SymbolSize { get; set; } = 16;
+
+        private int S(int value) => DpiHelper.Scale(this, value);
 
         public ReverseRoundButton()
         {
@@ -1690,14 +1698,14 @@ namespace AutoJMS
 
             var body = new Rectangle(0, 0, Width - 1, Height - 1);
             var tone = !Enabled ? DisabledFill : _hover ? HoverFill : Fill;
-            using (var path = DkchPaint.RoundRect(body, Radius))
+            using (var path = DkchPaint.RoundRect(body, S(Radius)))
             using (var brush = new SolidBrush(tone))
                 g.FillPath(brush, path);
 
             var ink = Enabled ? ForeColor : DisabledForeColor;
             if (Symbol != ASymbols.None)
             {
-                ASymbols.Draw(g, Symbol, SymbolSize, ink, body);
+                ASymbols.Draw(g, Symbol, S(SymbolSize), ink, body);
             }
             else
             {
@@ -1709,7 +1717,7 @@ namespace AutoJMS
             }
 
             if (Focused && Enabled)
-                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(body, -4, -4));
+                ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(body, -S(4), -S(4)));
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }

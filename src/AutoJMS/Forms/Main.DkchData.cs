@@ -216,7 +216,7 @@ namespace AutoJMS
                                            DkchDropDown.WidthFor(tabDKCH_guideMode, probe));
                             useSheetLblW = WidestOf(probe, attempt.Text);
                             colLblW = WidestOf(probe, tabDKCH_lblCol.Text);
-                            spinW = DkchSpin.WidthFor(probe, widestNum);
+                            spinW = DkchSpin.WidthFor(tabDKCH_numRow, probe, widestNum);
                             // Trong nhóm phải, mỗi control bám sát nhãn CỦA NÓ. Nếu dóng cả
                             // hai vào một cột chung thì "Cột" (ngắn) sẽ bị đẩy xa khỏi ô số.
                             rightGroupW = Math.Max(useSheetLblW + S(DkchGapLabel) + S(DkchSwitchW),
@@ -484,9 +484,10 @@ namespace AutoJMS
         }
 
         /// <summary>Vẽ dấu ˅ (mũi xổ) căn giữa trong ô cho trước.</summary>
-        public static void Chevron(Graphics g, Rectangle box, Color color)
+        /// <param name="scale">DPI/96 — dấu lớn theo DPI, nét bút giữ nguyên như viền.</param>
+        public static void Chevron(Graphics g, Rectangle box, Color color, float scale)
         {
-            float w = 9f, h = 4.5f;
+            float w = 9f * scale, h = 4.5f * scale;
             float cx = box.X + (box.Width - w) / 2f;
             float cy = box.Y + (box.Height - h) / 2f;
             using (var pen = new Pen(color, 1.7f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round })
@@ -495,9 +496,9 @@ namespace AutoJMS
             }
         }
 
-        public static void Glyph(Graphics g, Rectangle box, Color color, bool plus)
+        public static void Glyph(Graphics g, Rectangle box, Color color, bool plus, float scale)
         {
-            float len = 9f;
+            float len = 9f * scale;
             float cx = box.X + box.Width / 2f;
             float cy = box.Y + box.Height / 2f;
             using (var pen = new Pen(color, 1.7f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
@@ -534,6 +535,9 @@ namespace AutoJMS
             ItemHeight = 26;
             Size = new Size(120, 26);
         }
+
+        /// <summary>Phần vẽ tay không được lượt AutoScale nhân — tự quy đổi pixel 96-DPI.</summary>
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(this, value);
 
         public List<object> Items { get { return _items; } }
         public int ItemHeight { get; set; }
@@ -596,7 +600,7 @@ namespace AutoJMS
                                                 TextFormatFlags.SingleLine).Width;
                 if (w > text) text = w;
             }
-            return text + 8 /*lề trái*/ + 17 /*mũi xổ*/ + 5 /*lề phải*/;
+            return text + dd.S(8) /*lề trái*/ + dd.S(17) /*mũi xổ*/ + dd.S(5) /*lề phải*/;
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hot = true; Invalidate(); base.OnMouseEnter(e); }
@@ -661,7 +665,7 @@ namespace AutoJMS
 
             _open = true;
             Invalidate();
-            _popup.Show(this, new Point(0, Height + 2));
+            _popup.Show(this, new Point(0, Height + S(2)));
         }
 
         internal void CommitFromPopup(int index)
@@ -680,19 +684,22 @@ namespace AutoJMS
             var box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
             bool lit = _hot || _open || Focused;
 
-            using (var path = DkchPaint.RoundRect(box, Radius))
+            using (var path = DkchPaint.RoundRect(box, S(Radius)))
             {
                 using (var brush = new SolidBrush(FieldBackColor)) g.FillPath(brush, path);
                 using (var pen = new Pen(lit ? HoverBorderColor : BorderColor, lit ? 1.4f : 1f)) g.DrawPath(pen, path);
             }
 
-            var chevronBox = new Rectangle(box.Right - 19, box.Y, 17, box.Height);
-            var textBox = new Rectangle(box.X + 8, box.Y, Math.Max(1, chevronBox.X - box.X - 10), box.Height);
+            var chevronBox = new Rectangle(box.Right - S(19), box.Y, S(17), box.Height);
+            // Trừ đúng ba khoản WidthFor đã cộng: làm tròn từng khoản riêng nên phải trừ
+            // cùng các khoản đó, nếu không chữ dài nhất hụt 1px và bị "…" ở 125%.
+            var textBox = new Rectangle(box.X + S(8), box.Y, Math.Max(1, Width - S(8) - S(17) - S(5)), box.Height);
             TextRenderer.DrawText(g, Text, Font, textBox, ForeColor,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
 
-            DkchPaint.Chevron(g, chevronBox, lit ? HoverBorderColor : ForeColor);
+            DkchPaint.Chevron(g, chevronBox, lit ? HoverBorderColor : ForeColor,
+                              (float)UI.DesignSystem.DpiHelper.ScaleFactor(this));
         }
     }
 
@@ -712,15 +719,21 @@ namespace AutoJMS
             BackColor = owner.FieldBackColor;
             Cursor = Cursors.Hand;
 
-            int itemH = Math.Max(18, owner.ItemHeight);
-            Size = new Size(Math.Max(40, owner.Width), itemH * Math.Max(1, owner.Items.Count) + 8);
+            Size = new Size(Math.Max(S(40), owner.Width), ItemH * Math.Max(1, owner.Items.Count) + S(4) * 2);
         }
 
-        private int ItemH { get { return Math.Max(18, _owner.ItemHeight); } }
+        /// <summary>
+        /// Quy đổi theo DPI của ô CHA: popup dựng lúc chưa có handle nên DeviceDpi của chính
+        /// nó còn là DPI lúc khởi động, không phải DPI màn hình đang hiện ô.
+        /// </summary>
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(_owner, value);
+
+        // ItemHeight đã là pixel thật (bên gọi tự S()), chỉ mức sàn là hằng 96-DPI.
+        private int ItemH { get { return Math.Max(S(18), _owner.ItemHeight); } }
 
         private int IndexAt(int y)
         {
-            int i = (y - 4) / ItemH;
+            int i = (y - S(4)) / ItemH;
             return (i >= 0 && i < _owner.Items.Count) ? i : -1;
         }
 
@@ -752,21 +765,22 @@ namespace AutoJMS
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
             var box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
-            using (var path = DkchPaint.RoundRect(box, 8))
+            using (var path = DkchPaint.RoundRect(box, S(8)))
             {
                 using (var brush = new SolidBrush(BackColor)) g.FillPath(brush, path);
                 using (var pen = new Pen(_owner.BorderColor, 1f)) g.DrawPath(pen, path);
             }
 
             int itemH = ItemH;
+            int inset = S(4);
             for (int i = 0; i < _owner.Items.Count; i++)
             {
-                var r = new Rectangle(4, 4 + i * itemH, Math.Max(1, Width - 8), itemH);
+                var r = new Rectangle(inset, inset + i * itemH, Math.Max(1, Width - inset * 2), itemH);
                 Color fore = ForeColor;
 
                 if (i == _owner.SelectedIndex)
                 {
-                    using (var path = DkchPaint.RoundRect(r, 5))
+                    using (var path = DkchPaint.RoundRect(r, S(5)))
                     using (var brush = new SolidBrush(_owner.HighlightColor))
                     {
                         g.FillPath(brush, path);
@@ -775,7 +789,7 @@ namespace AutoJMS
                 }
                 else if (i == _hotIndex)
                 {
-                    using (var path = DkchPaint.RoundRect(r, 5))
+                    using (var path = DkchPaint.RoundRect(r, S(5)))
                     using (var brush = new SolidBrush(_owner.HoverItemColor))
                     {
                         g.FillPath(brush, path);
@@ -783,7 +797,7 @@ namespace AutoJMS
                 }
 
                 string text = _owner.Items[i] == null ? "" : _owner.Items[i].ToString();
-                var textBox = new Rectangle(r.X + 7, r.Y, Math.Max(1, r.Width - 12), r.Height);
+                var textBox = new Rectangle(r.X + S(7), r.Y, Math.Max(1, r.Width - S(12)), r.Height);
                 TextRenderer.DrawText(g, text, Font, textBox, fore,
                     TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                     TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
@@ -822,6 +836,9 @@ namespace AutoJMS
         /// <summary>Bề rộng nút −/+. Dùng chung với <see cref="WidthFor"/> nên đổi một chỗ là đủ.</summary>
         private const int DkchButtonWidth = 18;
 
+        /// <summary>Radius / ButtonWidth là số 96-DPI; phần vẽ tay tự quy đổi lúc dùng.</summary>
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(this, value);
+
         public Color FieldBackColor { get; set; } = Color.White;
         public Color BorderColor { get; set; } = Color.FromArgb(209, 213, 219);
         public Color HoverBorderColor { get; set; } = Color.FromArgb(99, 102, 241);
@@ -854,15 +871,15 @@ namespace AutoJMS
         }
 
         /// <summary>Bề rộng cần để hiện trọn <paramref name="widestNumber"/> giữa hai nút.</summary>
-        public static int WidthFor(Font font, string widestNumber)
+        public static int WidthFor(DkchSpin spin, Font font, string widestNumber)
         {
             int text = TextRenderer.MeasureText(widestNumber ?? "99", font,
                 new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width;
-            return DkchButtonWidth * 2 + Math.Max(18, text + 8);
+            return spin.S(DkchButtonWidth) * 2 + Math.Max(spin.S(18), text + spin.S(8));
         }
 
-        private Rectangle MinusBox { get { return new Rectangle(1, 1, ButtonWidth, Math.Max(1, Height - 2)); } }
-        private Rectangle PlusBox { get { return new Rectangle(Math.Max(1, Width - ButtonWidth - 1), 1, ButtonWidth, Math.Max(1, Height - 2)); } }
+        private Rectangle MinusBox { get { return new Rectangle(1, 1, S(ButtonWidth), Math.Max(1, Height - 2)); } }
+        private Rectangle PlusBox { get { return new Rectangle(Math.Max(1, Width - S(ButtonWidth) - 1), 1, S(ButtonWidth), Math.Max(1, Height - 2)); } }
 
         protected override void OnMouseEnter(EventArgs e) { _hot = true; Invalidate(); base.OnMouseEnter(e); }
 
@@ -919,7 +936,7 @@ namespace AutoJMS
             var box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
             bool lit = _hot || Focused;
 
-            using (var path = DkchPaint.RoundRect(box, Radius))
+            using (var path = DkchPaint.RoundRect(box, S(Radius)))
             {
                 using (var brush = new SolidBrush(FieldBackColor)) g.FillPath(brush, path);
                 using (var pen = new Pen(lit ? HoverBorderColor : BorderColor, lit ? 1.4f : 1f)) g.DrawPath(pen, path);
@@ -928,7 +945,7 @@ namespace AutoJMS
             if (_hotButton != 0)
             {
                 var hotBox = _hotButton == 1 ? MinusBox : PlusBox;
-                using (var path = DkchPaint.RoundRect(hotBox, Radius))
+                using (var path = DkchPaint.RoundRect(hotBox, S(Radius)))
                 using (var brush = new SolidBrush(ButtonHoverColor))
                 {
                     g.FillPath(brush, path);
@@ -937,8 +954,9 @@ namespace AutoJMS
 
             bool canDown = _value > _min;
             bool canUp = _value < _max;
-            DkchPaint.Glyph(g, MinusBox, canDown ? ForeColor : Blend(ForeColor, FieldBackColor), false);
-            DkchPaint.Glyph(g, PlusBox, canUp ? ForeColor : Blend(ForeColor, FieldBackColor), true);
+            float scale = (float)UI.DesignSystem.DpiHelper.ScaleFactor(this);
+            DkchPaint.Glyph(g, MinusBox, canDown ? ForeColor : Blend(ForeColor, FieldBackColor), false, scale);
+            DkchPaint.Glyph(g, PlusBox, canUp ? ForeColor : Blend(ForeColor, FieldBackColor), true, scale);
 
             var textBox = new Rectangle(MinusBox.Right, box.Y, Math.Max(1, PlusBox.X - MinusBox.Right), box.Height);
             TextRenderer.DrawText(g, ((int)_value).ToString(), Font, textBox, ForeColor,
@@ -973,6 +991,8 @@ namespace AutoJMS
             Cursor = Cursors.Hand;
             Size = new Size(40, 20);
         }
+
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(this, value);
 
         public bool Active
         {
@@ -1021,8 +1041,8 @@ namespace AutoJMS
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            int h = Math.Max(10, Height - 1);
-            int w = Math.Max(h + 4, Width - 1);
+            int h = Math.Max(S(10), Height - 1);
+            int w = Math.Max(h + S(4), Width - 1);
             var track = new Rectangle(0, 0, w, h);
 
             using (var path = DkchPaint.RoundRect(track, h / 2))
@@ -1040,11 +1060,13 @@ namespace AutoJMS
                 }
             }
 
-            int d = Math.Max(6, h - 4);
-            int x = _active ? w - d - 2 : 2;
+            // Một lề chung cho cả bốn phía để núm vẫn nằm giữa rãnh sau khi làm tròn.
+            int pad = S(2);
+            int d = Math.Max(S(6), h - pad * 2);
+            int x = _active ? w - d - pad : pad;
             using (var brush = new SolidBrush(KnobColor))
             {
-                g.FillEllipse(brush, x, 2, d, d);
+                g.FillEllipse(brush, x, pad, d, d);
             }
         }
     }

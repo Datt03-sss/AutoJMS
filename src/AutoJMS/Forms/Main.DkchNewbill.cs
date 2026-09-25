@@ -209,14 +209,14 @@ namespace AutoJMS
             using (var f = new Font(DkchCardBase.UiFamily, 7.5f, FontStyle.Bold))
             {
                 int w = TextRenderer.MeasureText(_dkchModeText, f,
-                            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width + 14;
-                int h = 15;
+                            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width + S(14);
+                int h = S(15);
                 // uiTitlePanel2 nay là APanel: dải tiêu đề cũ của UITitlePanel giờ là
                 // Padding.Top (vẫn đúng 20px), nên pill vẫn nằm đúng chỗ cũ.
                 int bar = Math.Max(h, uiTitlePanel2.Padding.Top);
-                var box = new Rectangle(Math.Max(2, uiTitlePanel2.ClientSize.Width - w - 7),
+                var box = new Rectangle(Math.Max(S(2), uiTitlePanel2.ClientSize.Width - w - S(7)),
                                         (bar - h) / 2, w, h);
-                using (var path = DkchPaint.RoundRect(box, 3))
+                using (var path = DkchPaint.RoundRect(box, S(3)))
                 using (var brush = new SolidBrush(pillBg))
                 {
                     g.FillPath(brush, path);
@@ -681,10 +681,16 @@ namespace AutoJMS
             return lines;
         }
 
+        /// <summary>
+        /// Hằng pixel 96-DPI → DPI thật. Thẻ dựng bằng code và tự vẽ, nên cả kích thước
+        /// lẫn phần vẽ tay đều không được lượt AutoScale của Form nhân hộ.
+        /// </summary>
+        protected int S(int value) => DpiHelper.Scale(this, value);
+
         protected void FillCard(Graphics g, Color back, Color border, int radius = 6)
         {
             var box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
-            using (var path = DkchPaint.RoundRect(box, radius))
+            using (var path = DkchPaint.RoundRect(box, S(radius)))
             {
                 using (var brush = new SolidBrush(back)) g.FillPath(brush, path);
                 using (var pen = new Pen(border, 1f)) g.DrawPath(pen, path);
@@ -790,7 +796,9 @@ namespace AutoJMS
         {
             base.OnResize(e);
             // Lề mỏng để ô nhập rộng rãi hơn — thiết kế cần cảm giác thoáng, không viền dày.
-            Body.Bounds = new Rectangle(4, HeaderH + 3, Math.Max(10, Width - 8), Math.Max(10, Height - HeaderH - 7));
+            int headerH = S(HeaderH);
+            Body.Bounds = new Rectangle(S(4), headerH + S(3), Math.Max(10, Width - S(4) * 2),
+                                        Math.Max(10, Height - headerH - S(3) - S(4)));
         }
 
         private int LineCount()
@@ -806,7 +814,7 @@ namespace AutoJMS
         protected override void PaintCard(Graphics g)
         {
             var box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
-            using (var path = DkchPaint.RoundSide(box, 3, RoundLeft, RoundRight))
+            using (var path = DkchPaint.RoundSide(box, S(3), RoundLeft, RoundRight))
             {
                 using (var brush = new SolidBrush(Skin.CardBg)) g.FillPath(brush, path);
                 using (var pen = new Pen(_focused ? Skin.Accent : Skin.CardBorder, _focused ? 1.6f : 1f))
@@ -815,8 +823,8 @@ namespace AutoJMS
                 }
             }
 
-            var header = new Rectangle(1, 1, Math.Max(1, Width - 3), HeaderH);
-            using (var clip = DkchPaint.RoundSide(box, 3, RoundLeft, RoundRight))
+            var header = new Rectangle(1, 1, Math.Max(1, Width - 3), S(HeaderH));
+            using (var clip = DkchPaint.RoundSide(box, S(3), RoundLeft, RoundRight))
             {
                 var old = g.Clip;
                 g.SetClip(clip, CombineMode.Intersect);
@@ -829,16 +837,16 @@ namespace AutoJMS
             using (var fn = Mono(10.5f, FontStyle.Bold))
             {
                 string count = LineCount().ToString();
-                int cw = Measure(count, fn) + 4;
+                int cw = Measure(count, fn) + S(4);
                 Draw(g, count, fn,
-                     new Rectangle(header.Right - cw - 5, header.Y, cw, header.Height),
+                     new Rectangle(header.Right - cw - S(5), header.Y, cw, header.Height),
                      // Ở theme RED màu nhấn trùng màu lỗi, nên "0" ở ô chờ trông như báo lỗi.
                      BodyIsDone ? Skin.ListDoneText : Skin.ListLabel, TextFormatFlags.Right);
 
                 // Nhãn hạ cỡ chữ cho tới khi vừa: "ĐANG THỰC HIỆN" dài hơn "MÃ VẬN ĐƠN"
                 // nên ở 7pt bị cắt thành "ĐANG THỰC HI…" trong ô rộng ~123px.
                 string caption = Caption.ToUpperInvariant();
-                int room = Math.Max(1, header.Width - cw - 12);
+                int room = Math.Max(1, header.Width - cw - S(12));
                 for (float pt = 9f; ; pt -= 0.25f)
                 {
                     using (var fl = Ui(pt, FontStyle.Bold))
@@ -846,7 +854,7 @@ namespace AutoJMS
                         if (pt <= 6f || Measure(caption, fl) <= room)
                         {
                             Draw(g, caption, fl,
-                                 new Rectangle(header.X + 5, header.Y, room, header.Height), Skin.ListLabel);
+                                 new Rectangle(header.X + S(5), header.Y, room, header.Height), Skin.ListLabel);
                             break;
                         }
                     }
@@ -958,14 +966,11 @@ namespace AutoJMS
             base.Dispose(disposing);
         }
 
-        /// <summary>Hai hàng đầu + khe 6px giữa chúng.</summary>
-        private const int DkchTopRowsH = DkchCodeRowH + 6 + DkchStateRowH;
-
         /// <summary>Bề rộng dành cho dấu thời gian ở hàng tên bưu tá, kèm khe 8px.</summary>
         private int StampGutter()
         {
             if (string.IsNullOrWhiteSpace(StampText)) return 0;
-            using (var f = Mono(UiPtMin, FontStyle.Bold)) return Measure(StampText, f) + 8;
+            using (var f = Mono(UiPtMin, FontStyle.Bold)) return Measure(StampText, f) + S(8);
         }
 
 
@@ -980,20 +985,20 @@ namespace AutoJMS
 
         /// <summary>Bề rộng dòng nguyên nhân — dùng TRỌN bề ngang, dấu thời gian chỉ
         /// chiếm dòng đầu nên không việc gì phải chừa chỗ cho nó ở các dòng sau.</summary>
-        private int NoteWidth(int width) => Math.Max(60, width - 20);
+        private int NoteWidth(int width) => Math.Max(S(60), width - S(10) * 2);
 
         private int NoteHeight(int width)
         {
             if (string.IsNullOrWhiteSpace(NoteText)) return 0;
             using (var f = Ui(DkchNotePt, FontStyle.Bold))
             {
-                return WrapWords("↳ " + DkchRemark.Translate(NoteText), f, NoteWidth(width)).Count * DkchNoteLineH;
+                return WrapWords("↳ " + DkchRemark.Translate(NoteText), f, NoteWidth(width)).Count * S(DkchNoteLineH);
             }
         }
 
         /// <summary>Chiều cao khối tên bưu tá + nguyên nhân, tối thiểu bằng huy hiệu ngày tồn.</summary>
         private int DetailHeight(int width)
-            => HasDetails ? 7 + Math.Max(22, 21 + NoteHeight(width) + 4) : 0;
+            => HasDetails ? S(7) + Math.Max(S(22), S(21) + NoteHeight(width) + S(4)) : 0;
 
         /// <summary>
         /// Cỡ chữ dải kết quả/vi phạm. Chủ dự án yêu cầu 14px; Font của WinForms nhận
@@ -1010,7 +1015,7 @@ namespace AutoJMS
         /// Bề rộng chữ trong dải. Trước đây chỗ đo ghi "width - 24" còn chỗ vẽ tự tính
         /// lại từ toạ độ — hai bên tình cờ bằng nhau, đổi một bên là lệch. Nay một hàm.
         /// </summary>
-        private static int StripTextWidth(int width) => Math.Max(40, width - 24);
+        private int StripTextWidth(int width) => Math.Max(S(40), width - S(24));
 
         /// <summary>
         /// Ngắt nội dung dải thành các dòng TRỌN TỪ. Bỏ DT_WORDBREAK của GDI vì nó ngắt
@@ -1032,8 +1037,8 @@ namespace AutoJMS
                 // Chỉ có hai chip đếm mà không có thông điệp thì bỏ luôn cả khe dưới,
                 // đừng chừa một khoảng trống không chứa gì.
                 int n = StripLines(width, f).Count;
-                int textH = n > 0 ? n * f.Height + 6 : 0;
-                return 8 + fTag.Height + 4 + textH + DkchStripChipH + 8;
+                int textH = n > 0 ? n * f.Height + S(6) : 0;
+                return S(8) + fTag.Height + S(4) + textH + S(DkchStripChipH) + S(8);
             }
         }
 
@@ -1041,7 +1046,9 @@ namespace AutoJMS
         {
             // Lúc chưa xử lý mã nào thì bỏ hẳn đường kẻ và khối tên/nguyên nhân —
             // bản trước luôn cộng đủ nên thẻ rỗng thành một khối tối cao lêu nghêu.
-            int body = 8 + DkchTopRowsH + 9;
+            // Cộng TỪNG khoản đúng như PaintCard cộng dồn y: S() làm tròn riêng từng số,
+            // gộp trước rồi mới S() là lệch 1px so với chỗ vẽ.
+            int body = S(8) + S(DkchCodeRowH) + S(6) + S(DkchStateRowH) + S(9);
             return body + DetailHeight(width) + ViolationHeight(width);
         }
 
@@ -1073,21 +1080,22 @@ namespace AutoJMS
         {
             FillCard(g, Skin.ResultBg, Skin.ResultBorder);
 
-            int pad = 10;
+            int pad = S(10);
             int right = Width - pad;
-            int y = 8;
+            int y = S(8);
+            int rowPad = S(DkchRowPad);
 
             // ── Hai hàng đầu: mỗi hàng là một TẤM NỀN TỐI riêng, đúng nguồn tham khảo.
             // Nền tối giữ nguyên ở cả ba theme vì bản mẫu vẽ nó trên trang sáng.
             // Hai tấm nền tối trải gần sát mép thẻ (chỉ chừa 4px cho viền bo) thay vì
             // thụt vào 10px như phần chữ bên dưới — lấy thêm 12px bề ngang cho nội dung.
-            const int rowInset = 4;
+            int rowInset = S(4);
             int rowLeft = rowInset;
-            int rowW = Math.Max(60, Width - 1 - rowInset * 2);
+            int rowW = Math.Max(S(60), Width - 1 - rowInset * 2);
 
             // Hàng 1 — mã vận đơn + nút chép neo phải trong tấm nền.
-            var box1 = new Rectangle(rowLeft, y, rowW, DkchCodeRowH);
-            using (var path = DkchPaint.RoundRect(box1, 6))
+            var box1 = new Rectangle(rowLeft, y, rowW, S(DkchCodeRowH));
+            using (var path = DkchPaint.RoundRect(box1, S(6)))
             using (var brush = new SolidBrush(Skin.RowBg))
             using (var pen = new Pen(Skin.RowBorder, 1f))
             {
@@ -1096,16 +1104,17 @@ namespace AutoJMS
             }
             using (var fCode = Mono(UiPtLead, FontStyle.Bold))
             {
-                _copyBox = new Rectangle(box1.Right - DkchRowPad - 26, box1.Y + (box1.Height - 26) / 2, 26, 26);
+                int btn = S(26);
+                _copyBox = new Rectangle(box1.Right - rowPad - btn, box1.Y + (box1.Height - btn) / 2, btn, btn);
 
                 Color btnBg = _copyOk ? DkchOkGreen : (_copyHot ? Skin.ChipBg : Skin.CopyBg);
                 Color btnLine = _copyOk ? DkchOkGreen : Skin.CopyBorder;
                 Color btnInk = _copyOk ? Color.White : Skin.CopyFore;
 
-                int codeW = Math.Max(20, _copyBox.X - box1.X - DkchRowPad - 8);
-                Draw(g, Waybill, fCode, new Rectangle(box1.X + DkchRowPad, box1.Y, codeW, box1.Height), Skin.ResultTitle);
+                int codeW = Math.Max(S(20), _copyBox.X - box1.X - rowPad - S(8));
+                Draw(g, Waybill, fCode, new Rectangle(box1.X + rowPad, box1.Y, codeW, box1.Height), Skin.ResultTitle);
 
-                using (var path = DkchPaint.RoundRect(_copyBox, 5))
+                using (var path = DkchPaint.RoundRect(_copyBox, S(5)))
                 using (var brush = new SolidBrush(btnBg))
                 using (var pen = new Pen(btnLine, 1f))
                 {
@@ -1114,13 +1123,14 @@ namespace AutoJMS
                 }
                 // copy -> check là cặp đổi trạng thái của .agent/rules/11: bấm xong đổi ngay
                 // sang dấu tích, không hoạt ảnh (morph chỉ áp cho Dashboard WebView2).
-                ASymbols.Draw(g, _copyOk ? ASymbols.Check : ASymbols.Copy, 15, btnInk, _copyBox);
+                ASymbols.Draw(g, _copyOk ? ASymbols.Check : ASymbols.Copy, S(15), btnInk, _copyBox);
             }
-            y += DkchCodeRowH + 6;
+            y += S(DkchCodeRowH) + S(6);
 
             // Hàng 2 — chip thao tác cuối (ôm sát chữ) + huy hiệu NGÀY TỒN neo phải.
-            var box2 = new Rectangle(rowLeft, y, rowW, DkchStateRowH);
-            using (var path = DkchPaint.RoundRect(box2, 6))
+            var box2 = new Rectangle(rowLeft, y, rowW, S(DkchStateRowH));
+            int chipH = S(DkchChipH);
+            using (var path = DkchPaint.RoundRect(box2, S(6)))
             using (var brush = new SolidBrush(Skin.RowBg))
             using (var pen = new Pen(Skin.RowBorder, 1f))
             {
@@ -1136,20 +1146,20 @@ namespace AutoJMS
                 using (var fLbl = Ui(UiPtMin, FontStyle.Bold))
                 {
                     string num = DaysInStock.Value.ToString();
-                    badgeW = Math.Max(Measure(num, fNum), Measure("NGÀY TỒN", fLbl)) + 14;
-                    var badge = new Rectangle(box2.Right - DkchRowPad - badgeW, box2.Y + (box2.Height - DkchChipH) / 2, badgeW, DkchChipH);
-                    using (var path = DkchPaint.RoundRect(badge, 6))
+                    badgeW = Math.Max(Measure(num, fNum), Measure("NGÀY TỒN", fLbl)) + S(14);
+                    var badge = new Rectangle(box2.Right - rowPad - badgeW, box2.Y + (box2.Height - chipH) / 2, badgeW, chipH);
+                    using (var path = DkchPaint.RoundRect(badge, S(6)))
                     using (var brush = new SolidBrush(Skin.StockBg))
                     using (var pen = new Pen(Skin.StockBorder, 1f))
                     {
                         g.FillPath(brush, path);
                         g.DrawPath(pen, path);
                     }
-                    Draw(g, num, fNum, new Rectangle(badge.X, badge.Y + 2, badge.Width, 18),
+                    Draw(g, num, fNum, new Rectangle(badge.X, badge.Y + S(2), badge.Width, S(18)),
                          Skin.StockText, TextFormatFlags.HorizontalCenter);
-                    Draw(g, "NGÀY TỒN", fLbl, new Rectangle(badge.X, badge.Y + 20, badge.Width, 13),
+                    Draw(g, "NGÀY TỒN", fLbl, new Rectangle(badge.X, badge.Y + S(20), badge.Width, S(13)),
                          Skin.StockLabel, TextFormatFlags.HorizontalCenter);
-                    badgeW += 8;
+                    badgeW += S(8);
                 }
             }
 
@@ -1158,7 +1168,7 @@ namespace AutoJMS
             int chipRoom;
             {
                 int bw = badgeW;
-                chipRoom = Math.Max(40, rowW - DkchRowPad * 2 - bw);
+                chipRoom = Math.Max(S(40), rowW - rowPad * 2 - bw);
             }
             // Chip LUÔN một dòng. Bắt đầu từ DkchChipPt (bằng cỡ số ngày tồn) rồi chỉ hạ
             // khi thật sự không vừa — đệm trong chip nay còn 25px thay vì 44px đo hụt của
@@ -1169,7 +1179,7 @@ namespace AutoJMS
                 for (; chipPt > UiPtMin; chipPt -= 0.25f)
                 {
                     using (var f = Ui(chipPt, FontStyle.Bold))
-                        if (Measure(StatusText, f) + DkchChipPad <= chipRoom) break;
+                        if (Measure(StatusText, f) + S(DkchChipPad) <= chipRoom) break;
                 }
             }
             using (var fChip = Ui(chipPt, FontStyle.Bold))
@@ -1183,29 +1193,30 @@ namespace AutoJMS
                 var role = ActRoleOf(StatusText);
                 Color chipBg = ActBg(role), chipInk = ActInk(role), chipDot = ActDot(role);
 
-                int chipW = blank ? 40 : Math.Min(chipRoom, Measure(status, fChip) + DkchChipPad);
-                var chip = new Rectangle(box2.X + DkchRowPad, box2.Y + (box2.Height - DkchChipH) / 2,
-                                         chipW, DkchChipH);
+                int chipW = blank ? S(40) : Math.Min(chipRoom, Measure(status, fChip) + S(DkchChipPad));
+                var chip = new Rectangle(box2.X + rowPad, box2.Y + (box2.Height - chipH) / 2,
+                                         chipW, chipH);
                 // Bo góc 6 để khớp với huy hiệu NGÀY TỒN bên cạnh — góc 4 của chip thấp cũ
                 // trông lệch hẳn khi khối cao lên.
-                using (var path = DkchPaint.RoundRect(chip, 6))
+                using (var path = DkchPaint.RoundRect(chip, S(6)))
                 using (var brush = new SolidBrush(chipBg))
                 {
                     g.FillPath(brush, path);
                 }
                 using (var brush = new SolidBrush(chipDot))
                 {
-                    g.FillEllipse(brush, chip.X + DkchChipDotLeft,
-                                  chip.Y + (chip.Height - DkchChipDotD) / 2, DkchChipDotD, DkchChipDotD);
+                    int dotD = S(DkchChipDotD);
+                    g.FillEllipse(brush, chip.X + S(DkchChipDotLeft),
+                                  chip.Y + (chip.Height - dotD) / 2, dotD, dotD);
                 }
                 if (!blank)
                 {
                     Draw(g, status, fChip,
-                         new Rectangle(chip.X + DkchChipTextLeft, chip.Y,
-                                       Math.Max(1, chip.Width - DkchChipPad), chip.Height), chipInk);
+                         new Rectangle(chip.X + S(DkchChipTextLeft), chip.Y,
+                                       Math.Max(1, chip.Width - S(DkchChipPad)), chip.Height), chipInk);
                 }
             }
-            y += DkchStateRowH + 9;
+            y += S(DkchStateRowH) + S(9);
 
             // Bọc trong if chứ KHÔNG return: return sẽ cắt luôn dải P6 phía dưới,
             // làm mất thông điệp kết quả ở những ca không tra được bưu tá.
@@ -1215,21 +1226,21 @@ namespace AutoJMS
             // Ngày tồn đã chuyển lên hàng chip; chỗ này nay dành cho thời gian thao tác.
             using (var pen = new Pen(Skin.ResultBorder, 1f))
                 g.DrawLine(pen, pad, y, right, y);
-            y += 7;
+            y += S(7);
 
             int stampW = StampGutter();
             using (var fStamp = Mono(UiPtMin, FontStyle.Bold))
             {
                 Draw(g, StampText, fStamp,
-                     new Rectangle(right - stampW + 8, y, Math.Max(1, stampW - 8), 20),
+                     new Rectangle(right - stampW + S(8), y, Math.Max(1, stampW - S(8)), S(20)),
                      Skin.ResultSub, TextFormatFlags.Right);
             }
 
-            int textW = Math.Max(40, right - pad - stampW);
+            int textW = Math.Max(S(40), right - pad - stampW);
             using (var fName = Ui(UiPtMax, FontStyle.Bold))
             using (var fNote = Ui(DkchNotePt, FontStyle.Bold))
             {
-                Draw(g, OperatorName, fName, new Rectangle(pad, y, textW, 20), Skin.ResultTitle);
+                Draw(g, OperatorName, fName, new Rectangle(pad, y, textW, S(20)), Skin.ResultTitle);
                 if (!string.IsNullOrWhiteSpace(NoteText))
                 {
                     // Vẽ từng dòng đã tự ngắt — mỗi dòng là một lần vẽ một dòng, GDI
@@ -1238,7 +1249,7 @@ namespace AutoJMS
                     for (int li = 0; li < lines.Count; li++)
                     {
                         Draw(g, lines[li], fNote,
-                             new Rectangle(pad, y + 21 + li * DkchNoteLineH, NoteWidth(Width), DkchNoteLineH),
+                             new Rectangle(pad, y + S(21) + li * S(DkchNoteLineH), NoteWidth(Width), S(DkchNoteLineH)),
                              ActInk(ActRoleOf(StatusText)));
                     }
                 }
@@ -1260,17 +1271,17 @@ namespace AutoJMS
 
                 int vh = ViolationHeight(Width);
                 var strip = new Rectangle(1, Height - vh - 1, Math.Max(1, Width - 3), vh);
-                using (var clip = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), 6))
+                using (var clip = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), S(6)))
                 {
                     var old = g.Clip;
                     g.SetClip(clip, CombineMode.Intersect);
                     using (var brush = new SolidBrush(stripBg)) g.FillRectangle(brush, strip);
                     using (var brush = new SolidBrush(stripBar))
-                        g.FillRectangle(brush, new Rectangle(strip.X, strip.Y, 3, strip.Height));
+                        g.FillRectangle(brush, new Rectangle(strip.X, strip.Y, S(3), strip.Height));
                     g.Clip = old;
                 }
 
-                int vx = strip.X + 11;
+                int vx = strip.X + S(11);
                 int vw = StripTextWidth(Width);
                 using (var fTitle = Ui(DkchStripTagPt, FontStyle.Bold))
                 using (var fText = Ui(DkchStripPt))
@@ -1278,9 +1289,9 @@ namespace AutoJMS
                 {
                     // Cùng thứ tự cộng dồn với ViolationHeight: 8 · nhãn · 4 · nội dung
                     // · 6 · chip · 8. Lệch một bước là chữ bị cắt hoặc dải hở đáy.
-                    int ty = strip.Y + 8;
+                    int ty = strip.Y + S(8);
                     Draw(g, StripTag, fTitle, new Rectangle(vx, ty, vw, fTitle.Height), stripTagInk);
-                    ty += fTitle.Height + 4;
+                    ty += fTitle.Height + S(4);
 
                     foreach (string ln in StripLines(Width, fText))
                     {
@@ -1288,7 +1299,7 @@ namespace AutoJMS
                         ty += fText.Height;
                     }
 
-                    int chipY = strip.Bottom - 8 - DkchStripChipH;
+                    int chipY = strip.Bottom - S(8) - S(DkchStripChipH);
 
                     // Chip ghi số 0 không nói lên điều gì, chỉ thêm nhiễu.
                     if (RegisterCount > 0) PaintCountChip(g, ref vx, chipY, fChip, "ĐKCH", RegisterCount);
@@ -1300,9 +1311,9 @@ namespace AutoJMS
         private void PaintCountChip(Graphics g, ref int x, int y, Font font, string label, int value)
         {
             string text = label + "  " + value;
-            int w = Measure(text, font) + 14;
-            var box = new Rectangle(x, y, w, 17);
-            using (var path = DkchPaint.RoundRect(box, 3))
+            int w = Measure(text, font) + S(14);
+            var box = new Rectangle(x, y, w, S(DkchStripChipH));
+            using (var path = DkchPaint.RoundRect(box, S(3)))
             using (var brush = new SolidBrush(Skin.CountChipBg))
             using (var pen = new Pen(Skin.CountChipBorder, 1f))
             {
@@ -1310,7 +1321,7 @@ namespace AutoJMS
                 g.DrawPath(pen, path);
             }
             Draw(g, text, font, box, Skin.CountChipText, TextFormatFlags.HorizontalCenter);
-            x += w + 5;
+            x += w + S(5);
         }
     }
 
@@ -1324,32 +1335,32 @@ namespace AutoJMS
             using (var f = Ui(8.5f, FontStyle.Bold))
             {
                 var size = TextRenderer.MeasureText(Tip ?? "", f,
-                    new Size(Math.Max(40, width - 26), int.MaxValue), TextFormatFlags.WordBreak);
-                return Math.Max(38, size.Height + 26);
+                    new Size(Math.Max(S(40), width - S(26)), int.MaxValue), TextFormatFlags.WordBreak);
+                return Math.Max(S(38), size.Height + S(26));
             }
         }
 
         protected override void PaintCard(Graphics g)
         {
             FillCard(g, Skin.TipBg, Skin.TipBorder);
-            using (var clip = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), 6))
+            using (var clip = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), S(6)))
             {
                 var old = g.Clip;
                 g.SetClip(clip, CombineMode.Intersect);
                 using (var brush = new SolidBrush(Skin.TipBar))
-                    g.FillRectangle(brush, new Rectangle(0, 0, 4, Height));
+                    g.FillRectangle(brush, new Rectangle(0, 0, S(4), Height));
                 g.Clip = old;
             }
 
-            int x = 12;
-            ASymbols.Draw(g, ASymbols.Play, 11, Skin.TipLabel, new Rectangle(x, 6, 12, 13));
-            x += 14;
-            int w = Math.Max(30, Width - x - 9);
+            int x = S(12);
+            ASymbols.Draw(g, ASymbols.Play, S(11), Skin.TipLabel, new Rectangle(x, S(6), S(12), S(13)));
+            x += S(14);
+            int w = Math.Max(S(30), Width - x - S(9));
             using (var fLabel = Ui(6.4f, FontStyle.Bold))
             using (var fText = Ui(9f, FontStyle.Bold))
             {
-                Draw(g, "GỢI Ý:", fLabel, new Rectangle(x, 5, w, 11), Skin.TipLabel);
-                TextRenderer.DrawText(g, Tip ?? "", fText, new Rectangle(x, 17, w, Height - 22),
+                Draw(g, "GỢI Ý:", fLabel, new Rectangle(x, S(5), w, S(11)), Skin.TipLabel);
+                TextRenderer.DrawText(g, Tip ?? "", fText, new Rectangle(x, S(17), w, Height - S(22)),
                     Skin.TipText, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
             }
         }
@@ -1363,14 +1374,14 @@ namespace AutoJMS
         /// <summary>Chỉ khi bị chặn mới tô đỏ; "đang ở bước n" là bình thường, không phải sự cố.</summary>
         public bool IsBlocked { get; set; }
 
-        public int MeasureHeight() => 48;
+        public int MeasureHeight() => S(48);
 
         protected override void PaintCard(Graphics g)
         {
             FillCard(g, Skin.BoxBg, Skin.BoxBorder);
 
-            int pad = 9;
-            int w = Math.Max(20, Width - pad * 2);
+            int pad = S(9);
+            int w = Math.Max(S(20), Width - pad * 2);
             // Steps có thể null nếu nơi gọi quên khởi tạo — ném lỗi trong OnPaint là treo app.
             var steps = Steps ?? new List<DkchStep>();
             int done = 0;
@@ -1379,21 +1390,21 @@ namespace AutoJMS
             using (var fLabel = Ui(6.75f, FontStyle.Bold))
             using (var fCount = Ui(7.9f, FontStyle.Bold))
             {
-                Draw(g, "TIẾN TRÌNH", fLabel, new Rectangle(pad, 5, w - 40, 12), Skin.BoxLabel);
+                Draw(g, "TIẾN TRÌNH", fLabel, new Rectangle(pad, S(5), w - S(40), S(12)), Skin.BoxLabel);
                 Draw(g, $"{done}/{Math.Max(1, steps.Count)}", fCount,
-                     new Rectangle(Width - pad - 40, 4, 40, 13),
+                     new Rectangle(Width - pad - S(40), S(4), S(40), S(13)),
                      IsBlocked ? Skin.StepLabelCurrent : Skin.BoxLabel, TextFormatFlags.Right);
             }
 
             if (steps.Count == 0) return;
 
-            int gap = 3;
-            int cellW = Math.Max(6, (w - gap * (steps.Count - 1)) / steps.Count);
-            int y = 20;
+            int gap = S(3);
+            int cellW = Math.Max(S(6), (w - gap * (steps.Count - 1)) / steps.Count);
+            int y = S(20);
 
             for (int i = 0; i < steps.Count; i++)
             {
-                var bar = new Rectangle(pad + i * (cellW + gap), y, cellW, 7);
+                var bar = new Rectangle(pad + i * (cellW + gap), y, cellW, S(7));
                 Color fill;
                 switch (steps[i].State)
                 {
@@ -1401,7 +1412,7 @@ namespace AutoJMS
                     case DkchStepState.Current: fill = IsBlocked ? Skin.StepCurrent : Skin.StepPending; break;
                     default: fill = Skin.StepPending; break;
                 }
-                using (var path = DkchPaint.RoundRect(bar, 2))
+                using (var path = DkchPaint.RoundRect(bar, S(2)))
                 using (var brush = new SolidBrush(fill))
                 {
                     g.FillPath(brush, path);
@@ -1409,7 +1420,7 @@ namespace AutoJMS
                 // Gạch chéo đỏ chỉ dành cho đơn ĐANG BỊ CHẶN; chưa tới bước thì để trống.
                 if (steps[i].State == DkchStepState.Current && IsBlocked)
                 {
-                    using (var path = DkchPaint.RoundRect(bar, 2))
+                    using (var path = DkchPaint.RoundRect(bar, S(2)))
                     using (var brush = new HatchBrush(HatchStyle.LightUpwardDiagonal, Skin.StepCurrentAlt, Skin.StepCurrent))
                     {
                         g.FillPath(brush, path);
@@ -1434,7 +1445,7 @@ namespace AutoJMS
             {
                 for (int i = 0; i < steps.Count; i++)
                 {
-                    var cell = new Rectangle(pad + i * (cellW + gap), y + 10, cellW, 14);
+                    var cell = new Rectangle(pad + i * (cellW + gap), y + S(10), cellW, S(14));
                     bool current = steps[i].State == DkchStepState.Current;
                     Draw(g, steps[i].Label, fStep, cell,
                          current && IsBlocked ? Skin.StepLabelCurrent : Skin.StepLabel,
@@ -1493,7 +1504,7 @@ namespace AutoJMS
         {
             // Thanh cuộn thật thay vì âm thầm bỏ bớt mốc. Dùng VScrollBar của hệ thống
             // vì nó tự xử lý chuột, không phải cướp focus của ô nhập mã.
-            _bar = new VScrollBar { Width = 12, Visible = false, SmallChange = 16, TabStop = false };
+            _bar = new VScrollBar { Width = S(12), Visible = false, SmallChange = 16, TabStop = false };
             _bar.Scroll += (s, e) => Invalidate();
             Controls.Add(_bar);
         }
@@ -1507,34 +1518,34 @@ namespace AutoJMS
             // OnResize có thể chạy TRƯỚC khi constructor xong (Control nền đổi kích thước
             // trong lúc dựng), nên phải kiểm null chứ không tin là _bar đã có.
             if (_bar == null) return;
-            _bar.Bounds = new Rectangle(Math.Max(1, Width - 13), 22, 12, Math.Max(10, Height - 26));
+            _bar.Bounds = new Rectangle(Math.Max(1, Width - S(13)), S(22), S(12), Math.Max(10, Height - S(26)));
         }
 
         private int RowHeightOf(DkchJourneyEntry it)
-            => string.IsNullOrWhiteSpace(it?.Note) ? 32 : 46;
+            => string.IsNullOrWhiteSpace(it?.Note) ? S(32) : S(46);
 
         protected override void PaintCard(Graphics g)
         {
             FillCard(g, Skin.BoxBg, Skin.BoxBorder);
 
-            int pad = 10;
-            int w = Math.Max(20, Width - pad * 2);
-            int y = 6;
+            int pad = S(10);
+            int w = Math.Max(S(20), Width - pad * 2);
+            int y = S(6);
 
-            int headerBottom = y + 16;
+            int headerBottom = y + S(16);
             y = headerBottom;
 
             if (Entries == null || Entries.Count == 0)
             {
                 using (var f = Ui(8f))
-                    Draw(g, EmptyText, f, new Rectangle(pad, y, w, 16), Skin.JourneyTime);
+                    Draw(g, EmptyText, f, new Rectangle(pad, y, w, S(16)), Skin.JourneyTime);
                 return;
             }
 
             // Tổng chiều cao nội dung để biết có cần cuộn không.
             int total = 0;
             foreach (var e2 in Entries) total += RowHeightOf(e2);
-            int viewH = Math.Max(10, Height - y - 4);
+            int viewH = Math.Max(10, Height - y - S(4));
             bool needBar = total > viewH;
             if (_bar.Visible != needBar) _bar.Visible = needBar;
             if (needBar)
@@ -1546,7 +1557,7 @@ namespace AutoJMS
                     _bar.Value = Math.Max(0, _bar.Maximum - _bar.LargeChange);
             }
             int scroll = needBar ? _bar.Value : 0;
-            int listRight = needBar ? Width - pad - 14 : Width - pad;
+            int listRight = needBar ? Width - pad - S(14) : Width - pad;
 
             // Vẽ THẲNG lên bề mặt thật (không qua ảnh đệm) để chữ giữ nguyên độ nét của
             // ClearType. Vùng cắt cắt gọn dòng chạm mép, nên vẫn cuộn mượt từng pixel.
@@ -1570,32 +1581,32 @@ namespace AutoJMS
 
                     var role = ActRoleOf(it.Type);
                     using (var brush = new SolidBrush(ActDot(role)))
-                        g.FillEllipse(brush, pad, y + 4, 8, 8);
+                        g.FillEllipse(brush, pad, y + S(4), S(8), S(8));
 
                     // Dấu thời gian ĐẦY ĐỦ ngày + giờ, không rút gọn. Chỉ dòng tiêu đề
                     // phải nhường chỗ cho nó; dòng tên và ghi chú dùng trọn bề ngang.
                     string stamp = string.IsNullOrWhiteSpace(it.Date)
                         ? (it.Time ?? "")
                         : it.Date + " | " + it.Time;
-                    int tw = Measure(stamp, fTime) + 4;
-                    int tx = pad + 14;
-                    int fullW = Math.Max(30, listRight - tx);
-                    int contentW = Math.Max(30, fullW - tw - 6);
+                    int tw = Measure(stamp, fTime) + S(4);
+                    int tx = pad + S(14);
+                    int fullW = Math.Max(S(30), listRight - tx);
+                    int contentW = Math.Max(S(30), fullW - tw - S(6));
 
-                    Draw(g, it.Type, fTitle, new Rectangle(tx, y, contentW, 14), ActInk(role));
-                    Draw(g, stamp, fTime, new Rectangle(listRight - tw, y, tw, 14),
+                    Draw(g, it.Type, fTitle, new Rectangle(tx, y, contentW, S(14)), ActInk(role));
+                    Draw(g, stamp, fTime, new Rectangle(listRight - tw, y, tw, S(14)),
                          Skin.JourneyTime, TextFormatFlags.Right);
                     Draw(g, DkchRemark.PersonName(it.Operator), fName,
-                         new Rectangle(tx, y + 14, fullW, 13), Skin.JourneyName);
+                         new Rectangle(tx, y + S(14), fullW, S(13)), Skin.JourneyName);
                     if (hasNote)
                         Draw(g, "↳ " + DkchRemark.Translate(it.Note), fNote,
-                             new Rectangle(tx, y + 27, fullW, 14), ActInk(role));
+                             new Rectangle(tx, y + S(27), fullW, S(14)), ActInk(role));
 
                     y += rowH;
                     if (i < Entries.Count - 1)
                     {
                         using (var pen = new Pen(Skin.JourneyDivider, 1f) { DashStyle = DashStyle.Dash })
-                            g.DrawLine(pen, pad, y - 5, listRight, y - 5);
+                            g.DrawLine(pen, pad, y - S(5), listRight, y - S(5));
                     }
                 }
             }
@@ -1604,7 +1615,7 @@ namespace AutoJMS
             // Nhãn là TIÊU ĐỀ cố định của thẻ: vẽ sau cùng trên nền đặc. Ảnh đệm đã bắt
             // đầu ngay dưới nhãn nên không thể chồng lên, đây là lớp chắn thứ hai.
             var headerBand = new Rectangle(1, 1, Math.Max(1, Width - 3), headerBottom - 1);
-            using (var clipTop = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), 6))
+            using (var clipTop = DkchPaint.RoundRect(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), S(6)))
             {
                 var old2 = g.Clip;
                 g.SetClip(clipTop, CombineMode.Intersect);
@@ -1612,7 +1623,7 @@ namespace AutoJMS
                 g.Clip = old2;
             }
             using (var fLabel = Ui(6.75f, FontStyle.Bold))
-                Draw(g, "HÀNH TRÌNH", fLabel, new Rectangle(pad, 6, w, 12), Skin.BoxLabel);
+                Draw(g, "HÀNH TRÌNH", fLabel, new Rectangle(pad, S(6), w, S(12)), Skin.BoxLabel);
         }
     }
 }
