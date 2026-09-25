@@ -162,17 +162,26 @@ namespace AutoJMS.UI.DesignSystem
         private void ShowScrim()
         {
             var area = Owner != null ? Owner.Bounds : Screen.FromControl(this).Bounds;
+            var scrim = Theme.Scrim;
             _scrim = new Form
             {
                 FormBorderStyle = FormBorderStyle.None,
                 StartPosition = FormStartPosition.Manual,
                 Bounds = area,
-                BackColor = Theme.Scrim,
-                Opacity = 0.35,
-                ShowInTaskbar = false,
-                Enabled = false          // không nuốt chuột nếu hộp thoại đóng lỗi
+                // BackColor của Form PHẢI đục: Control.set_BackColor ném ArgumentException
+                // khi alpha < 255. Độ mờ đi qua Opacity, và alpha của token là nguồn DUY NHẤT
+                // quyết định độ đậm (Light 0x66, Dark 0x99) - số 0.35 cứng trước đây nuốt mất
+                // sự khác nhau giữa hai theme.
+                BackColor = Color.FromArgb(255, scrim),
+                Opacity = scrim.A / 255.0,
+                ShowInTaskbar = false
             };
+
+            // Show TRƯỚC rồi mới tắt Enabled: Form.Show(owner) từ chối form đang disabled
+            // ("Forms that are not enabled cannot be displayed as a modal dialog box").
+            // Tắt sau vẫn giữ nguyên ý định cũ - scrim không nuốt chuột nếu hộp thoại đóng lỗi.
             _scrim.Show(Owner);
+            _scrim.Enabled = false;
         }
 
         protected override void OnPaint(PaintEventArgs e)
