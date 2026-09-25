@@ -1203,8 +1203,8 @@ namespace AutoJMS
 
             // Restructure uiTableLayoutPanel22 rows so contact stays at the bottom
             // and there is a stretchy middle row that can host the summary card.
-            // Original 7 rows (Absolute) sum to 385px in a ~700px panel, leaving the
-            // contact stuck in the middle. We add a Theme selector row and a Percent-100 spacer row,
+            // Original 7 rows (Absolute) sum to 337px in the 600px card (Main.Designer.cs),
+            // leaving the contact stuck in the middle. We add a Theme selector row and a Percent-100 spacer row,
             // shifting the link/contact controls down.
             if (uiTableLayoutPanel22 != null && uiTableLayoutPanel22.RowStyles.Count >= 6)
             {

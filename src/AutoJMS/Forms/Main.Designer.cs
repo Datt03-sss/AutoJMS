@@ -198,7 +198,11 @@ namespace AutoJMS
             uiTableLayoutPanel5.Name = "uiTableLayoutPanel5";
             uiTableLayoutPanel5.RowCount = 3;
             uiTableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            uiTableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Absolute, 420F));
+            // Thẻ giới thiệu cao 600. Lúc chạy InitializeAboutSummary chèn thêm hàng Theme (50) và
+            // hàng "Tóm tắt điều khoản" (Percent 100) vào uiTableLayoutPanel22, nên thẻ phải dư
+            // chỗ ngoài các hàng cố định; 420 từng bóp hàng tóm tắt về 0 và thẻ biến mất. 600 vẫn
+            // vừa màn 1366x768: trang tab còn 648px dưới thanh tiêu đề + thanh nav.
+            uiTableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Absolute, 600F));
             uiTableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             uiTableLayoutPanel5.Size = new Size(200, 60);
             uiTableLayoutPanel5.TabIndex = 0;
