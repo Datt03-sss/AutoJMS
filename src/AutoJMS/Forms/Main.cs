@@ -1063,7 +1063,11 @@ namespace AutoJMS
             lblNetworkStatus = new Label();
             lblNetworkStatus.Name = "lblNetworkStatus";
             lblNetworkStatus.AutoSize = true;
-            lblNetworkStatus.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold);
+            // PHẢI là token của ThemeTypography, không được tự new Font: AppTheme kéo mọi
+            // control về DefaultControlFont 10F trừ khi ThemeTypography.IsToken trả true, mà
+            // IsToken so bằng ReferenceEquals nên font tự tạo luôn thua — nhãn này vì thế
+            // chưa bao giờ đậm thật dù code cũ ghi FontStyle.Bold.
+            lblNetworkStatus.Font = ThemeTypography.BodyStrong;
             lblNetworkStatus.BackColor = Color.Transparent;
 
             // Cha là topNav, KHÔNG phải Form. Form cũ tự vẽ thanh tiêu đề NGAY TRONG vùng
@@ -1240,6 +1244,11 @@ namespace AutoJMS
                     {
                         UI.AppTheme.CurrentTheme = mode;
                         UI.AppTheme.Apply(this);
+                        // AppTheme CỐ Ý bỏ qua lblNetworkStatus ("managed by Main.cs") nên
+                        // không ai tô lại nó sau khi đổi theme: nhãn giữ màu của theme CŨ cho
+                        // tới khi NetworkState.OnChanged tình cờ nổ. Gọi lại với trạng thái
+                        // đang giữ là đủ — hàm tự đọc CurrentTheme mới.
+                        UpdateNetworkUI(_currentNetworkStatus);
                         ApplyWaybillInputBoldFonts();
                         // ADataGridView.ApplyTheme() đặt lại cỡ chữ ô về ThemeTypography.Grid (9F)
                         // mỗi lần đổi theme, đè mất 8.5F/7.5F mà ApplyStandardGridSettings chọn
