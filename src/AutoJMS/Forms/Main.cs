@@ -1102,29 +1102,27 @@ namespace AutoJMS
 
             _currentNetworkStatus = status;
 
-            bool isRed = UI.AppTheme.CurrentTheme == UI.ThemeMode.Red;
+            // KHÔNG tách nhánh riêng cho theme Red: TopNavigation tô nền thanh nav bằng
+            // c.Surface, mà ThemeColors.Red.Surface trùng từng byte với Light ("#F5F7FA").
+            // Hai theme cùng nền thì phải cùng màu chữ — bảng màu đỏ riêng là di sản thời
+            // SunnyUI, khi header còn nền đỏ thật, và nó làm chữ trắng nằm trên nền gần
+            // trắng. Chỉ nền tối mới cần bảng màu khác.
             bool isDark = UI.AppTheme.CurrentTheme == UI.ThemeMode.Dark;
 
             switch (status)
             {
                 case NetworkStatus.Online:
                     lblNetworkStatus.Text = "● Online";
-                    if (isRed) lblNetworkStatus.ForeColor = Color.White;
-                    else if (isDark) lblNetworkStatus.ForeColor = Color.LimeGreen;
-                    else lblNetworkStatus.ForeColor = Color.FromArgb(0, 240, 100);
+                    lblNetworkStatus.ForeColor = isDark ? Color.LimeGreen : Color.FromArgb(0, 240, 100);
                     break;
                 case NetworkStatus.Unstable:
                     lblNetworkStatus.Text = "● Mạng chậm";
-                    if (isRed) lblNetworkStatus.ForeColor = Color.White;
-                    else if (isDark) lblNetworkStatus.ForeColor = Color.Yellow;
-                    else lblNetworkStatus.ForeColor = Color.FromArgb(253, 224, 71);
+                    lblNetworkStatus.ForeColor = isDark ? Color.Yellow : Color.FromArgb(253, 224, 71);
                     break;
                 case NetworkStatus.Offline:
                 default:
                     lblNetworkStatus.Text = "● Mất kết nối";
-                    if (isRed) lblNetworkStatus.ForeColor = Color.Black;
-                    else if (isDark) lblNetworkStatus.ForeColor = Color.Red;
-                    else lblNetworkStatus.ForeColor = Color.FromArgb(252, 115, 115);
+                    lblNetworkStatus.ForeColor = isDark ? Color.Red : Color.FromArgb(252, 115, 115);
                     break;
             }
 
