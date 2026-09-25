@@ -672,7 +672,7 @@ namespace AutoJMS
                 if (tabPrint_dataView.Columns.Contains("Select"))
                 {
                     tabPrint_dataView.Columns["Select"].HeaderText = "Chọn";
-                    tabPrint_dataView.Columns["Select"].Width = 50;
+                    tabPrint_dataView.Columns["Select"].Width = S(50);
                 }
             };
 
@@ -985,8 +985,8 @@ namespace AutoJMS
             // IN ĐƠN do PrintService.AutoSizePrintGridColumns() gán cứng từng cột.
             grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
-            grid.RowTemplate.Height = 27;
-            grid.ColumnHeadersHeight = 34;
+            grid.RowTemplate.Height = S(27);
+            grid.ColumnHeadersHeight = S(34);
             // Cỡ chữ ĐẦU CỘT để một mình ADataGridView.ApplyTheme() giữ - đặt thêm ở đây là
             // hai nơi cùng ghi một thuộc tính với hai giá trị khác nhau. (Không phải nguyên
             // nhân vụ đầu cột IN ĐƠN vỡ giữa từ: đo bằng log trong app thì font lúc đo luôn

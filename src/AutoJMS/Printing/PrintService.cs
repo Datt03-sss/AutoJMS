@@ -147,6 +147,8 @@ namespace AutoJMS
             DisableSorting();
         }
 
+        private int S(int value) => UI.DesignSystem.DpiHelper.Scale(_grid, value);
+
         private void AutoSizePrintGridColumns()
         {
             if (_grid.Columns.Count == 0) return;
@@ -159,7 +161,7 @@ namespace AutoJMS
                     string headerText = string.IsNullOrWhiteSpace(col.HeaderText) ? col.Name : col.HeaderText;
                     int headerWidth = TextRenderer.MeasureText(
                         headerText,
-                        _grid.ColumnHeadersDefaultCellStyle.Font ?? _grid.Font).Width + 24;
+                        _grid.ColumnHeadersDefaultCellStyle.Font ?? _grid.Font).Width + S(24);
                     int currentWidth = Math.Max(col.Width, headerWidth);
 
                     foreach (DataGridViewRow row in _grid.Rows)
@@ -168,7 +170,7 @@ namespace AutoJMS
                         string cellText = Convert.ToString(row.Cells[col.Index].FormattedValue) ?? "";
                         int cellWidth = TextRenderer.MeasureText(
                             cellText,
-                            row.Cells[col.Index].InheritedStyle.Font ?? _grid.Font).Width + 18;
+                            row.Cells[col.Index].InheritedStyle.Font ?? _grid.Font).Width + S(18);
                         currentWidth = Math.Max(currentWidth, cellWidth);
                     }
 
@@ -193,7 +195,7 @@ namespace AutoJMS
                 if (col.Name == "Select")
                 {
                     col.HeaderText = "Chọn";
-                    col.Width = 50;
+                    col.Width = S(50);
                 }
 
                 // Căn giữa các cột số lượng và mã
