@@ -4074,33 +4074,51 @@ namespace AutoJMS
             if (uiPanel2.Controls.Find("tabPrint_btnClearPrinterJobs", false).Length > 0)
                 return;
 
-            var clearJobsButton = CreatePrinterActionButton("tabPrint_btnClearPrinterJobs", "Xóa job treo", 160);
+            var clearJobsButton = CreatePrinterActionButton("tabPrint_btnClearPrinterJobs", "Xóa job treo", ASymbols.Trash);
             clearJobsButton.Click += async (_, _) => await ClearPrinterJobsFromUiAsync();
 
-            var setPaperButton = CreatePrinterActionButton("tabPrint_btnSet3x3Paper", "Set 3\"x3\"", 275);
+            var setPaperButton = CreatePrinterActionButton("tabPrint_btnSet3x3Paper", "Set 3\"x3\"", ASymbols.Print);
             setPaperButton.Click += (_, _) => SetAutoJmsPaperSize3x3();
 
-            var unsetPaperButton = CreatePrinterActionButton("tabPrint_btnUnsetPaper", "Unset cỡ giấy", 365);
+            var unsetPaperButton = CreatePrinterActionButton("tabPrint_btnUnsetPaper", "Unset cỡ giấy", ASymbols.Refresh);
             unsetPaperButton.Click += (_, _) => RestoreOriginalPaperSize();
 
-            uiPanel2.Controls.Add(clearJobsButton);
-            uiPanel2.Controls.Add(setPaperButton);
-            uiPanel2.Controls.Add(unsetPaperButton);
+            // Ba toạ độ đặt tay cũ (160 / 275 / 365) cho khoảng hở 5px rồi 6px, và Y = 4 trong
+            // vùng client chỉ cao 25px nên nút cao 28px bị cắt mất đáy. FlowLayoutPanel giãn
+            // theo bề rộng thật của chữ và giữ đúng MỘT khoảng hở cho cả ba nút.
+            var actions = new FlowLayoutPanel
+            {
+                Name = "tabPrint_printerActions",
+                Dock = DockStyle.Left,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = false,
+                BackColor = Color.Transparent,
+                Margin = Padding.Empty,
+                Padding = new Padding(DpiHelper.Scale(uiPanel2, ThemeSpacing.Lg), 0, 0, 0)
+            };
+            actions.Controls.AddRange(new Control[] { clearJobsButton, setPaperButton, unsetPaperButton });
+
+            uiPanel2.Controls.Add(actions);
+            // Dock.Left xếp theo thứ tự NGƯỢC của Controls: phải đẩy về index 0 thì cụm nút mới
+            // nằm sau nhãn "AutoPrint" và công tắc, thay vì chiếm mép trái trước chúng.
+            uiPanel2.Controls.SetChildIndex(actions, 0);
         }
 
-        private static AButton CreatePrinterActionButton(string name, string text, int left)
+        private AButton CreatePrinterActionButton(string name, string text, int symbol)
         {
-            // Bộ ba FillColor/FillHoverColor/RectColor xanh đặt tay chính là
-            // Variant.Primary — AButton tự dẫn xuất cả nền, hover, nhấn và viền từ token.
+            // Ba nút này là thao tác BẢO TRÌ máy in, không phải hành động chính của thanh:
+            // Primary duy nhất của tab IN ĐƠN là "Tìm kiếm" (DESIGN.md §K). Trước đây cả ba
+            // đều Primary nên hàng nút xanh kín, không còn điểm nhấn.
+            // KHÔNG đặt Font: ctor của AButton đã lấy token ThemeTypography.Button — đặt tay
+            // 9F Regular là lý do chữ ba nút này nhỏ hơn mọi nút còn lại của app.
             return new AButton
             {
                 Name = name,
                 Text = text,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                Size = new Size(text.Length > 10 ? 110 : 84, 28),
-                Location = new Point(left, 4),
-                Anchor = AnchorStyles.Left | AnchorStyles.Top,
-                Variant = AButtonVariant.Primary
+                Symbol = symbol,
+                AutoSize = true,
+                Margin = new Padding(0, 0, DpiHelper.Scale(uiPanel2, ThemeSpacing.Sm), 0)
             };
         }
 

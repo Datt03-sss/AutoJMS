@@ -33,10 +33,10 @@ namespace AutoJMS.UI.DesignSystem
 
         public TopNavigation()
         {
-            // Giá trị 96-DPI thô, KHÔNG qua DpiHelper.Scale().
-            // Cả Main đang chạy AutoScaleMode.None (Main.Designer.cs) nên mọi toạ độ khác
-            // cũng là 96-DPI. Scale riêng thanh này sẽ làm nó cao lệch so với phần còn lại.
-            // Khi phase DPI bật AutoScaleMode.Dpi thì đổi sang S(...) ở đây và bỏ chú thích này.
+            // Giá trị 96-DPI thô, KHÔNG qua S(). Main đã bật AutoScaleMode.Dpi, mà thanh này
+            // được dựng trong hàm khởi tạo của Main - tức là đã nằm trong cây control trước
+            // lượt PerformAutoScale đầu tiên, nên chính WinForms sẽ nhân chiều cao này lên.
+            // Gọi thêm S() ở đây là nhân hai lần. Chỉ control dựng SAU OnLoad mới cần S().
             Height = ThemeMetrics.NavHeight;
             Dock = DockStyle.Top;
             TabStop = true;
@@ -182,8 +182,12 @@ namespace AutoJMS.UI.DesignSystem
             Color fore = isSelected ? c.Text : (isHot ? c.Text : c.TextSecondary);
             Font font = isSelected ? ThemeTypography.BodyStrong : ThemeTypography.Body;
 
+            // EndEllipsis: khi thanh phải co lại (cửa sổ hẹp) thì cắt ĐUÔI rồi thêm "…".
+            // Không có cờ này, HorizontalCenter gặm đều cả hai đầu - "In chuyển hoàn" hiện
+            // ra "n chuyển hoà" và dính liền tab kế bên, không đọc ra tab nào nữa.
             TextRenderer.DrawText(g, _target.TabPages[index].Text, font, rect, fore,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
             if (isSelected)
             {

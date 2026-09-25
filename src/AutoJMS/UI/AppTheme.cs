@@ -15,8 +15,12 @@ namespace AutoJMS.UI
     {
         public static ThemeMode CurrentTheme { get; set; } = ThemeMode.Light;
 
-        /// <summary>Font mặc định cho control WinForms chuẩn. Tạo một lần, không dispose.</summary>
-        private static readonly Font DefaultControlFont = new Font("Segoe UI", 10F, FontStyle.Regular);
+        /// <summary>
+        /// Font mặc định cho control WinForms chuẩn. Chính là token Body, KHÔNG phải một
+        /// font riêng: font riêng 10F làm nhãn WinForms cao hơn ô nhập A* (Body 9.75F) đứng
+        /// cùng hàng nửa point, đủ để lệch đường chân chữ. Không dispose.
+        /// </summary>
+        private static readonly Font DefaultControlFont = DesignSystem.ThemeTypography.Body;
 
         public class ThemeColors
         {
@@ -246,9 +250,9 @@ namespace AutoJMS.UI
             {
                 if (lbl.Name == "tabTracking_countSum")
                 {
-                    // Bigger count + no outer frame (the global 10F font above + the
-                    // designer's FixedSingle border made it tiny and boxed).
-                    lbl.Font = new Font("Segoe UI Semibold", 26F, FontStyle.Bold);
+                    // Số đếm to + bỏ khung ngoài (font mặc định ở trên cộng viền FixedSingle
+                    // của designer làm ô này vừa nhỏ vừa bị đóng hộp).
+                    lbl.Font = DesignSystem.ThemeTypography.Metric;
                     lbl.BorderStyle = BorderStyle.None;
                     lbl.ForeColor = colors.TextPrimary;
                 }

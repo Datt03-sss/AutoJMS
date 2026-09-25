@@ -62,12 +62,20 @@ namespace AutoJMS.UI.DesignSystem
         /// <summary>Số KPI - đều, để nhiều card xếp cạnh nhau thẳng cột.</summary>
         public static readonly Font MonoDisplay = new Font(FamilyMono, 16F, FontStyle.Bold);
 
+        /// <summary>
+        /// Số đếm lớn đứng một mình giữa panel (ô "Tổng" của tab TRA HÀNH TRÌNH). 26pt.
+        /// Có token riêng vì AppTheme tô lại ô này ở MỖI lần đổi theme: `new Font` tại đó
+        /// rò một handle GDI mỗi lượt.
+        /// </summary>
+        public static readonly Font Metric = new Font(FamilySemibold, 26F, FontStyle.Bold);
+
         /// <summary>Chiều cao dòng cho chữ nhiều dòng. Nhãn một dòng dùng 1.0.</summary>
         public const float LineHeightMultiline = 1.35F;
 
         private static readonly Font[] Tokens =
         {
-            Display, H1, H2, Body, BodyStrong, Button, Small, Caption, Badge, Grid, GridHeader, Mono, MonoDisplay
+            Display, H1, H2, Body, BodyStrong, Button, Small, Caption, Badge, Grid, GridHeader, Mono, MonoDisplay,
+            Metric
         };
 
         /// <summary>

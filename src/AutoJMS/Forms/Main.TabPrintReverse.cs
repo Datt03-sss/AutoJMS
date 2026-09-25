@@ -39,12 +39,12 @@ namespace AutoJMS
         // Hàng nhập để ĐÚNG bằng tổng hai dải cộng lề: TableLayoutPanel chia phần trăm thì chỗ
         // thừa rơi xuống đáy ô, đẩy nhãn và ô nhập xa nhau — đúng cái khoảng trống Owner báo.
         private const int ReverseCaptionHeight = 18;
-        private const int ReverseInputHeight = 28;
+        private const int ReverseInputHeight = ThemeMetrics.ControlHeight;
         private const int ReverseRowHeight = ReverseCaptionHeight + ReverseInputHeight + 2;
-        private const int ReverseStatusHeight = 26;
+        private const int ReverseStatusHeight = ThemeMetrics.ControlHeight;
 
         /// <summary>Khe giữa khung chọn ngày và khung chọn giờ trong cùng một ô thời gian.</summary>
-        private const int ReverseBoxGap = 6;
+        private const int ReverseBoxGap = ThemeSpacing.Sm;
 
         /// <summary>
         /// Số đơn hiện mỗi trang lưới. Bằng đúng <c>PageSize</c> của
@@ -60,11 +60,14 @@ namespace AutoJMS
         private const string ReverseHint =
             "Nhập mã vận đơn, hoặc chọn nhân viên + thời gian, rồi bấm Tìm kiếm.";
 
-        // Chữ trong ô nhập hạ từ 12pt Semibold xuống 10.5pt thường: ở 12pt, TextBox một dòng tự
-        // ép chiều cao gần kín ô nên chữ chạm sát viền, còn ô thì phải cao ra mới chứa nổi.
-        private static readonly Font ReverseFieldFont = new("Segoe UI", 10.5F, FontStyle.Regular);
-        private static readonly Font ReverseCaptionFont = new("Segoe UI Semibold", 9.75F, FontStyle.Bold);
-        private static readonly Font ReverseUiFont = new("Segoe UI", 9F, FontStyle.Regular);
+        // Ba font này TRƯỚC ĐÂY là new Font(...) tự dựng: 10.5pt cho ô nhập, Semibold+Bold cho
+        // nhãn, 9pt thường cho nút. Vì vậy tab "In chuyển hoàn" là chỗ DUY NHẤT trong app có
+        // chữ nút nhỏ hơn và nhạt hơn mọi nút khác - đúng chỗ Owner báo là "định dạng khác biệt".
+        // Nay trỏ vào token: cùng thang chữ với phần còn lại, và ThemeTypography.IsToken trả
+        // true nên AppTheme không kéo chúng về font mặc định nữa.
+        private static readonly Font ReverseFieldFont = ThemeTypography.Body;
+        private static readonly Font ReverseCaptionFont = ThemeTypography.BodyStrong;
+        private static readonly Font ReverseUiFont = ThemeTypography.Body;
 
         // ── các ô nhập, dựng trong BuildReverseInputPanel ──
         // Mỗi mốc thời gian là HAI picker: một chọn ngày, một chọn giờ. Cả hai vẫn giữ một
@@ -266,7 +269,7 @@ namespace AutoJMS
                 Symbol = ASymbols.X,
                 SymbolSize = 13,   // ô 22px nằm trong ô nhập, icon phải nhỏ hơn nút toolbar
                 TabStop = false,
-                Font = ReverseUiFont
+                Font = ThemeTypography.Button
             };
             _reverseClearStaff.Click += (s, e) =>
             {
@@ -284,7 +287,7 @@ namespace AutoJMS
                 Text = ReverseHint,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = ReverseUiFont,
-                Margin = new Padding(6, 0, 6, 0)
+                Margin = new Padding(ThemeSpacing.Sm, 0, ThemeSpacing.Sm, 0)
             };
 
             var layout = new TableLayoutPanel
@@ -415,15 +418,15 @@ namespace AutoJMS
 
         /// <summary>
         /// Ô co theo nội dung nên không Dock được: panel AutoSize lấy đúng khung bao các control
-        /// bên trong, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải 14px để hai
-        /// cột cạnh nhau không dính vào nhau.
+        /// bên trong, rồi cột AutoSize của TableLayoutPanel lấy theo panel. Lề phải rộng hơn lề
+        /// trái để hai cột cạnh nhau không dính vào nhau.
         /// </summary>
         private static Panel NewReverseCell() => new()
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             BackColor = Color.Transparent,
-            Margin = new Padding(4, 1, 14, 1)
+            Margin = new Padding(ThemeSpacing.Xs, 0, ThemeSpacing.Md, 0)
         };
 
         // Không viền: viền duy nhất nhìn thấy là khung bo góc do ReverseInputBox vẽ.
@@ -475,8 +478,8 @@ namespace AutoJMS
             {
                 Name = "tabPrint_reversePageLabel",
                 AutoSize = false,
-                Size = new Size(56, 29),
-                Margin = new Padding(0, 3, 0, 3),
+                Size = new Size(56, ThemeMetrics.ControlHeight),
+                Margin = new Padding(0, ThemeSpacing.Xs, 0, ThemeSpacing.Xs),
                 Text = "0/0",
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = ReverseUiFont
@@ -522,9 +525,9 @@ namespace AutoJMS
             {
                 Name = name,
                 Text = text,
-                Size = new Size(width, 29),
-                Margin = new Padding(6, 3, 0, 3),
-                Font = ReverseUiFont
+                Size = new Size(width, ThemeMetrics.ControlHeight),
+                Margin = new Padding(ThemeSpacing.Sm, ThemeSpacing.Xs, 0, ThemeSpacing.Xs),
+                Font = ThemeTypography.Button
             };
             _reverseToolbarButtons.Add((button, warning));
             return button;
@@ -649,7 +652,7 @@ namespace AutoJMS
             button.DisabledFill = colors.InputBorder;
             button.ForeColor = colors.TextInverse;
             button.DisabledForeColor = colors.TextSecondary;
-            RestoreReverseFont(button, ReverseUiFont);
+            RestoreReverseFont(button, ThemeTypography.Button);
             button.Invalidate();
         }
 
