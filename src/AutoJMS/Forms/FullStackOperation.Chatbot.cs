@@ -1,6 +1,7 @@
 using Microsoft.Web.WebView2.WinForms;
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace AutoJMS
@@ -12,7 +13,7 @@ namespace AutoJMS
             tabChat.SuspendLayout();
             try
             {
-                uiTableLayoutPanel3 = new UITableLayoutPanel
+                uiTableLayoutPanel3 = new TableLayoutPanel
                 {
                     Dock = DockStyle.Fill,
                     ColumnCount = 2,
@@ -24,7 +25,7 @@ namespace AutoJMS
                 uiTableLayoutPanel3.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
                 uiTableLayoutPanel3.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-                tabChat_leftPanel = new UITableLayoutPanel
+                tabChat_leftPanel = new TableLayoutPanel
                 {
                     Dock = DockStyle.Fill,
                     ColumnCount = 1,
@@ -39,14 +40,27 @@ namespace AutoJMS
 
                 uiPanel4 = CreatePlainPanel();
                 uiPanel4.Padding = new Padding(8, 5, 8, 5);
-                tabChat_userAvatar = new UIAvatar
+                // UIAvatar chỉ là một đĩa tròn có chữ cái ở giữa. Label tự vẽ lấy đúng
+                // hình đó bằng 4 dòng, khỏi kéo theo một control của thư viện ngoài.
+                tabChat_userAvatar = new Label
                 {
                     Dock = DockStyle.Left,
                     Width = 42,
-                    Text = "Z",
+                    Text = string.Empty,
                     Font = UiBoldFont
                 };
-                tabChat_userName = new UILinkLabel
+                tabChat_userAvatar.Paint += (s, e) =>
+                {
+                    var c = (Control)s;
+                    int d = System.Math.Min(c.Width, c.Height) - 2;
+                    var box = new Rectangle((c.Width - d) / 2, (c.Height - d) / 2, d, d);
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    using var fill = new SolidBrush(AccentBlue);
+                    e.Graphics.FillEllipse(fill, box);
+                    TextRenderer.DrawText(e.Graphics, "Z", c.Font, box, Color.White,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                };
+                tabChat_userName = new LinkLabel
                 {
                     Dock = DockStyle.Fill,
                     Text = "Zalo Chatbot",
@@ -67,11 +81,11 @@ namespace AutoJMS
                 tabChat_statusSelect = CreateComboBox("tabChat_statusSelect");
                 tabChat_statusSelect.Items.Add("Tất cả");
                 tabChat_statusSelect.SelectedIndex = 0;
-                tabChat_btnReload = new UISymbolButton
+                tabChat_btnReload = new AButton
                 {
                     Dock = DockStyle.Fill,
                     Text = "Làm mới",
-                    Symbol = 61473,
+                    Symbol = ASymbols.Refresh,
                     SymbolSize = 14,
                     Radius = 6,
                     Font = new Font("Segoe UI", 8.5F),
@@ -85,15 +99,15 @@ namespace AutoJMS
                 uiPanel6 = CreatePlainPanel();
                 uiPanel6.Padding = new Padding(6);
                 uiTableLayoutPanel19 = CreateInlineLayout(2);
-                tabChat_btnStart = new UISymbolButton
+                tabChat_btnStart = new AButton
                 {
                     Dock = DockStyle.Fill,
                     Text = "Bắt đầu nhắc",
-                    Symbol = 61973,
+                    Symbol = ASymbols.Send,
                     SymbolSize = 16,
                     Radius = 6,
-                    FillColor = AccentGreen,
-                    FillHoverColor = Color.FromArgb(0, 175, 110),
+                    // Cặp AccentGreen / xanh đậm hơn khi rê chuột chính là Variant.Success.
+                    Variant = AButtonVariant.Success,
                     Font = UiBoldFont,
                     MinimumSize = new Size(1, 1)
                 };
@@ -110,7 +124,7 @@ namespace AutoJMS
 
                 uiPanel7 = CreatePlainPanel();
                 uiPanel7.Padding = new Padding(6);
-                uiTableLayoutPanel16 = new UITableLayoutPanel
+                uiTableLayoutPanel16 = new TableLayoutPanel
                 {
                     Dock = DockStyle.Fill,
                     ColumnCount = 3,

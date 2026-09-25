@@ -1,5 +1,5 @@
 using AutoJMS.FullStack.Models;
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -192,7 +192,7 @@ namespace AutoJMS
                 BackColor = Color.White
             };
 
-            _waybillJourneyGrid = new UIDataGridView
+            _waybillJourneyGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
                 AutoGenerateColumns = false,

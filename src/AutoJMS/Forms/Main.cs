@@ -3,9 +3,9 @@ using AutoJMS.Automation.DevTools;
 using AutoJMS.Diagnostics;
 using AutoJMS.Diagnostics.AppCapture;
 using AutoJMS.ModuleSystem;
+using AutoJMS.UI.DesignSystem;
 using Microsoft.Web.WebView2.Core;
 using PdfiumViewer;
-using Sunny.UI;
 using System.Drawing.Printing;
 using System;
 using System.Collections.Generic;
@@ -151,7 +151,7 @@ namespace AutoJMS
         private static string DkchTargetUrl => AppConfig.Current.BuildJmsUrl(DkchRoutePath);
         private static readonly TimeSpan DkchReadyTimeout = TimeSpan.FromSeconds(15);
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-        private UILabel lblNetworkStatus;
+        private Label lblNetworkStatus;
         private NetworkStatus _currentNetworkStatus = NetworkStatus.Online;
 
         public Main(string tier = "BASE")
@@ -318,7 +318,8 @@ namespace AutoJMS
             // nằm trên TextBox ruột chứ không có ở lớp vỏ ATextBox.
             GuardEnterNewLine(tabPrint_inputWaybill.Inner);
             tabPrint_inputWaybill.KeyDown += tabPrint_inputWaybill_KeyDown;
-            tabPrint_btnSelectAll.CheckedChanged += tabPrint_btnSelectAll_CheckedChanged;
+            // CheckedChanged của tabPrint_btnSelectAll đăng ký trong Main.Designer.cs — ở đây
+            // KHÔNG đăng ký lại, nếu không một cú click chạy handler hai lần.
             tabPrint_printFunc.SelectedIndexChanged += TabPrint_printFunc_SelectedIndexChanged;
             BuildTabPrintInLaiDonSection();
             BuildTabPrintInReverseSection();
@@ -532,7 +533,7 @@ namespace AutoJMS
             var inspector = GetActiveWebDebugInspector();
             if (inspector == null || !inspector.IsAttached)
             {
-                UIMessageTip.ShowWarning("WebView inspector chưa sẵn sàng.");
+                AToast.Warning(this, "WebView inspector chưa sẵn sàng.");
                 return;
             }
 
@@ -541,13 +542,13 @@ namespace AutoJMS
             {
                 var result = await _webDebugExportService.ExportAsync(inspector, _appCts.Token);
                 AppLogger.Info($"[WebDebugInspector] export surface={inspector.SurfaceName} dir='{result.DirectoryPath}' files={result.Files.Count}");
-                UIMessageTip.Show("Đã export WebView debug bundle.");
+                AToast.Show(this, "Đã export WebView debug bundle.");
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 AppLogger.Error("[WebDebugInspector] export failed", ex);
-                UIMessageTip.ShowError("Export WebView debug thất bại: " + ex.Message);
+                AToast.Error(this, "Export WebView debug thất bại: " + ex.Message);
             }
             finally
             {
@@ -636,7 +637,7 @@ namespace AutoJMS
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Lỗi khởi tạo trình duyệt: " + ex.Message);
+                AMessageDialog.Show(this, "Lỗi khởi tạo trình duyệt: " + ex.Message, "Lỗi");
             }
 
             // ================= KHỞI TẠO SERVICE =================
@@ -1045,52 +1046,17 @@ namespace AutoJMS
 
         private bool ShowCustomExitDialog()
         {
-            using (UIForm form = new UIForm())
-            {
-                form.Text = "Đóng ứng dụng";
-                form.ClientSize = new System.Drawing.Size(450, 220);
-                form.StartPosition = FormStartPosition.CenterScreen;
-                form.MaximizeBox = false;
-                form.MinimizeBox = false;
-                form.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Regular);
-
-                UILabel lblMsg = new UILabel();
-                lblMsg.Text = "Cứ ngỡ cống hiến trăm năm...\nAi ngờ 5h00.pm";
-                lblMsg.Font = new System.Drawing.Font("Tahoma", 13F, System.Drawing.FontStyle.Regular);
-                lblMsg.Location = new System.Drawing.Point(20, 60);
-                lblMsg.Size = new System.Drawing.Size(410, 70);
-                lblMsg.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-                form.Controls.Add(lblMsg);
-
-                UIButton btnYes = new UIButton();
-                btnYes.Text = "Thoát ngay";
-                btnYes.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
-                btnYes.Size = new System.Drawing.Size(140, 40);
-                btnYes.Location = new System.Drawing.Point(60, 150);
-                btnYes.DialogResult = DialogResult.Yes;
-                btnYes.FillColor = System.Drawing.Color.IndianRed;
-                btnYes.RectColor = System.Drawing.Color.IndianRed;
-                btnYes.FillHoverColor = System.Drawing.Color.Red;
-                btnYes.RectHoverColor = System.Drawing.Color.DarkRed;
-                btnYes.FillPressColor = System.Drawing.Color.Maroon;
-                btnYes.RectPressColor = System.Drawing.Color.Maroon;
-                form.Controls.Add(btnYes);
-
-                UIButton btnNo = new UIButton();
-                btnNo.Text = "Hủy bỏ";
-                btnNo.Font = new System.Drawing.Font("Tahoma", 12F, System.Drawing.FontStyle.Bold);
-                btnNo.Size = new System.Drawing.Size(140, 40);
-                btnNo.Location = new System.Drawing.Point(250, 150);
-                btnNo.DialogResult = DialogResult.No;
-                form.Controls.Add(btnNo);
-
-                return form.ShowDialog() == DialogResult.Yes;
-            }
+            // Form tự dựng bằng tay bỏ đi: đây đúng là một hộp xác nhận hai nút, mà
+            // AConfirmDialog đã làm sẵn. destructive giữ nguyên nút đỏ "Thoát ngay" —
+            // và thêm một lợi ích: Enter nay rơi vào "Hủy bỏ", không thoát nhầm.
+            return AConfirmDialog.Confirm(this,
+                "Cứ ngỡ cống hiến trăm năm...\nAi ngờ 5h00.pm",
+                "Đóng ứng dụng", "Thoát ngay", "Hủy bỏ", destructive: true);
         }
 
         private void InitNetworkUI()
         {
-            lblNetworkStatus = new UILabel();
+            lblNetworkStatus = new Label();
             lblNetworkStatus.Name = "lblNetworkStatus";
             lblNetworkStatus.AutoSize = true;
             lblNetworkStatus.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold);
@@ -1226,23 +1192,24 @@ namespace AutoJMS
                 BackColor = Color.Transparent
             };
 
-            var lblTheme = new UILabel
+            var lblTheme = new Label
             {
                 Name = "tabAbout_lblTheme",
                 Text = "Theme:",
                 Size = new Size(150, 30),
                 Location = new Point(45, 5),
                 TextAlign = ContentAlignment.MiddleRight,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold)
+                ForeColor = UI.AppTheme.Colors.TextPrimary,
+                BackColor = Color.Transparent,
+                Font = UI.DesignSystem.ThemeTypography.BodyStrong
             };
 
-            var cboTheme = new UIComboBox
+            // AComboBox chỉ có kiểu chọn-từ-danh-sách nên DropDownStyle không còn gì để đặt.
+            var cboTheme = new UI.DesignSystem.AComboBox
             {
                 Name = "tabAbout_cboTheme",
                 Size = new Size(150, 30),
-                Location = new Point(195, 5),
-                DropDownStyle = UIDropDownStyle.DropDownList,
-                Radius = 6
+                Location = new Point(195, 5)
             };
             cboTheme.Items.Add("Light");
             cboTheme.Items.Add("Red");
@@ -1289,23 +1256,20 @@ namespace AutoJMS
             }
 
             // Place the summary card inside the new stretchy row (row 6)
-            var summaryPanel = new Sunny.UI.UIPanel
+            // ACard tự tô nền/viền/bo góc theo token nên FillColor, RectColor và Radius
+            // của UIPanel không còn chỗ đặt.
+            var summaryPanel = new UI.DesignSystem.ACard
             {
                 Name = "tabAbout_summaryPanel",
-                BackColor = Color.Transparent,
-                FillColor = UI.AppTheme.Colors.CardBackground,
-                RectColor = UI.AppTheme.Colors.SubtleBorder,
-                Radius = 8,
-                Padding = new Padding(16, 12, 16, 12),
                 Dock = DockStyle.Fill,
                 Margin = new Padding(10, 8, 10, 8)
             };
 
-            var title = new Sunny.UI.UILabel
+            var title = new Label
             {
                 Name = "tabAbout_summaryTitle",
                 Text = "Tóm tắt điều khoản",
-                Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold),
+                Font = UI.DesignSystem.ThemeTypography.H2,
                 ForeColor = UI.AppTheme.Colors.TextPrimary,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -1313,11 +1277,11 @@ namespace AutoJMS
                 Height = 26
             };
 
-            var body = new Sunny.UI.UILabel
+            var body = new Label
             {
                 Name = "tabAbout_summaryBody",
                 Text = TermsContentProvider.GetTermsSummaryText(),
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
+                Font = UI.DesignSystem.ThemeTypography.Body,
                 ForeColor = UI.AppTheme.Colors.TextSecondary,
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.TopLeft,
@@ -1406,7 +1370,7 @@ namespace AutoJMS
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Không thể kiểm tra cập nhật.\n\n{ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                AMessageDialog.Show(this, $"Không thể kiểm tra cập nhật.\n\n{ex.Message}", "Lỗi");
             }
             finally
             {
@@ -1486,7 +1450,7 @@ namespace AutoJMS
                     return;
                 }
 
-                // Đánh dấu TRƯỚC khi hiện hộp thoại: MessageBox.Show bơm message loop,
+                // Đánh dấu TRƯỚC khi hiện hộp thoại: ShowDialog bơm message loop,
                 // nên một lượt gọi đang xếp hàng sẽ chạy ngay khi hộp thoại còn mở và
                 // phải thấy khoá đã lưu, nếu không sẽ hiện hai hộp thoại. Cũng có nghĩa
                 // người dùng bấm "Để sau" thì không bị hỏi lại ĐÚNG lệnh đó — lệnh khác
@@ -1508,15 +1472,10 @@ namespace AutoJMS
                 text.AppendLine();
                 text.Append("Cập nhật ngay bây giờ? Tải xong sẽ hỏi lại trước khi khởi động lại.");
 
-                var answer = MessageBox.Show(
-                    this,
-                    text.ToString(),
-                    "Cập nhật AutoJMS",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Information,
-                    MessageBoxDefaultButton.Button1);
+                bool accepted = AConfirmDialog.Confirm(this, text.ToString(),
+                    "Cập nhật AutoJMS", "Cập nhật ngay", "Để sau");
 
-                if (answer != DialogResult.Yes)
+                if (!accepted)
                 {
                     AppLogger.Action("[BroadcastUpdate] người dùng chọn để sau.");
                     return;
@@ -1778,7 +1737,7 @@ namespace AutoJMS
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Không thể mở thư mục: " + ex.Message);
+                AMessageDialog.Show(this, "Không thể mở thư mục: " + ex.Message, "Lỗi");
             }
         }
 
@@ -2018,7 +1977,7 @@ namespace AutoJMS
                 }
                 // tabChat and tabDash views moved to FullStackOperation form
             }
-            catch (Exception ex) { MessageBox.Show("Lỗi xử lý Tab: " + ex.Message); }
+            catch (Exception ex) { AMessageDialog.Show(this, "Lỗi xử lý Tab: " + ex.Message, "Lỗi"); }
         }
 
         // Candidate HTTP header names the JMS frontend may attach the session
@@ -2427,7 +2386,7 @@ namespace AutoJMS
                 {
                     try
                     {
-                        Sunny.UI.UIMessageTip.ShowWarning(
+                        AToast.Warning(this,
                             "Phiên đăng nhập JMS đã hết hạn. Vui lòng đăng nhập lại trong tab HOME.");
                     }
                     catch { }
@@ -2516,7 +2475,7 @@ namespace AutoJMS
             {
                 _dkchManager.Stop();
                 UpdateDkchButtonsByState(false);
-                UIMessageTip.ShowError("Không thể khởi động DKCH1: " + ex.Message);
+                AToast.Error(this, "Không thể khởi động DKCH1: " + ex.Message);
             }
             finally
             {
@@ -2545,7 +2504,7 @@ namespace AutoJMS
             {
                 _dkchManager.Stop();
                 UpdateDkchButtonsByState(false);
-                UIMessageTip.ShowError("Không thể khởi động DKCH2: " + ex.Message);
+                AToast.Error(this, "Không thể khởi động DKCH2: " + ex.Message);
             }
             finally
             {
@@ -2855,7 +2814,7 @@ namespace AutoJMS
         private void ShowDkchGuardMessage(string message)
         {
             AppLogger.Warning($"[DKCH Guard] {message}");
-            try { UIMessageTip.ShowWarning(message); } catch { }
+            try { AToast.Warning(this, message); } catch { }
         }
 
         private async void tabDKCH_inputNewBill_KeyDown(object sender, KeyEventArgs e)
@@ -3262,7 +3221,7 @@ namespace AutoJMS
 
             if (string.IsNullOrWhiteSpace(input))
             {
-                UIMessageTip.ShowWarning("Chưa nhập mã vận đơn!");
+                AToast.Warning(this, "Chưa nhập mã vận đơn!");
                 return;
             }
 
@@ -3283,12 +3242,12 @@ namespace AutoJMS
 
                 if (tongSoDon == 0)
                 {
-                    UIMessageTip.ShowWarning("Không tìm thấy vận đơn nào!");
+                    AToast.Warning(this, "Không tìm thấy vận đơn nào!");
                 }
             }
             catch (Exception ex)
             {
-                UIMessageTip.ShowError("Lỗi khi tra cứu: " + ex.Message);
+                AToast.Error(this, "Lỗi khi tra cứu: " + ex.Message);
             }
             finally
             {
@@ -3322,7 +3281,7 @@ namespace AutoJMS
                 DataGridView grid = tabTracking_dataView;
                 if (grid.Rows.Count == 0 && grid.Columns.Count == 0)
                 {
-                    MessageBox.Show("Không có dữ liệu trên bảng để tải lên!", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    AMessageDialog.Show(this, "Không có dữ liệu trên bảng để tải lên!");
                     return;
                 }
                 var sheetData = new List<IList<object>>();
@@ -3340,9 +3299,9 @@ namespace AutoJMS
                 string targetSheetName = "BUMP";
                 await GoogleSheetService.ClearSheetAsync(spreadsheetId, targetSheetName);
                 await GoogleSheetService.UpdateBumpSheetAsync(sheetData, spreadsheetId, $"{targetSheetName}!A1");
-                MessageBox.Show("Đã tải lên thành công!", "Hoàn tất", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AMessageDialog.Show(this, "Đã tải lên thành công!", "Hoàn tất");
             }
-            catch (Exception ex) { MessageBox.Show($"Lỗi: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            catch (Exception ex) { AMessageDialog.Show(this, $"Lỗi: {ex.Message}", "Lỗi"); }
             finally { tabTracking_btnUpload.Enabled = true; tabTracking_btnUpload.Text = oldText; }
         }
 
@@ -4064,9 +4023,11 @@ namespace AutoJMS
             uiPanel2.Controls.Add(unsetPaperButton);
         }
 
-        private static UIButton CreatePrinterActionButton(string name, string text, int left)
+        private static AButton CreatePrinterActionButton(string name, string text, int left)
         {
-            return new UIButton
+            // Bộ ba FillColor/FillHoverColor/RectColor xanh đặt tay chính là
+            // Variant.Primary — AButton tự dẫn xuất cả nền, hover, nhấn và viền từ token.
+            return new AButton
             {
                 Name = name,
                 Text = text,
@@ -4074,9 +4035,7 @@ namespace AutoJMS
                 Size = new Size(text.Length > 10 ? 110 : 84, 28),
                 Location = new Point(left, 4),
                 Anchor = AnchorStyles.Left | AnchorStyles.Top,
-                FillColor = Color.FromArgb(80, 160, 255),
-                FillHoverColor = Color.FromArgb(64, 145, 245),
-                RectColor = Color.FromArgb(80, 160, 255)
+                Variant = AButtonVariant.Primary
             };
         }
 
@@ -4089,12 +4048,11 @@ namespace AutoJMS
                 return;
             }
 
-            var confirm = MessageBox.Show(
-                $"Xóa toàn bộ job trong hàng đợi máy in '{printerName}'?",
-                "Xóa job máy in",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (confirm != DialogResult.Yes)
+            // destructive: nút "Xoá" màu Danger và KHÔNG phải nút mặc định — Enter rơi
+            // vào "Huỷ" nên gõ nhanh không xoá nhầm hàng đợi máy in.
+            if (!AConfirmDialog.Confirm(this,
+                    $"Xóa toàn bộ job trong hàng đợi máy in '{printerName}'?",
+                    "Xóa job máy in", "Xoá", "Huỷ", destructive: true))
                 return;
 
             try

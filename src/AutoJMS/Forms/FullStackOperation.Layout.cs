@@ -1,4 +1,4 @@
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -23,15 +23,12 @@ namespace AutoJMS
                 MinimizeBox = true;
                 MinimumSize = new Size(1180, 680);
                 Name = nameof(FullStackOperation);
-                RectColor = HeaderDark;
                 ShowIcon = false;
                 StartPosition = FormStartPosition.CenterScreen;
-                Style = UIStyle.Custom;
                 Text = "AutoJMS - Điều phối Vận hành Bưu cục Realtime";
-                TitleColor = HeaderDark;
-                TitleFont = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
-                TitleForeColor = Color.White;
-                Padding = new Padding(1, 36, 1, 1);
+                // RectColor/Style/Title*/Padding bỏ hết: đó là thanh tiêu đề GIẢ mà UIForm
+                // vẽ bên trong vùng client, và Padding(1,36,1,1) chính là chỗ chừa cho nó.
+                // Form thường dùng thanh tiêu đề thật của Windows, nằm ngoài vùng client.
             }
             finally
             {
@@ -46,23 +43,20 @@ namespace AutoJMS
             {
                 Controls.Clear();
 
-                uiTabControl1 = new UITabControl
+                // ATabControl giấu hẳn dải tab của Windows, nên đầu tab do TopNavigation vẽ.
+                // Panel bọc ngoài là bắt buộc: control thêm SAU được dock TRƯỚC, nên grid phải
+                // vào trước rồi mới tới thanh nav thì nav mới nằm trên đỉnh.
+                uiTabControl1 = new ATabControl
                 {
                     Dock = DockStyle.Fill,
-                    DrawMode = TabDrawMode.OwnerDrawFixed,
-                    Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold),
-                    ItemSize = new Size(140, 34),
-                    Margin = Padding.Empty,
-                    Padding = new Point(0, 0),
-                    SizeMode = TabSizeMode.Fixed,
-                    MainPage = string.Empty,
-                    MenuStyle = UIMenuStyle.Custom,
-                    TabBackColor = HeaderDark,
-                    TabSelectedColor = WorkspaceBackColor,
-                    TabSelectedForeColor = TextPrimary,
-                    TabSelectedHighColor = AccentBlue,
-                    TabUnSelectedColor = HeaderDark,
-                    TabUnSelectedForeColor = Color.FromArgb(240, 240, 240)
+                    Margin = Padding.Empty
+                };
+
+                uiTabControl1Strip = new TopNavigation
+                {
+                    Dock = DockStyle.Top,
+                    ShowIdentity = false,
+                    Target = uiTabControl1
                 };
 
                 tabDash = new TabPage
@@ -88,7 +82,11 @@ namespace AutoJMS
 
                 uiTabControl1.TabPages.Add(tabDash);
                 uiTabControl1.TabPages.Add(tabChat);
-                Controls.Add(uiTabControl1);
+
+                var shell = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty };
+                shell.Controls.Add(uiTabControl1);
+                shell.Controls.Add(uiTabControl1Strip);
+                Controls.Add(shell);
             }
             finally
             {
@@ -96,9 +94,9 @@ namespace AutoJMS
             }
         }
 
-        private static UITableLayoutPanel CreateInlineLayout(int columnCount)
+        private static TableLayoutPanel CreateInlineLayout(int columnCount)
         {
-            var layout = new UITableLayoutPanel
+            var layout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = columnCount,
@@ -113,52 +111,52 @@ namespace AutoJMS
             return layout;
         }
 
-        private static UIPanel CreatePlainPanel()
+        private static APanel CreatePlainPanel()
         {
-            return new UIPanel
+            // APanel đã sẵn Elevation.Flat = nền surface + viền hairline, đúng cặp
+            // FillColor/RectColor mà UIPanel phải đặt tay. Text/TextAlignment bỏ vì
+            // Panel thường không tự vẽ chữ — và ở đây Text vốn đã là null.
+            return new APanel
             {
                 Dock = DockStyle.Fill,
                 Margin = new Padding(3),
                 Padding = Padding.Empty,
-                FillColor = PanelBackColor,
-                RectColor = Color.FromArgb(225, 229, 235),
-                Text = null,
-                TextAlignment = ContentAlignment.MiddleCenter,
                 MinimumSize = new Size(1, 1)
             };
         }
 
-        private static UIComboBox CreateComboBox(string name)
+        private static AComboBox CreateComboBox(string name)
         {
-            return new UIComboBox
+            // DropDownStyle bỏ: AComboBox chỉ có danh sách chọn, không cho gõ tay —
+            // đúng nghĩa DropDownList vốn đặt ở đây.
+            return new AComboBox
             {
                 Name = name,
                 Dock = DockStyle.Fill,
                 Font = new Font("Segoe UI", 9F),
                 Margin = new Padding(3),
-                MinimumSize = new Size(1, 1),
-                DropDownStyle = UIDropDownStyle.DropDownList
+                MinimumSize = new Size(1, 1)
             };
         }
 
-        private static UISymbolLabel CreateToolbarLabel(string text)
+        private static Label CreateToolbarLabel(string text)
         {
-            return new UISymbolLabel
+            // Symbol/SymbolSize bỏ: đây là nhãn tĩnh, biểu tượng đồng hồ 61555 chỉ là
+            // trang trí. Label thường vẽ chữ rẻ hơn một control tự vẽ.
+            return new Label
             {
                 Dock = DockStyle.Fill,
                 Text = text,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(70, 70, 70),
-                Symbol = 61555,
-                SymbolSize = 14,
                 MinimumSize = new Size(1, 1)
             };
         }
 
-        private static UILabel CreatePlainLabel(string text)
+        private static Label CreatePlainLabel(string text)
         {
-            return new UILabel
+            return new Label
             {
                 Dock = DockStyle.Fill,
                 Text = text,
@@ -169,9 +167,9 @@ namespace AutoJMS
             };
         }
 
-        private static UILabel CreateMetricText(string text)
+        private static Label CreateMetricText(string text)
         {
-            return new UILabel
+            return new Label
             {
                 Dock = DockStyle.Fill,
                 Text = text,
@@ -182,9 +180,12 @@ namespace AutoJMS
             };
         }
 
-        private static UIDataGridView CreateGrid(string name)
+        private static DataGridView CreateGrid(string name)
         {
-            return new UIDataGridView
+            // DataGridView gốc chứ không phải ADataGridView: StyleFullStackGrid đặt tay
+            // một bảng màu TỐI cho mọi ô, mà ThemeHook của ADataGridView sẽ tô đè lại
+            // bằng màu sáng của theme mỗi lần đổi theme.
+            return new DataGridView
             {
                 Name = name,
                 Dock = DockStyle.Fill,
@@ -195,10 +196,11 @@ namespace AutoJMS
                 EnableHeadersVisualStyles = false,
                 Font = new Font("Segoe UI", 9F),
                 GridColor = Color.FromArgb(210, 215, 225),
-                RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
-                SelectedIndex = -1,
-                StripeOddColor = Color.White,
-                StripeEvenColor = Color.White
+                RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single
+                // SelectedIndex/StripeOddColor/StripeEvenColor bỏ: cả ba là của SunnyUI.
+                // SelectedIndex = -1 chạy lúc bảng chưa có dòng nào nên vốn đã vô tác dụng;
+                // hai màu sọc đều là White = không sọc, mà StyleFullStackGrid đặt lại ngay
+                // sau đó bằng AlternatingRowsDefaultCellStyle.
             };
         }
     }

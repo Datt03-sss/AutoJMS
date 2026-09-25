@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Printing;
@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 
 namespace AutoJMS
 {
@@ -46,46 +46,31 @@ namespace AutoJMS
         // ApplyReprintEditingState). Owner chốt mức 10.
         private const int ReprintBulkEditLimit = 10;
 
-        // FontAwesome: con mắt mở / con mắt gạch chéo.
-        private const int ReprintSymbolEyeOpen = 61550;
-        private const int ReprintSymbolEyeClosed = 61552;
-
-        // Xám trung tính: đọc được cả trên nền ô sáng lẫn nền ô tối, nên không phải đổi lại
-        // mỗi lần AppTheme chuyển chủ đề. Mặc định của SunnyUI cũng là Gray nhưng chỉ đặt
-        // được một lần ở đây thì rõ ý hơn là dựa vào giá trị mặc định của thư viện.
-        private static readonly Color ReprintWatermarkColor = Color.FromArgb(140, 140, 140);
-
-        // Bề rộng một đầu tab con của "IN ĐƠN" (xem FitPrintTabHeaders).
-        private const int PrintTabDesignItemWidth = 150;   // giá trị designer chốt cho màn rộng
-        private const int PrintTabMinItemWidth = 84;       // dưới mức này chữ không còn đọc được
-        private const int PrintTabItemTextPadding = 16;    // đệm hai bên chữ trong một đầu tab
+        // Con mắt mở / con mắt gạch chéo. Mã MDL2 chứ không còn là mã FontAwesome của
+        // SunnyUI — xem ASymbols.
+        private const int ReprintSymbolEyeOpen = ASymbols.View;
+        private const int ReprintSymbolEyeClosed = ASymbols.Hide;
 
         // ── controls (all created in BuildTabPrintInLaiDonSection) ──
         private TableLayoutPanel _reprintRoot;
-        private UICheckBox _reprintChkReceiver;
-        private UICheckBox _reprintChkRoute;
-        private UICheckBox _reprintChkNotes;
-        private UICheckBox _reprintChkPrintCount;
-        private UITextBox _reprintTxtName;
-        private UITextBox _reprintTxtPhone;
-        private UISymbolButton _reprintBtnRevealPhone;
-        private UITextBox _reprintTxtAddress;
-        private UITextBox _reprintTxtRoute1;
-        private UITextBox _reprintTxtRoute2;
-        private UITextBox _reprintTxtRoute3;
-        private UITextBox _reprintTxtNote;
-        private UITextBox _reprintTxtPrintCode;
-        private UITextBox _reprintTxtPrintTimes;
-        private UITextBox _reprintTxtPrintClock;
-        private UITextBox _reprintTxtPrintDate;
-        private UILabel _reprintStatus;
+        private ACheckBox _reprintChkReceiver;
+        private ACheckBox _reprintChkRoute;
+        private ACheckBox _reprintChkNotes;
+        private ACheckBox _reprintChkPrintCount;
+        private ATextBox _reprintTxtName;
+        private ATextBox _reprintTxtPhone;
+        private AButton _reprintBtnRevealPhone;
+        private ATextBox _reprintTxtAddress;
+        private ATextBox _reprintTxtRoute1;
+        private ATextBox _reprintTxtRoute2;
+        private ATextBox _reprintTxtRoute3;
+        private ATextBox _reprintTxtNote;
+        private ATextBox _reprintTxtPrintCode;
+        private ATextBox _reprintTxtPrintTimes;
+        private ATextBox _reprintTxtPrintClock;
+        private ATextBox _reprintTxtPrintDate;
+        private Label _reprintStatus;
         private ToolTip _reprintTip;
-
-        /// <summary>
-        /// Viền vàng quanh tab con đang chọn. Phải giữ tham chiếu: NativeWindow không được
-        /// control giữ hộ, thả ra là GC dọn mất và viền biến mất giữa chừng.
-        /// </summary>
-        private AutoJMS.UI.PremiumTabAccent _printTabAccent;
 
         // ── state ──
         private byte[] _reprintOriginalPdf;
@@ -111,72 +96,12 @@ namespace AutoJMS
         // ==================================================================================
 
         /// <summary>
-        /// Giữ cho cả 4 tab con của "IN ĐƠN" luôn hiện đủ, ở mọi bề rộng.
-        ///
-        /// Designer chốt cứng <c>ItemSize.Width = 150</c> kèm <see cref="TabSizeMode.Fixed"/>
-        /// (Main.Designer.cs:707, :716), nên dải đầu tab luôn ngốn đúng 4 × 150 = 600 px bất kể
-        /// còn bao nhiêu chỗ. Cột trái của tab IN ĐƠN lại chiếm 250 px cứng
-        /// (Main.Designer.cs:641), nên khi bề rộng logic của form tụt xuống dưới ~850 px —
-        /// màn hẹp, hoặc màn thường nhưng scaling Windows cao — SunnyUI bắt đầu giấu bớt tab
-        /// sau cặp mũi tên ‹ ›, và "In Reverse" là tab biến mất đầu tiên.
-        ///
-        /// Chiều ngược lại cũng hỏng: chữ 12pt nở ra theo DPI, còn 150 px thì không, nên ở
-        /// scaling cao chữ "In chuyển hoàn" bị cắt cụt ngay trong đầu tab.
-        ///
-        /// Hàm này đo chữ thật ở DPI hiện tại rồi kẹp bề rộng đầu tab giữa hai giới hạn: rộng
-        /// bằng designer (hoặc hơn, nếu chữ cần) khi còn chỗ, và co lại vừa khít khi không.
-        /// Ở 1920×1080/100% phép tính ra đúng 150 px — bố cục màn rộng không đổi một pixel.
-        /// </summary>
-        private void FitPrintTabHeaders()
-        {
-            var tabs = tabPrint_printFunc;
-            if (tabs == null || tabs.IsDisposed) return;
-
-            int count = tabs.TabPages.Count;
-            if (count == 0 || tabs.Width <= 0) return;
-
-            int widestText = 0;
-            foreach (TabPage page in tabs.TabPages)
-            {
-                int w = TextRenderer.MeasureText(page.Text, tabs.Font).Width;
-                if (w > widestText) widestText = w;
-            }
-
-            int wanted = Math.Max(PrintTabDesignItemWidth, widestText + PrintTabItemTextPadding);
-            int affordable = Math.Max(PrintTabMinItemWidth, tabs.Width / count);
-            int width = Math.Min(wanted, affordable);
-
-            // ItemSize gán lại sẽ kích hoạt layout -> SizeChanged -> vào lại đây; chỉ gán khi
-            // giá trị thật sự đổi thì vòng lặp tự dừng ngay nhịp thứ hai.
-            if (tabs.ItemSize.Width == width) return;
-            tabs.ItemSize = new Size(width, tabs.ItemSize.Height);
-        }
-
-        /// <summary>
-        /// Đặt ở đây (không phải Main.Designer.cs) vì dải đầu tab là thứ duy nhất của tab
-        /// IN ĐƠN cần logic lúc chạy; designer chỉ biết một con số cứng.
-        /// </summary>
-        private void HookPrintTabHeaderAutoFit()
-        {
-            if (tabPrint_printFunc == null || tabPrint_printFunc.IsDisposed) return;
-
-            tabPrint_printFunc.SizeChanged += (_, __) => FitPrintTabHeaders();
-            tabPrint_printFunc.FontChanged += (_, __) => FitPrintTabHeaders();
-            FitPrintTabHeaders();
-
-            _printTabAccent ??= AutoJMS.UI.PremiumTabAccent.Attach(tabPrint_printFunc);
-        }
-
-        /// <summary>
         /// Builds the whole "In lại đơn" editor inside the (empty) designer tab page.
         /// Called from the Main constructor, before AppTheme re-applies, so the controls
         /// pick up the current theme like every other dynamically created control.
         /// </summary>
         private void BuildTabPrintInLaiDonSection()
         {
-            // Trước mọi guard bên dưới: dải đầu tab thuộc về cả tab IN ĐƠN, không riêng "In lại đơn".
-            HookPrintTabHeaderAutoFit();
-
             if (tabPrint_inLaiDon == null || tabPrint_inLaiDon.IsDisposed) return;
             if (tabPrint_inLaiDon.Controls.Find("tabPrint_reprintRoot", false).Length > 0) return;
 
@@ -204,13 +129,15 @@ namespace AutoJMS
             _reprintRoot.Controls.Add(BuildReprintNotesCard(), 2, 0);
             _reprintRoot.Controls.Add(BuildReprintPrintCountCard(), 3, 0);
 
-            _reprintStatus = new UILabel
+            _reprintStatus = new Label
             {
                 Name = "tabPrint_reprintStatus",
                 Dock = DockStyle.Fill,
                 Text = "Nhập mã vận đơn rồi bấm Tìm kiếm để xem trước bản in.",
                 TextAlign = ContentAlignment.MiddleLeft,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                // Grid = Segoe UI 9F, đúng cỡ chữ cũ. Body là 9.75F, to hơn, mà dải này chỉ
+                // cao khoảng 120px nên giữ nguyên cỡ để bố cục không đổi.
+                Font = ThemeTypography.Grid,
                 Margin = new Padding(2, 0, 2, 0)
             };
             _reprintRoot.Controls.Add(_reprintStatus, 0, 1);
@@ -344,19 +271,20 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Một "thẻ": khung bo góc do AppTheme tô (nhánh <c>UIPanel</c>) bọc một bảng dọc.
+        /// Một "thẻ": khung bo góc <see cref="ACard"/> bọc một bảng dọc.
         /// Ô tick nằm ở dòng đầu và đóng luôn vai tiêu đề, nên không tốn thêm dòng cho chữ
         /// tiêu đề riêng — chiều cao khả dụng của dải này chỉ khoảng 120px.
         /// </summary>
-        private static UIPanel NewReprintCard(string name, int rowCount, out TableLayoutPanel body)
+        private static ACard NewReprintCard(string name, int rowCount, out TableLayoutPanel body)
         {
-            var card = new UIPanel
+            var card = new ACard
             {
                 Name = name,
                 Dock = DockStyle.Fill,
                 Margin = new Padding(3, 0, 3, 0),
-                Padding = new Padding(6, 4, 6, 4),
-                Radius = 8
+                // Đè Padding mặc định của ACard (ThemeSpacing.Md = 12): dải này quá thấp cho
+                // lề 12px, giữ nguyên 6/4 như bản cũ.
+                Padding = new Padding(6, 4, 6, 4)
             };
 
             body = new TableLayoutPanel
@@ -406,9 +334,9 @@ namespace AutoJMS
             if (control != null) row.Controls.Add(control, index, 0);
         }
 
-        private UISymbolButton NewReprintRevealButton()
+        private AButton NewReprintRevealButton()
         {
-            var button = new UISymbolButton
+            var button = new AButton
             {
                 Name = "tabPrint_reprintBtnRevealPhone",
                 Text = "",
@@ -423,69 +351,39 @@ namespace AutoJMS
             return button;
         }
 
-        private UICheckBox NewReprintCheckBox(string name, string text)
+        private ACheckBox NewReprintCheckBox(string name, string text)
         {
-            var box = new UICheckBox
+            var box = new ACheckBox
             {
                 Name = name,
                 Text = text,
                 Dock = DockStyle.Fill,
                 Checked = false,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Font = ThemeTypography.Grid,
                 Margin = new Padding(0, 1, 0, 1)
             };
             box.CheckedChanged += Reprint_EditToggleChanged;
             return box;
         }
 
-        private UITextBox NewReprintTextBox(string name, string watermark, bool multiline)
+        private ATextBox NewReprintTextBox(string name, string watermark, bool multiline)
         {
-            var box = new UITextBox
+            // PlaceholderText là chữ mờ sẵn có của TextBox trong WinForms nên bỏ được cả
+            // cụm vá của SunnyUI: màu chữ mờ, ShowText, và hàm gán lại Watermark sau khi
+            // control có handle. TextAlignment/Padding cũng bỏ — ATextBox.OnLayout tự căn
+            // giữa ô một dòng và căn trên ô nhiều dòng.
+            var box = new ATextBox
             {
                 Name = name,
                 Dock = DockStyle.Fill,
                 Multiline = multiline,
-                Watermark = watermark,
-                WatermarkColor = ReprintWatermarkColor,
-                WatermarkActiveColor = ReprintWatermarkColor,
-                ShowText = false,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                PlaceholderText = watermark,
+                Font = ThemeTypography.Grid,
                 Margin = new Padding(0, 1, 0, 2),
-                MinimumSize = new Size(1, 1),
-                Padding = new Padding(2),
-                TextAlignment = multiline ? ContentAlignment.TopLeft : ContentAlignment.MiddleLeft
+                MinimumSize = new Size(1, 1)
             };
             box.TextChanged += Reprint_FieldTextChanged;
-            box.HandleCreated += Reprint_FieldHandleCreated;
             return box;
-        }
-
-        /// <summary>
-        /// Bật chữ mờ gợi ý ngay khi ô vừa có handle.
-        ///
-        /// SunnyUI dựng tấm phủ chứa chữ mờ trong constructor của <c>UIEdit</c>, nhưng chỉ
-        /// cho nó hiện lên ở <c>OnInvalidated</c> — mà <c>Invalidate()</c> lúc control chưa
-        /// có handle thì không phát sự kiện đó. Gán Watermark trong object initializer vì
-        /// vậy không đủ: chữ mờ chỉ hiện sau khi Owner bấm vào ô (sự kiện Enter dựng lại
-        /// tấm phủ, lúc này handle đã có). Gán lại đúng giá trị cũ sau khi handle tồn tại là
-        /// chạy lại nhánh OnInvalidated đó — setter của SunnyUI không so sánh giá trị cũ.
-        ///
-        /// Hoãn bằng BeginInvoke vì sự kiện HandleCreated của control ngoài bắn TRƯỚC khi
-        /// WinForms tạo handle cho ô nhập con bên trong.
-        /// </summary>
-        private void Reprint_FieldHandleCreated(object sender, EventArgs e)
-        {
-            if (sender is not UITextBox box || box.IsDisposed) return;
-            box.BeginInvoke((MethodInvoker)(() => RefreshReprintWatermark(box)));
-        }
-
-        private static void RefreshReprintWatermark(UITextBox box)
-        {
-            if (box == null || box.IsDisposed || !box.IsHandleCreated) return;
-
-            string watermark = box.Watermark;
-            if (string.IsNullOrEmpty(watermark)) return;
-            box.Watermark = watermark;
         }
 
         // ==================================================================================
@@ -606,7 +504,7 @@ namespace AutoJMS
         /// Bật/tắt một ô tick "Sửa …". Tắt thì bỏ tick luôn — để tick lại mà ô nhập đã khoá
         /// thì <see cref="BuildReprintOverlayContent"/> vẫn coi là có sửa và đè vùng đó.
         /// </summary>
-        private void SetReprintToggleAvailable(UICheckBox box, bool available)
+        private void SetReprintToggleAvailable(ACheckBox box, bool available)
         {
             if (box == null || box.IsDisposed) return;
             box.Enabled = available;
@@ -623,22 +521,18 @@ namespace AutoJMS
             }
         }
 
-        private static void SetReprintFieldEnabled(UITextBox box, bool enabled)
+        private static void SetReprintFieldEnabled(ATextBox box, bool enabled)
         {
             if (box == null || box.IsDisposed) return;
             box.ReadOnly = !enabled;
             box.Enabled = enabled;
-
-            // Bật/tắt làm ô vẽ lại; gọi lại cho chắc để chữ mờ không biến mất theo.
-            RefreshReprintWatermark(box);
         }
 
-        private static void SetReprintFieldReadOnly(UITextBox box)
+        private static void SetReprintFieldReadOnly(ATextBox box)
         {
             if (box == null || box.IsDisposed) return;
             box.ReadOnly = true;
             box.Enabled = true;
-            RefreshReprintWatermark(box);
         }
 
         private void SetReprintStatus(string message, bool isError = false)
@@ -716,15 +610,15 @@ namespace AutoJMS
             SetReprintStatus("Đã in. Bấm Tìm kiếm lại nếu muốn in lại đơn này.");
         }
 
-        private static void SetReprintText(UITextBox box, string value)
+        private static void SetReprintText(ATextBox box, string value)
         {
             if (box == null || box.IsDisposed) return;
             box.Text = value ?? "";
         }
 
-        private static string ReadReprintText(UITextBox box) => (box?.Text ?? "").Trim();
+        private static string ReadReprintText(ATextBox box) => (box?.Text ?? "").Trim();
 
-        private static string ReadReprintTextIfEditable(UITextBox box)
+        private static string ReadReprintTextIfEditable(ATextBox box)
             => box != null && !box.ReadOnly ? ReadReprintText(box) : "";
 
         // ==================================================================================

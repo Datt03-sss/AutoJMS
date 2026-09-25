@@ -1,6 +1,5 @@
 using AutoJMS.Data;
 using ClosedXML.Excel;
-using Sunny.UI;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -26,7 +25,7 @@ namespace AutoJMS
         private readonly HttpClient _httpClient;
         private readonly SemaphoreSlim _semaphore;
 
-        private readonly UIProcessBar _progressBar;
+        private readonly ProgressBar _progressBar;
         private int _totalItems;
         private int _completedItems;
 
@@ -42,7 +41,7 @@ namespace AutoJMS
         private const int MinColumnWidth = 54;
         private const int MaxColumnWidth = 900;
 
-        public WaybillTrackingService(DataGridView dataGrid, UIProcessBar progressBar = null)
+        public WaybillTrackingService(DataGridView dataGrid, ProgressBar progressBar = null)
         {
             _dataGrid = dataGrid ?? throw new ArgumentNullException(nameof(dataGrid));
             _progressBar = progressBar;
@@ -240,7 +239,8 @@ namespace AutoJMS
                 _progressBar.Maximum = 100;
                 _progressBar.Value = 0;
                 _progressBar.Visible = false;
-                _progressBar.ShowValue = true;
+                // ShowValue của SunnyUI (số % in đè lên thanh) không có trên ProgressBar
+                // của WinForms. Thanh chỉ cao 10px nên chữ vốn đã không đọc được.
             }
         }
 

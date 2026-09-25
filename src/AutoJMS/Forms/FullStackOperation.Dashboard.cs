@@ -1,5 +1,5 @@
 using AutoJMS.FullStack.UI.OperationCenter;
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -45,19 +45,20 @@ namespace AutoJMS
             }
         }
 
-        private UIPanel CreateTopBar()
+        private Panel CreateTopBar()
         {
-            var panel = new UIPanel
+            // Panel thường chứ không phải APanel: nền ở đây là màu thương hiệu tối
+            // (FillColor = RectColor = HeaderDark, tức không viền), mà APanel luôn tô
+            // bằng màu surface của theme.
+            var panel = new Panel
             {
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty,
                 Padding = new Padding(18, 0, 18, 0),
-                FillColor = HeaderDark,
-                RectColor = HeaderDark,
-                Text = null
+                BackColor = HeaderDark
             };
 
-            var table = new UITableLayoutPanel
+            var table = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 3,
@@ -97,17 +98,22 @@ namespace AutoJMS
             return panel;
         }
 
-        private UIPanel CreateFilterBar()
+        private Panel CreateFilterBar()
         {
-            var panel = new UIPanel
+            // APanel kẻ viền cả bốn cạnh và bo góc; dải này cố ý chỉ có MỘT nét dưới
+            // (RectSides = Bottom), nên vẽ đúng nét đó thay vì đổi hình dải lọc.
+            var panel = new Panel
             {
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty,
                 Padding = new Padding(18, 0, 18, 0),
-                FillColor = Color.White,
-                RectColor = BorderColor,
-                RectSides = ToolStripStatusLabelBorderSides.Bottom,
-                Text = null
+                BackColor = Color.White
+            };
+            panel.Paint += (s, e) =>
+            {
+                var c = (Control)s;
+                using var pen = new Pen(BorderColor);
+                e.Graphics.DrawLine(pen, 0, c.Height - 1, c.Width, c.Height - 1);
             };
 
             var layout = new TableLayoutPanel
@@ -140,28 +146,25 @@ namespace AutoJMS
             tabDash_timeUpdateData.Items.AddRange(new object[] { "2 PHÚT", "5 PHÚT", "10 PHÚT", "30 PHÚT", "1 GIỜ" });
             tabDash_timeUpdateData.Text = "30 PHÚT";
 
-            tabDash_updateData = CreateHeaderButton("Đồng bộ", 61473, AccentBlue);
+            tabDash_updateData = CreateHeaderButton("Đồng bộ", ASymbols.Refresh, AButtonVariant.Primary);
             tabDash_updateData.Size = new Size(104, 34);
 
-            _operationRefreshLocalButton = CreateHeaderButton("Local", 61473, AccentBlue);
+            _operationRefreshLocalButton = CreateHeaderButton("Local", ASymbols.Refresh, AButtonVariant.Primary);
             _operationRefreshLocalButton.Size = new Size(82, 34);
             _operationRefreshLocalButton.Visible = false; // Hide this since we use one sync button? No, let's keep it visible but maybe smaller.
             _operationRefreshLocalButton.Click += async (s, e) => await LoadDataAndRefreshViewsAsync();
 
-            _dashExportBtn = CreateHeaderButton("Xuất dữ liệu", 61714, AccentSlate);
-            _dashExportBtn.FillColor = Color.White;
-            _dashExportBtn.ForeColor = TextPrimary;
-            _dashExportBtn.RectColor = BorderColor;
+            // Bộ ba FillColor trắng / ForeColor chữ thường / RectColor viền xám chính là
+            // định nghĩa của Variant.Secondary, nên gọi thẳng biến thể đó.
+            _dashExportBtn = CreateHeaderButton("Xuất dữ liệu", ASymbols.Export, AButtonVariant.Secondary);
             _dashExportBtn.Size = new Size(110, 34);
             _dashExportBtn.Click += async (s, e) => await ExportOperationCurrentViewAsync(false);
 
-            tabDash_lblLastUpdate = new UISymbolLabel
+            tabDash_lblLastUpdate = new Label
             {
                 Text = "Chưa tải",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = TextPrimary,
-                Symbol = 61473,
-                SymbolSize = 14,
                 AutoSize = true,
                 Margin = new Padding(12, 0, 0, 0)
             };
@@ -317,7 +320,7 @@ namespace AutoJMS
 
         private Control CreateOperationMainWorkArea()
         {
-            var center = new UITableLayoutPanel
+            var center = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty,
@@ -334,7 +337,7 @@ namespace AutoJMS
 
             tabPage3 = new TabPage { Name = "tabPage3", Text = "Tồn kho" };
             tabPage4 = new TabPage { Name = "tabPage4", Text = "Thời hiệu cũ" };
-            uiTabControl2 = new UITabControl { Dock = DockStyle.Fill, Visible = false };
+            uiTabControl2 = new TabControl { Dock = DockStyle.Fill, Visible = false };
             uiDataGridView2 = CreateGrid("uiDataGridView2");
 
             tabDash_dataGridView = CreateGrid("tabDash_dataGridView");
@@ -368,29 +371,28 @@ namespace AutoJMS
             return center;
         }
 
-        private UIComboBox CreateHeaderComboBox(string name)
+        private AComboBox CreateHeaderComboBox(string name)
         {
             var combo = CreateComboBox(name);
             combo.Font = new Font("Segoe UI", 9.5F);
-            combo.FillColor = Color.White;
-            combo.RectColor = BorderColor;
             combo.Size = new Size(150, 32);
             combo.Margin = new Padding(0, 0, 6, 0);
             return combo;
         }
 
-        private UISymbolButton CreateHeaderButton(string text, int symbol, Color color)
+        private AButton CreateHeaderButton(string text, int symbol, AButtonVariant variant)
         {
-            return new UISymbolButton
+            // Nhận Variant thay cho Color: AButton tự dẫn xuất nền/hover/nhấn/viền từ
+            // token, nên bộ bốn FillColor/FillHoverColor/RectColor/ForeColor cũ gộp
+            // lại thành đúng một tham số.
+            return new AButton
             {
                 Text = text,
                 Font = UiBoldFont,
                 Symbol = symbol,
                 SymbolSize = 16,
                 Radius = 6,
-                FillColor = color,
-                FillHoverColor = ControlPaint.Light(color),
-                RectColor = color,
+                Variant = variant,
                 Size = new Size(96, 32),
                 Margin = new Padding(0, 0, 6, 0)
             };

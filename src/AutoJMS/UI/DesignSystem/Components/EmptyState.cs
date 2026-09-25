@@ -1,8 +1,7 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
-using Sunny.UI;
 
 namespace AutoJMS.UI.DesignSystem
 {
@@ -19,7 +18,7 @@ namespace AutoJMS.UI.DesignSystem
         private readonly AButton _action;
         private string _title = "Chưa có dữ liệu";
         private string _description = string.Empty;
-        private int _symbol = 61763; // fa-inbox
+        private int _symbol = ASymbols.Inbox;
 
         public EmptyState()
         {
@@ -112,7 +111,7 @@ namespace AutoJMS.UI.DesignSystem
 
             if (_symbol != 0)
             {
-                g.DrawFontImage(_symbol, icon, c.TextMuted,
+                ASymbols.Draw(g, _symbol, icon, c.TextMuted,
                     new Rectangle((Width - icon) / 2, y, icon, icon));
             }
             y += icon + S(ThemeSpacing.Md);

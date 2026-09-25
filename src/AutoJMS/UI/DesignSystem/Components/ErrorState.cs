@@ -1,8 +1,7 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
-using Sunny.UI;
 
 namespace AutoJMS.UI.DesignSystem
 {
@@ -20,7 +19,7 @@ namespace AutoJMS.UI.DesignSystem
         private string _title = "Đã xảy ra lỗi";
         private string _detail = string.Empty;
 
-        private const int IconSymbol = 61553; // fa-exclamation-circle
+        private const int IconSymbol = ASymbols.Warning;
 
         public ErrorState()
         {
@@ -92,7 +91,7 @@ namespace AutoJMS.UI.DesignSystem
             ControlStyler.DrawBorder(g, ClientRectangle, c.Danger, S(ThemeBorders.Hairline), radius);
 
             int icon = S(ThemeMetrics.IconSizeDefault);
-            g.DrawFontImage(IconSymbol, icon, c.Danger,
+            ASymbols.Draw(g, IconSymbol, icon, c.Danger,
                 new Rectangle(Padding.Left, Padding.Top, icon, icon));
 
             int x = TextLeft;

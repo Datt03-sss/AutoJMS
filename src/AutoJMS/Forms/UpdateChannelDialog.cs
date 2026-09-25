@@ -1,4 +1,4 @@
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -12,7 +12,7 @@ namespace AutoJMS
         Beta
     }
 
-    public sealed class UpdateChannelDialog : UIForm
+    public sealed class UpdateChannelDialog : Form
     {
         private readonly string _currentVersion;
         private readonly VersionChannel _stable;
@@ -51,14 +51,12 @@ namespace AutoJMS
             BackColor = Color.FromArgb(246, 248, 250);
             Font = new Font("Segoe UI", 9F, FontStyle.Regular);
 
-            var header = new UIPanel
+            // APanel mặc định Elevation.Flat = nền SurfaceRaised + viền Hairline, Radius.Md
+            // = 6 — trùng đúng bộ FillColor trắng / RectColor xám / Radius 6 của UIPanel.
+            var header = new APanel
             {
                 Location = new Point(18, 18),
-                Size = new Size(744, 80),
-                FillColor = Color.White,
-                RectColor = Color.FromArgb(222, 226, 230),
-                BackColor = BackColor,
-                Radius = 6
+                Size = new Size(744, 80)
             };
             Controls.Add(header);
 
@@ -163,7 +161,7 @@ namespace AutoJMS
             return compare > 0;
         }
 
-        private UIPanel CreateChannelCardWithButton(
+        private APanel CreateChannelCardWithButton(
             string title,
             string description,
             VersionChannel channel,
@@ -176,27 +174,23 @@ namespace AutoJMS
             string warningText = null)
         {
             var cardHeight = 382;
-            var panel = new UIPanel
+            var panel = new APanel
             {
                 Location = location,
                 Size = new Size(366, cardHeight),
-                FillColor = Color.White,
-                RectColor = Color.FromArgb(222, 226, 230),
-                BackColor = BackColor,
-                Radius = 6,
                 Tag = isBeta ? "beta" : "stable"
             };
 
-            // Badge header
-            var badge = new UIPanel
+            // Badge header. Panel thường chứ không phải APanel: nền ở đây mang nghĩa kênh
+            // (lục = stable, lam = beta), mà APanel luôn tô bằng màu surface của theme.
+            var badge = new Panel
             {
                 Location = new Point(16, 16),
                 Size = new Size(334, 46),
-                FillColor = fill,
-                RectColor = accent,
-                BackColor = Color.White,
-                Radius = 4
+                BackColor = fill
             };
+            badge.Paint += (s, e) => ControlPaint.DrawBorder(e.Graphics,
+                ((Control)s).ClientRectangle, accent, ButtonBorderStyle.Solid);
             panel.Controls.Add(badge);
 
             badge.Controls.Add(CreateTextLabel(
@@ -254,24 +248,14 @@ namespace AutoJMS
             var buttonWidth = isBeta ? 146 : 148;
             var buttonX = (366 - buttonWidth) / 2; // 109 or 110
 
-            var btnColor = isBeta
-                ? (buttonEnabled ? Color.FromArgb(100, 181, 246) : Color.FromArgb(206, 212, 218))
-                : (buttonEnabled ? Color.FromArgb(102, 187, 106) : Color.FromArgb(206, 212, 218));
-            var btnRectColor = isBeta
-                ? (buttonEnabled ? Color.FromArgb(25, 118, 210) : Color.FromArgb(173, 181, 189))
-                : (buttonEnabled ? Color.FromArgb(56, 142, 60) : Color.FromArgb(173, 181, 189));
-
-            var button = new UIButton
+            // Bộ màu fill/hover/press/rect thay bằng Variant: AButton tự dẫn xuất cả bốn
+            // trạng thái từ token, kể cả màu lúc Enabled = false.
+            var button = new AButton
             {
                 Text = buttonText,
                 Location = new Point(buttonX, buttonY),
                 Size = new Size(buttonWidth, 36),
-                FillColor = btnColor,
-                FillHoverColor = buttonEnabled ? ControlPaint.Light(btnColor) : btnColor,
-                FillPressColor = buttonEnabled ? ControlPaint.Dark(btnColor) : btnColor,
-                RectColor = btnRectColor,
-                Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold),
-                ForeColor = Color.White,
+                Variant = isBeta ? AButtonVariant.Primary : AButtonVariant.Success,
                 Enabled = buttonEnabled
             };
 
@@ -496,7 +480,7 @@ namespace AutoJMS
             public int PreNumber { get; }
         }
 
-        private sealed class DowngradeConfirmDialog : UIForm
+        private sealed class DowngradeConfirmDialog : Form
         {
             public DowngradeConfirmDialog(string currentVersion, string targetVersion, VersionChannel targetChannel)
             {
@@ -510,7 +494,7 @@ namespace AutoJMS
                 BackColor = Color.FromArgb(255, 248, 240);
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular);
 
-                var title = new UILabel
+                var title = new Label
                 {
                     Text = "Kênh Stable thấp hơn phiên bản đang cài",
                     Location = new Point(24, 24),
@@ -522,7 +506,7 @@ namespace AutoJMS
                 Controls.Add(title);
 
                 var targetDisplay = targetChannel?.DisplayVersion ?? targetVersion ?? "Không có thông tin";
-                var message = new UILabel
+                var message = new Label
                 {
                     Text =
                         $"Đang cài: {Safe(currentVersion)}\n" +
@@ -536,11 +520,8 @@ namespace AutoJMS
                 };
                 Controls.Add(message);
 
-                var confirm = CreateButton(
-                    "Cho phép downgrade",
-                    new Point(238, 190),
-                    Color.FromArgb(255, 183, 77),
-                    Color.FromArgb(245, 124, 0));
+                var confirm = CreateButton("Cho phép downgrade", new Point(238, 190),
+                    AButtonVariant.Warning);
                 confirm.Size = new Size(136, 36);
                 confirm.Click += (_, _) =>
                 {
@@ -549,12 +530,7 @@ namespace AutoJMS
                 };
                 Controls.Add(confirm);
 
-                var cancel = CreateButton(
-                    "Hủy",
-                    new Point(390, 190),
-                    Color.FromArgb(248, 249, 250),
-                    Color.FromArgb(173, 181, 189));
-                cancel.ForeColor = Color.FromArgb(52, 58, 64);
+                var cancel = CreateButton("Hủy", new Point(390, 190), AButtonVariant.Secondary);
                 cancel.Click += (_, _) =>
                 {
                     DialogResult = DialogResult.Cancel;
@@ -562,22 +538,25 @@ namespace AutoJMS
                 };
                 Controls.Add(cancel);
 
-                CancelButton = cancel;
+                // CancelButton cần IButtonControl, AButton không phải. Nút X vẫn tự trả
+                // DialogResult.Cancel cho ShowDialog, chỉ phím Esc là phải nối tay.
+                KeyPreview = true;
+                KeyDown += (_, e) =>
+                {
+                    if (e.KeyCode != Keys.Escape) return;
+                    DialogResult = DialogResult.Cancel;
+                    Close();
+                };
             }
 
-            private static UIButton CreateButton(string text, Point location, Color fill, Color rect)
+            private static AButton CreateButton(string text, Point location, AButtonVariant variant)
             {
-                return new UIButton
+                return new AButton
                 {
                     Text = text,
                     Location = location,
                     Size = new Size(118, 36),
-                    FillColor = fill,
-                    FillHoverColor = ControlPaint.Light(fill),
-                    FillPressColor = ControlPaint.Dark(fill),
-                    RectColor = rect,
-                    Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold),
-                    ForeColor = Color.White
+                    Variant = variant
                 };
             }
 

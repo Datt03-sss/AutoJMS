@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -27,6 +28,7 @@ namespace AutoJMS.UI.DesignSystem
         private readonly List<Rectangle> _itemRects = new List<Rectangle>();
         private TabControl _target;
         private bool _layoutDirty = true;
+        private bool _showIdentity = true;
         private int _hotIndex = -1;
 
         public TopNavigation()
@@ -76,6 +78,25 @@ namespace AutoJMS.UI.DesignSystem
         /// <summary>Tên sản phẩm ở góc trái. Nhận diện, KHÔNG phải nút (DESIGN.md §M).</summary>
         public string ProductTitle { get; set; } = "AutoJMS";
 
+        /// <summary>
+        /// Tắt để dùng thanh này làm dải tab CON bên trong một trang (ví dụ 4 chế độ in
+        /// của tab IN ĐƠN): bỏ icon + tên sản phẩm, chỉ còn các đầu tab. Một thanh chứ
+        /// không phải hai lớp gần giống nhau — cùng cách chọn, cùng cách vẽ, cùng
+        /// "không giữ trạng thái, Target là nguồn sự thật".
+        /// </summary>
+        [DefaultValue(true)]
+        public bool ShowIdentity
+        {
+            get => _showIdentity;
+            set
+            {
+                if (_showIdentity == value) return;
+                _showIdentity = value;
+                _layoutDirty = true;
+                Invalidate();
+            }
+        }
+
         private int SelectedIndex => _target?.SelectedIndex ?? -1;
 
         private int ItemCount => _target?.TabPages.Count ?? 0;
@@ -113,14 +134,27 @@ namespace AutoJMS.UI.DesignSystem
 
             _itemRects.Clear();
 
-            int x = EdgePaddingX
-                  + TextRenderer.MeasureText(g, ProductTitle, ThemeTypography.H2).Width
-                  + IdentityGap;
+            int left = EdgePaddingX;
+            if (_showIdentity)
+                left += TextRenderer.MeasureText(g, ProductTitle, ThemeTypography.H2).Width + IdentityGap;
 
+            var widths = new int[ItemCount];
+            int total = 0;
             for (int i = 0; i < ItemCount; i++)
             {
-                int textWidth = TextRenderer.MeasureText(g, _target.TabPages[i].Text, ThemeTypography.BodyStrong).Width;
-                int width = textWidth + (ItemPaddingX * 2);
+                widths[i] = TextRenderer.MeasureText(g, _target.TabPages[i].Text, ThemeTypography.BodyStrong).Width
+                          + (ItemPaddingX * 2);
+                total += widths[i];
+            }
+
+            // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải.
+            // Bản SunnyUI giấu tab thừa sau cặp mũi tên ‹ › — tức là "In Reverse"
+            // biến mất hẳn trên màn hẹp. Co lại thì chữ hụt nhưng tab vẫn bấm được.
+            int available = Width - left - EdgePaddingX;
+            int x = left;
+            for (int i = 0; i < ItemCount; i++)
+            {
+                int width = total > available && available > 0 ? widths[i] * available / total : widths[i];
                 _itemRects.Add(new Rectangle(x, 0, width, Height));
                 x += width;
             }
@@ -147,7 +181,7 @@ namespace AutoJMS.UI.DesignSystem
             using (var back = new SolidBrush(c.Surface))
                 g.FillRectangle(back, ClientRectangle);
 
-            DrawIdentity(g, c);
+            if (_showIdentity) DrawIdentity(g, c);
 
             int selected = SelectedIndex;
             for (int i = 0; i < _itemRects.Count; i++)

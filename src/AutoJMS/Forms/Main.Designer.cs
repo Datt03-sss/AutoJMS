@@ -29,80 +29,80 @@ namespace AutoJMS
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
-            uiIntegerUpDown1 = new Sunny.UI.UIIntegerUpDown();
-            uiComboBox1 = new Sunny.UI.UIComboBox();
             tabAbout = new TabPage();
-            uiTableLayoutPanel5 = new Sunny.UI.UITableLayoutPanel();
-            uiTableLayoutPanel21 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel8 = new Sunny.UI.UIPanel();
-            uiTableLayoutPanel22 = new Sunny.UI.UITableLayoutPanel();
-            uiLabel22 = new Sunny.UI.UILabel();
+            uiTableLayoutPanel5 = new TableLayoutPanel();
+            uiTableLayoutPanel21 = new TableLayoutPanel();
+            uiPanel8 = new AutoJMS.UI.DesignSystem.ACard();
+            uiTableLayoutPanel22 = new TableLayoutPanel();
+            uiLabel22 = new Label();
             pictureBox1 = new PictureBox();
-            uiLabel18 = new Sunny.UI.UILabel();
-            tabAbout_lblVersion = new Sunny.UI.UILabel();
-            tabAbout_btnCheckUpdate = new Sunny.UI.UISymbolButton();
-            tabAbout_btnTerms = new Sunny.UI.UIButton();
-            uiLinkLabel1 = new Sunny.UI.UILinkLabel();
+            uiLabel18 = new Label();
+            tabAbout_lblVersion = new Label();
+            tabAbout_btnCheckUpdate = new AutoJMS.UI.DesignSystem.AButton();
+            tabAbout_btnTerms = new AutoJMS.UI.DesignSystem.AButton();
+            uiLinkLabel1 = new LinkLabel();
             tabPrint = new TabPage();
-            uiTableLayoutPanel6 = new Sunny.UI.UITableLayoutPanel();
-            llllll = new Sunny.UI.UITableLayoutPanel();
+            uiTableLayoutPanel6 = new TableLayoutPanel();
+            llllll = new TableLayoutPanel();
             tabPrint_dataView = new AutoJMS.UI.DesignSystem.ADataGridView();
-            uiTableLayoutPanel25 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel19 = new Sunny.UI.UIPanel();
-            tabPrint_countSelect = new Sunny.UI.UILabel();
-            tabPrint_countSum = new Sunny.UI.UILabel();
-            uiPanel20 = new Sunny.UI.UIPanel();
+            uiTableLayoutPanel25 = new TableLayoutPanel();
+            uiPanel19 = new AutoJMS.UI.DesignSystem.APanel();
+            tabPrint_countSelect = new Label();
+            tabPrint_countSum = new Label();
+            uiPanel20 = new AutoJMS.UI.DesignSystem.APanel();
             tabPrint_btnSelectAll = new AutoJMS.UI.DesignSystem.ACheckBox();
-            uiTableLayoutPanel23 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel21 = new Sunny.UI.UIPanel();
+            uiTableLayoutPanel23 = new TableLayoutPanel();
+            uiPanel21 = new AutoJMS.UI.DesignSystem.APanel();
             tabPrint_inputWaybill = new AutoJMS.UI.DesignSystem.ATextBox();
-            uiLabel9 = new Sunny.UI.UILabel();
-            tabPrint_printFunc = new Sunny.UI.UITabControl();
+            uiLabel9 = new Label();
+            tabPrint_printFuncHost = new Panel();
+            tabPrint_printTabs = new AutoJMS.UI.DesignSystem.TopNavigation();
+            tabPrint_printFunc = new AutoJMS.UI.DesignSystem.ATabControl();
             tabPrint_inCH = new TabPage();
-            uiTableLayoutPanel7 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel2 = new Sunny.UI.UIPanel();
+            uiTableLayoutPanel7 = new TableLayoutPanel();
+            uiPanel2 = new AutoJMS.UI.DesignSystem.APanel();
             tabPrint_AutoMode = new AutoJMS.UI.DesignSystem.AToggleSwitch();
-            uiLabel15 = new Sunny.UI.UILabel();
-            tabPrint_messLable = new Sunny.UI.UILabel();
+            uiLabel15 = new Label();
+            tabPrint_messLable = new Label();
             tabPrint_inCT = new TabPage();
             tabPrint_inLaiDon = new TabPage();
             tabPrint_inRV = new TabPage();
-            uiTableLayoutPanel13 = new Sunny.UI.UITableLayoutPanel();
+            uiTableLayoutPanel13 = new TableLayoutPanel();
             tabPrint_btnTimKiem = new AutoJMS.UI.DesignSystem.AButton();
             tabPrint_btnLamMoi = new AutoJMS.UI.DesignSystem.AButton();
-            uiTableLayoutPanel15 = new Sunny.UI.UITableLayoutPanel();
-            uiLabel7 = new Sunny.UI.UILabel();
-            uiPanel13 = new Sunny.UI.UIPanel();
+            uiTableLayoutPanel15 = new TableLayoutPanel();
+            uiLabel7 = new Label();
+            uiPanel13 = new AutoJMS.UI.DesignSystem.APanel();
             tabPrint_printPreview = new Microsoft.Web.WebView2.WinForms.WebView2();
-            uiPanel18 = new Sunny.UI.UIPanel();
-            tabPrint_btnPrint = new Sunny.UI.UIImageButton();
+            uiPanel18 = new AutoJMS.UI.DesignSystem.APanel();
+            tabPrint_btnPrint = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking = new TabPage();
-            uiTableLayoutPanel2 = new Sunny.UI.UITableLayoutPanel();
-            uiFlowLayoutPanel1 = new Sunny.UI.UIFlowLayoutPanel();
+            uiTableLayoutPanel2 = new TableLayoutPanel();
+            uiFlowLayoutPanel1 = new FlowLayoutPanel();
             tabTracking_btnSearch = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking_btnExport = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking_btnClear = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking_btnDownload = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking_btnSpeExport = new AutoJMS.UI.DesignSystem.AButton();
             tabTracking_btnUpload = new AutoJMS.UI.DesignSystem.AButton();
-            uiTableLayoutPanel11 = new Sunny.UI.UITableLayoutPanel();
-            uiTableLayoutPanel12 = new Sunny.UI.UITableLayoutPanel();
-            uiLabel6 = new Sunny.UI.UILabel();
-            tabTracking_countSum = new Sunny.UI.UILabel();
+            uiTableLayoutPanel11 = new TableLayoutPanel();
+            uiTableLayoutPanel12 = new TableLayoutPanel();
+            uiLabel6 = new Label();
+            tabTracking_countSum = new Label();
             tabTracking_inputWaybill = new AutoJMS.UI.DesignSystem.ATextBox();
-            tabTracking_process = new Sunny.UI.UIProcessBar();
+            tabTracking_process = new ProgressBar();
             tabTracking_dataView = new AutoJMS.UI.DesignSystem.ADataGridView();
             tabDKCH = new TabPage();
-            uiTableLayoutPanel1 = new Sunny.UI.UITableLayoutPanel();
+            uiTableLayoutPanel1 = new TableLayoutPanel();
             tabDKCH_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
-            tabHome_pnlLeft = new Sunny.UI.UIPanel();
+            tabHome_pnlLeft = new AutoJMS.UI.DesignSystem.APanel();
             uiTitlePanel2 = new AutoJMS.UI.DesignSystem.APanel();
-            uiTableLayoutPanel33 = new Sunny.UI.UITableLayoutPanel();
+            uiTableLayoutPanel33 = new TableLayoutPanel();
             splitContainer1 = new SplitContainer();
             uiTitlePanel1 = new AutoJMS.UI.DesignSystem.APanel();
-            uiTableLayoutPanel9 = new Sunny.UI.UITableLayoutPanel();
-            uiPanel1 = new Sunny.UI.UIPanel();
-            uiTableLayoutPanel10 = new Sunny.UI.UITableLayoutPanel();
+            uiTableLayoutPanel9 = new TableLayoutPanel();
+            uiPanel1 = new AutoJMS.UI.DesignSystem.APanel();
+            uiTableLayoutPanel10 = new TableLayoutPanel();
             tabDKCH_btnDKCH1 = new AutoJMS.UI.DesignSystem.AButton();
             tabDKCH_btnDKCH2 = new AutoJMS.UI.DesignSystem.AButton();
             tabDKCH_btnStop = new AutoJMS.UI.DesignSystem.AButton();
@@ -113,7 +113,7 @@ namespace AutoJMS
             tabHome = new TabPage();
             tabHome_webView = new Microsoft.Web.WebView2.WinForms.WebView2();
             tabHome_navBar = new AutoJMS.UI.DesignSystem.APanel();
-            tabHome_txtAddress = new Sunny.UI.UITableLayoutPanel();
+            tabHome_txtAddress = new TableLayoutPanel();
             tabHome_btnMenu = new AutoJMS.UI.DesignSystem.AButton();
             tabHome_btnBack = new AutoJMS.UI.DesignSystem.AButton();
             tabHome_btnForward = new AutoJMS.UI.DesignSystem.AButton();
@@ -137,6 +137,7 @@ namespace AutoJMS
             uiPanel20.SuspendLayout();
             uiTableLayoutPanel23.SuspendLayout();
             uiPanel21.SuspendLayout();
+            tabPrint_printFuncHost.SuspendLayout();
             tabPrint_printFunc.SuspendLayout();
             tabPrint_inCH.SuspendLayout();
             uiTableLayoutPanel7.SuspendLayout();
@@ -146,7 +147,6 @@ namespace AutoJMS
             uiPanel13.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)tabPrint_printPreview).BeginInit();
             uiPanel18.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)tabPrint_btnPrint).BeginInit();
             tabTracking.SuspendLayout();
             uiTableLayoutPanel2.SuspendLayout();
             uiFlowLayoutPanel1.SuspendLayout();
@@ -174,46 +174,6 @@ namespace AutoJMS
             tabHome_txtAddress.SuspendLayout();
             tabControl.SuspendLayout();
             SuspendLayout();
-            // 
-            // uiIntegerUpDown1
-            // 
-            uiIntegerUpDown1.Anchor = AnchorStyles.Left;
-            uiIntegerUpDown1.Font = new Font("Segoe UI", 9.75F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            uiIntegerUpDown1.Location = new Point(151, 43);
-            uiIntegerUpDown1.Margin = new Padding(5);
-            uiIntegerUpDown1.Maximum = 31D;
-            uiIntegerUpDown1.Minimum = 1D;
-            uiIntegerUpDown1.MinimumSize = new Size(1, 16);
-            uiIntegerUpDown1.Name = "uiIntegerUpDown1";
-            uiIntegerUpDown1.Padding = new Padding(5);
-            uiIntegerUpDown1.Radius = 15;
-            uiIntegerUpDown1.ShowText = false;
-            uiIntegerUpDown1.Size = new Size(85, 25);
-            uiIntegerUpDown1.TabIndex = 2;
-            uiIntegerUpDown1.Text = "31";
-            uiIntegerUpDown1.TextAlignment = ContentAlignment.MiddleCenter;
-            uiIntegerUpDown1.Value = 31;
-            // 
-            // uiComboBox1
-            // 
-            uiComboBox1.DataSource = null;
-            uiComboBox1.Dock = DockStyle.Fill;
-            uiComboBox1.FillColor = Color.White;
-            uiComboBox1.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiComboBox1.ItemHoverColor = Color.FromArgb(155, 200, 255);
-            uiComboBox1.ItemSelectForeColor = Color.FromArgb(235, 243, 255);
-            uiComboBox1.Location = new Point(151, 5);
-            uiComboBox1.Margin = new Padding(5);
-            uiComboBox1.MinimumSize = new Size(63, 0);
-            uiComboBox1.Name = "uiComboBox1";
-            uiComboBox1.Padding = new Padding(0, 0, 30, 2);
-            uiComboBox1.Radius = 15;
-            uiComboBox1.Size = new Size(137, 27);
-            uiComboBox1.SymbolSize = 24;
-            uiComboBox1.TabIndex = 1;
-            uiComboBox1.Text = "PHATLAI";
-            uiComboBox1.TextAlignment = ContentAlignment.MiddleCenter;
-            uiComboBox1.Watermark = "";
             // 
             // tabAbout
             // 
@@ -243,8 +203,7 @@ namespace AutoJMS
             uiTableLayoutPanel5.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             uiTableLayoutPanel5.Size = new Size(200, 60);
             uiTableLayoutPanel5.TabIndex = 0;
-            uiTableLayoutPanel5.TagString = null;
-            // 
+            //
             // uiTableLayoutPanel21
             // 
             uiTableLayoutPanel21.ColumnCount = 1;
@@ -260,23 +219,19 @@ namespace AutoJMS
             uiTableLayoutPanel21.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             uiTableLayoutPanel21.Size = new Size(500, 700);
             uiTableLayoutPanel21.TabIndex = 4;
-            uiTableLayoutPanel21.TagString = null;
-            // 
+            //
             // uiPanel8
-            // 
+            //
+            // Khối giới thiệu + bản quyền nay là một ACard: bo góc, viền và nền lấy
+            // từ token theme. Radius = 15 của SunnyUI bỏ đi — ACard dùng ThemeRadius.Md.
             uiPanel8.Controls.Add(uiTableLayoutPanel22);
             uiPanel8.Dock = DockStyle.Fill;
-            uiPanel8.Font = new Font("Microsoft Sans Serif", 12F);
             uiPanel8.Location = new Point(0, 0);
             uiPanel8.Margin = new Padding(0);
-            uiPanel8.MinimumSize = new Size(1, 1);
             uiPanel8.Name = "uiPanel8";
-            uiPanel8.Radius = 15;
             uiPanel8.Size = new Size(500, 700);
             uiPanel8.TabIndex = 0;
-            uiPanel8.Text = null;
-            uiPanel8.TextAlignment = ContentAlignment.MiddleCenter;
-            // 
+            //
             // uiTableLayoutPanel22
             // 
             uiTableLayoutPanel22.ColumnCount = 1;
@@ -302,13 +257,13 @@ namespace AutoJMS
             uiTableLayoutPanel22.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
             uiTableLayoutPanel22.Size = new Size(500, 700);
             uiTableLayoutPanel22.TabIndex = 0;
-            uiTableLayoutPanel22.TagString = null;
-            // 
+            //
             // uiLabel22
-            // 
+            //
+            // ForeColor bỏ: AppTheme.ApplyStyleToControl tô Label theo token,
+            // để lại 48,48,48 thì chữ chìm vào nền ở theme Dark.
             uiLabel22.Dock = DockStyle.Fill;
-            uiLabel22.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            uiLabel22.ForeColor = Color.FromArgb(48, 48, 48);
+            uiLabel22.Font = AutoJMS.UI.DesignSystem.ThemeTypography.Body;
             uiLabel22.Location = new Point(3, 325);
             uiLabel22.Name = "uiLabel22";
             uiLabel22.Size = new Size(494, 375);
@@ -332,8 +287,7 @@ namespace AutoJMS
             // uiLabel18
             // 
             uiLabel18.Dock = DockStyle.Fill;
-            uiLabel18.Font = new Font("Segoe UI", 14.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            uiLabel18.ForeColor = Color.FromArgb(48, 48, 48);
+            uiLabel18.Font = AutoJMS.UI.DesignSystem.ThemeTypography.Display;
             uiLabel18.Location = new Point(3, 100);
             uiLabel18.Name = "uiLabel18";
             uiLabel18.Size = new Size(494, 40);
@@ -344,8 +298,7 @@ namespace AutoJMS
             // tabAbout_lblVersion
             // 
             tabAbout_lblVersion.Dock = DockStyle.Fill;
-            tabAbout_lblVersion.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
-            tabAbout_lblVersion.ForeColor = Color.FromArgb(48, 48, 48);
+            tabAbout_lblVersion.Font = AutoJMS.UI.DesignSystem.ThemeTypography.Body;
             tabAbout_lblVersion.Location = new Point(3, 140);
             tabAbout_lblVersion.Name = "tabAbout_lblVersion";
             tabAbout_lblVersion.Size = new Size(494, 30);
@@ -355,53 +308,42 @@ namespace AutoJMS
             // 
             // tabAbout_btnCheckUpdate
             // 
+            // Hành động chính của trang ABOUT nên Variant = Primary; Fill*Color và
+            // Radius = 30 của SunnyUI bỏ đi, màu và bo góc nay do token theme quyết định.
             tabAbout_btnCheckUpdate.Anchor = AnchorStyles.Top;
-            tabAbout_btnCheckUpdate.FillHoverColor = Color.FromArgb(128, 128, 255);
-            tabAbout_btnCheckUpdate.FillPressColor = Color.FromArgb(128, 128, 255);
-            tabAbout_btnCheckUpdate.FillSelectedColor = Color.FromArgb(128, 128, 255);
-            tabAbout_btnCheckUpdate.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabAbout_btnCheckUpdate.Location = new Point(150, 175);
             tabAbout_btnCheckUpdate.Margin = new Padding(5);
             tabAbout_btnCheckUpdate.MinimumSize = new Size(200, 60);
             tabAbout_btnCheckUpdate.Name = "tabAbout_btnCheckUpdate";
-            tabAbout_btnCheckUpdate.Radius = 30;
             tabAbout_btnCheckUpdate.Size = new Size(200, 60);
-            tabAbout_btnCheckUpdate.Symbol = 61573;
+            tabAbout_btnCheckUpdate.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Settings;
+            tabAbout_btnCheckUpdate.SymbolSize = 20;
             tabAbout_btnCheckUpdate.TabIndex = 3;
             tabAbout_btnCheckUpdate.Text = "Check Update...";
-            tabAbout_btnCheckUpdate.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabAbout_btnCheckUpdate.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
             tabAbout_btnCheckUpdate.Click += tabAbout_btnCheckUpdate_Click;
-            // 
+            //
             // tabAbout_btnTerms
-            // 
+            //
             tabAbout_btnTerms.Anchor = AnchorStyles.Top;
             tabAbout_btnTerms.Cursor = Cursors.Hand;
-            tabAbout_btnTerms.FillColor = Color.White;
-            tabAbout_btnTerms.FillHoverColor = Color.FromArgb(232, 244, 255);
-            tabAbout_btnTerms.FillPressColor = Color.FromArgb(208, 224, 245);
-            tabAbout_btnTerms.FillSelectedColor = Color.FromArgb(232, 244, 255);
-            tabAbout_btnTerms.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
-            tabAbout_btnTerms.ForeColor = Color.FromArgb(25, 118, 210);
             tabAbout_btnTerms.Location = new Point(150, 245);
             tabAbout_btnTerms.Margin = new Padding(5);
             tabAbout_btnTerms.MinimumSize = new Size(200, 40);
             tabAbout_btnTerms.Name = "tabAbout_btnTerms";
-            tabAbout_btnTerms.Radius = 8;
-            tabAbout_btnTerms.RectColor = Color.FromArgb(25, 118, 210);
             tabAbout_btnTerms.Size = new Size(200, 40);
             tabAbout_btnTerms.TabIndex = 4;
             tabAbout_btnTerms.Text = "Xem điều khoản sử dụng";
-            tabAbout_btnTerms.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            tabAbout_btnTerms.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Secondary;
             tabAbout_btnTerms.Click += tabAbout_btnTerms_Click;
-            // 
+            //
             // uiLinkLabel1
-            // 
-            uiLinkLabel1.ActiveLinkColor = Color.FromArgb(80, 160, 255);
+            //
+            // LinkLabel chuẩn: màu link do AppTheme tô theo token, nên bỏ hết
+            // ActiveLink/Visited/LinkColor cứng của SunnyUI.
             uiLinkLabel1.Dock = DockStyle.Fill;
-            uiLinkLabel1.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Point, 0);
-            uiLinkLabel1.ForeColor = Color.FromArgb(48, 48, 48);
+            uiLinkLabel1.Font = AutoJMS.UI.DesignSystem.ThemeTypography.Body;
             uiLinkLabel1.LinkBehavior = LinkBehavior.HoverUnderline;
-            uiLinkLabel1.LinkColor = Color.Blue;
             uiLinkLabel1.Location = new Point(3, 290);
             uiLinkLabel1.Name = "uiLinkLabel1";
             uiLinkLabel1.Size = new Size(494, 35);
@@ -409,8 +351,7 @@ namespace AutoJMS
             uiLinkLabel1.TabStop = true;
             uiLinkLabel1.Text = "Hướng dẫn chi tiết sử dụng";
             uiLinkLabel1.TextAlign = ContentAlignment.MiddleCenter;
-            uiLinkLabel1.VisitedLinkColor = Color.FromArgb(230, 80, 80);
-            // 
+            //
             // tabPrint
             // 
             tabPrint.Controls.Add(uiTableLayoutPanel6);
@@ -438,7 +379,6 @@ namespace AutoJMS
             uiTableLayoutPanel6.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel6.Size = new Size(200, 60);
             uiTableLayoutPanel6.TabIndex = 0;
-            uiTableLayoutPanel6.TagString = null;
             // 
             // llllll
             // 
@@ -457,7 +397,6 @@ namespace AutoJMS
             llllll.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             llllll.Size = new Size(1, 60);
             llllll.TabIndex = 3;
-            llllll.TagString = null;
             // 
             // tabPrint_dataView
             // 
@@ -491,7 +430,6 @@ namespace AutoJMS
             uiTableLayoutPanel25.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel25.Size = new Size(1, 35);
             uiTableLayoutPanel25.TabIndex = 3;
-            uiTableLayoutPanel25.TagString = null;
             // 
             // uiPanel19
             // 
@@ -503,12 +441,13 @@ namespace AutoJMS
             uiPanel19.Margin = new Padding(0, 0, 5, 0);
             uiPanel19.MinimumSize = new Size(1, 1);
             uiPanel19.Name = "uiPanel19";
+            // Elevation.Background = tô nền, KHÔNG viền - đúng thứ ShowBorder = false của
+            // SunnyUI làm. Đây là khung gom hai ô đếm, không phải card nên không cần viền.
+            uiPanel19.Elevation = AutoJMS.UI.DesignSystem.ThemeShadows.Elevation.Background;
             uiPanel19.Radius = 0;
-            uiPanel19.RectSides = ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Right | ToolStripStatusLabelBorderSides.Bottom;
             uiPanel19.Size = new Size(1, 35);
             uiPanel19.TabIndex = 2;
             uiPanel19.Text = null;
-            uiPanel19.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_countSelect
             // 
@@ -544,14 +483,13 @@ namespace AutoJMS
             uiPanel20.Location = new Point(5, 0);
             uiPanel20.Margin = new Padding(0);
             uiPanel20.MinimumSize = new Size(1, 1);
+            uiPanel20.Elevation = AutoJMS.UI.DesignSystem.ThemeShadows.Elevation.Background;
             uiPanel20.Name = "uiPanel20";
             uiPanel20.Padding = new Padding(5, 0, 0, 0);
             uiPanel20.Radius = 0;
-            uiPanel20.RectSides = ToolStripStatusLabelBorderSides.Left | ToolStripStatusLabelBorderSides.Top | ToolStripStatusLabelBorderSides.Bottom;
             uiPanel20.Size = new Size(1, 35);
             uiPanel20.TabIndex = 3;
             uiPanel20.Text = null;
-            uiPanel20.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_btnSelectAll
             // 
@@ -574,7 +512,7 @@ namespace AutoJMS
             uiTableLayoutPanel23.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250F));
             uiTableLayoutPanel23.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel23.Controls.Add(uiPanel21, 0, 1);
-            uiTableLayoutPanel23.Controls.Add(tabPrint_printFunc, 1, 0);
+            uiTableLayoutPanel23.Controls.Add(tabPrint_printFuncHost, 1, 0);
             uiTableLayoutPanel23.Controls.Add(uiTableLayoutPanel13, 0, 0);
             uiTableLayoutPanel23.Dock = DockStyle.Fill;
             uiTableLayoutPanel23.Location = new Point(3, 3);
@@ -584,7 +522,6 @@ namespace AutoJMS
             uiTableLayoutPanel23.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel23.Size = new Size(1, 194);
             uiTableLayoutPanel23.TabIndex = 5;
-            uiTableLayoutPanel23.TagString = null;
             // 
             // uiPanel21
             // 
@@ -599,7 +536,6 @@ namespace AutoJMS
             uiPanel21.Size = new Size(240, 139);
             uiPanel21.TabIndex = 2;
             uiPanel21.Text = null;
-            uiPanel21.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_inputWaybill
             // 
@@ -629,32 +565,46 @@ namespace AutoJMS
             // 
             // tabPrint_printFunc
             // 
+            // ATabControl phủ trang kín vùng client nên dải tab gốc của comctl32 không
+            // hiện; phần nhìn do tabPrint_printTabs vẽ, đúng cách app shell đang làm.
+            // Mọi màu Tab*Color của SunnyUI theo đó mà bỏ — nay là token theme.
+            // ItemSize/SizeMode/DrawMode cũng bỏ: thanh mới tự đo chữ và tự co khi hẹp,
+            // nên FitPrintTabHeaders() lẫn PremiumTabAccent đều không còn việc.
             tabPrint_printFunc.Controls.Add(tabPrint_inCH);
             tabPrint_printFunc.Controls.Add(tabPrint_inCT);
             tabPrint_printFunc.Controls.Add(tabPrint_inLaiDon);
             tabPrint_printFunc.Controls.Add(tabPrint_inRV);
             tabPrint_printFunc.Dock = DockStyle.Fill;
-            tabPrint_printFunc.DrawMode = TabDrawMode.OwnerDrawFixed;
             tabPrint_printFunc.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            tabPrint_printFunc.ItemSize = new Size(150, 40);
-            tabPrint_printFunc.Location = new Point(250, 5);
-            tabPrint_printFunc.MainPage = "";
-            tabPrint_printFunc.Margin = new Padding(0, 5, 0, 0);
-            tabPrint_printFunc.MenuStyle = Sunny.UI.UIMenuStyle.Custom;
+            tabPrint_printFunc.Location = new Point(0, 40);
             tabPrint_printFunc.Name = "tabPrint_printFunc";
-            uiTableLayoutPanel23.SetRowSpan(tabPrint_printFunc, 2);
             tabPrint_printFunc.SelectedIndex = 0;
-            tabPrint_printFunc.Size = new Size(1, 189);
-            tabPrint_printFunc.SizeMode = TabSizeMode.Fixed;
-            tabPrint_printFunc.TabBackColor = Color.Azure;
+            tabPrint_printFunc.Size = new Size(1, 149);
             tabPrint_printFunc.TabIndex = 1;
-            tabPrint_printFunc.TabSelectedColor = Color.FromArgb(115, 179, 255);
-            tabPrint_printFunc.TabSelectedForeColor = Color.Black;
-            tabPrint_printFunc.TabSelectedHighColor = Color.Black;
-            tabPrint_printFunc.TabSelectedHighColorSize = 2;
-            tabPrint_printFunc.TabUnSelectedColor = Color.FromArgb(80, 160, 255);
-            tabPrint_printFunc.TabUnSelectedForeColor = Color.FromArgb(240, 240, 240);
-            tabPrint_printFunc.TipsFont = new Font("Microsoft Sans Serif", 9F);
+            //
+            // tabPrint_printTabs
+            //
+            tabPrint_printTabs.Dock = DockStyle.Top;
+            tabPrint_printTabs.Height = 40;
+            tabPrint_printTabs.Name = "tabPrint_printTabs";
+            tabPrint_printTabs.ShowIdentity = false;
+            tabPrint_printTabs.TabIndex = 0;
+            tabPrint_printTabs.Target = tabPrint_printFunc;
+            //
+            // tabPrint_printFuncHost
+            //
+            // Panel trơn, chỉ để dải tab (Top) và khung trang (Fill) đứng chung một ô
+            // của uiTableLayoutPanel23. Thứ tự Add quan trọng: control thêm SAU được
+            // dock TRƯỚC, nên strip phải thêm sau khung trang.
+            tabPrint_printFuncHost.Controls.Add(tabPrint_printFunc);
+            tabPrint_printFuncHost.Controls.Add(tabPrint_printTabs);
+            tabPrint_printFuncHost.Dock = DockStyle.Fill;
+            tabPrint_printFuncHost.Location = new Point(250, 5);
+            tabPrint_printFuncHost.Margin = new Padding(0, 5, 0, 0);
+            tabPrint_printFuncHost.Name = "tabPrint_printFuncHost";
+            uiTableLayoutPanel23.SetRowSpan(tabPrint_printFuncHost, 2);
+            tabPrint_printFuncHost.Size = new Size(1, 189);
+            tabPrint_printFuncHost.TabIndex = 1;
             // 
             // tabPrint_inCH
             // 
@@ -682,7 +632,6 @@ namespace AutoJMS
             uiTableLayoutPanel7.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             uiTableLayoutPanel7.Size = new Size(1, 149);
             uiTableLayoutPanel7.TabIndex = 0;
-            uiTableLayoutPanel7.TagString = null;
             // 
             // uiPanel2
             // 
@@ -698,7 +647,6 @@ namespace AutoJMS
             uiPanel2.Size = new Size(1, 35);
             uiPanel2.TabIndex = 7;
             uiPanel2.Text = null;
-            uiPanel2.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_AutoMode
             // 
@@ -778,7 +726,6 @@ namespace AutoJMS
             uiTableLayoutPanel13.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel13.Size = new Size(244, 39);
             uiTableLayoutPanel13.TabIndex = 3;
-            uiTableLayoutPanel13.TagString = null;
             // 
             // tabPrint_btnTimKiem
             // 
@@ -790,7 +737,7 @@ namespace AutoJMS
             tabPrint_btnTimKiem.Margin = new Padding(5, 0, 5, 0);
             tabPrint_btnTimKiem.Name = "tabPrint_btnTimKiem";
             tabPrint_btnTimKiem.Size = new Size(112, 39);
-            tabPrint_btnTimKiem.Symbol = 361442;
+            tabPrint_btnTimKiem.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Search;
             tabPrint_btnTimKiem.SymbolSize = 16;
             tabPrint_btnTimKiem.TabIndex = 10;
             tabPrint_btnTimKiem.Text = "Tìm kiếm";
@@ -805,7 +752,7 @@ namespace AutoJMS
             tabPrint_btnLamMoi.Margin = new Padding(5, 0, 5, 0);
             tabPrint_btnLamMoi.Name = "tabPrint_btnLamMoi";
             tabPrint_btnLamMoi.Size = new Size(112, 39);
-            tabPrint_btnLamMoi.Symbol = 61470;
+            tabPrint_btnLamMoi.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Refresh;
             tabPrint_btnLamMoi.SymbolSize = 16;
             tabPrint_btnLamMoi.TabIndex = 9;
             tabPrint_btnLamMoi.Text = "Làm mới";
@@ -830,7 +777,6 @@ namespace AutoJMS
             uiTableLayoutPanel15.RowStyles.Add(new RowStyle(SizeType.Absolute, 20F));
             uiTableLayoutPanel15.Size = new Size(590, 50);
             uiTableLayoutPanel15.TabIndex = 1;
-            uiTableLayoutPanel15.TagString = null;
             // 
             // uiLabel7
             // 
@@ -857,7 +803,6 @@ namespace AutoJMS
             uiPanel13.Size = new Size(580, 1);
             uiPanel13.TabIndex = 5;
             uiPanel13.Text = null;
-            uiPanel13.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_printPreview
             // 
@@ -875,8 +820,6 @@ namespace AutoJMS
             // uiPanel18
             // 
             uiPanel18.Controls.Add(tabPrint_btnPrint);
-            uiPanel18.FillColor = Color.FromArgb(224, 224, 224);
-            uiPanel18.FillColor2 = Color.FromArgb(128, 128, 255);
             uiPanel18.Font = new Font("Microsoft Sans Serif", 12F);
             uiPanel18.Location = new Point(10, 35);
             uiPanel18.Margin = new Padding(10, 0, 0, 0);
@@ -887,11 +830,14 @@ namespace AutoJMS
             uiPanel18.Size = new Size(155, 45);
             uiPanel18.TabIndex = 6;
             uiPanel18.Text = null;
-            uiPanel18.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabPrint_btnPrint
             // 
-            tabPrint_btnPrint.BackColor = Color.Transparent;
+            // BackColor = Transparent bỏ: AButton đã tự tô nền của control cha trước khi
+            // vẽ thân nút, còn Control.BackColor = Transparent thì ném ArgumentException
+            // trên control không bật SupportsTransparentBackColor.
+            // Đây là hành động chính của vùng in (uiPanel18) nên Variant = Primary;
+            // cặp Tìm kiếm/Làm mới ở uiTableLayoutPanel13 là vùng khác (DESIGN.md §K).
             tabPrint_btnPrint.Dock = DockStyle.Fill;
             tabPrint_btnPrint.Font = new Font("Segoe UI Semibold", 14.25F, FontStyle.Bold, GraphicsUnit.Point, 0);
             tabPrint_btnPrint.Image = (Image)resources.GetObject("tabPrint_btnPrint.Image");
@@ -902,6 +848,7 @@ namespace AutoJMS
             tabPrint_btnPrint.TabIndex = 7;
             tabPrint_btnPrint.TabStop = false;
             tabPrint_btnPrint.Text = "Print";
+            tabPrint_btnPrint.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
             tabPrint_btnPrint.Click += tabPrint_btnPrint_Click;
             // 
             // tabTracking
@@ -933,7 +880,6 @@ namespace AutoJMS
             uiTableLayoutPanel2.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel2.Size = new Size(1386, 713);
             uiTableLayoutPanel2.TabIndex = 0;
-            uiTableLayoutPanel2.TagString = null;
             // 
             // uiFlowLayoutPanel1
             // 
@@ -950,11 +896,9 @@ namespace AutoJMS
             uiFlowLayoutPanel1.MinimumSize = new Size(1, 1);
             uiFlowLayoutPanel1.Name = "uiFlowLayoutPanel1";
             uiFlowLayoutPanel1.Padding = new Padding(5);
-            uiFlowLayoutPanel1.ShowText = false;
             uiFlowLayoutPanel1.Size = new Size(1386, 45);
             uiFlowLayoutPanel1.TabIndex = 0;
             uiFlowLayoutPanel1.Text = null;
-            uiFlowLayoutPanel1.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // tabTracking_btnSearch
             // 
@@ -966,7 +910,7 @@ namespace AutoJMS
             tabTracking_btnSearch.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnSearch.Name = "tabTracking_btnSearch";
             tabTracking_btnSearch.Size = new Size(110, 35);
-            tabTracking_btnSearch.Symbol = 361442;
+            tabTracking_btnSearch.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Search;
             tabTracking_btnSearch.SymbolSize = 16;
             tabTracking_btnSearch.TabIndex = 3;
             tabTracking_btnSearch.Text = "Tìm kiếm";
@@ -979,7 +923,7 @@ namespace AutoJMS
             tabTracking_btnExport.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnExport.Name = "tabTracking_btnExport";
             tabTracking_btnExport.Size = new Size(120, 35);
-            tabTracking_btnExport.Symbol = 61787;
+            tabTracking_btnExport.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Page;
             tabTracking_btnExport.SymbolSize = 16;
             tabTracking_btnExport.TabIndex = 8;
             tabTracking_btnExport.Text = "Xuất dữ liệu";
@@ -991,7 +935,7 @@ namespace AutoJMS
             tabTracking_btnClear.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnClear.Name = "tabTracking_btnClear";
             tabTracking_btnClear.Size = new Size(110, 35);
-            tabTracking_btnClear.Symbol = 61470;
+            tabTracking_btnClear.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Refresh;
             tabTracking_btnClear.SymbolSize = 16;
             tabTracking_btnClear.TabIndex = 7;
             tabTracking_btnClear.Text = "Làm mới";
@@ -1003,7 +947,7 @@ namespace AutoJMS
             tabTracking_btnDownload.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnDownload.Name = "tabTracking_btnDownload";
             tabTracking_btnDownload.Size = new Size(110, 35);
-            tabTracking_btnDownload.Symbol = 61465;
+            tabTracking_btnDownload.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Download;
             tabTracking_btnDownload.SymbolSize = 16;
             tabTracking_btnDownload.TabIndex = 6;
             tabTracking_btnDownload.Text = "Tải xuống";
@@ -1015,7 +959,7 @@ namespace AutoJMS
             tabTracking_btnSpeExport.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnSpeExport.Name = "tabTracking_btnSpeExport";
             tabTracking_btnSpeExport.Size = new Size(126, 35);
-            tabTracking_btnSpeExport.Symbol = 361462;
+            tabTracking_btnSpeExport.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Export;
             tabTracking_btnSpeExport.SymbolSize = 16;
             tabTracking_btnSpeExport.TabIndex = 5;
             tabTracking_btnSpeExport.Text = "Phát - Hoàn";
@@ -1027,7 +971,7 @@ namespace AutoJMS
             tabTracking_btnUpload.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnUpload.Name = "tabTracking_btnUpload";
             tabTracking_btnUpload.Size = new Size(110, 35);
-            tabTracking_btnUpload.Symbol = 61678;
+            tabTracking_btnUpload.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Upload;
             tabTracking_btnUpload.SymbolSize = 16;
             tabTracking_btnUpload.TabIndex = 4;
             tabTracking_btnUpload.Text = "Tải lên";
@@ -1050,7 +994,6 @@ namespace AutoJMS
             uiTableLayoutPanel11.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel11.Size = new Size(1376, 130);
             uiTableLayoutPanel11.TabIndex = 1;
-            uiTableLayoutPanel11.TagString = null;
             // 
             // uiTableLayoutPanel12
             // 
@@ -1068,7 +1011,6 @@ namespace AutoJMS
             uiTableLayoutPanel12.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel12.Size = new Size(150, 130);
             uiTableLayoutPanel12.TabIndex = 0;
-            uiTableLayoutPanel12.TagString = null;
             // 
             // uiLabel6
             // 
@@ -1111,13 +1053,11 @@ namespace AutoJMS
             // 
             // tabTracking_process
             // 
-            tabTracking_process.FillColor = Color.FromArgb(235, 243, 255);
             tabTracking_process.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point, 0);
             tabTracking_process.Location = new Point(400, 0);
             tabTracking_process.Margin = new Padding(0);
             tabTracking_process.MinimumSize = new Size(200, 10);
             tabTracking_process.Name = "tabTracking_process";
-            tabTracking_process.Radius = 3;
             tabTracking_process.Size = new Size(200, 10);
             tabTracking_process.TabIndex = 2;
             // 
@@ -1165,7 +1105,6 @@ namespace AutoJMS
             uiTableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel1.Size = new Size(200, 60);
             uiTableLayoutPanel1.TabIndex = 0;
-            uiTableLayoutPanel1.TagString = null;
             // 
             // tabDKCH_webView
             // 
@@ -1195,7 +1134,6 @@ namespace AutoJMS
             tabHome_pnlLeft.Size = new Size(272, 60);
             tabHome_pnlLeft.TabIndex = 0;
             tabHome_pnlLeft.Text = "uiPanel1";
-            tabHome_pnlLeft.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // uiTitlePanel2
             // 
@@ -1231,7 +1169,6 @@ namespace AutoJMS
             uiTableLayoutPanel33.RowStyles.Add(new RowStyle(SizeType.Percent, 48F));
             uiTableLayoutPanel33.Size = new Size(270, 0);
             uiTableLayoutPanel33.TabIndex = 4;
-            uiTableLayoutPanel33.TagString = null;
             // 
             // splitContainer1
             // 
@@ -1277,7 +1214,6 @@ namespace AutoJMS
             uiTableLayoutPanel9.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             uiTableLayoutPanel9.Size = new Size(270, 119);
             uiTableLayoutPanel9.TabIndex = 0;
-            uiTableLayoutPanel9.TagString = null;
             // 
             // uiPanel1
             // 
@@ -1288,13 +1224,12 @@ namespace AutoJMS
             uiPanel1.Location = new Point(3, 30);
             uiPanel1.Margin = new Padding(3, 0, 3, 3);
             uiPanel1.MinimumSize = new Size(1, 1);
+            uiPanel1.Elevation = AutoJMS.UI.DesignSystem.ThemeShadows.Elevation.Background;
             uiPanel1.Name = "uiPanel1";
             uiPanel1.Radius = 0;
-            uiPanel1.RectColor = Color.Transparent;
             uiPanel1.Size = new Size(264, 86);
             uiPanel1.TabIndex = 0;
             uiPanel1.Text = null;
-            uiPanel1.TextAlignment = ContentAlignment.MiddleCenter;
             // 
             // uiTableLayoutPanel10
             // 
@@ -1312,7 +1247,6 @@ namespace AutoJMS
             uiTableLayoutPanel10.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
             uiTableLayoutPanel10.Size = new Size(264, 86);
             uiTableLayoutPanel10.TabIndex = 0;
-            uiTableLayoutPanel10.TagString = null;
             // 
             // tabDKCH_btnDKCH1
             // 
@@ -1362,7 +1296,7 @@ namespace AutoJMS
             tabDKCH_Home.Name = "tabDKCH_Home";
             tabDKCH_Home.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabDKCH_Home.Size = new Size(80, 24);
-            tabDKCH_Home.Symbol = 61461;   // fa-refresh
+            tabDKCH_Home.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Home;
             tabDKCH_Home.SymbolSize = 18;
             tabDKCH_Home.TabIndex = 1;
             tabDKCH_Home.Text = "Home";
@@ -1449,7 +1383,6 @@ namespace AutoJMS
             tabHome_txtAddress.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             tabHome_txtAddress.Size = new Size(1382, 32);
             tabHome_txtAddress.TabIndex = 0;
-            tabHome_txtAddress.TagString = null;
             // 
             // tabHome_btnMenu
             // 
@@ -1460,7 +1393,7 @@ namespace AutoJMS
             tabHome_btnMenu.Name = "tabHome_btnMenu";
             tabHome_btnMenu.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnMenu.Size = new Size(32, 32);
-            tabHome_btnMenu.Symbol = 61762;
+            tabHome_btnMenu.Symbol = AutoJMS.UI.DesignSystem.ASymbols.More;
             tabHome_btnMenu.SymbolSize = 18;
             tabHome_btnMenu.TabIndex = 2;
             tabHome_btnMenu.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
@@ -1472,7 +1405,7 @@ namespace AutoJMS
             tabHome_btnBack.Name = "tabHome_btnBack";
             tabHome_btnBack.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnBack.Size = new Size(32, 32);
-            tabHome_btnBack.Symbol = 61536;
+            tabHome_btnBack.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Back;
             tabHome_btnBack.SymbolSize = 18;
             tabHome_btnBack.TabIndex = 0;
             tabHome_btnBack.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
@@ -1485,7 +1418,7 @@ namespace AutoJMS
             tabHome_btnForward.Name = "tabHome_btnForward";
             tabHome_btnForward.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnForward.Size = new Size(32, 32);
-            tabHome_btnForward.Symbol = 61537;
+            tabHome_btnForward.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Forward;
             tabHome_btnForward.SymbolSize = 18;
             tabHome_btnForward.TabIndex = 0;
             tabHome_btnForward.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
@@ -1498,7 +1431,7 @@ namespace AutoJMS
             tabHome_btnReload.Name = "tabHome_btnReload";
             tabHome_btnReload.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnReload.Size = new Size(32, 32);
-            tabHome_btnReload.Symbol = 61470;
+            tabHome_btnReload.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Refresh;
             tabHome_btnReload.SymbolSize = 18;
             tabHome_btnReload.TabIndex = 0;
             tabHome_btnReload.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
@@ -1511,7 +1444,7 @@ namespace AutoJMS
             tabHome_btnHome.Name = "tabHome_btnHome";
             tabHome_btnHome.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.Sm;
             tabHome_btnHome.Size = new Size(32, 32);
-            tabHome_btnHome.Symbol = 61461;
+            tabHome_btnHome.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Home;
             tabHome_btnHome.SymbolSize = 18;
             tabHome_btnHome.TabIndex = 0;
             tabHome_btnHome.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
@@ -1577,6 +1510,7 @@ namespace AutoJMS
             uiPanel20.PerformLayout();
             uiTableLayoutPanel23.ResumeLayout(false);
             uiPanel21.ResumeLayout(false);
+            tabPrint_printFuncHost.ResumeLayout(false);
             tabPrint_printFunc.ResumeLayout(false);
             tabPrint_inCH.ResumeLayout(false);
             uiTableLayoutPanel7.ResumeLayout(false);
@@ -1588,7 +1522,6 @@ namespace AutoJMS
             uiPanel13.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)tabPrint_printPreview).EndInit();
             uiPanel18.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)tabPrint_btnPrint).EndInit();
             tabTracking.ResumeLayout(false);
             uiTableLayoutPanel2.ResumeLayout(false);
             uiFlowLayoutPanel1.ResumeLayout(false);
@@ -1620,80 +1553,80 @@ namespace AutoJMS
         }
 
         #endregion
-        private Sunny.UI.UIIntegerUpDown uiIntegerUpDown1;
-        private Sunny.UI.UIComboBox uiComboBox1;
         private TabPage tabAbout;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel5;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel21;
-        private Sunny.UI.UIPanel uiPanel8;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel22;
-        private Sunny.UI.UILabel uiLabel22;
+        private TableLayoutPanel uiTableLayoutPanel5;
+        private TableLayoutPanel uiTableLayoutPanel21;
+        private AutoJMS.UI.DesignSystem.ACard uiPanel8;
+        private TableLayoutPanel uiTableLayoutPanel22;
+        private Label uiLabel22;
         private PictureBox pictureBox1;
-        private Sunny.UI.UILabel uiLabel18;
-        private Sunny.UI.UILabel tabAbout_lblVersion;
-        private Sunny.UI.UISymbolButton tabAbout_btnCheckUpdate;
-        private Sunny.UI.UIButton tabAbout_btnTerms;
-        private Sunny.UI.UILinkLabel uiLinkLabel1;
+        private Label uiLabel18;
+        private Label tabAbout_lblVersion;
+        private AutoJMS.UI.DesignSystem.AButton tabAbout_btnCheckUpdate;
+        private AutoJMS.UI.DesignSystem.AButton tabAbout_btnTerms;
+        private LinkLabel uiLinkLabel1;
         private TabPage tabPrint;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel6;
-        private Sunny.UI.UITableLayoutPanel llllll;
+        private TableLayoutPanel uiTableLayoutPanel6;
+        private TableLayoutPanel llllll;
         private AutoJMS.UI.DesignSystem.ADataGridView tabPrint_dataView;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel25;
-        private Sunny.UI.UIPanel uiPanel19;
-        private Sunny.UI.UILabel tabPrint_countSelect;
-        private Sunny.UI.UILabel tabPrint_countSum;
-        private Sunny.UI.UIPanel uiPanel20;
+        private TableLayoutPanel uiTableLayoutPanel25;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel19;
+        private Label tabPrint_countSelect;
+        private Label tabPrint_countSum;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel20;
         private AutoJMS.UI.DesignSystem.ACheckBox tabPrint_btnSelectAll;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel23;
-        private Sunny.UI.UIPanel uiPanel21;
+        private TableLayoutPanel uiTableLayoutPanel23;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel21;
         private AutoJMS.UI.DesignSystem.ATextBox tabPrint_inputWaybill;
-        private Sunny.UI.UILabel uiLabel9;
-        private Sunny.UI.UITabControl tabPrint_printFunc;
+        private Label uiLabel9;
+        private Panel tabPrint_printFuncHost;
+        private AutoJMS.UI.DesignSystem.TopNavigation tabPrint_printTabs;
+        private AutoJMS.UI.DesignSystem.ATabControl tabPrint_printFunc;
         private TabPage tabPrint_inCH;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel7;
-        private Sunny.UI.UIPanel uiPanel2;
+        private TableLayoutPanel uiTableLayoutPanel7;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel2;
         private AutoJMS.UI.DesignSystem.AToggleSwitch tabPrint_AutoMode;
-        private Sunny.UI.UILabel uiLabel15;
-        private Sunny.UI.UILabel tabPrint_messLable;
+        private Label uiLabel15;
+        private Label tabPrint_messLable;
         private TabPage tabPrint_inCT;
         private TabPage tabPrint_inLaiDon;
         private TabPage tabPrint_inRV;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel13;
+        private TableLayoutPanel uiTableLayoutPanel13;
         private AutoJMS.UI.DesignSystem.AButton tabPrint_btnTimKiem;
         private AutoJMS.UI.DesignSystem.AButton tabPrint_btnLamMoi;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel15;
-        private Sunny.UI.UILabel uiLabel7;
-        private Sunny.UI.UIPanel uiPanel13;
+        private TableLayoutPanel uiTableLayoutPanel15;
+        private Label uiLabel7;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel13;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabPrint_printPreview;
-        private Sunny.UI.UIPanel uiPanel18;
-        private Sunny.UI.UIImageButton tabPrint_btnPrint;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel18;
+        private AutoJMS.UI.DesignSystem.AButton tabPrint_btnPrint;
         private TabPage tabTracking;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel2;
-        private Sunny.UI.UIFlowLayoutPanel uiFlowLayoutPanel1;
+        private TableLayoutPanel uiTableLayoutPanel2;
+        private FlowLayoutPanel uiFlowLayoutPanel1;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnSearch;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnExport;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnClear;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnDownload;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnSpeExport;
         private AutoJMS.UI.DesignSystem.AButton tabTracking_btnUpload;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel11;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel12;
-        private Sunny.UI.UILabel uiLabel6;
-        private Sunny.UI.UILabel tabTracking_countSum;
+        private TableLayoutPanel uiTableLayoutPanel11;
+        private TableLayoutPanel uiTableLayoutPanel12;
+        private Label uiLabel6;
+        private Label tabTracking_countSum;
         private AutoJMS.UI.DesignSystem.ATextBox tabTracking_inputWaybill;
-        private Sunny.UI.UIProcessBar tabTracking_process;
+        private ProgressBar tabTracking_process;
         private AutoJMS.UI.DesignSystem.ADataGridView tabTracking_dataView;
         private TabPage tabDKCH;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel1;
+        private TableLayoutPanel uiTableLayoutPanel1;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabDKCH_webView;
-        private Sunny.UI.UIPanel tabHome_pnlLeft;
+        private AutoJMS.UI.DesignSystem.APanel tabHome_pnlLeft;
         private AutoJMS.UI.DesignSystem.APanel uiTitlePanel2;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel33;
+        private TableLayoutPanel uiTableLayoutPanel33;
         private SplitContainer splitContainer1;
         private AutoJMS.UI.DesignSystem.APanel uiTitlePanel1;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel9;
-        private Sunny.UI.UIPanel uiPanel1;
-        private Sunny.UI.UITableLayoutPanel uiTableLayoutPanel10;
+        private TableLayoutPanel uiTableLayoutPanel9;
+        private AutoJMS.UI.DesignSystem.APanel uiPanel1;
+        private TableLayoutPanel uiTableLayoutPanel10;
         private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnDKCH1;
         private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnDKCH2;
         private AutoJMS.UI.DesignSystem.AButton tabDKCH_btnStop;
@@ -1703,7 +1636,7 @@ namespace AutoJMS
         private TabPage tabHome;
         private Microsoft.Web.WebView2.WinForms.WebView2 tabHome_webView;
         private AutoJMS.UI.DesignSystem.APanel tabHome_navBar;
-        private Sunny.UI.UITableLayoutPanel tabHome_txtAddress;
+        private TableLayoutPanel tabHome_txtAddress;
         private AutoJMS.UI.DesignSystem.AButton tabHome_btnMenu;
         private AutoJMS.UI.DesignSystem.AButton tabHome_btnBack;
         private AutoJMS.UI.DesignSystem.AButton tabHome_btnForward;
@@ -1712,6 +1645,5 @@ namespace AutoJMS
         private AutoJMS.UI.DesignSystem.ATextBox tabHome_urlBar;
         private AutoJMS.UI.DesignSystem.ATabControl tabControl;
         private AutoJMS.UI.DesignSystem.TopNavigation topNav;
-        //private Sunny.UI.UIComboBox tabChat_timeCheck;
     }
 }

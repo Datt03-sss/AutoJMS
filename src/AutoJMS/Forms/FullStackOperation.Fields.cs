@@ -1,5 +1,5 @@
 using Microsoft.Web.WebView2.WinForms;
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using AutoJMS.FullStack.UI.OperationCenter;
 using System.Threading;
 using System.Windows.Forms;
@@ -8,48 +8,53 @@ namespace AutoJMS
 {
     public partial class FullStackOperation
     {
-        private UITabControl uiTabControl1;
+        private ATabControl uiTabControl1;
+        private TopNavigation uiTabControl1Strip;
         private TabPage tabDash;
-        private UIPanel uiPanel10;
-        private UIPanel _filterBarPanel;
+        // Panel thường chứ không phải APanel: hai dải này tự tô nền mang nghĩa
+        // (màu thương hiệu tối / nền trắng có đúng một nét kẻ dưới).
+        private Panel uiPanel10;
+        private Panel _filterBarPanel;
         private Panel _queueNavPanel;
         private Panel _leftContextPanel;
         private Panel _rightIntelligencePanel;
-        private UIComboBox tabDash_timeUpdateData;
-        private UISymbolLabel tabDash_lblLastUpdate;
-        private UISymbolButton tabDash_updateData;
-        private UIComboBox tabDash_dataSource;
-        private UIComboBox tabDash_statusSelect;
-        private UITabControl uiTabControl2;
+        private AComboBox tabDash_timeUpdateData;
+        private Label tabDash_lblLastUpdate;
+        private AButton tabDash_updateData;
+        private AComboBox tabDash_dataSource;
+        private AComboBox tabDash_statusSelect;
+        // Lưới tab ẩn (Visible = false, không bao giờ add vào form) — chỉ dùng làm chỗ
+        // giữ TabPage. Không cần ATabControl + TopNavigation vì nó không hiện bao giờ.
+        private TabControl uiTabControl2;
         private TabPage tabPage3;
-        private UIDataGridView tabDash_dataGridView;
+        private DataGridView tabDash_dataGridView;
         private TabPage tabPage4;
-        private UIDataGridView uiDataGridView2;
+        private DataGridView uiDataGridView2;
         private TabPage tabChat;
-        private UITableLayoutPanel uiTableLayoutPanel3;
+        private TableLayoutPanel uiTableLayoutPanel3;
         private WebView2 tabChat_webViewZalo;
-        private UITableLayoutPanel tabChat_leftPanel;
-        private UIDataGridView tabChat_dataGrid;
-        private UIPanel uiPanel15;
-        private UITableLayoutPanel uiTableLayoutPanel17;
-        private UIComboBox tabChat_statusSelect;
-        private UILabel uiLabel5;
-        private UISymbolButton tabChat_btnReload;
-        private UIPanel uiPanel4;
-        private UILinkLabel tabChat_userName;
-        private UIAvatar tabChat_userAvatar;
-        private UIPanel uiPanel6;
-        private UITableLayoutPanel uiTableLayoutPanel19;
-        private UISymbolButton tabChat_btnStart;
-        private UITableLayoutPanel uiTableLayoutPanel20;
-        private UIComboBox tabChat_timeSelect;
-        private UILabel uiLabel3;
-        private UIPanel uiPanel7;
-        private UITableLayoutPanel uiTableLayoutPanel16;
-        private UILabel tabChat_hasXNCH;
-        private UILabel tabChat_hasKVD;
-        private UILabel tabChat_sumFollow;
-        private UIPanel uiPanel5;
+        private TableLayoutPanel tabChat_leftPanel;
+        private DataGridView tabChat_dataGrid;
+        private APanel uiPanel15;
+        private TableLayoutPanel uiTableLayoutPanel17;
+        private AComboBox tabChat_statusSelect;
+        private Label uiLabel5;
+        private AButton tabChat_btnReload;
+        private APanel uiPanel4;
+        private LinkLabel tabChat_userName;
+        private Label tabChat_userAvatar;
+        private APanel uiPanel6;
+        private TableLayoutPanel uiTableLayoutPanel19;
+        private AButton tabChat_btnStart;
+        private TableLayoutPanel uiTableLayoutPanel20;
+        private AComboBox tabChat_timeSelect;
+        private Label uiLabel3;
+        private APanel uiPanel7;
+        private TableLayoutPanel uiTableLayoutPanel16;
+        private Label tabChat_hasXNCH;
+        private Label tabChat_hasKVD;
+        private Label tabChat_sumFollow;
+        private APanel uiPanel5;
 
         private FlowLayoutPanel _dashQuickFilterPanel;
         private string _dashQuickFilter = string.Empty;
@@ -66,7 +71,7 @@ namespace AutoJMS
         private Panel _operationGridHost;
         private Panel _operationInventoryWorkspace;
         private Panel _waybillJourneyWorkspace;
-        private UIDataGridView _waybillJourneyGrid;
+        private DataGridView _waybillJourneyGrid;
         private Label _waybillJourneyTitle;
         private Label _waybillJourneyWaybillLabel;
         private Label _waybillJourneyStatusLabel;
@@ -88,7 +93,7 @@ namespace AutoJMS
         private KpiCardControl _kpiStarred;
         private Label _operationHeaderTitle;
         private Label _operationHeaderStatus;
-        private UISymbolButton _operationRefreshLocalButton;
+        private AButton _operationRefreshLocalButton;
     }
 }
 

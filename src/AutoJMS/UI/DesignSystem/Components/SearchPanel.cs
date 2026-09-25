@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
@@ -21,7 +21,7 @@ namespace AutoJMS.UI.DesignSystem
         private readonly AButton _clear;
         private string _resultText = string.Empty;
 
-        private const int SearchSymbol = 361442; // fa-search, cùng mã đang dùng ở tabPrint_btnTimKiem
+        private const int SearchSymbol = ASymbols.Search;
 
         public SearchPanel()
         {

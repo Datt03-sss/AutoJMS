@@ -64,5 +64,23 @@ namespace AutoJMS.UI.DesignSystem
 
         /// <summary>Chiều cao dòng cho chữ nhiều dòng. Nhãn một dòng dùng 1.0.</summary>
         public const float LineHeightMultiline = 1.35F;
+
+        private static readonly Font[] Tokens =
+        {
+            Display, H1, H2, Body, BodyStrong, Button, Small, Caption, Badge, Grid, GridHeader, Mono, MonoDisplay
+        };
+
+        /// <summary>
+        /// Đúng khi control đang giữ CHÍNH một instance trong bảng trên. AppTheme dựa vào
+        /// đây để không kéo control đã chọn token về cỡ chữ mặc định của nó.
+        /// So theo tham chiếu chứ không theo giá trị: font do Designer dựng luôn là
+        /// instance mới, nên một font tình cờ cùng tên/cùng cỡ không bị nhận nhầm.
+        /// </summary>
+        public static bool IsToken(Font font)
+        {
+            foreach (var token in Tokens)
+                if (ReferenceEquals(font, token)) return true;
+            return false;
+        }
     }
 }

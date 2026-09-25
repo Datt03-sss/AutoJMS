@@ -202,19 +202,17 @@ public sealed class SiteContextProvider : ISiteContextProvider
             _promptedThisSession = true;
         }
 
-        string entered = "";
-        bool ok = false;
-        void Prompt() => ok = Sunny.UI.UIInputDialog.ShowInputStringDialog(
-            owner, ref entered,
-            checkEmpty: true,
-            desc: "Chưa xác định được mã bưu cục từ license. Vui lòng nhập mã bưu cục (Middle Code):",
-            showMask: true,
-            maxLength: 16);
+        // AInputDialog.Ask trả null khi bấm Huỷ. checkEmpty/maxLength của UIInputDialog
+        // bỏ đi được: NormalizeCode ngay dưới đã loại chuỗi rỗng và cắt về đúng dạng mã.
+        string? entered = null;
+        void Prompt() => entered = AutoJMS.UI.DesignSystem.AInputDialog.Ask(owner,
+            "Chưa xác định được mã bưu cục từ license. Vui lòng nhập mã bưu cục (Middle Code):",
+            "Mã bưu cục");
 
         if (owner.InvokeRequired) owner.Invoke((Action)Prompt);
         else Prompt();
 
-        if (!ok) return "";
+        if (entered == null) return "";
 
         string normalized = NormalizeCode(entered);
         if (normalized.Length == 0 || normalized == "0000") return "";

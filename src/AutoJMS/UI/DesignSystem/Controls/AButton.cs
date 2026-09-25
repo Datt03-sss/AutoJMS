@@ -1,8 +1,7 @@
-using System;
+﻿using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
-using Sunny.UI;
 
 namespace AutoJMS.UI.DesignSystem
 {
@@ -37,6 +36,7 @@ namespace AutoJMS.UI.DesignSystem
         private int _symbol;
         private int _symbolSize = ThemeMetrics.IconSizeDefault;
         private int _radius = ThemeRadius.Sm;
+        private Image _image;
 
         public AButton()
         {
@@ -54,7 +54,7 @@ namespace AutoJMS.UI.DesignSystem
             set { if (_variant == value) return; _variant = value; Invalidate(); }
         }
 
-        /// <summary>Mã ký tự FontAwesome (cùng bộ số với UISymbolButton.Symbol). 0 = không icon.</summary>
+        /// <summary>Mã icon lấy từ <see cref="ASymbols"/>. 0 = không icon.</summary>
         [DefaultValue(0)]
         public int Symbol
         {
@@ -74,6 +74,18 @@ namespace AutoJMS.UI.DesignSystem
         {
             get => _radius;
             set { if (_radius == value) return; _radius = value; Invalidate(); }
+        }
+
+        /// <summary>
+        /// Ảnh bitmap vẽ bên trái chữ — dành cho nút lấy icon từ .resx, thứ mà
+        /// <see cref="Symbol"/> (icon dạng font) không biểu diễn được.
+        /// Đặt cả hai thì Image thắng. Ảnh được co theo tỉ lệ cho vừa thân nút.
+        /// </summary>
+        [DefaultValue(null)]
+        public Image Image
+        {
+            get => _image;
+            set { if (_image == value) return; _image = value; Invalidate(); }
         }
 
         private struct Palette
@@ -147,31 +159,47 @@ namespace AutoJMS.UI.DesignSystem
         private void DrawContent(Graphics g, Rectangle body, Color fore)
         {
             bool hasText = !string.IsNullOrEmpty(Text);
-            int size = S(_symbolSize);
+            Size glyph = GlyphSize(body.Height);
 
-            if (_symbol == 0)
+            if (glyph.IsEmpty)
             {
                 if (hasText)
                     TextRenderer.DrawText(g, Text, Font, body, fore, ControlStyler.TextCenter);
                 return;
             }
 
-            if (!hasText)
+            // Icon + chữ: đo chữ rồi căn giữa cả cụm.
+            int gap = hasText ? S(ThemeSpacing.Xs) : 0;
+            int textWidth = hasText
+                ? TextRenderer.MeasureText(g, Text, Font, body.Size, ControlStyler.TextLeft).Width
+                : 0;
+            int x = body.X + Math.Max(0, (body.Width - (glyph.Width + gap + textWidth)) / 2);
+            var glyphRect = new Rectangle(x, body.Y + (body.Height - glyph.Height) / 2, glyph.Width, glyph.Height);
+
+            if (_image != null) g.DrawImage(_image, glyphRect);
+            else ASymbols.Draw(g, _symbol, S(_symbolSize), fore, glyphRect);
+
+            if (hasText)
+                TextRenderer.DrawText(g, Text, Font,
+                    new Rectangle(glyphRect.Right + gap, body.Y, body.Right - glyphRect.Right - gap, body.Height),
+                    fore, ControlStyler.TextLeft);
+        }
+
+        /// <summary>Kích thước phần icon. Rỗng = nút chỉ có chữ.</summary>
+        private Size GlyphSize(int bodyHeight)
+        {
+            if (_image != null)
             {
-                g.DrawFontImage(_symbol, size, fore, body);
-                return;
+                // Ảnh .resx có kích thước tuỳ ý; co theo tỉ lệ cho lọt thân nút.
+                int max = Math.Max(1, bodyHeight - S(ThemeSpacing.Xs) * 2);
+                return _image.Height <= max
+                    ? _image.Size
+                    : new Size(Math.Max(1, _image.Width * max / _image.Height), max);
             }
 
-            // Icon + chữ: đo chữ rồi căn giữa cả cụm.
-            int gap = S(ThemeSpacing.Xs);
-            Size textSize = TextRenderer.MeasureText(g, Text, Font, body.Size, ControlStyler.TextLeft);
-            int total = size + gap + textSize.Width;
-            int x = body.X + Math.Max(0, (body.Width - total) / 2);
-
-            g.DrawFontImage(_symbol, size, fore, new Rectangle(x, body.Y, size, body.Height));
-            TextRenderer.DrawText(g, Text, Font,
-                new Rectangle(x + size + gap, body.Y, body.Width - (x - body.X) - size - gap, body.Height),
-                fore, ControlStyler.TextLeft);
+            if (_symbol == 0) return Size.Empty;
+            int size = S(_symbolSize);
+            return new Size(size, size);
         }
 
         /// <summary>Kích hoạt như vừa được bấm. Control không có sẵn như Button.</summary>
@@ -187,8 +215,10 @@ namespace AutoJMS.UI.DesignSystem
 
             if (!string.IsNullOrEmpty(Text))
                 w += TextRenderer.MeasureText(Text, Font).Width;
-            if (_symbol != 0)
-                w += S(_symbolSize) + (string.IsNullOrEmpty(Text) ? 0 : S(ThemeSpacing.Xs));
+
+            Size glyph = GlyphSize(Height);
+            if (!glyph.IsEmpty)
+                w += glyph.Width + (string.IsNullOrEmpty(Text) ? 0 : S(ThemeSpacing.Xs));
 
             return new Size(
                 Math.Max(w, S(ThemeMetrics.MinTouchTarget)),

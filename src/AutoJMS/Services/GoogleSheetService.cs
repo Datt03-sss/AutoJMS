@@ -1,5 +1,4 @@
 using Google;
-using Sunny.UI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -141,9 +140,9 @@ namespace AutoJMS
                 if (owner == null) return;
 
                 if (owner.InvokeRequired)
-                    owner.BeginInvoke(new Action(() => SafeShowTip(message)));
+                    owner.BeginInvoke(new Action(() => SafeShowTip(owner, message)));
                 else
-                    SafeShowTip(message);
+                    SafeShowTip(owner, message);
             }
             catch (Exception ex)
             {
@@ -151,9 +150,9 @@ namespace AutoJMS
             }
         }
 
-        private static void SafeShowTip(string message)
+        private static void SafeShowTip(Form owner, string message)
         {
-            try { UIMessageTip.ShowWarning(message); } catch { }
+            try { AutoJMS.UI.DesignSystem.AToast.Warning(owner, message); } catch { }
         }
 
         public static bool CanUseGoogleSheetFeature()

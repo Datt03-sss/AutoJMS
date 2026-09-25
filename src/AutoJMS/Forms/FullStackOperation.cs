@@ -1,4 +1,4 @@
-using Sunny.UI;
+using AutoJMS.UI.DesignSystem;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -21,7 +21,7 @@ using AutoJMS.FullStack.UI.ThoiHieu;
 
 namespace AutoJMS
 {
-    public partial class FullStackOperation : UIForm
+    public partial class FullStackOperation : Form
     {
         private const string CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -51,10 +51,10 @@ namespace AutoJMS
         private TabPage _tabDetail;
         private readonly System.Windows.Forms.Timer _alertCheckTimer = new();
         private int _lastCriticalAlertCount = 0;
-        private UILabel[] _detailLabels;
-        private Sunny.UI.UIPanel _detailSlaCard;
-        private UILabel _detailSlaValue;
-        private UILabel _detailAgeValue;
+        private Label[] _detailLabels;
+        private Panel _detailSlaCard;
+        private Label _detailSlaValue;
+        private Label _detailAgeValue;
 
         // Thoi Hieu tab
         private TabPage _tabThoiHieu;
@@ -67,12 +67,12 @@ namespace AutoJMS
         private Button _thoiHieuOpenExportFolderButton;
         private Label _thoiHieuStatusLabel;
         private string _lastThoiHieuExportPath = string.Empty;
-        private Sunny.UI.UITableLayoutPanel _thoiHieuLayout;
-        private Sunny.UI.UIDataGridView _thoiHieuGrid;
+        private TableLayoutPanel _thoiHieuLayout;
+        private DataGridView _thoiHieuGrid;
         private System.Windows.Forms.Timer _thoiHieuTimer;
         private List<ThoiHieuRow> _thoiHieuGridData = new();
         private Label _thoiHieuFooterLabel;
-        private UIComboBox _thoiHieuShipperFilter;
+        private AComboBox _thoiHieuShipperFilter;
         private TextBox _thoiHieuFilterText;
 
         // Cell fonts for thoiHieuGrid_CellFormatting. CellFormatting fires once per visible
@@ -97,7 +97,7 @@ namespace AutoJMS
         private TextBox _dashSearchBox;
         private DateTimePicker _dashDateFrom;
         private DateTimePicker _dashDateTo;
-        private UISymbolButton _dashExportBtn;
+        private AButton _dashExportBtn;
         private Label _dashFilterInfo;
         private List<int> _kpiHistory = new();
         private string _lastDataHash = string.Empty;
@@ -478,12 +478,9 @@ namespace AutoJMS
             grid.EnableHeadersVisualStyles = false;
             grid.DataError -= FullStackGrid_DataError;
             grid.DataError += FullStackGrid_DataError;
-            if (grid is Sunny.UI.UIDataGridView uiGrid)
-            {
-                uiGrid.Style = UIStyle.Custom;               // freeze theme so SunnyUI won't re-light the cells
-                uiGrid.StripeOddColor = GridDarkBg;
-                uiGrid.StripeEvenColor = GridDarkAltBg;
-            }
+            // Nhánh "đóng băng theme của SunnyUI" bỏ hẳn: DataGridView gốc không tự tô lại
+            // ô bao giờ, nên bảng màu tối đặt ở trên là trạng thái cuối cùng. Hai dòng
+            // Stripe* cũng chỉ lặp lại đúng Rows/AlternatingRows đã đặt ngay phía trên.
         }
 
         private async Task InitializeLocalFullStackAsync()
@@ -2657,30 +2654,26 @@ namespace AutoJMS
             _tabDetail.UseVisualStyleBackColor = true;
             uiTabControl2.TabPages.Add(_tabDetail);
 
-            var outerLayout = new Sunny.UI.UITableLayoutPanel();
+            var outerLayout = new TableLayoutPanel();
             outerLayout.Dock = DockStyle.Fill;
             outerLayout.ColumnCount = 2;
             outerLayout.RowCount = 1;
             outerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             outerLayout.Margin = new Padding(0);
-            outerLayout.TagString = null;
 
             // Lef t: Info grid
-            var infoPanel = new Sunny.UI.UIPanel();
+            var infoPanel = new APanel();
             infoPanel.Dock = DockStyle.Fill;
             infoPanel.Margin = new Padding(5);
             infoPanel.Padding = new Padding(10);
             infoPanel.Font = new Font("Microsoft Sans Serif", 12F);
-            infoPanel.Text = null;
-            infoPanel.TextAlignment = ContentAlignment.MiddleCenter;
 
-            var infoLayout = new Sunny.UI.UITableLayoutPanel();
+            var infoLayout = new TableLayoutPanel();
             infoLayout.Dock = DockStyle.Fill;
             infoLayout.ColumnCount = 2;
             infoLayout.RowCount = 14;
             infoLayout.Margin = new Padding(0);
             infoLayout.Padding = new Padding(5);
-            infoLayout.TagString = null;
             for (int r = 0; r < 14; r++)
                 infoLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
 
@@ -2699,10 +2692,10 @@ namespace AutoJMS
                 "DauChuyenHoan", "PrintCount"
             };
 
-            _detailLabels = new UILabel[fieldLabels.Length];
+            _detailLabels = new Label[fieldLabels.Length];
             for (int i = 0; i < fieldLabels.Length; i++)
             {
-                var lbl = new UILabel();
+                var lbl = new Label();
                 lbl.Text = fieldLabels[i];
                 lbl.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
                 lbl.ForeColor = Color.FromArgb(80, 80, 80);
@@ -2712,7 +2705,7 @@ namespace AutoJMS
                 lbl.AutoSize = false;
                 lbl.Height = 28;
 
-                var val = new UILabel();
+                var val = new Label();
                 val.Text = "-";
                 val.Font = new Font("Segoe UI", 11F);
                 val.ForeColor = Color.FromArgb(30, 30, 30);
@@ -2731,33 +2724,30 @@ namespace AutoJMS
             outerLayout.Controls.Add(infoPanel, 0, 0);
 
             // Right SLA, Age, Actions
-            var rightPanel = new Sunny.UI.UIPanel();
+            var rightPanel = new APanel();
             rightPanel.Dock = DockStyle.Fill;
             rightPanel.Margin = new Padding(5);
             rightPanel.Padding = new Padding(10);
             rightPanel.Font = new Font("Microsoft Sans Serif", 12F);
-            rightPanel.Text = null;
-            rightPanel.TextAlignment = ContentAlignment.MiddleCenter;
 
-            var rightLayout = new Sunny.UI.UITableLayoutPanel();
+            var rightLayout = new TableLayoutPanel();
             rightLayout.Dock = DockStyle.Fill;
             rightLayout.ColumnCount = 1;
             rightLayout.RowCount = 3;
             rightLayout.Margin = new Padding(0);
-            rightLayout.TagString = null;
             rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120F));
             rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120F));
             rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-            _detailSlaCard = new Sunny.UI.UIPanel();
+            // Panel thường chứ không phải APanel: nền thẻ này mang nghĩa mức SLA
+            // (lục / vàng / đỏ, đặt lại ở UpdateDetailPanel), APanel thì luôn tô surface.
+            _detailSlaCard = new Panel();
             _detailSlaCard.Dock = DockStyle.Fill;
             _detailSlaCard.Margin = new Padding(3);
             _detailSlaCard.MinimumSize = new Size(1, 1);
-            _detailSlaCard.FillColor = Color.FromArgb(240, 255, 240);
-            _detailSlaCard.Text = null;
-            _detailSlaCard.TextAlignment = ContentAlignment.MiddleCenter;
+            _detailSlaCard.BackColor = Color.FromArgb(240, 255, 240);
 
-            var slaTitle = new UILabel();
+            var slaTitle = new Label();
             slaTitle.Text = "THỜI HIỆU SLA";
             slaTitle.Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold);
             slaTitle.ForeColor = Color.FromArgb(48, 48, 48);
@@ -2766,7 +2756,7 @@ namespace AutoJMS
             slaTitle.Height = 35;
             slaTitle.Margin = new Padding(5);
 
-            _detailSlaValue = new UILabel();
+            _detailSlaValue = new Label();
             _detailSlaValue.Text = "Đang tính...";
             _detailSlaValue.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
             _detailSlaValue.TextAlign = ContentAlignment.MiddleCenter;
@@ -2776,15 +2766,13 @@ namespace AutoJMS
             _detailSlaCard.Controls.Add(slaTitle);
             rightLayout.Controls.Add(_detailSlaCard, 0, 0);
 
-            var ageCard = new Sunny.UI.UIPanel();
+            var ageCard = new Panel();
             ageCard.Dock = DockStyle.Fill;
             ageCard.Margin = new Padding(3);
             ageCard.MinimumSize = new Size(1, 1);
-            ageCard.FillColor = Color.FromArgb(240, 248, 255);
-            ageCard.Text = null;
-            ageCard.TextAlignment = ContentAlignment.MiddleCenter;
+            ageCard.BackColor = Color.FromArgb(240, 248, 255);
 
-            var ageTitle = new UILabel();
+            var ageTitle = new Label();
             ageTitle.Text = "THỜI GIAN TỒN KHO";
             ageTitle.Font = new Font("Segoe UI Semibold", 13F, FontStyle.Bold);
             ageTitle.ForeColor = Color.FromArgb(48, 48, 48);
@@ -2793,7 +2781,7 @@ namespace AutoJMS
             ageTitle.Height = 35;
             ageTitle.Margin = new Padding(5);
 
-            _detailAgeValue = new UILabel();
+            _detailAgeValue = new Label();
             _detailAgeValue.Text = "Đang tính...";
             _detailAgeValue.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
             _detailAgeValue.TextAlign = ContentAlignment.MiddleCenter;
@@ -2803,12 +2791,10 @@ namespace AutoJMS
             ageCard.Controls.Add(ageTitle);
             rightLayout.Controls.Add(ageCard, 0, 1);
 
-            var actionPanel = new Sunny.UI.UIPanel();
+            var actionPanel = new APanel();
             actionPanel.Dock = DockStyle.Fill;
             actionPanel.Margin = new Padding(3);
             actionPanel.MinimumSize = new Size(1, 1);
-            actionPanel.Text = null;
-            actionPanel.TextAlignment = ContentAlignment.MiddleCenter;
 
             var actionFlow = new FlowLayoutPanel();
             actionFlow.Dock = DockStyle.Fill;
@@ -2816,17 +2802,18 @@ namespace AutoJMS
             actionFlow.Padding = new Padding(10);
             actionFlow.AutoScroll = true;
 
+            // Mã biểu tượng đổi từ FontAwesome (SunnyUI) sang MDL2 — xem ASymbols.
             var actions = new (string Text, int Symbol)[]
             {
-                ("Gửi Zalo reminder", 61973),
-                ("In chuyển hoàn", 61665),
-                ("In lại đơn", 61641),
-                ("Xem trên JMS", 61702)
+                ("Gửi Zalo reminder", ASymbols.Send),
+                ("In chuyển hoàn", ASymbols.Back),
+                ("In lại đơn", ASymbols.Print),
+                ("Xem trên JMS", ASymbols.View)
             };
 
             foreach (var act in actions)
             {
-                var btn = new Sunny.UI.UISymbolButton();
+                var btn = new AButton();
                 btn.Text = act.Text;
                 btn.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
                 btn.Size = new Size(200, 42);
@@ -2850,7 +2837,7 @@ namespace AutoJMS
 
         private void DetailActionButton_Click(object sender, EventArgs e)
         {
-            var btn = sender as Sunny.UI.UISymbolButton;
+            var btn = sender as AButton;
             if (btn == null) return;
             string action = btn.Tag?.ToString() ?? "";
             if (tabDash_dataGridView.CurrentRow == null) { MessageBox.Show("Không có đơn nào được chọn.", "Thông báo"); return; }
@@ -3041,17 +3028,17 @@ namespace AutoJMS
 
             if (warnLvl == "Nghiêm trọng")
             {
-                _detailSlaCard.FillColor = Color.FromArgb(255, 220, 220);
+                _detailSlaCard.BackColor = Color.FromArgb(255, 220, 220);
                 _detailSlaValue.ForeColor = Color.DarkRed;
             }
             else if (warnLvl == "Cảnh báo")
             {
-                _detailSlaCard.FillColor = Color.FromArgb(255, 250, 210);
+                _detailSlaCard.BackColor = Color.FromArgb(255, 250, 210);
                 _detailSlaValue.ForeColor = Color.FromArgb(180, 140, 0);
             }
             else
             {
-                _detailSlaCard.FillColor = Color.FromArgb(220, 255, 220);
+                _detailSlaCard.BackColor = Color.FromArgb(220, 255, 220);
                 _detailSlaValue.ForeColor = Color.DarkGreen;
             }
 
@@ -3115,7 +3102,7 @@ namespace AutoJMS
                 uiTabControl1.TabPages.Insert(1, _tabThoiHieu);
 
             _tabThoiHieu.Controls.Clear();
-            _thoiHieuLayout = new Sunny.UI.UITableLayoutPanel
+            _thoiHieuLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
@@ -3311,7 +3298,7 @@ namespace AutoJMS
 
                 UpdateThoiHieuStatus($"Đã xuất ảnh: {path}");
                 AppLogger.Info($"ThoiHieu full image exported: {path}");
-                try { UIMessageTip.Show("Đã xuất ảnh thời hiệu."); } catch { }
+                try { AToast.Show(this, "Đã xuất ảnh thời hiệu."); } catch { }
             }
             catch (OperationCanceledException)
             {
@@ -3377,17 +3364,19 @@ namespace AutoJMS
 
         private void CreateThoiHieuBanner()
         {
-            var banner = new UIPanel();
+            // UIPanel này chỉ dùng để in MỘT dòng chữ trên nền màu, nên Label đúng hơn:
+            // Panel thường không tự vẽ Text, còn APanel thì luôn tô màu surface của theme.
+            var banner = new Label();
             banner.Dock = DockStyle.Fill;
             banner.Margin = new Padding(0, 0, 0, 2);
-            banner.FillColor = Color.FromArgb(169, 223, 191); // #A9DFBF
+            banner.BackColor = Color.FromArgb(169, 223, 191); // #A9DFBF
             string bannerSite = SiteContextProvider.Get();
             banner.Text = bannerSite.Length == 0
                 ? "BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN"
                 : $"BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN {bannerSite}";
             banner.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
             banner.ForeColor = Color.White;
-            banner.TextAlignment = ContentAlignment.MiddleCenter;
+            banner.TextAlign = ContentAlignment.MiddleCenter;
             banner.MinimumSize = new Size(1, 1);
             _thoiHieuLayout.Controls.Add(banner, 0, 0);
         }
@@ -3411,14 +3400,12 @@ namespace AutoJMS
 
             for (int i = 0; i < titles.Length; i++)
             {
-                var card = new UIPanel();
+                // Nền chuyển sắc bỏ đi: DESIGN.md §I cấm gradient. Còn lại một màu đặc,
+                // đúng FillColor cũ.
+                var card = new Panel();
                 card.Size = new Size(260, 89);
                 card.Margin = new Padding(3, 3, 3, 3);
-                card.FillColor = bgColors[i];
-                card.FillColor2 = ControlPaint.Dark(bgColors[i]);
-                card.FillColorGradient = (i < 4);
-                card.FillColorGradientDirection = FlowDirection.LeftToRight;
-                card.Text = string.Empty;
+                card.BackColor = bgColors[i];
                 card.Padding = new Padding(10, 5, 10, 5);
 
                 var titleLbl = new Label();
@@ -3532,11 +3519,10 @@ namespace AutoJMS
 
         private void CreateThoiHieuFilterRow()
         {
-            var filterPanel = new UIPanel();
+            var filterPanel = new Panel();
             filterPanel.Dock = DockStyle.Fill;
             filterPanel.Margin = new Padding(0, 0, 0, 2);
-            filterPanel.FillColor = Color.FromArgb(245, 245, 245);
-            filterPanel.Text = string.Empty;
+            filterPanel.BackColor = Color.FromArgb(245, 245, 245);
 
             var flow = new FlowLayoutPanel();
             flow.Dock = DockStyle.Left;
@@ -3563,7 +3549,7 @@ namespace AutoJMS
             spacer.TextAlign = ContentAlignment.MiddleLeft;
             spacer.AutoSize = true;
 
-            _thoiHieuShipperFilter = new UIComboBox();
+            _thoiHieuShipperFilter = new AComboBox();
             _thoiHieuShipperFilter.Width = 200;
             _thoiHieuShipperFilter.Font = new Font("Segoe UI", 9F);
             _thoiHieuShipperFilter.Margin = new Padding(0, 0, 5, 0);
@@ -3579,7 +3565,7 @@ namespace AutoJMS
 
         private void CreateThoiHieuGrid()
         {
-            _thoiHieuGrid = new Sunny.UI.UIDataGridView();
+            _thoiHieuGrid = new DataGridView();
             _thoiHieuGrid.Dock = DockStyle.Fill;
             _thoiHieuGrid.Margin = new Padding(0, 0, 0, 2);
             _thoiHieuGrid.AutoGenerateColumns = false;
@@ -3596,8 +3582,8 @@ namespace AutoJMS
             _thoiHieuGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
             _thoiHieuGrid.DefaultCellStyle.Font = new Font("Segoe UI", 7.5F, FontStyle.Regular);
             _thoiHieuGrid.BackgroundColor = Color.White;
-            _thoiHieuGrid.StripeOddColor = Color.White;
-            _thoiHieuGrid.StripeEvenColor = Color.White;
+            // Stripe*Color bỏ: của SunnyUI, cả hai đều White (= không sọc) và bị
+            // AlternatingRowsDefaultCellStyle ngay dưới ghi đè.
             _thoiHieuGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
             _thoiHieuGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
             _thoiHieuGrid.EnableHeadersVisualStyles = false;
@@ -3983,11 +3969,10 @@ namespace AutoJMS
 
         private void CreateThoiHieuFooter()
         {
-            var footer = new UIPanel();
+            var footer = new Panel();
             footer.Dock = DockStyle.Fill;
             footer.Margin = new Padding(0, 0, 0, 0);
-            footer.FillColor = Color.Red;
-            footer.Text = string.Empty;
+            footer.BackColor = Color.Red;
 
             _thoiHieuFooterLabel = new Label();
             _thoiHieuFooterLabel.Dock = DockStyle.Fill;
