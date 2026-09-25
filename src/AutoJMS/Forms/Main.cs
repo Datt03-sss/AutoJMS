@@ -983,12 +983,11 @@ namespace AutoJMS
             grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None;
             grid.RowTemplate.Height = 27;
             grid.ColumnHeadersHeight = 34;
-            // Cỡ chữ ĐẦU CỘT để một mình ADataGridView.ApplyTheme() giữ. Đặt thêm ở đây là
-            // hai nơi cùng ghi một thuộc tính với hai giá trị khác nhau, và bề rộng cột bảng
-            // IN ĐƠN lại chụp lấy giá trị đang có: AutoSizePrintGridColumns() đo bằng 7.5F
-            // (rộng 94px, cột thành 118px) trong khi bảng VẼ bằng ThemeTypography.GridHeader
-            // 9F (rộng 109px, chỗ dùng được chỉ 100px) - thiếu 9px nên đầu cột xuống dòng và
-            // vỡ giữa từ ("Nhân viên lấy h|àng"). Cỡ chữ Ô vẫn giữ 8.5F/7.5F như cũ.
+            // Cỡ chữ ĐẦU CỘT để một mình ADataGridView.ApplyTheme() giữ - đặt thêm ở đây là
+            // hai nơi cùng ghi một thuộc tính với hai giá trị khác nhau. (Không phải nguyên
+            // nhân vụ đầu cột IN ĐƠN vỡ giữa từ: đo bằng log trong app thì font lúc đo luôn
+            // là Segoe UI Semibold 9F. Thủ phạm nằm ở PrintService.RebuildTable.)
+            // Cỡ chữ Ô vẫn giữ 8.5F/7.5F như cũ.
             float gridFontSize = grid == tabTracking_dataView ? 8.5F : 7.5F;
             grid.DefaultCellStyle.Font = new Font("Segoe UI", gridFontSize, FontStyle.Regular);
             grid.DataError -= MainGrid_DataError;
@@ -1301,12 +1300,30 @@ namespace AutoJMS
                 BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.TopLeft,
                 // Dock.Fill ghim Label đúng chiều cao ô nên chữ thừa bị xén mất.
-                // Dock.Top + AutoSize cho Label tự cao theo chữ đã ngắt dòng, phần vượt
-                // ra ngoài thẻ thì AutoScroll của summaryPanel lo.
+                // Dock.Top + AutoSize cho Label tự cao theo chữ, phần vượt ra ngoài thẻ
+                // thì AutoScroll của summaryPanel lo.
                 Dock = DockStyle.Top,
                 AutoSize = true,
+                // Đổi sang đường vẽ chữ GDI+ CHO RIÊNG nhãn này. Đường mặc định của app là GDI
+                // (Program.cs gọi SetCompatibleTextRenderingDefault(false)), mà DrawText của GDI
+                // ngắt dòng tiếng Việt ngay giữa từ tại ký tự có dấu khi dòng không vừa:
+                // "quy|ền", "vận hà|nh", "th|ực tế". Dựng lại ngoài app ở bề rộng 420px thì GDI
+                // vỡ y hệt còn GDI+ ngắt đúng chỗ có dấu cách. Cùng gốc với vụ đầu cột IN ĐƠN.
+                UseCompatibleTextRendering = true,
                 Padding = new Padding(0, 6, 0, 0)
             };
+
+            // AutoSize=true MỘT MÌNH lại TẮT ngắt dòng: Label.GetPreferredSize bỏ qua bề rộng
+            // do Dock.Top áp xuống khi MaximumSize.Width = 0, nên nó nở ngang theo dòng dài
+            // nhất rồi bị thẻ xén cụt đuôi ("...và quyền đượ|"). Ghim MaximumSize.Width theo
+            // bề ngang dùng được của thẻ vừa bật lại ngắt dòng vừa để AutoSize lo chiều cao.
+            // Phải đi theo ClientSize (KHÔNG phải DisplayRectangle): khi thanh cuộn dọc hiện,
+            // chỉ ClientSize hụt đi, DisplayRectangle vẫn giữ bề rộng ảo.
+            void SyncSummaryBodyWidth() => body.MaximumSize = new Size(
+                Math.Max(1, summaryPanel.ClientSize.Width - summaryPanel.Padding.Horizontal), 0);
+
+            summaryPanel.ClientSizeChanged += (s, e) => SyncSummaryBodyWidth();
+            SyncSummaryBodyWidth();
 
             summaryPanel.Controls.Add(body);
             summaryPanel.Controls.Add(title);

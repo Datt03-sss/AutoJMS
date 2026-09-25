@@ -279,6 +279,14 @@ namespace AutoJMS
             }
 
             LoadDataToGrid();
+            // Cột chỉ ra đời Ở ĐÂY, do AutoGenerateColumns sinh theo _displayTable. SetupGrid()
+            // đã gọi DisableSorting() nhưng lúc đó grid còn 0 cột nên lệnh ấy không chạm được ai:
+            // mọi cột mới vẫn giữ SortMode mặc định Automatic. DataGridView chừa sẵn ~13px bề
+            // ngang mỗi đầu cột cho mũi tên sắp xếp, trong khi phần bù +24 của
+            // AutoSizePrintGridColumns chỉ đủ padding 16 + viền 2 - thiếu chỗ nên đầu cột xuống
+            // dòng và vỡ giữa từ ("Nhân viên lấy h|àng"). Gọi lại khi cột đã có vừa trả lại 13px
+            // vừa tắt sắp xếp đúng như SetupGrid định làm. Phải đứng TRƯỚC hàm đo bề rộng.
+            DisableSorting();
             SetColumnAlignments();
             AutoSizePrintGridColumns();
         }
