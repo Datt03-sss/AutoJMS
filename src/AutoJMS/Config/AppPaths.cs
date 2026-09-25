@@ -84,6 +84,41 @@ namespace AutoJMS
         }
 
         /// <summary>
+        /// Ghi đè file văn bản mà không để lại file rỗng khi máy tắt cứng giữa chừng.
+        ///
+        /// File.WriteAllText ghi thẳng lên file đích: NTFS cập nhật kích thước mới vào MFT
+        /// ngay lập tức còn nội dung thì còn nằm trong page cache. Mất điện đúng lúc đó thì
+        /// lần khởi động sau file dựng lại ĐÚNG kích thước nhưng toàn byte 0 — đã xảy ra
+        /// thật với license.dat (373 byte, cả 373 đều 0x00), làm app mất hẳn bản quyền đã
+        /// kích hoạt. Ghi ra file tạm rồi đổi chỗ thì file đích không bao giờ ở trạng thái
+        /// dở dang: hỏng thì cùng lắm mất bản ghi MỚI, bản cũ vẫn dùng được.
+        ///
+        /// Flush(flushToDisk: true) là bắt buộc chứ không phải cho chắc: thiếu nó thì dữ
+        /// liệu của chính file tạm cũng đang nằm trong page cache, đổi chỗ xong vẫn zero
+        /// được y như cũ — chỉ khác là zero một file mới toanh thay vì file cũ.
+        ///
+        /// File.Replace được NTFS ghi nhật ký nên bản thân bước đổi chỗ là nguyên tử, nhưng
+        /// nó đòi file đích phải tồn tại sẵn; lần ghi đầu tiên phải rơi về File.Move.
+        /// </summary>
+        public static void AtomicWriteAllText(string path, string content)
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            var temp = path + ".tmp";
+            using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(stream))
+            {
+                writer.Write(content);
+                writer.Flush();              // StreamWriter -> FileStream
+                stream.Flush(flushToDisk: true); // FileStream -> đĩa thật
+            }
+
+            if (File.Exists(path)) File.Replace(temp, path, null);
+            else File.Move(temp, path);
+        }
+
+        /// <summary>
         /// First-run migration: copy bundled read-only data (modules, AutoJMS.json template)
         /// from the install dir into the writable UserData dir.
         /// </summary>

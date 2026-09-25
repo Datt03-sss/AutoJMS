@@ -447,9 +447,16 @@ namespace AutoJMS
             {
                 string rawData = $"{licenseKey}||{hwid}";
                 string encryptedData = SecureConfigCrypto.ProtectString(rawData, BuildCacheSecret(hwid));
-                File.WriteAllText(cacheFilePath, encryptedData);
+                // KHÔNG dùng File.WriteAllText ở đây: nó ghi đè thẳng file đích nên tắt cứng
+                // giữa chừng để lại license.dat đúng kích thước mà toàn byte 0, app mất hẳn
+                // bản quyền đã kích hoạt. Xem AppPaths.AtomicWriteAllText.
+                AppPaths.AtomicWriteAllText(cacheFilePath, encryptedData);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // Không ghi licenseKey/hwid ra log (Secret Policy) - chỉ loại lỗi và thông điệp.
+                AppLogger.Warning($"SaveLocalCache: không ghi được license.dat: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         private static string? ReadLocalCache(string currentHwid)
@@ -463,7 +470,14 @@ namespace AutoJMS
                 if (parts.Length == 2 && parts[1] == currentHwid) return parts[0];
                 return null;
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                // catch rỗng trước đây nuốt trọn JsonException của file license.dat bị zero
+                // hoá, nên triệu chứng "mở app lên thẳng dialog kích hoạt" không để lại một
+                // dòng nào trong debug.log. Trả null vẫn là hành vi đúng - chỉ thêm dấu vết.
+                AppLogger.Warning($"ReadLocalCache: license.dat không đọc được: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
         }
 
         public static void DeleteLocalCache() { try { if (File.Exists(cacheFilePath)) File.Delete(cacheFilePath); } catch { } }
