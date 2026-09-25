@@ -46,8 +46,7 @@ namespace AutoJMS
         // ApplyReprintEditingState). Owner chốt mức 10.
         private const int ReprintBulkEditLimit = 10;
 
-        // Con mắt mở / con mắt gạch chéo. Mã MDL2 chứ không còn là mã FontAwesome của
-        // SunnyUI — xem ASymbols.
+        // Con mắt mở / con mắt gạch chéo. Mã MDL2 — xem ASymbols.
         private const int ReprintSymbolEyeOpen = ASymbols.View;
         private const int ReprintSymbolEyeClosed = ASymbols.Hide;
 
@@ -368,10 +367,10 @@ namespace AutoJMS
 
         private ATextBox NewReprintTextBox(string name, string watermark, bool multiline)
         {
-            // PlaceholderText là chữ mờ sẵn có của TextBox trong WinForms nên bỏ được cả
-            // cụm vá của SunnyUI: màu chữ mờ, ShowText, và hàm gán lại Watermark sau khi
-            // control có handle. TextAlignment/Padding cũng bỏ — ATextBox.OnLayout tự căn
-            // giữa ô một dòng và căn trên ô nhiều dòng.
+            // PlaceholderText là chữ mờ sẵn có của TextBox trong WinForms nên không phải
+            // tự tô màu chữ mờ hay gán lại watermark sau khi control có handle.
+            // TextAlignment/Padding cũng không cần — ATextBox.OnLayout tự căn giữa ô một
+            // dòng và căn trên ô nhiều dòng.
             var box = new ATextBox
             {
                 Name = name,

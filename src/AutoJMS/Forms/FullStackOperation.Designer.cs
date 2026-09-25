@@ -28,8 +28,6 @@ namespace AutoJMS
             // 
             ClientSize = new Size(800, 480);
             Name = "FullStackOperation";
-            // ZoomScaleRect bỏ: thuộc tính của UIForm, dùng cho cơ chế tự co giãn
-            // riêng của SunnyUI. Form chuẩn co giãn bằng AutoScaleMode.
             ResumeLayout(false);
             // Intentionally empty. FullStackOperation builds all UI in code.
         }

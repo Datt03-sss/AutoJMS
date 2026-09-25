@@ -222,8 +222,8 @@ namespace AutoJMS
             //
             // uiPanel8
             //
-            // Khối giới thiệu + bản quyền nay là một ACard: bo góc, viền và nền lấy
-            // từ token theme. Radius = 15 của SunnyUI bỏ đi — ACard dùng ThemeRadius.Md.
+            // Khối giới thiệu + bản quyền là một ACard: bo góc, viền và nền lấy
+            // từ token theme (ACard dùng ThemeRadius.Md).
             uiPanel8.Controls.Add(uiTableLayoutPanel22);
             uiPanel8.Dock = DockStyle.Fill;
             uiPanel8.Location = new Point(0, 0);
@@ -308,8 +308,8 @@ namespace AutoJMS
             // 
             // tabAbout_btnCheckUpdate
             // 
-            // Hành động chính của trang ABOUT nên Variant = Primary; Fill*Color và
-            // Radius = 30 của SunnyUI bỏ đi, màu và bo góc nay do token theme quyết định.
+            // Hành động chính của trang ABOUT nên Variant = Primary; màu và bo góc
+            // do token theme quyết định.
             tabAbout_btnCheckUpdate.Anchor = AnchorStyles.Top;
             tabAbout_btnCheckUpdate.Location = new Point(150, 175);
             tabAbout_btnCheckUpdate.Margin = new Padding(5);
@@ -339,8 +339,8 @@ namespace AutoJMS
             //
             // uiLinkLabel1
             //
-            // LinkLabel chuẩn: màu link do AppTheme tô theo token, nên bỏ hết
-            // ActiveLink/Visited/LinkColor cứng của SunnyUI.
+            // LinkLabel chuẩn: màu link do AppTheme tô theo token, không đặt cứng
+            // ActiveLink/Visited/LinkColor ở đây.
             uiLinkLabel1.Dock = DockStyle.Fill;
             uiLinkLabel1.Font = AutoJMS.UI.DesignSystem.ThemeTypography.Body;
             uiLinkLabel1.LinkBehavior = LinkBehavior.HoverUnderline;
@@ -408,8 +408,8 @@ namespace AutoJMS
             tabPrint_dataView.Location = new Point(5, 240);
             tabPrint_dataView.Margin = new Padding(5);
             tabPrint_dataView.Name = "tabPrint_dataView";
-            // Bảng in có 5-9 cột tuỳ tab con và bản SunnyUI kẻ cả đường dọc. Giữ nguyên:
-            // ADataGridView mặc định chỉ kẻ ngang, để mặc định là đổi bố cục đang chạy.
+            // Bảng in có 5-9 cột tuỳ tab con nên kẻ cả đường dọc. ADataGridView mặc định
+            // chỉ kẻ ngang, để mặc định là đổi bố cục đang chạy.
             tabPrint_dataView.ShowVerticalLines = true;
             tabPrint_dataView.Size = new Size(1, 1);
             tabPrint_dataView.TabIndex = 4;
@@ -441,8 +441,8 @@ namespace AutoJMS
             uiPanel19.Margin = new Padding(0, 0, 5, 0);
             uiPanel19.MinimumSize = new Size(1, 1);
             uiPanel19.Name = "uiPanel19";
-            // Elevation.Background = tô nền, KHÔNG viền - đúng thứ ShowBorder = false của
-            // SunnyUI làm. Đây là khung gom hai ô đếm, không phải card nên không cần viền.
+            // Elevation.Background = tô nền, KHÔNG viền. Đây là khung gom hai ô đếm,
+            // không phải card nên không cần viền.
             uiPanel19.Elevation = AutoJMS.UI.DesignSystem.ThemeShadows.Elevation.Background;
             uiPanel19.Radius = 0;
             uiPanel19.Size = new Size(1, 35);
@@ -498,7 +498,7 @@ namespace AutoJMS
             tabPrint_btnSelectAll.Font = new Font("Segoe UI Semibold", 12F, FontStyle.Bold);
             tabPrint_btnSelectAll.Location = new Point(5, 0);
             // AutoSize của ACheckBox đo ô vuông + chữ ra ~125px; MinimumSize giữ đúng
-            // bề ngang 150 của bản SunnyUI để hai panel đếm số bên phải không bị xê.
+            // bề ngang 150 để hai panel đếm số bên phải không bị xê.
             tabPrint_btnSelectAll.MinimumSize = new Size(150, 35);
             tabPrint_btnSelectAll.Name = "tabPrint_btnSelectAll";
             tabPrint_btnSelectAll.Size = new Size(150, 35);
@@ -567,9 +567,8 @@ namespace AutoJMS
             // 
             // ATabControl phủ trang kín vùng client nên dải tab gốc của comctl32 không
             // hiện; phần nhìn do tabPrint_printTabs vẽ, đúng cách app shell đang làm.
-            // Mọi màu Tab*Color của SunnyUI theo đó mà bỏ — nay là token theme.
-            // ItemSize/SizeMode/DrawMode cũng bỏ: thanh mới tự đo chữ và tự co khi hẹp,
-            // nên FitPrintTabHeaders() lẫn PremiumTabAccent đều không còn việc.
+            // Màu lấy từ token theme; ItemSize/SizeMode/DrawMode không đặt vì thanh mới
+            // tự đo chữ và tự co khi hẹp.
             tabPrint_printFunc.Controls.Add(tabPrint_inCH);
             tabPrint_printFunc.Controls.Add(tabPrint_inCT);
             tabPrint_printFunc.Controls.Add(tabPrint_inLaiDon);
@@ -904,8 +903,8 @@ namespace AutoJMS
             // 
             // "Tìm kiếm" là hành động chính của tab TRA HÀNH TRÌNH nên là Primary DUY NHẤT
             // của thanh này (DESIGN.md §K: tối đa một Primary mỗi vùng). Năm nút còn lại
-            // để mặc định Secondary. Bản SunnyUI tô cả sáu cùng một màu xanh nên nhìn
-            // vào thanh công cụ không biết nút nào là việc chính.
+            // để mặc định Secondary — tô cả sáu cùng một màu thì nhìn vào thanh công cụ
+            // không biết nút nào là việc chính.
             tabTracking_btnSearch.Location = new Point(10, 5);
             tabTracking_btnSearch.Margin = new Padding(5, 0, 5, 0);
             tabTracking_btnSearch.Name = "tabTracking_btnSearch";
@@ -1072,7 +1071,7 @@ namespace AutoJMS
             tabTracking_dataView.Name = "tabTracking_dataView";
             // Bảng hành trình có ~20 cột, trên ngưỡng 8 cột của DESIGN.md §Q nên kẻ cả
             // đường dọc. ADataGridView mặc định chỉ kẻ ngang; để mặc định thì 20 cột chữ
-            // dính liền nhau, đọc kém hơn hẳn bảng SunnyUI đang chạy.
+            // dính liền nhau, rất khó dò theo hàng.
             tabTracking_dataView.ShowVerticalLines = true;
             tabTracking_dataView.Size = new Size(1376, 518);
             tabTracking_dataView.TabIndex = 2;
@@ -1354,9 +1353,8 @@ namespace AutoJMS
             tabHome_navBar.Margin = new Padding(0);
             tabHome_navBar.Name = "tabHome_navBar";
             tabHome_navBar.Padding = new Padding(2);
-            // Thanh công cụ HOME: dải phẳng có viền hairline, KHÔNG bo góc. Bản SunnyUI
-            // để Radius = 0 ở Designer nhưng AppTheme ghi đè thành 8 lúc chạy; ở đây chỉ
-            // còn một chỗ khai báo nên thanh công cụ thôi bo góc.
+            // Thanh công cụ HOME: dải phẳng có viền hairline, KHÔNG bo góc. Radius khai
+            // báo đúng một chỗ ở đây nên không còn bị ghi đè lúc chạy.
             tabHome_navBar.Radius = AutoJMS.UI.DesignSystem.ThemeRadius.None;
             tabHome_navBar.Size = new Size(1386, 36);
             tabHome_navBar.TabIndex = 0;

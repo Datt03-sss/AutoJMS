@@ -3,7 +3,7 @@ using System.Windows.Forms;
 namespace AutoJMS.UI.DesignSystem
 {
     /// <summary>
-    /// Báo ngắn KHÔNG chặn thao tác. Thay cho <c>UIMessageTip</c> của Sunny.UI.
+    /// Báo ngắn KHÔNG chặn thao tác.
     ///
     /// Dựng trên <see cref="ToolTip"/> của WinForms chứ không phải một Form tự vẽ:
     /// ToolTip đã là cửa sổ topmost tự tắt sau thời gian đặt trước, không nhận focus

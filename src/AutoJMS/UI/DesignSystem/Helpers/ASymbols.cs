@@ -7,15 +7,12 @@ namespace AutoJMS.UI.DesignSystem
     /// <summary>
     /// Icon dạng chữ cho A*. Xem DesignReference/AutoJMS.DESIGN.md §H.
     ///
-    /// Thay cho <c>Graphics.DrawFontImage</c> của Sunny.UI — hàm đó là lý do duy nhất
-    /// còn lại khiến cả app phải giữ gói SunnyUI sau khi mọi control đã chuyển sang A*.
-    ///
     /// Dùng "Segoe MDL2 Assets", font có sẵn trong Windows 10/11, nên không thêm tệp
     /// font nào vào bản cài. Máy thiếu font thì Windows thay bằng font mặc định và vẽ ra
     /// ô vuông — chữ trên nút vẫn đọc được, không có ngoại lệ nào bị ném.
     ///
-    /// Mã ở đây là codepoint MDL2, KHÔNG phải mã FontAwesome của SunnyUI. Đặt thẳng số
-    /// vào <c>AButton.Symbol</c> sẽ ra icon khác — luôn dùng hằng trong lớp này.
+    /// Mã ở đây là codepoint MDL2, KHÔNG phải mã FontAwesome. Đặt thẳng số của bộ icon
+    /// khác vào <c>AButton.Symbol</c> sẽ ra hình khác — luôn dùng hằng trong lớp này.
     /// </summary>
     public static class ASymbols
     {

@@ -197,10 +197,7 @@ namespace AutoJMS
                 Font = new Font("Segoe UI", 9F),
                 GridColor = Color.FromArgb(210, 215, 225),
                 RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single
-                // SelectedIndex/StripeOddColor/StripeEvenColor bỏ: cả ba là của SunnyUI.
-                // SelectedIndex = -1 chạy lúc bảng chưa có dòng nào nên vốn đã vô tác dụng;
-                // hai màu sọc đều là White = không sọc, mà StyleFullStackGrid đặt lại ngay
-                // sau đó bằng AlternatingRowsDefaultCellStyle.
+                // Màu sọc do StyleFullStackGrid đặt bằng AlternatingRowsDefaultCellStyle.
             };
         }
     }

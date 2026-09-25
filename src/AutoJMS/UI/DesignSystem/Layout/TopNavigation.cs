@@ -9,9 +9,6 @@ namespace AutoJMS.UI.DesignSystem
     /// <summary>
     /// Thanh điều hướng chính của AutoJMS. Xem DesignReference/AutoJMS.DESIGN.md §M.
     ///
-    /// Thay cho dải tab của Sunny.UI <c>UITabControl</c>, vốn <c>sealed</c> và không bắn
-    /// <c>DrawItem</c> (đã ghi lại bằng thực nghiệm ở UI/PremiumTabAccent.cs:11-20).
-    ///
     /// KHÔNG GIỮ TRẠNG THÁI CHỌN. Nguồn sự thật duy nhất là <see cref="Target"/>.
     /// Bấm nav thì ghi vào <c>Target.SelectedIndex</c>; Target đổi thì nav vẽ lại.
     /// Giữ một bản sao thứ hai ở đây là tự tạo ra hai chỗ có thể lệch nhau — chính
@@ -147,9 +144,9 @@ namespace AutoJMS.UI.DesignSystem
                 total += widths[i];
             }
 
-            // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải.
-            // Bản SunnyUI giấu tab thừa sau cặp mũi tên ‹ › — tức là "In Reverse"
-            // biến mất hẳn trên màn hẹp. Co lại thì chữ hụt nhưng tab vẫn bấm được.
+            // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải hoặc
+            // giấu sau cặp mũi tên ‹ › — giấu là "In Reverse" biến mất hẳn trên màn hẹp.
+            // Co lại thì chữ hụt nhưng tab vẫn bấm được.
             int available = Width - left - EdgePaddingX;
             int x = left;
             for (int i = 0; i < ItemCount; i++)

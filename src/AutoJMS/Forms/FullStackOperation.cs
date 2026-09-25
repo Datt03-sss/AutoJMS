@@ -478,9 +478,8 @@ namespace AutoJMS
             grid.EnableHeadersVisualStyles = false;
             grid.DataError -= FullStackGrid_DataError;
             grid.DataError += FullStackGrid_DataError;
-            // Nhánh "đóng băng theme của SunnyUI" bỏ hẳn: DataGridView gốc không tự tô lại
-            // ô bao giờ, nên bảng màu tối đặt ở trên là trạng thái cuối cùng. Hai dòng
-            // Stripe* cũng chỉ lặp lại đúng Rows/AlternatingRows đã đặt ngay phía trên.
+            // DataGridView không tự tô lại ô bao giờ, nên bảng màu tối đặt ở trên là
+            // trạng thái cuối cùng — không cần chốt lại theme sau khi dựng.
         }
 
         private async Task InitializeLocalFullStackAsync()
@@ -2802,7 +2801,7 @@ namespace AutoJMS
             actionFlow.Padding = new Padding(10);
             actionFlow.AutoScroll = true;
 
-            // Mã biểu tượng đổi từ FontAwesome (SunnyUI) sang MDL2 — xem ASymbols.
+            // Mã biểu tượng là codepoint MDL2 — xem ASymbols.
             var actions = new (string Text, int Symbol)[]
             {
                 ("Gửi Zalo reminder", ASymbols.Send),
@@ -3582,8 +3581,6 @@ namespace AutoJMS
             _thoiHieuGrid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
             _thoiHieuGrid.DefaultCellStyle.Font = new Font("Segoe UI", 7.5F, FontStyle.Regular);
             _thoiHieuGrid.BackgroundColor = Color.White;
-            // Stripe*Color bỏ: của SunnyUI, cả hai đều White (= không sọc) và bị
-            // AlternatingRowsDefaultCellStyle ngay dưới ghi đè.
             _thoiHieuGrid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
             _thoiHieuGrid.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
             _thoiHieuGrid.EnableHeadersVisualStyles = false;

@@ -230,12 +230,9 @@ namespace AutoJMS.UI
             if (!DesignSystem.ThemeTypography.IsToken(ctrl.Font))
                 ctrl.Font = DefaultControlFont;
 
-            // Nhánh cho control Sunny.UI (UISymbolButton/UIButton/UIImageButton/
-            // UITabControl/UIDataGridView/UIRichTextBox/UITextBox/UITitlePanel/
-            // UIFlowLayoutPanel/UIPanel/UIComboBox/UIIntegerUpDown/UIDatetimePicker/
-            // UISwitch/UICheckBox/UIProcessBar) bỏ hết cùng gói SunnyUI. Control A* tự
-            // đọc token qua ThemeManager; ProgressBar chuẩn bỏ qua ForeColor/BackColor
-            // khi visual styles bật nên cũng không cần nhánh nào.
+            // Control A* tự đọc token qua ThemeManager nên không cần nhánh riêng ở đây;
+            // ProgressBar chuẩn bỏ qua ForeColor/BackColor khi visual styles bật nên
+            // cũng không cần nhánh nào.
             if (ctrl is LinkLabel link)
             {
                 // Phải đứng TRƯỚC nhánh Label: LinkLabel kế thừa Label.

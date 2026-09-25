@@ -14,9 +14,9 @@ namespace AutoJMS
     ///
     /// Bốn lần sửa trước và vì sao đều hụt:
     ///   1. Kéo-thả (uiTableLayoutPanel8): bề rộng cột là pixel cứng, không liên quan chữ thật.
-    ///   2. Tự đo + Sunny.UI: AppTheme gán Font = "Segoe UI" 10F cho MỌI control SAU khi
+    ///   2. Tự đo: AppTheme gán Font = "Segoe UI" 10F cho MỌI control SAU khi
     ///      layout xong, nên số đo trước đó thành vô nghĩa.
-    ///   3. AutoSize + Sunny.UI: nhãn hết cắt, nhưng UIComboBox tự vẽ text bên trong → vẫn cắt.
+    ///   3. AutoSize: nhãn hết cắt, nhưng combo hồi đó tự vẽ text bên trong → vẫn cắt.
     ///   4. ComboBox/NumericUpDown hệ thống: hết cắt chữ, nhưng WinForms vẽ lại cả control
     ///      mỗi lần hover (kèm bước xoá nền) nên nháy, và giao diện thô.
     ///
@@ -946,7 +946,7 @@ namespace AutoJMS
     }
 
     /// <summary>
-    /// Toggle vẽ tay thay cho Sunny.UI UISwitch. Giữ nguyên API <c>Active</c> /
+    /// Toggle vẽ tay. Giữ nguyên API <c>Active</c> /
     /// <c>ActiveChanged</c> nên phần còn lại của Main.cs không phải sửa.
     /// ActiveChanged chỉ phát khi NGƯỜI DÙNG bật/tắt, không phát khi gán bằng code —
     /// tránh gọi nhầm handler lúc khởi động.

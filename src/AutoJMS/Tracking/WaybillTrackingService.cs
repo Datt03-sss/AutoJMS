@@ -239,8 +239,6 @@ namespace AutoJMS
                 _progressBar.Maximum = 100;
                 _progressBar.Value = 0;
                 _progressBar.Visible = false;
-                // ShowValue của SunnyUI (số % in đè lên thanh) không có trên ProgressBar
-                // của WinForms. Thanh chỉ cao 10px nên chữ vốn đã không đọc được.
             }
         }
 

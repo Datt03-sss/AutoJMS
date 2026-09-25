@@ -26,8 +26,8 @@ using Size = System.Drawing.Size;
 
 namespace AutoJMS
 {
-    // Phase 1 của việc gỡ Sunny.UI: Main kế thừa Form chuẩn, không còn UIForm.
-    // Thanh tiêu đề nay là thanh tiêu đề của Windows; dải tab cũ do TopNavigation thay.
+    // Main kế thừa Form chuẩn: thanh tiêu đề là thanh tiêu đề của Windows,
+    // dải tab do TopNavigation vẽ.
     public partial class Main : Form
     {
         private static string JmsHomeUrl => AppConfig.Current.JmsBaseUrl.TrimEnd('/');
@@ -1803,11 +1803,10 @@ namespace AutoJMS
         /// <summary>
         /// Ép cửa sổ maximize lại theo màn hình đang chứa nó.
         ///
-        /// UIForm của SunnyUI là form borderless: nó tự tính khung maximize MỘT LẦN rồi giữ
-        /// nguyên, và trong SunnyUI.dll 3.9.6 không có chỗ nào lắng nghe sự kiện đổi màn hình.
-        /// Nên đổi độ phân giải LÚC APP ĐANG CHẠY (1366x768 lên 1920x1080) thì cửa sổ giữ
-        /// nguyên khung 1366x768, nằm gọn góc trên trái. Mở app mới ở 1920x1080 thì lại đúng —
-        /// đó là lý do lỗi này không lộ ra lúc khởi động.
+        /// Cần thiết vì khung maximize chỉ được tính MỘT LẦN: đổi độ phân giải LÚC APP ĐANG
+        /// CHẠY (1366x768 lên 1920x1080) thì cửa sổ giữ nguyên khung 1366x768, nằm gọn góc
+        /// trên trái. Mở app mới ở 1920x1080 thì lại đúng — đó là lý do lỗi này không lộ ra
+        /// lúc khởi động.
         ///
         /// Vòng Normal -> gán Bounds -> Maximized là BẮT BUỘC: đã đo được rằng WinForms bỏ
         /// qua hoàn toàn lệnh gán Bounds khi cửa sổ đang ở trạng thái Maximized.

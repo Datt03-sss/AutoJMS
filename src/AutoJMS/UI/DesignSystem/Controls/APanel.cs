@@ -10,8 +10,7 @@ namespace AutoJMS.UI.DesignSystem
     ///
     /// Kế thừa Panel (BCL) chứ không phải Control: Panel đã có sẵn AutoScroll,
     /// Padding và quản lý control con. Viết lại cuộn bằng tay chỉ để "tự vẽ 100%"
-    /// là đổi một thứ chạy tốt lấy một thứ phải bảo trì. Panel không phải SunnyUI
-    /// nên vẫn đúng hướng bỏ dần SunnyUI.
+    /// là đổi một thứ chạy tốt lấy một thứ phải bảo trì.
     /// </summary>
     [ToolboxItem(true)]
     public class APanel : Panel

@@ -25,9 +25,7 @@ namespace AutoJMS
     ///
     /// Toàn bộ giao diện của tab dựng bằng code trong file này — sáu ô nhập, dòng trạng thái,
     /// danh sách chọn nhân viên và cụm nút dưới lưới. Không còn gì của tab này nằm trong
-    /// Main.Designer.cs ngoài chính TabPage <c>tabPrint_inRV</c>, và không dùng control
-    /// SunnyUI nào: bản dựng bằng designer lồng UIPanel trong UITableLayoutPanel nên mỗi lần
-    /// đổi kích thước là một lượt vẽ lại thủ công của cả cụm.
+    /// Main.Designer.cs ngoài chính TabPage <c>tabPrint_inRV</c>.
     /// </summary>
     public partial class Main
     {
@@ -540,7 +538,7 @@ namespace AutoJMS
 
         /// <summary>
         /// Tô màu và trả lại font cho cụm control của tab. Gọi lúc dựng, mỗi lần đổi tab con, và
-        /// ngay sau mỗi <c>AppTheme.Apply</c>. KHÔNG bỏ được sau khi gỡ SunnyUI: cụm này toàn
+        /// ngay sau mỗi <c>AppTheme.Apply</c>. KHÔNG bỏ được: cụm này toàn
         /// control tự vẽ nên AppTheme không tô màu cho, nhưng vẫn gán đè Font = "Segoe UI" 10F
         /// lên MỌI control không mang font token — không phát lại là nhãn và ô nhập tụt cỡ chữ.
         /// <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor — hai ô
@@ -633,8 +631,8 @@ namespace AutoJMS
 
         /// <summary>
         /// Tô một nút dưới lưới theo tông màu vai trò của nó. <c>BackColor</c> là màu NGOÀI bốn
-        /// góc bo — lấy đúng màu nền uiPanel20 chứ không để trong suốt: nút nằm trên UIPanel của
-        /// SunnyUI, control trong suốt trên đó lộ mảng xám của Form.
+        /// góc bo — lấy đúng màu nền uiPanel20 chứ không để trong suốt: nút nằm trên một APanel
+        /// tự vẽ, control trong suốt trên đó lộ mảng xám của Form.
         /// </summary>
         private void StyleReverseToolbarButton(ReverseRoundButton button, Color tone)
         {
