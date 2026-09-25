@@ -24,7 +24,7 @@ AutoJMS is a **.NET 8 WinForms desktop application** built to automate Vietnames
 |---|---|---|
 | **Runtime** | .NET 8 (net8.0-windows) | 8.0 |
 | **Architecture** | Windows Forms | Built-in |
-| **UI Library** | SunnyUI | 3.9.6 |
+| **UI Library** | `AutoJMS.UI.DesignSystem` (in-repo) | - |
 | **Browser Control** | WebView2 | 1.0.3912.50 |
 | **Cloud Database** | DataHub PostgreSQL | — |
 | **Licensing DB** | Firebase Realtime DB | — |

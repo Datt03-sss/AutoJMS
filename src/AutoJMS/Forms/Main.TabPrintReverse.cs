@@ -157,8 +157,8 @@ namespace AutoJMS
 
         /// <summary>
         /// Dựng và đấu dây tab "In Reverse". Gọi từ constructor của Main, trước khi AppTheme áp
-        /// lại — AppTheme chỉ nhận ra control SunnyUI nên màu của cụm này do
-        /// <see cref="ApplyReverseTheme"/> tự đặt.
+        /// lại — cụm này toàn control tự vẽ, không nằm trong nhánh nào của AppTheme, nên màu
+        /// do <see cref="ApplyReverseTheme"/> tự đặt.
         /// </summary>
         private void BuildTabPrintInReverseSection()
         {
@@ -540,10 +540,11 @@ namespace AutoJMS
 
         /// <summary>
         /// Tô màu và trả lại font cho cụm control của tab. Gọi lúc dựng, mỗi lần đổi tab con, và
-        /// ngay sau mỗi <c>AppTheme.Apply</c>: theme chỉ nhận ra control SunnyUI nên không tô
-        /// màu cụm này, nhưng lại gán Font = "Segoe UI" 10F cho MỌI control — không phát lại là
-        /// nhãn và ô nhập tụt cỡ chữ. <see cref="DateTimePicker"/> là control của Windows, không
-        /// nhận BackColor — hai ô thời gian luôn giữ nền sáng kể cả ở theme tối.
+        /// ngay sau mỗi <c>AppTheme.Apply</c>. KHÔNG bỏ được sau khi gỡ SunnyUI: cụm này toàn
+        /// control tự vẽ nên AppTheme không tô màu cho, nhưng vẫn gán đè Font = "Segoe UI" 10F
+        /// lên MỌI control không mang font token — không phát lại là nhãn và ô nhập tụt cỡ chữ.
+        /// <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor — hai ô
+        /// thời gian luôn giữ nền sáng kể cả ở theme tối.
         /// </summary>
         private void ApplyReverseTheme()
         {

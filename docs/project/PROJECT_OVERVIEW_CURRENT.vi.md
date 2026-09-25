@@ -8,7 +8,7 @@ Tài liệu này mô tả trạng thái hiện tại của toàn bộ project `D
 
 AutoJMS là ứng dụng desktop logistics automation cho vận hành J&T/JMS tại Việt Nam.
 
-Ứng dụng chính là .NET 8 WinForms, dùng SunnyUI cho giao diện và WebView2 để thao tác với hệ thống JMS/Zalo. Backend gồm Render license server, Firebase Realtime Database, VPS config API/PostgreSQL, GitHub Releases, Inno Setup và Velopack.
+Ứng dụng chính là .NET 8 WinForms, dùng design system nội bộ `AutoJMS.UI.DesignSystem` (tiền tố `A`) cho giao diện và WebView2 để thao tác với hệ thống JMS/Zalo. Backend gồm Render license server, Firebase Realtime Database, VPS config API/PostgreSQL, GitHub Releases, Inno Setup và Velopack.
 
 Mục tiêu sản phẩm:
 
@@ -44,7 +44,7 @@ Mục tiêu sản phẩm:
 | Layer | Công nghệ | File/ghi chú |
 |---|---|---|
 | Desktop runtime | .NET 8 WinForms | `src/AutoJMS/AutoJMS.csproj` |
-| UI library | SunnyUI `3.9.6` | package reference |
+| UI library | `AutoJMS.UI.DesignSystem` (tiền tố `A`) | mã trong repo, không phải package |
 | Browser automation | WebView2 `1.0.3912.50` | JMS/Zalo browser surfaces |
 | Desktop update | Velopack `1.2.0` | manual major update từ ABOUT |
 | Installer | Inno Setup | first install/reinstall/uninstall |

@@ -270,7 +270,7 @@ AutoJMS **không dùng đổ bóng**. Phân tầng bằng nền + viền.
 
 ## J. Phong cách icon
 
-- **Nguồn:** `FontAwesome` có sẵn trong SunnyUI (`UISymbolButton.Symbol`). Không thêm bộ icon mới,
+- **Nguồn:** codepoint MDL2 khai báo trong `ASymbols`, vẽ qua `AButton.Symbol`. Không thêm bộ icon mới,
   không thêm file ảnh.
 - **Kiểu:** nét viền (outline), không tô đặc — trừ khi icon đang biểu thị trạng thái active.
 - **Cỡ:** 16px mặc định, 14px trong toolbar dày đặc, 20px cho nav chính.

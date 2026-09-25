@@ -2,7 +2,7 @@
 
 ## What is AutoJMS?
 
-AutoJMS is a .NET 8 WinForms logistics automation app using SunnyUI and WebView2. It automates JMS workflows, tracking, printing, update handling and ULTRA operation dashboards.
+AutoJMS is a .NET 8 WinForms logistics automation app using its own design system `AutoJMS.UI.DesignSystem` (prefix `A`) and WebView2. It automates JMS workflows, tracking, printing, update handling and ULTRA operation dashboards.
 
 ## Read these first
 

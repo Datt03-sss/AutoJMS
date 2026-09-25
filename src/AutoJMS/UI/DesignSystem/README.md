@@ -62,8 +62,8 @@ UI.AppTheme.Apply(this);              // đường cũ - cuối hàm đã gọi 
 ```
 
 `AppTheme.ApplyToControls` **bỏ qua cả cây con** của mọi control trong namespace
-`AutoJMS.UI.DesignSystem`: nó đè `Font` và màu SunnyUI lên control, làm token thành vô nghĩa.
-Control A* tự vẽ lại qua `ThemeHook`.
+`AutoJMS.UI.DesignSystem`: nó gán đè `Font` mặc định lên mọi control không mang font token,
+làm token thành vô nghĩa. Control A* tự vẽ lại qua `ThemeHook`.
 
 Control A* tự nối `ThemeHook` — không cần làm gì. Control **không** phải A* mà cần
 đổi màu theo theme thì tự giữ một `ThemeHook` và **phải `Dispose()`**:
@@ -123,21 +123,27 @@ kiểm tra rồi tự đóng.
 |---|---|
 | Đổ bóng | WinForms phải tự composite alpha mỗi `WM_PAINT`; máy bưu cục không gánh nổi (DESIGN.md §I). `ThemeShadows` chỉ là thang `Elevation` đổi nền/viền. |
 | Animation, gradient, blur | Cùng lý do. `AToggleSwitch` nhảy, không trượt. `LoadingState` không có `Timer`. |
-| `FontManager` / `IconManager` | `ThemeTypography` đã là kho font cache sẵn; icon FontAwesome chỉ là số `int`. Thêm lớp bọc là thêm chỗ để sai. |
+| `FontManager` / `IconManager` | `ThemeTypography` đã là kho font cache sẵn; icon MDL2 chỉ là số `int` trong `ASymbols`. Thêm lớp bọc là thêm chỗ để sai. |
 | `Theme/AppTheme.cs` | Trùng tên `AutoJMS.UI.AppTheme` → CS0104 ở mọi file dùng cả hai namespace. `ThemeColors` đã mang `Mode`. |
 
-Chưa viết vì chưa có chỗ dùng thật: `ATabControl`, `ADatePicker`, `FilterBar`,
-`ToolbarGroup`, `Timeline`, `StatusLegend`, `ResultSummary`, `AppShell`,
-`TopNavigation`, `SplitLayout`, `ResponsiveLayout`.
+Chưa viết vì chưa có chỗ dùng thật: `ADatePicker`, `FilterBar`, `ToolbarGroup`,
+`Timeline`, `StatusLegend`, `ResultSummary`, `AppShell`, `SplitLayout`,
+`ResponsiveLayout`.
 
 ---
 
 ## Màn hình đã di trú
 
+Xong cả 4 phase (2026-09-25). `Sunny.UI` đã gỡ khỏi `AutoJMS.csproj` — **không thêm lại**.
+
 | Màn hình | File | Trạng thái |
 |---|---|---|
-| CHUYỂN HOÀN (DKCH) — panel trái | `Forms/Main.DkchDesignSystem.cs` | Nút CONTROL dùng `AButton`; khung mục vẫn là `UITitlePanel` nhưng ăn token. Tắt bằng `DkchDesignSystemEnabled`. |
+| App shell | `Forms/Main.Designer.cs` | `Main : Form`; `ATabControl` + `TopNavigation` thay dải tab. |
+| CHUYỂN HOÀN (DKCH) + HOME | `Forms/Main.DkchDesignSystem.cs`, `Main.Dkch*.cs` | `AButton` / `APanel` / `ATextBox`. |
+| TRACKING | `Forms/Main.Designer.cs` | `AButton`, `ATextBox`, `ADataGridView`, `ProgressBar`. |
+| IN ĐƠN | `Forms/Main.TabPrint*.cs` | `ADataGridView`, `ATextBox`, `ACheckBox`, `AToggleSwitch`; nút IN là `AButton` có `Image`; 4 tab con là `ATabControl` + `TopNavigation`. |
+| ABOUT | `Forms/Main.Designer.cs` | `Label` / `AButton` / `LinkLabel` trong `ACard`. Luôn là tab cuối. |
+| ULTRA (DASH) | `Forms/FullStackOperation*.cs` | `FullStackOperation : Form`. 5 bảng + `_thoiHieuGrid` cố ý giữ `DataGridView` gốc — bảng màu ô tự đặt, `ThemeHook` của `ADataGridView` sẽ tô đè. |
 
-Control SunnyUI cũ **vẫn còn nguyên và vẫn giữ handler** — tắt cờ là về đúng bản cũ.
-Nút A* nối thẳng vào chính handler cũ, không có lớp trung gian, không có logic nghiệp vụ nào
+Control A* nối thẳng vào chính handler cũ, không có lớp trung gian, không có logic nghiệp vụ nào
 được chép lại.

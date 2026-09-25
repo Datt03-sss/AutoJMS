@@ -26,7 +26,7 @@ Not allowed:
 
 ## Required Context
 
-- AutoJMS is a .NET 8 WinForms logistics automation app using SunnyUI and WebView2.
+- AutoJMS is a .NET 8 WinForms logistics automation app using its own design system `AutoJMS.UI.DesignSystem` (prefix `A`) and WebView2.
 - Inno Setup is for first install, reinstall, uninstall, and runtime prerequisites.
 - Velopack is for in-app updates.
 - GitHub Releases host large Velopack binaries.

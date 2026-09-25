@@ -31,7 +31,7 @@ Before starting any coding task, read these guidelines in order:
 
 ### 3. Implement
 - Ensure you are working on a dedicated feature branch: `agent/claude/<description>`.
-- Write clean, minimal C# code conforming to WinForms + SunnyUI styles.
+- Write clean, minimal C# code conforming to WinForms + Design System A* styles (`AutoJMS.UI.DesignSystem`, prefix `A`).
 - Marshal all WebView2 or UI control queries to the UI thread using control invocation.
 
 ### 4. Verify

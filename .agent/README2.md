@@ -2,7 +2,7 @@
 
 This workspace has local agent skills in two places:
 
-- `.agent/skills/` — curated project skills (WinForms, Excel export, Firebase license, Velopack, Inno Setup, SunnyUI grid, DataHub manifest, WebView2...)
+- `.agent/skills/` — curated project skills (WinForms, Excel export, Firebase license, Velopack, Inno Setup, DataGridView grid, DataHub manifest, WebView2...)
 - `skills-lock.json` — records skills pulled in with the Skills CLI (`npx skills add`). The files land under `.agent/skills/`; there is no `.agents/` directory in this repo.
 
 ## Skills From Outside The Project

@@ -15,7 +15,7 @@ namespace AutoJMS.UI
     {
         public static ThemeMode CurrentTheme { get; set; } = ThemeMode.Light;
 
-        /// <summary>Font mặc định cho control cũ (SunnyUI/WinForms). Tạo một lần, không dispose.</summary>
+        /// <summary>Font mặc định cho control WinForms chuẩn. Tạo một lần, không dispose.</summary>
         private static readonly Font DefaultControlFont = new Font("Segoe UI", 10F, FontStyle.Regular);
 
         public class ThemeColors

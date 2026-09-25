@@ -127,7 +127,7 @@ namespace AutoJMS.UI.DesignSystem
 
         /// <summary>
         /// Bật double buffer cho control không lộ thuộc tính DoubleBuffered.
-        /// Dùng cho control của bên thứ ba (SunnyUI, DataGridView); control A*
+        /// Dùng cho control WinForms chuẩn (DataGridView, Panel...); control A*
         /// tự bật bằng SetStyle trong constructor.
         /// </summary>
         public static void EnableDoubleBuffer(Control ctrl)

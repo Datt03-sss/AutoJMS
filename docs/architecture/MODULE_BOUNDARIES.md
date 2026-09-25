@@ -16,9 +16,9 @@ UI/Forms ──> Services/Automation ──> Domain/Models <── Data/Infrastr
 
 ---
 
-## 2. SunnyUI Isolation
-- SunnyUI controls (e.g. `UITabControl`, `UIRoundButton`) must remain isolated to the UI project.
-- Do not let business logic classes receive SunnyUI objects as method parameters. Pass primitive types (e.g. `string`, `int`, `bool`) or Domain DTO models.
+## 2. UI Control Isolation
+- Design system controls (`AutoJMS.UI.DesignSystem`, e.g. `ATabControl`, `AButton`) must remain isolated to the UI project. SunnyUI was removed in full on 2026-09-25 and must not be reintroduced.
+- Do not let business logic classes receive WinForms or design system objects as method parameters. Pass primitive types (e.g. `string`, `int`, `bool`) or Domain DTO models.
 
 ---
 

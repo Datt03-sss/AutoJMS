@@ -331,8 +331,9 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Tô màu theo theme. AppTheme chỉ nhận diện control Sunny.UI nên các control
-        /// tự vẽ ở đây phải tự lấy màu, nếu không ở Dark sẽ trắng bệch.
+        /// Tô màu theo theme. AppTheme chỉ xử lý Label/LinkLabel/TabPage/TableLayoutPanel/
+        /// SplitContainer, còn control A* thì tự đọc token — các control tự vẽ ở đây không
+        /// thuộc nhóm nào cả nên phải tự lấy màu, nếu không ở Dark sẽ trắng bệch.
         /// </summary>
         private void ApplyDkchDataColors()
         {

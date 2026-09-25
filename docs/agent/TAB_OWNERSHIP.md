@@ -52,7 +52,7 @@ To prevent regressions, the tabs in `Main.cs` and the standalone `FullStackOpera
   - `Forms/Main.cs` (Displays metadata, launches Update checks)
   - `Updates/VelopackUpdateService.cs` (Velopack checks & apply)
 * **Rules**:
-  - The `ABOUT` tab **must always remain the last tab** in the SunnyUI TabControl collections.
+  - The `ABOUT` tab **must always remain the last tab** in the `ATabControl` collections.
   - Updates must be manual and require explicit user confirmation.
 
 ### 6. FullStackOperation Form (ULTRA Tier)

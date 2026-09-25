@@ -36,7 +36,7 @@ Khi nhận Antigravity Prompt Proposal:
 
 Before starting work on any task:
 
-1. Check `.agent/skills/` (curated project skills) và `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, SunnyUI grid, DataHub manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
+1. Check `.agent/skills/` (curated project skills) và `.agents/skills/` (CLI-installed skills) for a local skill matching the task domain (WinForms, Excel export, Firebase license, Velopack release, Inno Setup, DataGridView grid, DataHub manifest, WebView2, desktop-commander, superpowers, etc.) and follow it.
 2. For any DataHub work (API endpoints, enrollment, migrations, manifest publish) follow [.agent/rules/05-datahub-firebase-github-rules.md](./.agent/rules/05-datahub-firebase-github-rules.md) and [.agent/skills/datahub-manifest-skill.md](./.agent/skills/datahub-manifest-skill.md); for Postgres SQL tuning follow [.agent/skills/postgres-best-practices/SKILL.md](./.agent/skills/postgres-best-practices/SKILL.md).
 3. To build or publish a release (owner request only) follow [.agent/skills/autojms-release-build/SKILL.md](./.agent/skills/autojms-release-build/SKILL.md) — exact commands and the traps that break `release/build-release.ps1`.
 4. Next, check the plugin skills from `superpowers`, `agent-skills` and `ponytail` — [.agent/rules/10-plugin-stack-rules.md](./.agent/rules/10-plugin-stack-rules.md) says which one owns which job.

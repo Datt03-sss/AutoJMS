@@ -2,7 +2,7 @@
 
 ## Current Verified Baseline
 
-AutoJMS is a .NET 8 WinForms desktop logistics automation app using SunnyUI and WebView2.
+AutoJMS is a .NET 8 WinForms desktop logistics automation app using its own design system `AutoJMS.UI.DesignSystem` (prefix `A`) and WebView2.
 
 Current system boundaries:
 
@@ -37,7 +37,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        AUTOJMS CLIENT                                  │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  WinForms UI (SunnyUI)                                       │   │
+│  │  WinForms UI (Design System A*)                                       │   │
 │  │  Main.cs (TabControl) │ FullStackOperation.cs (ULTRA)        │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────────────┐   │
@@ -74,7 +74,7 @@ AutoJMS is a **desktop logistics automation application** that streamlines Vietn
 |-----------|-----------|---------|
 | Runtime | .NET 8 | 8.0 |
 | UI Framework | WinForms | Built-in |
-| UI Library | SunnyUI | 3.9.6 |
+| UI Library | `AutoJMS.UI.DesignSystem` (in-repo) | - |
 | Browser | WebView2 | 1.0.3912.50 |
 | Database | PostgreSQL 16 in Docker (private) | - |
 | Auth | Firebase Realtime DB | - |

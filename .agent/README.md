@@ -6,7 +6,7 @@ This agent context is documentation-only. Agents may create or update Markdown i
 
 Verified from the current repository:
 
-- Product: AutoJMS, a .NET 8 WinForms desktop application using SunnyUI and WebView2.
+- Product: AutoJMS, a .NET 8 WinForms desktop application using the in-repo design system `AutoJMS.UI.DesignSystem` (prefix `A`) and WebView2.
 - Main project: `src/AutoJMS/AutoJMS.csproj`, target `net8.0-windows`, runtime `win-x64`.
 - Main UI: `Main.cs` with BASE tabs `HOME`, `DKCH`, `TRACKING`, `PRINT`, `ABOUT`.
 - ULTRA UI: `FullStackOperation.cs`, separate form, not a tab, launched through the `DASH` command after tier policy allows it.

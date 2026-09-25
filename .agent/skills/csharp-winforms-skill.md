@@ -2,7 +2,8 @@
 
 ## Overview
 
-AutoJMS is a .NET 8 WinForms application using SunnyUI library.
+AutoJMS is a .NET 8 WinForms application built on its own design system,
+`AutoJMS.UI.DesignSystem` (prefix `A`). No third-party UI control library.
 
 ## Project Structure
 
@@ -100,22 +101,32 @@ grid.MultiSelect = true;
 grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 ```
 
-## SunnyUI Components
+## Design System A* Components
+
+SunnyUI was removed in full (Phase 4, 2026-09-25). Use `AutoJMS.UI.DesignSystem`;
+the full control list and its traps are in
+[.agent/rules/01-csharp-winforms-rules.md](../rules/01-csharp-winforms-rules.md).
 
 ```csharp
-// SunnyUI form base
-public partial class Main : Sunny.UI.UIForm { }
+using AutoJMS.UI.DesignSystem;
 
-// SunnyUI DataGridView
-var grid = new Sunny.UI.UIDataGridView();
+// Form base: plain WinForms Form (the Windows title bar is real, not painted)
+public partial class Main : Form { }
 
-// SunnyUI button
-var btn = new Sunny.UI.UIButton();
+// Grid
+var grid = new ADataGridView();
 
-// SunnyUI message tip
-Sunny.UI.UIMessageTip.ShowInfo("Message");
-Sunny.UI.UIMessageTip.ShowWarning("Warning");
-Sunny.UI.UIMessageTip.ShowError("Error");
+// Button — Variant drives fill/hover/press/border from theme tokens
+var btn = new AButton { Text = "IN", Variant = AButtonVariant.Primary, Symbol = ASymbols.Print };
+
+// Non-blocking toast (ToolTip-based, 3s, does not pump the message loop)
+AToast.Show(this, "Message");
+AToast.Warning(this, "Warning");
+AToast.Error(this, "Error");
+
+// Modal
+AMessageDialog.Show(this, "Message", "Thông báo");
+bool ok = AConfirmDialog.Confirm(this, "Xoá bản ghi?", "Xác nhận", "Xoá", "Huỷ", destructive: true);
 ```
 
 ## WebView2 Integration

@@ -1,13 +1,27 @@
-# SunnyUI DataGridView Skill
+# DataGridView Skill
 
 ## Overview
 
-SunnyUI.UIDataGridView is used for displaying tabular data in AutoJMS.
+AutoJMS shows tabular data in `ADataGridView` (design system A*) or, where the cell
+palette is hand-painted, a plain `System.Windows.Forms.DataGridView`.
+
+SunnyUI was removed in full (Phase 4, 2026-09-25) — `UIDataGridView` no longer exists
+in this codebase and the package must not come back.
+
+## Which one to use
+
+- **`ADataGridView`** — default. Reads theme tokens through `ThemeHook`, so it repaints
+  itself on every theme change. Its constructor already forces `ReadOnly = true`,
+  `MultiSelect = false`, `SelectionMode = FullRowSelect`, `AutoSizeColumnsMode = None`.
+- **BCL `DataGridView`** — when the grid carries its own cell colours (the five
+  `FullStackOperation` grids, `_thoiHieuGrid`). `ADataGridView`'s `ThemeHook` would
+  overwrite that palette on the next theme change, and its constructor defaults
+  contradict `ApplyStandardGridSettings` below.
 
 ## Basic Setup
 
 ```csharp
-var grid = new Sunny.UI.UIDataGridView();
+var grid = new ADataGridView();
 
 // Dock to fill parent
 grid.Dock = DockStyle.Fill;
@@ -79,13 +93,10 @@ public static void ApplyStandardGridSettings(DataGridView grid)
     grid.RowHeadersVisible = false;
     grid.AllowUserToResizeColumns = true;
     grid.AllowUserToResizeRows = false;
-    
-    // SunnyUI specific
-    if (grid is Sunny.UI.UIDataGridView uiGrid)
-    {
-        uiGrid.StripeOddColor = Color.White;
-        uiGrid.StripeEvenColor = Color.White;
-    }
+
+    // Row striping is plain WinForms — set it here, not through a control-specific
+    // property. Same colour on both = no stripe.
+    grid.AlternatingRowsDefaultCellStyle.BackColor = grid.DefaultCellStyle.BackColor;
 }
 ```
 

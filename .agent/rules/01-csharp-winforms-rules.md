@@ -113,13 +113,35 @@ private void UpdateDkchButtonsByState(bool isRunning)
 }
 ```
 
-## SunnyUI Guidelines
+## Design System A* Guidelines
 
-1. Use `Sunny.UI.UIForm` as base for forms
-2. Use `Sunny.UI.UIDataGridView` for DataGridView
-3. Use `Sunny.UI.UIMessageTip` for notifications
-4. Use `Sunny.UI.UIButton` for buttons
-5. Use `Sunny.UI.UILabel` for labels
+SunnyUI was removed in full (Phase 4, 2026-09-25). The `SunnyUI` /
+`SunnyUI.Common` packages are gone from `AutoJMS.csproj` — **never add them back**.
+Use `AutoJMS.UI.DesignSystem` (prefix `A`); see
+[src/AutoJMS/UI/DesignSystem/README.md](../../src/AutoJMS/UI/DesignSystem/README.md).
+
+| Need | Use | Not |
+|---|---|---|
+| Form base | `System.Windows.Forms.Form` | ~~`Sunny.UI.UIForm`~~ |
+| Button | `AButton` (+ `Variant`, `Symbol`, `Image`) | ~~`UIButton` / `UISymbolButton` / `UIImageButton`~~ |
+| Label | `Label` + `ThemeTypography` | ~~`UILabel`~~ |
+| Panel / card | `APanel`, `ACard` — or plain `Panel` when the colour itself carries meaning | ~~`UIPanel` / `UITitlePanel`~~ |
+| Grid | `ADataGridView`, or BCL `DataGridView` when the cell palette is custom | ~~`UIDataGridView`~~ |
+| Text input | `ATextBox` (`PlaceholderText` for watermark) | ~~`UITextBox` / `UIRichTextBox`~~ |
+| Dropdown | `AComboBox` | ~~`UIComboBox`~~ |
+| Tabs | `ATabControl` + `TopNavigation` (ATabControl hides the native strip) | ~~`UITabControl`~~ |
+| Non-blocking toast | `AToast.Show/Warning/Error` | ~~`UIMessageTip`~~ |
+| Modal | `AMessageDialog.Show`, `AConfirmDialog.Confirm` | ~~hand-built `UIForm`~~ |
+| Progress | `ProgressBar` | ~~`UIProcessBar`~~ |
+| Icon glyph | `ASymbols` (MDL2 codepoints) | ~~`Graphics.DrawFontImage` (FontAwesome)~~ |
+
+Two traps worth knowing before you reach for an A* control:
+
+- `AButton` is **not** an `IButtonControl` — it cannot be `Form.AcceptButton` /
+  `CancelButton`. Wire Esc/Enter by hand, or use `ADialog`, which already does.
+- `ADataGridView`'s constructor forces `ReadOnly` / `MultiSelect` / `SelectionMode`
+  and its `ThemeHook` repaints cells on every theme change. A grid with a custom
+  palette must stay a BCL `DataGridView`.
 
 ## DataGridView Guidelines
 

@@ -4,7 +4,7 @@
 
 Verified from the current repository on 2026-06-03.
 
-AutoJMS is a .NET 8 WinForms desktop application for Vietnamese logistics automation. It uses SunnyUI for UI controls and WebView2 for JMS/Zalo browser surfaces.
+AutoJMS is a .NET 8 WinForms desktop application for Vietnamese logistics automation. UI controls come from its own design system `AutoJMS.UI.DesignSystem` (prefix `A`, 100% code-driven, no third-party control library); WebView2 renders the JMS/Zalo browser surfaces.
 
 Core modules in the current checkout:
 
@@ -52,7 +52,7 @@ AutoJMS is a **desktop logistics automation application** for Vietnamese logisti
 |-----------|------------|---------|
 | Runtime | .NET 8 | 8.0 |
 | UI Framework | WinForms | .NET 8 |
-| UI Library | SunnyUI | 3.9.6 |
+| UI Library | `AutoJMS.UI.DesignSystem` (in-repo, prefix `A`) | - |
 | Browser | WebView2 | 1.0.3912.50 |
 | Database | DataHub (PostgreSQL) | - |
 | Auth | Firebase Realtime Database | - |

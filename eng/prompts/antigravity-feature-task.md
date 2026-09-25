@@ -13,7 +13,7 @@ Before starting the coding task:
 ---
 
 ## 2. Coding Guidelines
-- **SunnyUI Integration**: Maintain existing UI styles. Do not modify the SunnyUI control styles.
+- **Design System A***: Maintain existing UI styles. Use `AutoJMS.UI.DesignSystem` controls (prefix `A`) and theme tokens; do not hard-code colours or fonts. SunnyUI was removed on 2026-09-25 and must not be reintroduced.
 - **Thread Safety**: Ensure all calls to WebView2 or control values run on the UI thread using `UiThread` helpers.
 - **Base vs Ultra Isolation**: Ensure no background sync timers or databases are activated on the BASE tier.
 - **Log Masking**: Mask all captured auth tokens to `first4...last4` before logging.
