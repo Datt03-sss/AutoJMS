@@ -50,6 +50,21 @@ namespace AutoJMS.UI.DesignSystem
             set { _message = value ?? string.Empty; RecalcHeight(); Invalidate(); }
         }
 
+        /// <summary>
+        /// Hộp thoại chỉ có một câu ngắn cần đọc rõ (hộp "Đóng ứng dụng"): câu căn giữa,
+        /// chữ đậm màu Text, nút cao ControlHeightLarge. Mặc định tắt - các hộp khác giữ nguyên.
+        /// </summary>
+        public bool Emphasized
+        {
+            get => _emphasized;
+            set { _emphasized = value; RecalcHeight(); PerformLayout(); Invalidate(); }
+        }
+        private bool _emphasized;
+
+        private Font MessageFont => _emphasized ? ThemeTypography.BodyStrong : ThemeTypography.Body;
+
+        private int ButtonHeight => S(_emphasized ? ThemeMetrics.ControlHeightLarge : ThemeMetrics.ControlHeight);
+
         /// <summary>Đệm quanh toàn bộ nội dung.</summary>
         protected int Pad => S(ThemeSpacing.Xl);
 
@@ -61,7 +76,7 @@ namespace AutoJMS.UI.DesignSystem
             get
             {
                 int top = Pad + TitleHeight + S(ThemeSpacing.Sm);
-                int bottom = Height - Pad - S(ThemeMetrics.ControlHeight) - S(ThemeSpacing.Xl);
+                int bottom = Height - Pad - ButtonHeight - S(ThemeSpacing.Xl);
                 return new Rectangle(Pad, top, Math.Max(1, Width - Pad * 2), Math.Max(0, bottom - top));
             }
         }
@@ -85,19 +100,19 @@ namespace AutoJMS.UI.DesignSystem
         protected virtual int BodyHeight(int width)
             => string.IsNullOrEmpty(_message)
                 ? 0
-                : TextRenderer.MeasureText(_message, ThemeTypography.Body,
+                : TextRenderer.MeasureText(_message, MessageFont,
                     new Size(width, int.MaxValue), MessageFlags).Height;
 
-        private static TextFormatFlags MessageFlags
-            => TextFormatFlags.Left | TextFormatFlags.Top |
-               TextFormatFlags.WordBreak | TextFormatFlags.NoPadding;
+        private TextFormatFlags MessageFlags
+            => (_emphasized ? TextFormatFlags.HorizontalCenter : TextFormatFlags.Left) |
+               TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding;
 
         protected void RecalcHeight()
         {
             int width = Math.Max(1, Width - Pad * 2);
             Height = Pad + TitleHeight + S(ThemeSpacing.Sm)
                    + BodyHeight(width)
-                   + S(ThemeSpacing.Xl) + S(ThemeMetrics.ControlHeight) + Pad;
+                   + S(ThemeSpacing.Xl) + ButtonHeight + Pad;
         }
 
         protected override void OnLayout(LayoutEventArgs e)
@@ -105,7 +120,7 @@ namespace AutoJMS.UI.DesignSystem
             base.OnLayout(e);
             if (_buttons.Count == 0) return;
 
-            int h = S(ThemeMetrics.ControlHeight);
+            int h = ButtonHeight;
             int y = Height - Pad - h;
             int x = Width - Pad;
 
@@ -113,7 +128,7 @@ namespace AutoJMS.UI.DesignSystem
             for (int i = _buttons.Count - 1; i >= 0; i--)
             {
                 var b = _buttons[i];
-                int w = Math.Max(S(88), b.GetPreferredSize(Size.Empty).Width);
+                int w = Math.Max(S(_emphasized ? 104 : 88), b.GetPreferredSize(Size.Empty).Width);
                 x -= w;
                 b.Bounds = new Rectangle(x, y, w, h);
                 x -= S(ThemeSpacing.Sm);
@@ -204,9 +219,9 @@ namespace AutoJMS.UI.DesignSystem
             if (string.IsNullOrEmpty(_message)) return;
 
             var body = BodyBounds;
-            TextRenderer.DrawText(g, _message, ThemeTypography.Body,
+            TextRenderer.DrawText(g, _message, MessageFont,
                 new Rectangle(body.X, body.Y, body.Width, MessageAreaHeight(body)),
-                c.TextSecondary, MessageFlags);
+                _emphasized ? c.Text : c.TextSecondary, MessageFlags);
         }
 
         /// <summary>Lớp con đặt control trong thân sẽ giới hạn lại vùng chữ.</summary>

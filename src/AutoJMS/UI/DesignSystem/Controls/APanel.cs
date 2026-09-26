@@ -48,7 +48,15 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            _themeHook ??= new ThemeHook(this);
+            _themeHook ??= new ThemeHook(this, OnThemeChanged);
+            if (AutoScroll) ControlStyler.ApplyNativeScrollTheme(this);
+        }
+
+        // AutoScroll dùng thanh cuộn native của chính cửa sổ - vẽ lại vỏ không đổi được màu nó.
+        private void OnThemeChanged()
+        {
+            if (AutoScroll) ControlStyler.ApplyNativeScrollTheme(this);
+            else Invalidate();
         }
 
         protected override void Dispose(bool disposing)

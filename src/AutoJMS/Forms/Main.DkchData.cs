@@ -378,7 +378,8 @@ namespace AutoJMS
             if (tabDKCH_useSheet != null && !tabDKCH_useSheet.IsDisposed)
             {
                 tabDKCH_useSheet.ActiveColor = colors.PrimaryAccent;
-                tabDKCH_useSheet.InactiveColor = dark ? colors.InputBorder : Color.FromArgb(205, 205, 212);
+                // Rãnh tắt phải đủ tối để núm trắng nổi lên (~3:1); 205,205,212 cũ chỉ ~1.5:1.
+                tabDKCH_useSheet.InactiveColor = dark ? colors.InputBorder : Color.FromArgb(148, 148, 158);
                 tabDKCH_useSheet.KnobColor = dark ? colors.TextPrimary : Color.White;
                 tabDKCH_useSheet.Invalidate();
             }

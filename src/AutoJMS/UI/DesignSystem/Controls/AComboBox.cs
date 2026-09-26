@@ -46,6 +46,7 @@ namespace AutoJMS.UI.DesignSystem
             _list.DrawItem += OnDrawItem;
             _list.MouseUp += (s, e) => CommitAndClose();
             _list.KeyDown += OnListKeyDown;
+            _list.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(_list);
 
             _host = new ToolStripControlHost(_list)
             {
@@ -108,6 +109,7 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnThemeChanged()
         {
             _list.BackColor = Theme.SurfaceRaised;
+            ControlStyler.ApplyNativeScrollTheme(_list);   // > MaxVisibleItems mục là hiện thanh cuộn
             Invalidate();
         }
 

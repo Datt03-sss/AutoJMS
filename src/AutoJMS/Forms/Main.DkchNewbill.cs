@@ -765,6 +765,7 @@ namespace AutoJMS
             // Ô đang nhập được viền sáng để người dùng biết súng quét sẽ bắn vào đâu.
             Body.Enter += (s, e) => { _focused = true; Invalidate(); };
             Body.Leave += (s, e) => { _focused = false; Invalidate(); };
+            Body.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(Body);
             Controls.Add(Body);
         }
 
@@ -789,6 +790,7 @@ namespace AutoJMS
             Body.BackColor = Skin.CardBg;
             Body.ForeColor = BodyIsDone ? Skin.ListDoneText : Skin.ListText;
             if (!ReferenceEquals(Body.Font, ListFont)) Body.Font = ListFont;
+            ControlStyler.ApplyNativeScrollTheme(Body);
         }
 
         protected override void OnResize(EventArgs e)
@@ -1506,8 +1508,11 @@ namespace AutoJMS
             // vì nó tự xử lý chuột, không phải cướp focus của ô nhập mã.
             _bar = new VScrollBar { Width = S(12), Visible = false, SmallChange = 16, TabStop = false };
             _bar.Scroll += (s, e) => Invalidate();
+            _bar.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(_bar);
             Controls.Add(_bar);
         }
+
+        protected override void OnSkinChanged() => ControlStyler.ApplyNativeScrollTheme(_bar);
 
         public List<DkchJourneyEntry> Entries { get; set; } = new List<DkchJourneyEntry>();
         public string EmptyText { get; set; } = "Chưa có dữ liệu hành trình.";

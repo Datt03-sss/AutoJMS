@@ -123,13 +123,16 @@ namespace AutoJMS
 
         public static async Task SaveAsync(AppSettings settings)
         {
-            await AsyncSync.WaitAsync();
+            // ConfigureAwait(false) là bắt buộc: gọi từ luồng UI mà để continuation (Release) quay về
+            // UI, thì một Load()/Save() đồng bộ trên UI trong lúc chờ ghi sẽ kẹt ở AsyncSync.Wait()
+            // mãi mãi - app treo cứng lúc khởi động (token vừa lưu + FullStack gọi Load cùng lúc).
+            await AsyncSync.WaitAsync().ConfigureAwait(false);
             try
             {
                 string json = SerializeMergedSettings(Normalize(settings));
                 string tempPath = ConfigPath + ".tmp";
                 Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath) ?? AppPaths.UserDataDir);
-                await File.WriteAllTextAsync(tempPath, json);
+                await File.WriteAllTextAsync(tempPath, json).ConfigureAwait(false);
                 ReplaceAtomic(tempPath, ConfigPath);
             }
             catch (Exception ex)

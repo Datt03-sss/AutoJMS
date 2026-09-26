@@ -38,6 +38,8 @@ namespace AutoJMS.UI.DesignSystem
             _inner.KeyDown += (s, e) => OnKeyDown(e);
             _inner.KeyPress += (s, e) => OnKeyPress(e);
             _inner.KeyUp += (s, e) => OnKeyUp(e);
+            // Đổi ScrollBars/Multiline là TextBox dựng lại handle - theme thanh cuộn phải gán lại.
+            _inner.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(_inner);
             Controls.Add(_inner);
 
             Size = new Size(180, ThemeMetrics.ControlHeight);
@@ -134,6 +136,7 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnThemeChanged()
         {
             ApplyInnerColors();
+            ControlStyler.ApplyNativeScrollTheme(_inner);
             Invalidate();
         }
 

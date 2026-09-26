@@ -12,6 +12,18 @@ namespace AutoJMS
             InitializeDialog();
         }
 
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        // Thanh tiêu đề native không theo theme của app. 20 = DWMWA_USE_IMMERSIVE_DARK_MODE
+        // (Win10 20H1+); bản Windows cũ hơn trả lỗi và giữ thanh sáng như trước.
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int dark = ThemeManager.IsDark ? 1 : 0;
+            DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int));
+        }
+
         private void InitializeDialog()
         {
             Text = "Điều khoản sử dụng & Chính sách bảo mật";
@@ -30,7 +42,10 @@ namespace AutoJMS
             var header = new APanel
             {
                 Location = new Point(18, 18),
-                Size = new Size(644, 64)
+                Size = new Size(644, 64),
+                // Nhãn/logo con kế thừa BackColor này; bỏ trống là chúng lấy SurfaceAlt của form
+                // và hiện thành ô lệch màu trên nền SurfaceRaised mà APanel tự vẽ.
+                BackColor = ThemeManager.Current.SurfaceRaised
             };
             Controls.Add(header);
 
@@ -57,7 +72,8 @@ namespace AutoJMS
                 Size = new Size(550, 28),
                 Font = new Font(ThemeTypography.FamilySemibold, 14F, FontStyle.Bold),
                 ForeColor = ThemeManager.Current.Text,
-                TextAlign = ContentAlignment.MiddleLeft
+                TextAlign = ContentAlignment.MiddleLeft,
+                UseMnemonic = false   // không thì "& " bị nuốt thành gạch chân
             });
 
             header.Controls.Add(new Label
@@ -90,6 +106,7 @@ namespace AutoJMS
                 ForeColor = ThemeManager.Current.Text,
                 WordWrap = true
             };
+            content.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(content);
 
             var terms = TermsContentProvider.GetTermsText();
 

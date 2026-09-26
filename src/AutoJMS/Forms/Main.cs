@@ -1058,7 +1058,7 @@ namespace AutoJMS
             // và thêm một lợi ích: Enter nay rơi vào "Hủy bỏ", không thoát nhầm.
             return AConfirmDialog.Confirm(this,
                 "Cứ ngỡ cống hiến trăm năm...\nAi ngờ 5h00.pm",
-                "Đóng ứng dụng", "Thoát ngay", "Hủy bỏ", destructive: true);
+                "Đóng ứng dụng", "Thoát ngay", "Hủy bỏ", destructive: true, emphasized: true);
         }
 
         /// <summary>

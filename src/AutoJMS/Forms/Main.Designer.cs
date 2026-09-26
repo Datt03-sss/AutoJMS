@@ -809,7 +809,10 @@ namespace AutoJMS
             // Đây là hành động chính của vùng in (uiPanel18) nên Variant = Primary;
             // cặp Tìm kiếm/Làm mới ở uiTableLayoutPanel13 là vùng khác (DESIGN.md §K).
             tabPrint_btnPrint.Dock = DockStyle.Fill;
-            tabPrint_btnPrint.Image = (Image)resources.GetObject("tabPrint_btnPrint.Image");
+            // Symbol chứ không phải Image: bitmap máy in là nét đen cố định, trên nền Primary
+            // đặc nó ra icon đen cạnh chữ trắng; Symbol được tô theo màu chữ của nút.
+            tabPrint_btnPrint.Symbol = AutoJMS.UI.DesignSystem.ASymbols.Print;
+            tabPrint_btnPrint.SymbolSize = 16;
             tabPrint_btnPrint.Margin = new Padding(0);
             tabPrint_btnPrint.Name = "tabPrint_btnPrint";
             tabPrint_btnPrint.Size = new Size(160, AutoJMS.UI.DesignSystem.ThemeMetrics.ControlHeightLarge);

@@ -145,6 +145,21 @@ namespace AutoJMS.UI.DesignSystem
             return ThemeManager.Current.Surface;
         }
 
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hwnd, string subAppName, string subIdList);
+
+        /// <summary>
+        /// Thanh cuộn native (ruột TextBox nhiều dòng, HScrollBar/VScrollBar của DataGridView) không
+        /// nhận BackColor - ở Dark nó ra dải trắng. "DarkMode_Explorer" là theme tối của chính Windows
+        /// (10 1809+); null/null gỡ liên kết, nên Light/Red giữ nguyên từng pixel như cũ.
+        /// </summary>
+        public static void ApplyNativeScrollTheme(Control ctrl)
+        {
+            if (ctrl == null || !ctrl.IsHandleCreated) return;
+            SetWindowTheme(ctrl.Handle, ThemeManager.IsDark ? "DarkMode_Explorer" : null, null);
+            ctrl.Invalidate();
+        }
+
         /// <summary>
         /// Bật double buffer cho control không lộ thuộc tính DoubleBuffered.
         /// Dùng cho control WinForms chuẩn (DataGridView, Panel...); control A*

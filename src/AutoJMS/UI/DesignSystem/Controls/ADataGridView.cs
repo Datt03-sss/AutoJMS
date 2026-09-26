@@ -47,6 +47,11 @@ namespace AutoJMS.UI.DesignSystem
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single;
             ScrollBars = ScrollBars.Both;
 
+            // Hai thanh cuộn là control con của chính grid, chỉ có handle khi lần đầu cần hiện.
+            foreach (Control child in Controls)
+                if (child is ScrollBar bar)
+                    bar.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(bar);
+
             ApplyTheme();
         }
 
@@ -169,6 +174,9 @@ namespace AutoJMS.UI.DesignSystem
             ColumnHeadersDefaultCellStyle.ForeColor = c.Text;
             ColumnHeadersDefaultCellStyle.SelectionBackColor = c.SurfaceAlt;
             ColumnHeadersDefaultCellStyle.SelectionForeColor = c.Text;
+
+            foreach (Control child in Controls)
+                if (child is ScrollBar) ControlStyler.ApplyNativeScrollTheme(child);
         }
 
         /// <summary>

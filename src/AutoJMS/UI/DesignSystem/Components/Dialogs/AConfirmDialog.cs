@@ -19,9 +19,9 @@ namespace AutoJMS.UI.DesignSystem
         /// <returns>true nếu người dùng đồng ý.</returns>
         public static bool Confirm(IWin32Window owner, string message,
             string title = "Xác nhận", string confirmText = "Đồng ý",
-            string cancelText = "Huỷ", bool destructive = false)
+            string cancelText = "Huỷ", bool destructive = false, bool emphasized = false)
         {
-            using (var dialog = new AConfirmDialog { Text = title, Message = message })
+            using (var dialog = new AConfirmDialog { Text = title, Message = message, Emphasized = emphasized })
             {
                 // Thêm trái sang phải: Huỷ trước, nút chính sau -> nút chính ngoài cùng phải.
                 dialog.AddButton(cancelText, AButtonVariant.Secondary, DialogResult.Cancel,

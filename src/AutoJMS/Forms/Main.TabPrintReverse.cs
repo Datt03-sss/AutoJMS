@@ -188,6 +188,7 @@ namespace AutoJMS
                 else if (e.KeyCode == Keys.Escape) { e.Handled = true; HideReverseStaffPopup(); tabPrint_tenNV?.Focus(); }
             };
             _reverseStaffList.Leave += (s, e) => HideReverseStaffPopup();
+            _reverseStaffList.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(_reverseStaffList);
             Controls.Add(_reverseStaffList);
 
             tabPrint_tenNV.TextChanged += TabPrint_tenNV_TextChanged;
@@ -641,6 +642,7 @@ namespace AutoJMS
                 _reverseStaffList.BackColor = colors.InputBackground;
                 _reverseStaffList.ForeColor = colors.TextPrimary;
                 RestoreReverseFont(_reverseStaffList, ReverseUiFont);
+                ControlStyler.ApplyNativeScrollTheme(_reverseStaffList);
             }
 
             RestoreReverseFont(_reverseStatus, ReverseUiFont);
