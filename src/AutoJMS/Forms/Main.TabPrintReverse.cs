@@ -661,10 +661,13 @@ namespace AutoJMS
 
             var colors = UI.AppTheme.Colors;
             button.BackColor = ControlStyler.SurfaceBehind(button.Parent ?? uiPanel20);
-            button.Fill = tone;
-            button.HoverFill = ControlPaint.Light(tone, 0.25f);
+            // Như AButton viền: nghỉ thì nền panel + viền theo tông; hover thì tô đầy tông.
+            button.Fill = button.BackColor;
+            button.Border = tone;
+            button.HoverFill = tone;
+            button.HoverForeColor = colors.TextInverse;
             button.DisabledFill = colors.InputBorder;
-            button.ForeColor = colors.TextInverse;
+            button.ForeColor = colors.TextPrimary;
             button.DisabledForeColor = colors.TextSecondary;
             RestoreReverseFont(button, ThemeTypography.Button);
             button.Invalidate();
@@ -1689,6 +1692,10 @@ namespace AutoJMS
         public Color HoverFill { get; set; } = Color.CornflowerBlue;
         public Color DisabledFill { get; set; } = Color.Gainsboro;
         public Color DisabledForeColor { get; set; } = Color.Gray;
+        /// <summary>Viền khi còn bật. Empty = không viền (nút X trong ô nhập).</summary>
+        public Color Border { get; set; } = Color.Empty;
+        /// <summary>Màu chữ khi hover. Empty = giữ ForeColor.</summary>
+        public Color HoverForeColor { get; set; } = Color.Empty;
 
         /// <summary>
         /// Icon Lucide vẽ THAY cho <see cref="Control.Text"/>. <c>ASymbols.None</c> (mặc định)
@@ -1727,9 +1734,10 @@ namespace AutoJMS
             using (var path = DkchPaint.RoundRect(ClientRectangle, S(Radius)))
             using (var brush = new SolidBrush(tone))
                 g.FillPath(brush, path);
+            if (Enabled) ControlStyler.DrawBorder(g, ClientRectangle, Border, S(1), S(Radius));
             g.PixelOffsetMode = PixelOffsetMode.Default;
 
-            var ink = Enabled ? ForeColor : DisabledForeColor;
+            var ink = !Enabled ? DisabledForeColor : _hover && HoverForeColor.A != 0 ? HoverForeColor : ForeColor;
             if (Symbol != ASymbols.None)
             {
                 ASymbols.Draw(g, Symbol, S(SymbolSize), ink, body);

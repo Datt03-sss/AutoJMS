@@ -1167,7 +1167,8 @@ namespace AutoJMS
             if (tabDKCH_Home != null && tabDKCH_btnDKCH1 != null && tabDKCH_btnDKCH2 != null && uiTableLayoutPanel9 != null)
             {
                 tabDKCH_Home.Dock = DockStyle.Fill;
-                tabDKCH_Home.Margin = new Padding(S(3), S(3), S(3), S(3));
+                // Home giờ có viền nên phải thẳng mép với DKCH1/DKCH2 (nằm trong uiPanel1 lùi vào Margin).
+                tabDKCH_Home.Margin = new Padding(uiPanel1.Margin.Left + S(3), S(3), uiPanel1.Margin.Right + S(3), S(3));
                 tabDKCH_Home.Size = new Size(S(258), S(32));
 
                 tabDKCH_btnDKCH1.Margin = new Padding(S(3), S(4), S(3), S(4));

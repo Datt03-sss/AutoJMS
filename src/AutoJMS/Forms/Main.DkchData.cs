@@ -370,7 +370,7 @@ namespace AutoJMS
                 tabDKCH_numRow.FieldBackColor = colors.InputBackground;
                 tabDKCH_numRow.BorderColor = colors.InputBorder;
                 tabDKCH_numRow.HoverBorderColor = colors.PrimaryAccent;
-                tabDKCH_numRow.ButtonHoverColor = dark ? colors.GridAlternating : colors.PrimaryHoverTint;
+                tabDKCH_numRow.ButtonHoverColor = colors.PrimaryAccent;
                 tabDKCH_numRow.ForeColor = colors.TextPrimary;
                 tabDKCH_numRow.Invalidate();
             }
@@ -942,21 +942,23 @@ namespace AutoJMS
                 using (var pen = new Pen(lit ? HoverBorderColor : BorderColor, lit ? 1.4f : 1f)) g.DrawPath(pen, path);
             }
 
-            if (_hotButton != 0)
+            bool canDown = _value > _min;
+            bool canUp = _value < _max;
+            // Như AButton: nút −/+ hover thì tô đầy, chữ trắng; phía đã chạm biên coi như disable.
+            bool hotDown = _hotButton == 1 && canDown;
+            bool hotUp = _hotButton == 2 && canUp;
+            if (hotDown || hotUp)
             {
-                var hotBox = _hotButton == 1 ? MinusBox : PlusBox;
-                using (var path = DkchPaint.RoundRect(hotBox, S(Radius)))
+                using (var path = DkchPaint.RoundRect(hotDown ? MinusBox : PlusBox, S(Radius)))
                 using (var brush = new SolidBrush(ButtonHoverColor))
                 {
                     g.FillPath(brush, path);
                 }
             }
 
-            bool canDown = _value > _min;
-            bool canUp = _value < _max;
             float scale = (float)UI.DesignSystem.DpiHelper.ScaleFactor(this);
-            DkchPaint.Glyph(g, MinusBox, canDown ? ForeColor : Blend(ForeColor, FieldBackColor), false, scale);
-            DkchPaint.Glyph(g, PlusBox, canUp ? ForeColor : Blend(ForeColor, FieldBackColor), true, scale);
+            DkchPaint.Glyph(g, MinusBox, hotDown ? Color.White : canDown ? ForeColor : Blend(ForeColor, FieldBackColor), false, scale);
+            DkchPaint.Glyph(g, PlusBox, hotUp ? Color.White : canUp ? ForeColor : Blend(ForeColor, FieldBackColor), true, scale);
 
             var textBox = new Rectangle(MinusBox.Right, box.Y, Math.Max(1, PlusBox.X - MinusBox.Right), box.Height);
             TextRenderer.DrawText(g, ((int)_value).ToString(), Font, textBox, ForeColor,

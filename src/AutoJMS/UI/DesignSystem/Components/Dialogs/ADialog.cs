@@ -31,6 +31,9 @@ namespace AutoJMS.UI.DesignSystem
             MaximizeBox = false;
             KeyPreview = true;
             DoubleBuffered = true;
+            // Nút con tô góc bo bằng BackColor của cha: để mặc định (#F0F0F0) thì ở Dark
+            // góc nút ra đốm sáng quanh viền.
+            BackColor = Theme.SurfaceRaised;
             Font = ThemeTypography.Body;
             Width = ThemeMetrics.DialogWidthDefault;
             Height = 160;
@@ -131,7 +134,7 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            _themeHook ??= new ThemeHook(this, Invalidate);
+            _themeHook ??= new ThemeHook(this, () => { BackColor = Theme.SurfaceRaised; Invalidate(true); });
         }
 
         protected override void OnLoad(EventArgs e)

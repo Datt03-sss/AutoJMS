@@ -53,7 +53,8 @@ namespace AutoJMS
         private const int DkchNbListH = 104;  // khi có mã: header 24px + ~4 dòng 11pt
         private const int DkchNbListMinH = 76; // khi cả hai ô còn rỗng — trả chỗ cho Hành trình
         private const int DkchNbPillH = 15;    // pill NORMAL/NEWBIE
-        private const int DkchNbPillBand = 20; // dải riêng của pill (15 + khe 5) phía trên hai ô danh sách
+        private const int DkchNbPillTop = 1;   // + Padding trên (Xs) của uiTitlePanel2 = khe dưới pill, pill nằm giữa dải
+        private const int DkchNbPillBand = 21; // dải riêng của pill (1 + 15 + khe 5) phía trên hai ô danh sách
 
         /// <summary>Dựng lại toàn bộ panel Newbill. Gọi ngay sau BuildDkchDataSection().</summary>
         private void BuildDkchNewbillSection()
@@ -138,7 +139,7 @@ namespace AutoJMS
                 int x = S(DkchNbPad);
                 int inner = Math.Max(S(60), w - S(DkchNbPad) * 2);
                 int half = (inner - S(DkchNbGap)) / 2;
-                int y = S(DkchNbPad) + S(DkchNbPillBand);
+                int y = S(DkchNbPillBand);
 
                 // Ở cửa sổ nhỏ nhất (MinimumSize 1024x700) tổng chiều cao mong muốn vượt
                 // chỗ có thật, nên hai ô danh sách chịu co trước — chúng có thanh cuộn,
@@ -148,7 +149,7 @@ namespace AutoJMS
                 bool hasCodes = (tabDKCH_inputNewBill != null && tabDKCH_inputNewBill.TextLength > 0)
                              || (tabDKCH_newBillDone != null && tabDKCH_newBillDone.TextLength > 0);
                 int listH = hasCodes ? S(DkchNbListH) : S(DkchNbListMinH);
-                int wantH = S(DkchNbPad) * 2 + S(DkchNbPillBand) + listH + S(DkchNbGap) * 3 + S(135) + S(54) + S(90);
+                int wantH = S(DkchNbPad) + S(DkchNbPillBand) + listH + S(DkchNbGap) * 3 + S(135) + S(54) + S(90);
                 if (h < wantH) listH = Math.Max(S(64), listH - (wantH - h));
 
                 // Hai ô ghép SÁT thành một khối: chồng nhau 1px để hai đường viền
@@ -211,11 +212,12 @@ namespace AutoJMS
             Color pillInk = newbie ? ColorTranslator.FromHtml("#5A3A00") : skin.BtnFore;
             using (var f = new Font(DkchCardBase.UiFamily, 7.5f, FontStyle.Bold))
             {
-                int w = TextRenderer.MeasureText(_dkchModeText, f,
+                // Hai chế độ cùng một khung, lấy theo chữ "NORMAL" — chỉ đổi chữ.
+                int w = TextRenderer.MeasureText("NORMAL", f,
                             new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width + S(14);
                 // Cùng toạ độ với LayoutDkchNewbill: mép phải = mép phải hai ô danh sách.
                 int right = tabDKCH_newbillHost.ClientSize.Width - S(DkchNbPad);
-                var box = new Rectangle(Math.Max(S(DkchNbPad), right - w), S(DkchNbPad), w, S(DkchNbPillH));
+                var box = new Rectangle(Math.Max(S(DkchNbPad), right - w), S(DkchNbPillTop), w, S(DkchNbPillH));
                 using (var path = DkchPaint.RoundRect(box, S(3)))
                 using (var brush = new SolidBrush(pillBg))
                 {
@@ -281,7 +283,7 @@ namespace AutoJMS
         public Color StepDone, StepCurrent, StepCurrentAlt, StepPending, StepLabel, StepLabelCurrent;
         public Color JourneyDot, JourneyDotMuted, JourneyTitle, JourneyTitleMuted;
         public Color JourneyName, JourneyNote, JourneyTime, JourneyDivider;
-        public Color CopyBg, CopyBorder, CopyFore;
+        public Color CopyBg, CopyFore;
         // Panel trái: thanh tiêu đề khung nhóm + 4 nút CONTROL.
         public Color TitleFore = Color.White;
         public Color BtnPrimary, BtnSuccess, BtnWarning, BtnDanger, BtnFore;
@@ -372,7 +374,6 @@ namespace AutoJMS
             JourneyTime = Hex("#3F4855"),
             JourneyDivider = Hex("#E3E7ED"),
             CopyBg = Hex("#FDECEC"),
-            CopyBorder = Hex("#F3B9BB"),
             CopyFore = Hex("#C81E25")
         };
 
@@ -444,7 +445,6 @@ namespace AutoJMS
             JourneyTime = Hex("#C9D3E2"),
             JourneyDivider = Hex("#2A2E35"),
             CopyBg = Hex("#2B313B"),
-            CopyBorder = Hex("#3A4250"),
             CopyFore = Hex("#E9EEF6")
         };
 
@@ -516,7 +516,6 @@ namespace AutoJMS
             JourneyTime = Hex("#3F4855"),
             JourneyDivider = Hex("#E3E7ED"),
             CopyBg = Hex("#EDF2F9"),
-            CopyBorder = Hex("#C7D8EE"),
             CopyFore = Hex("#1C6DD0")
         };
     }
@@ -1107,9 +1106,10 @@ namespace AutoJMS
                 int btn = S(26);
                 _copyBox = new Rectangle(box1.Right - rowPad - btn, box1.Y + (box1.Height - btn) / 2, btn, btn);
 
-                Color btnBg = _copyOk ? DkchOkGreen : (_copyHot ? Skin.ChipBg : Skin.CopyBg);
-                Color btnLine = _copyOk ? DkchOkGreen : Skin.CopyBorder;
-                Color btnInk = _copyOk ? Color.White : Skin.CopyFore;
+                // Như AButton viền: nghỉ thì viền accent, hover thì tô đầy accent.
+                Color btnBg = _copyOk ? DkchOkGreen : (_copyHot ? Skin.Accent : Skin.CopyBg);
+                Color btnLine = _copyOk ? DkchOkGreen : Skin.Accent;
+                Color btnInk = _copyOk ? Color.White : (_copyHot ? Skin.BtnFore : Skin.CopyFore);
 
                 int codeW = Math.Max(S(20), _copyBox.X - box1.X - rowPad - S(8));
                 Draw(g, Waybill, fCode, new Rectangle(box1.X + rowPad, box1.Y, codeW, box1.Height), Skin.ResultTitle);

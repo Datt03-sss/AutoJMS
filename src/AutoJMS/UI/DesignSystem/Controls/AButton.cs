@@ -107,18 +107,14 @@ namespace AutoJMS.UI.DesignSystem
                     else if (_hover) p.Back = c.PrimaryHover;
                     break;
 
+                // Nút viền: lúc nghỉ luôn có viền màu Primary; hover/bấm tô đầy như Primary.
                 case AButtonVariant.Secondary:
-                    p.Back = c.SurfaceRaised; p.Fore = c.Text; p.Border = c.BorderStrong;
-                    if (!Enabled) { p.Back = c.SurfaceAlt; p.Fore = c.TextMuted; p.Border = c.Border; break; }
-                    if (_pressed) p.Back = c.Border;
-                    else if (_hover) p.Back = c.SurfaceAlt;
-                    break;
-
                 case AButtonVariant.Ghost:
-                    p.Back = Color.Empty; p.Fore = c.TextSecondary; p.Border = Color.Empty;
-                    if (!Enabled) { p.Fore = c.TextMuted; break; }
-                    if (_pressed) p.Back = c.Border;
-                    else if (_hover) { p.Back = c.SurfaceAlt; p.Fore = c.Text; }
+                    bool ghost = _variant == AButtonVariant.Ghost;
+                    p.Back = ghost ? Color.Empty : c.SurfaceRaised; p.Fore = c.Text; p.Border = c.Primary;
+                    if (!Enabled) { p.Back = ghost ? Color.Empty : c.SurfaceAlt; p.Fore = c.TextMuted; p.Border = c.Border; break; }
+                    if (_pressed) { p.Back = p.Border = c.PrimaryPressed; p.Fore = c.OnPrimary; }
+                    else if (_hover) { p.Back = p.Border = c.Primary; p.Fore = c.OnPrimary; }
                     break;
 
                 default:
