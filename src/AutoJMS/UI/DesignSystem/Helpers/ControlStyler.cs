@@ -40,7 +40,7 @@ namespace AutoJMS.UI.DesignSystem
         /// Đường bao chữ nhật bo góc. Người gọi phải Dispose().
         /// radius &lt;= 0 trả về đường bao chữ nhật vuông.
         /// </summary>
-        public static GraphicsPath RoundedRect(Rectangle r, int radius)
+        public static GraphicsPath RoundedRect(RectangleF r, float radius)
         {
             var path = new GraphicsPath();
             if (r.Width <= 0 || r.Height <= 0)
@@ -56,7 +56,7 @@ namespace AutoJMS.UI.DesignSystem
                 return path;
             }
 
-            int d = radius * 2;
+            float d = radius * 2;
             path.AddArc(r.X, r.Y, d, d, 180, 90);
             path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
             path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
@@ -85,13 +85,17 @@ namespace AutoJMS.UI.DesignSystem
         /// Vẽ viền NẰM GỌN bên trong <paramref name="r"/>.
         /// GDI+ căn nét bút vào giữa đường bao, nên phải thu hình lại nửa bề dày -
         /// thiếu bước này thì viền bị cắt mất một nửa ở mép control.
+        ///
+        /// Nửa bề dày phải là số thực: với PixelOffsetMode.Half (xem <see cref="Prepare"/>),
+        /// nét 1px đặt ở toạ độ nguyên nằm vắt giữa hai pixel nên cạnh thẳng chỉ đậm một nửa,
+        /// còn cung góc bo thì đậm đủ - bốn góc nổi thành chấm sáng/tối quanh mọi nút có viền.
         /// </summary>
         public static void DrawBorder(Graphics g, Rectangle r, Color color, int width, int radius)
         {
             if (color.A == 0 || width <= 0) return;
 
-            int half = width / 2;
-            var inner = new Rectangle(r.X + half, r.Y + half, r.Width - width, r.Height - width);
+            float half = width / 2f;
+            var inner = new RectangleF(r.X + half, r.Y + half, r.Width - width, r.Height - width);
             if (inner.Width <= 0 || inner.Height <= 0) return;
 
             using (var pen = new Pen(color, width))
@@ -99,7 +103,7 @@ namespace AutoJMS.UI.DesignSystem
                 pen.Alignment = PenAlignment.Center;
                 if (radius <= 0)
                 {
-                    g.DrawRectangle(pen, inner);
+                    g.DrawRectangle(pen, inner.X, inner.Y, inner.Width, inner.Height);
                     return;
                 }
                 using (var path = RoundedRect(inner, Math.Max(0, radius - half)))
@@ -123,6 +127,22 @@ namespace AutoJMS.UI.DesignSystem
                 c.SurfaceRaised,
                 ThemeBorders.FocusGap,
                 Math.Max(0, radius - ThemeBorders.Focus));
+        }
+
+        /// <summary>
+        /// Màu thật đang lộ ra phía sau control con — dùng tô góc bo trước khi vẽ thân.
+        /// Không dùng thẳng Parent.BackColor: APanel tô bề mặt theo Elevation chứ không theo
+        /// BackColor, còn cha có BackColor Transparent thì bút trong suốt không vẽ gì và góc bo
+        /// giữ nguyên bộ đệm đen của OptimizedDoubleBuffer → viền đen quanh nút.
+        /// </summary>
+        public static Color SurfaceBehind(Control parent)
+        {
+            for (var p = parent; p != null; p = p.Parent)
+            {
+                if (p is APanel panel) return ThemeShadows.BackColorFor(panel.Elevation, ThemeManager.Current);
+                if (p.BackColor.A == 255) return p.BackColor;
+            }
+            return ThemeManager.Current.Surface;
         }
 
         /// <summary>

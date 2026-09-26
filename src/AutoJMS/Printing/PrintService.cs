@@ -149,7 +149,23 @@ namespace AutoJMS
 
         private int S(int value) => UI.DesignSystem.DpiHelper.Scale(_grid, value);
 
-        private void AutoSizePrintGridColumns()
+        /// <summary>
+        /// Đầu cột ở chế độ AutoSize: MỖI lần thêm cột, đổi bề rộng hay đổi SortMode, grid đo lại
+        /// chiều cao đầu cột trên mọi cột (mỗi ô một lượt VisualStyleRenderer.IsSupported). Dựng
+        /// 9 cột thành vài chục lượt đo - hơn nửa thời gian lần đầu mở tab IN ĐƠN. Tắt trong lúc
+        /// dựng, bật lại thì grid đo đúng một lần trên bề rộng cuối, chiều cao ra y như cũ.
+        /// </summary>
+        private void WithHeaderHeightFrozen(Action build)
+        {
+            if (_grid.ColumnHeadersHeightSizeMode != DataGridViewColumnHeadersHeightSizeMode.AutoSize) { build(); return; }
+            _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            try { build(); }
+            finally { _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize; }
+        }
+
+        private void AutoSizePrintGridColumns() => WithHeaderHeightFrozen(AutoSizePrintGridColumnsCore);
+
+        private void AutoSizePrintGridColumnsCore()
         {
             if (_grid.Columns.Count == 0) return;
 
@@ -192,11 +208,10 @@ namespace AutoJMS
             {
                 col.ReadOnly = true;
 
+                // Không gán Width: LoadRowsDirect gọi hàm này SAU lần đo của LoadDataToGrid,
+                // S(50) hẹp hơn "Chọn" + padding nên đầu cột xuống dòng.
                 if (col.Name == "Select")
-                {
                     col.HeaderText = "Chọn";
-                    col.Width = S(50);
-                }
 
                 // Căn giữa các cột số lượng và mã
                 switch (col.Name)
@@ -225,9 +240,16 @@ namespace AutoJMS
             RebuildTable();
         }
 
-        private void RebuildTable()
+        private void RebuildTable() => WithHeaderHeightFrozen(RebuildTableCore);
+
+        private void RebuildTableCore()
         {
             _grid.SuspendLayout();
+            // Mỗi Columns.Add/Clear trên bảng đang bind là một ListChanged, grid xoá rồi sinh lại
+            // TOÀN BỘ cột (mỗi cột một lượt PerformLayout + Screen.FromHandle) - 9 cột thành ~50
+            // lượt, 2/3 thời gian đổi tab con IN ĐƠN. Tắt loa trong lúc dựng, ResetBindings(true)
+            // bên dưới cho grid sinh cột đúng một lần.
+            _bindingSource.RaiseListChangedEvents = false;
             try
             {
                 _displayTable.Columns.Clear();
@@ -277,20 +299,26 @@ namespace AutoJMS
             }
             finally
             {
+                _bindingSource.RaiseListChangedEvents = true;
                 _grid.ResumeLayout();
             }
 
-            LoadDataToGrid();
+            // Một lần reset metadata duy nhất thì grid GIỮ cột cũ trùng tên theo thứ tự cũ và chỉ
+            // nối cột mới vào cuối - từ In lại đơn sang In Reverse, "Số bản in" nhảy lên trước
+            // "Nhân viên lấy hàng". Xoá hết cột (một thao tác) để grid sinh lại đúng thứ tự bảng.
+            _grid.Columns.Clear();
+            _bindingSource.ResetBindings(true);
             // Cột chỉ ra đời Ở ĐÂY, do AutoGenerateColumns sinh theo _displayTable. SetupGrid()
             // đã gọi DisableSorting() nhưng lúc đó grid còn 0 cột nên lệnh ấy không chạm được ai:
             // mọi cột mới vẫn giữ SortMode mặc định Automatic. DataGridView chừa sẵn ~13px bề
             // ngang mỗi đầu cột cho mũi tên sắp xếp, trong khi phần bù +24 của
             // AutoSizePrintGridColumns chỉ đủ padding 16 + viền 2 - thiếu chỗ nên đầu cột xuống
             // dòng và vỡ giữa từ ("Nhân viên lấy h|àng"). Gọi lại khi cột đã có vừa trả lại 13px
-            // vừa tắt sắp xếp đúng như SetupGrid định làm. Phải đứng TRƯỚC hàm đo bề rộng.
+            // vừa tắt sắp xếp đúng như SetupGrid định làm. Phải đứng TRƯỚC hàm đo bề rộng - hàm
+            // đó chạy ở cuối LoadDataToGrid.
             DisableSorting();
             SetColumnAlignments();
-            AutoSizePrintGridColumns();
+            LoadDataToGrid();
         }
 
         private void LoadDataToGrid()

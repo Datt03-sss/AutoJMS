@@ -120,6 +120,7 @@ namespace AutoJMS.UI.DesignSystem
             int radius = S(ThemeRadius.Sm);
 
             ControlStyler.Prepare(g, radius);
+            PaintParentBackground(e);   // góc ngoài khung bo; thiếu là lộ BackColor sáng trong Dark
 
             Color back = Enabled ? c.SurfaceRaised : c.SurfaceAlt;
             Color border = !Enabled ? c.Border

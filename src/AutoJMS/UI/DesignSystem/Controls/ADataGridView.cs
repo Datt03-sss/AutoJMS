@@ -75,7 +75,14 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            _themeHook ??= new ThemeHook(this, ApplyTheme);
+            if (_themeHook == null)
+            {
+                _themeHook = new ThemeHook(this, ApplyTheme);
+                // Bảng trên tab chưa mở chưa có handle nên lỡ tín hiệu đổi theme lúc khởi động:
+                // mở app ở Dark là nền bảng kẹt màu Light. Chỉ bắt kịp MÀU — ApplyTheme còn đặt
+                // lại font ô, đè mất cỡ chữ mà ApplyStandardGridSettings của Main đã chọn.
+                ApplyColors();
+            }
             ApplyMetrics();
         }
 
@@ -83,6 +90,33 @@ namespace AutoJMS.UI.DesignSystem
         {
             if (disposing) { _themeHook?.Dispose(); _themeHook = null; }
             base.Dispose(disposing);
+        }
+
+        /// <summary>
+        /// Bản sao nhánh "không visual style" của base cho viền Single. Base hỏi
+        /// Application.RenderWithVisualStyles (IsAppThemed, ~0,5 ms/lần trên máy có hook
+        /// điều khiển từ xa) TRƯỚC khi xét EnableHeadersVisualStyles, và hàm này chạy cho
+        /// từng đầu cột mỗi lần vẽ/đo - đầu cột ở đây tự tô nên nhánh visual style không bao giờ dùng.
+        /// </summary>
+        public override DataGridViewAdvancedBorderStyle AdjustColumnHeaderBorderStyle(
+            DataGridViewAdvancedBorderStyle dataGridViewAdvancedBorderStyleInput,
+            DataGridViewAdvancedBorderStyle dataGridViewAdvancedBorderStylePlaceholder,
+            bool isFirstDisplayedColumn, bool isLastVisibleColumn)
+        {
+            if (EnableHeadersVisualStyles
+                || dataGridViewAdvancedBorderStyleInput.All != DataGridViewAdvancedCellBorderStyle.Single)
+                return base.AdjustColumnHeaderBorderStyle(dataGridViewAdvancedBorderStyleInput,
+                    dataGridViewAdvancedBorderStylePlaceholder, isFirstDisplayedColumn, isLastVisibleColumn);
+
+            if (isFirstDisplayedColumn && !RowHeadersVisible) return dataGridViewAdvancedBorderStyleInput;
+
+            var p = dataGridViewAdvancedBorderStylePlaceholder;
+            bool rtl = RightToLeft == RightToLeft.Yes;
+            p.Left = rtl ? DataGridViewAdvancedCellBorderStyle.Single : DataGridViewAdvancedCellBorderStyle.None;
+            p.Right = rtl ? DataGridViewAdvancedCellBorderStyle.None : DataGridViewAdvancedCellBorderStyle.Single;
+            p.Top = DataGridViewAdvancedCellBorderStyle.Single;
+            p.Bottom = DataGridViewAdvancedCellBorderStyle.Single;
+            return p;
         }
 
         /// <summary>Chiều cao hàng CỐ ĐỊNH - grid tính vùng cuộn bằng phép nhân thay vì đo từng hàng.</summary>
@@ -100,6 +134,21 @@ namespace AutoJMS.UI.DesignSystem
 
         public void ApplyTheme()
         {
+            ApplyColors();
+
+            DefaultCellStyle.Font = ThemeTypography.Grid;
+            DefaultCellStyle.Padding = new Padding(
+                S(ThemeSpacing.CellPadX), S(ThemeSpacing.CellPadY),
+                S(ThemeSpacing.CellPadX), S(ThemeSpacing.CellPadY));
+
+            ColumnHeadersDefaultCellStyle.Font = ThemeTypography.GridHeader;
+            ColumnHeadersDefaultCellStyle.Padding = new Padding(S(ThemeSpacing.CellPadX), 0, S(ThemeSpacing.CellPadX), 0);
+
+            Invalidate();
+        }
+
+        private void ApplyColors()
+        {
             var c = Theme;
 
             BackgroundColor = c.Surface;
@@ -110,10 +159,6 @@ namespace AutoJMS.UI.DesignSystem
             DefaultCellStyle.ForeColor = c.Text;
             DefaultCellStyle.SelectionBackColor = c.PrimaryTint;
             DefaultCellStyle.SelectionForeColor = c.Text;
-            DefaultCellStyle.Font = ThemeTypography.Grid;
-            DefaultCellStyle.Padding = new Padding(
-                S(ThemeSpacing.CellPadX), S(ThemeSpacing.CellPadY),
-                S(ThemeSpacing.CellPadX), S(ThemeSpacing.CellPadY));
 
             AlternatingRowsDefaultCellStyle.BackColor = c.SurfaceAlt;
             AlternatingRowsDefaultCellStyle.ForeColor = c.Text;
@@ -122,12 +167,8 @@ namespace AutoJMS.UI.DesignSystem
 
             ColumnHeadersDefaultCellStyle.BackColor = c.SurfaceAlt;
             ColumnHeadersDefaultCellStyle.ForeColor = c.Text;
-            ColumnHeadersDefaultCellStyle.Font = ThemeTypography.GridHeader;
             ColumnHeadersDefaultCellStyle.SelectionBackColor = c.SurfaceAlt;
             ColumnHeadersDefaultCellStyle.SelectionForeColor = c.Text;
-            ColumnHeadersDefaultCellStyle.Padding = new Padding(S(ThemeSpacing.CellPadX), 0, S(ThemeSpacing.CellPadX), 0);
-
-            Invalidate();
         }
 
         /// <summary>

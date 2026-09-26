@@ -171,6 +171,7 @@ namespace AutoJMS.UI.DesignSystem
             var c = Theme;
             int radius = S(ThemeRadius.Sm);
             ControlStyler.Prepare(e.Graphics, radius);
+            PaintParentBackground(e);   // góc ngoài khung bo; thiếu là lộ BackColor sáng trong Dark
 
             bool focused = _inner.Focused;
 

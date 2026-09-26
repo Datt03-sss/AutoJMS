@@ -52,6 +52,8 @@ namespace AutoJMS
         private const int DkchNbPad = 6;      // lề trong của panel (thu từ 8 để rộng thêm)
         private const int DkchNbListH = 104;  // khi có mã: header 24px + ~4 dòng 11pt
         private const int DkchNbListMinH = 76; // khi cả hai ô còn rỗng — trả chỗ cho Hành trình
+        private const int DkchNbPillH = 15;    // pill NORMAL/NEWBIE
+        private const int DkchNbPillBand = 20; // dải riêng của pill (15 + khe 5) phía trên hai ô danh sách
 
         /// <summary>Dựng lại toàn bộ panel Newbill. Gọi ngay sau BuildDkchDataSection().</summary>
         private void BuildDkchNewbillSection()
@@ -102,8 +104,7 @@ namespace AutoJMS
             });
 
             uiTitlePanel2.Controls.Add(tabDKCH_newbillHost);
-            uiTitlePanel2.Paint -= PaintDkchModePill;
-            uiTitlePanel2.Paint += PaintDkchModePill;
+            tabDKCH_newbillHost.Paint += PaintDkchModePill;
             uiTitlePanel2.ResumeLayout(false);
 
             tabDKCH_newbillHost.Resize += (s, e) => LayoutDkchNewbill();
@@ -137,7 +138,7 @@ namespace AutoJMS
                 int x = S(DkchNbPad);
                 int inner = Math.Max(S(60), w - S(DkchNbPad) * 2);
                 int half = (inner - S(DkchNbGap)) / 2;
-                int y = S(DkchNbPad);
+                int y = S(DkchNbPad) + S(DkchNbPillBand);
 
                 // Ở cửa sổ nhỏ nhất (MinimumSize 1024x700) tổng chiều cao mong muốn vượt
                 // chỗ có thật, nên hai ô danh sách chịu co trước — chúng có thanh cuộn,
@@ -147,7 +148,7 @@ namespace AutoJMS
                 bool hasCodes = (tabDKCH_inputNewBill != null && tabDKCH_inputNewBill.TextLength > 0)
                              || (tabDKCH_newBillDone != null && tabDKCH_newBillDone.TextLength > 0);
                 int listH = hasCodes ? S(DkchNbListH) : S(DkchNbListMinH);
-                int wantH = S(DkchNbPad) * 2 + listH + S(DkchNbGap) * 3 + S(135) + S(54) + S(90);
+                int wantH = S(DkchNbPad) * 2 + S(DkchNbPillBand) + listH + S(DkchNbGap) * 3 + S(135) + S(54) + S(90);
                 if (h < wantH) listH = Math.Max(S(64), listH - (wantH - h));
 
                 // Hai ô ghép SÁT thành một khối: chồng nhau 1px để hai đường viền
@@ -190,10 +191,10 @@ namespace AutoJMS
             }
         }
 
-        /// <summary>P1 — vẽ pill chế độ ở góc phải thanh tiêu đề NEWBILL.</summary>
+        /// <summary>P1 — vẽ pill chế độ trong dải riêng phía trên hai ô danh sách, thẳng mép phải của chúng.</summary>
         private void PaintDkchModePill(object sender, PaintEventArgs e)
         {
-            if (uiTitlePanel2 == null || uiTitlePanel2.IsDisposed) return;
+            if (tabDKCH_newbillHost == null || tabDKCH_newbillHost.IsDisposed) return;
 
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -204,18 +205,17 @@ namespace AutoJMS
             // khác đúng cặp màu. Không lấy từ skin.TipBg nữa vì màu đó đã được làm mềm
             // cho dải GỢI Ý, dùng lại thì pill Newbie nhạt đi so với yêu cầu.
             bool newbie = string.Equals(_dkchModeText, "NEWBIE", StringComparison.OrdinalIgnoreCase);
-            Color pillBg = newbie ? ColorTranslator.FromHtml("#FFD166") : Color.White;
-            Color pillInk = newbie ? ColorTranslator.FromHtml("#5A3A00") : skin.Accent;
+            // Pill giờ nằm trên nền panel chứ không trên thanh tiêu đề đỏ như trước, nên
+            // pill NORMAL tô nền accent chữ trắng — nền trắng thì chìm hẳn vào theme Light.
+            Color pillBg = newbie ? ColorTranslator.FromHtml("#FFD166") : skin.Accent;
+            Color pillInk = newbie ? ColorTranslator.FromHtml("#5A3A00") : skin.BtnFore;
             using (var f = new Font(DkchCardBase.UiFamily, 7.5f, FontStyle.Bold))
             {
                 int w = TextRenderer.MeasureText(_dkchModeText, f,
                             new Size(int.MaxValue, int.MaxValue), TextFormatFlags.SingleLine).Width + S(14);
-                int h = S(15);
-                // uiTitlePanel2 nay là APanel: dải tiêu đề cũ của UITitlePanel giờ là
-                // Padding.Top (vẫn đúng 20px), nên pill vẫn nằm đúng chỗ cũ.
-                int bar = Math.Max(h, uiTitlePanel2.Padding.Top);
-                var box = new Rectangle(Math.Max(S(2), uiTitlePanel2.ClientSize.Width - w - S(7)),
-                                        (bar - h) / 2, w, h);
+                // Cùng toạ độ với LayoutDkchNewbill: mép phải = mép phải hai ô danh sách.
+                int right = tabDKCH_newbillHost.ClientSize.Width - S(DkchNbPad);
+                var box = new Rectangle(Math.Max(S(DkchNbPad), right - w), S(DkchNbPad), w, S(DkchNbPillH));
                 using (var path = DkchPaint.RoundRect(box, S(3)))
                 using (var brush = new SolidBrush(pillBg))
                 {

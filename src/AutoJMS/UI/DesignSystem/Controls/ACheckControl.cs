@@ -59,7 +59,8 @@ namespace AutoJMS.UI.DesignSystem
             var g = e.Graphics;
             var c = Theme;
 
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            // PixelOffsetMode.Half như mọi control A* khác: DrawBorder/FillSurface tính toạ độ theo nó.
+            ControlStyler.Prepare(g, 1);
             PaintParentBackground(e);
 
             int gw = S(GlyphWidth), gh = S(GlyphHeight);
@@ -77,7 +78,7 @@ namespace AutoJMS.UI.DesignSystem
                     ControlStyler.TextLeft);
             }
 
-            if (Focused && TabStop)
+            if (Focused && TabStop && ShowFocusCues)
                 ControlStyler.DrawFocusRing(g, ClientRectangle, c, S(ThemeRadius.Sm));
         }
 

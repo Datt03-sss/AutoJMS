@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace AutoJMS.UI.DesignSystem
@@ -238,10 +239,45 @@ namespace AutoJMS.UI.DesignSystem
             int index = HitTest(e.Location);
             if (index < 0 || index == _target.SelectedIndex) return;
 
-            Focus();
+            // Không Focus() nav: TabControl tự lấy focus (WmSelChanging) rồi chuyển vào control
+            // đầu của trang mới (UpdateTabSelection), nên focus ở nav mất ngay - chỉ tốn thêm một
+            // vòng SetFocus/KillFocus (rời WebView2 là gọi chéo tiến trình) và hai lần vẽ lại nav.
             // Ghi vào Target là đủ: OnTargetSelectionChanged sẽ vẽ lại, và MỌI handler
             // nghiệp vụ đang nghe tabControl.SelectedIndexChanged vẫn chạy y như cũ.
-            _target.SelectedIndex = index;
+            SelectPage(index);
+        }
+
+        private const int WmSetRedraw = 0x000B;
+        private const uint RdwInvalidate = 0x0001, RdwErase = 0x0004, RdwAllChildren = 0x0080, RdwFrame = 0x0400;
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr hWnd, IntPtr rect, IntPtr rgn, uint flags);
+
+        /// <summary>
+        /// Đổi trang với khung chứa Target tắt vẽ (WM_SETREDRAW). Không tắt thì hiện trang mới là
+        /// Windows xử lý vùng hiển thị + vẽ ngay từng control con, còn handler nghiệp vụ đổi
+        /// text/cột lại vẽ thêm lượt nữa. Tắt trên Parent chứ không trên Target: SysTabControl32
+        /// tự giữ cờ redraw của nó mà không ẩn cây con. Bật lại xong vẽ lại cả khung một lượt,
+        /// kể cả viền (RDW_FRAME) vì trong lúc tắt không ai nhận WM_NCPAINT.
+        /// </summary>
+        private void SelectPage(int index)
+        {
+            Control host = _target.Parent ?? _target;
+            if (!host.IsHandleCreated)
+            {
+                _target.SelectedIndex = index;
+                return;
+            }
+
+            SendMessage(host.Handle, WmSetRedraw, IntPtr.Zero, IntPtr.Zero);
+            try
+            {
+                _target.SelectedIndex = index;
+            }
+            finally
+            {
+                SendMessage(host.Handle, WmSetRedraw, (IntPtr)1, IntPtr.Zero);
+                RedrawWindow(host.Handle, IntPtr.Zero, IntPtr.Zero, RdwInvalidate | RdwErase | RdwFrame | RdwAllChildren);
+            }
         }
 
         protected override bool IsInputKey(Keys keyData)
@@ -258,7 +294,7 @@ namespace AutoJMS.UI.DesignSystem
             int next = _target.SelectedIndex + delta;
             if (next < 0 || next >= ItemCount) return;
 
-            _target.SelectedIndex = next;
+            SelectPage(next);
             e.Handled = true;
         }
 

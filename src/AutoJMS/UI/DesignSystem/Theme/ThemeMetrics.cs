@@ -14,6 +14,9 @@ namespace AutoJMS.UI.DesignSystem
 
         // Control tương tác
         public const int ControlHeight = 28;
+
+        /// <summary>Nút hành động chính của một tab (Tìm kiếm, Làm mới, IN, thanh lệnh tra hành trình).</summary>
+        public const int ControlHeightLarge = 36;
         public const int BadgeHeight = 18;
 
         /// <summary>Vùng bấm nhỏ nhất (DESIGN.md §Y). Không control tương tác nào nhỏ hơn.</summary>

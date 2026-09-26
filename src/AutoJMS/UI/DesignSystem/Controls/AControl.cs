@@ -20,10 +20,14 @@ namespace AutoJMS.UI.DesignSystem
 
         protected AControl()
         {
+            // CacheText: không có cờ này, mỗi lần vẽ/layout và mỗi lần đọc Text (GetPreferredSize
+            // của AButton trong FlowLayoutPanel) là một GetWindowText = 2 message Win32. Phải bật
+            // TRƯỚC khi có handle - bật sau thì Text trả về "". Xem AppTheme.CacheText.
             SetStyle(ControlStyles.UserPaint |
                      ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.ResizeRedraw, true);
+                     ControlStyles.ResizeRedraw |
+                     ControlStyles.CacheText, true);
 
             Font = ThemeTypography.Body;
         }
@@ -37,7 +41,11 @@ namespace AutoJMS.UI.DesignSystem
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            _themeHook ??= new ThemeHook(this, OnThemeChanged);
+            if (_themeHook != null) return;
+            _themeHook = new ThemeHook(this, OnThemeChanged);
+            // Control trên tab chưa mở chưa có handle nên lỡ tín hiệu đổi theme lúc khởi động;
+            // ruột WinForms (TextBox của ATextBox) kẹt màu Light khi mở app ở Dark. Bắt kịp một lần.
+            OnThemeChanged();
         }
 
         /// <summary>
@@ -45,6 +53,14 @@ namespace AutoJMS.UI.DesignSystem
         /// Control có ruột WinForms phải ghi đè để gán lại màu cho ruột.
         /// </summary>
         protected virtual void OnThemeChanged() => Invalidate();
+
+        // Vòng focus chỉ vẽ khi ShowFocusCues (focus đến từ bàn phím) — bấm chuột không để lại
+        // viền đen. Windows bật cờ này ở lần bấm Tab/Alt đầu tiên; vẽ lại để vòng hiện ngay.
+        protected override void OnChangeUICues(UICuesEventArgs e)
+        {
+            base.OnChangeUICues(e);
+            if (e.ChangeFocus) Invalidate();
+        }
 
         protected override void Dispose(bool disposing)
         {
@@ -70,9 +86,14 @@ namespace AutoJMS.UI.DesignSystem
         /// <summary>Nền trong suốt theo control cha - tránh viền tối quanh góc bo.</summary>
         protected void PaintParentBackground(PaintEventArgs e)
         {
-            var back = Parent?.BackColor ?? Theme.Surface;
-            using (var brush = new SolidBrush(back))
-                e.Graphics.FillRectangle(brush, ClientRectangle);
+            // Tắt AA khi tô: AA + PixelOffsetMode.None chỉ phủ nửa hàng/cột pixel đầu, bộ đệm
+            // trắng lộ ra thành vệt chữ L sáng ở mép trên-trái (ACheckBox, AStatusIndicator ở Dark).
+            var g = e.Graphics;
+            var mode = g.SmoothingMode;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+            using (var brush = new SolidBrush(ControlStyler.SurfaceBehind(Parent)))
+                g.FillRectangle(brush, ClientRectangle);
+            g.SmoothingMode = mode;
         }
     }
 }

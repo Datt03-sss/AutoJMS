@@ -152,7 +152,7 @@ namespace AutoJMS.UI.DesignSystem
 
             DrawContent(g, body, p.Fore);
 
-            if (Focused && TabStop)
+            if (Focused && TabStop && ShowFocusCues)
                 ControlStyler.DrawFocusRing(g, body, c, radius);
         }
 
@@ -190,8 +190,9 @@ namespace AutoJMS.UI.DesignSystem
         {
             if (_image != null)
             {
-                // Ảnh .resx có kích thước tuỳ ý; co theo tỉ lệ cho lọt thân nút.
-                int max = Math.Max(1, bodyHeight - S(ThemeSpacing.Xs) * 2);
+                // Ảnh .resx có kích thước tuỳ ý; co theo tỉ lệ cho lọt thân nút, và không quá bậc
+                // icon Nav — nút cao ControlHeightLarge mà để ảnh cao theo thân là icon đè cả chữ.
+                int max = Math.Max(1, Math.Min(bodyHeight - S(ThemeSpacing.Xs) * 2, S(ThemeMetrics.IconSizeNav)));
                 return _image.Height <= max
                     ? _image.Size
                     : new Size(Math.Max(1, _image.Width * max / _image.Height), max);
@@ -220,9 +221,11 @@ namespace AutoJMS.UI.DesignSystem
             if (!glyph.IsEmpty)
                 w += glyph.Width + (string.IsNullOrEmpty(Text) ? 0 : S(ThemeSpacing.Xs));
 
+            // MinimumSize là pixel thật (Designer đã nhân DPI). FlowLayoutPanel xếp theo kích thước
+            // ưu tiên chứ không theo MinimumSize, thiếu hai Max này là nút lớn bị xếp như nút nhỏ.
             return new Size(
-                Math.Max(w, S(ThemeMetrics.MinTouchTarget)),
-                Math.Max(S(ThemeMetrics.ControlHeight), S(ThemeMetrics.MinTouchTarget)));
+                Math.Max(Math.Max(w, S(ThemeMetrics.MinTouchTarget)), MinimumSize.Width),
+                Math.Max(Math.Max(S(ThemeMetrics.ControlHeight), S(ThemeMetrics.MinTouchTarget)), MinimumSize.Height));
         }
 
         protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }

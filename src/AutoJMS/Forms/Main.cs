@@ -669,11 +669,10 @@ namespace AutoJMS
             tabPrint_dataView.Visible = false;
             tabPrint_dataView.DataBindingComplete += (s, e) =>
             {
+                // Chỉ giữ tên cột. Bề rộng do PrintService.AutoSizePrintGridColumns() đo; gán cứng
+                // S(50) ở đây chạy SAU lần đo, hẹp hơn "Chọn" + padding nên đầu cột xuống dòng.
                 if (tabPrint_dataView.Columns.Contains("Select"))
-                {
                     tabPrint_dataView.Columns["Select"].HeaderText = "Chọn";
-                    tabPrint_dataView.Columns["Select"].Width = S(50);
-                }
             };
 
             _printService.OnPrintStatsChanged += (selectedCount, totalCount) =>
@@ -1190,6 +1189,10 @@ namespace AutoJMS
             dialog.ShowDialog(this);
         }
 
+        // WM_SETREDRAW: khoá vẽ cả form trong lúc đổi theme (xem handler của tabAbout_cboTheme).
+        private const int WmSetRedraw = 0x000B;
+        [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
         private void InitializeAboutSummary()
         {
             if (tabAbout == null || tabAbout.IsDisposed) return;
@@ -1222,13 +1225,14 @@ namespace AutoJMS
                 uiTableLayoutPanel22.RowCount = 9;
             }
 
-            // Create theme selector panel
+            // Hàng Theme rộng đúng bằng nút "Xem điều khoản sử dụng" ngay trên và cùng căn giữa
+            // (Anchor Top) — nhãn thẳng mép trái, dropdown thẳng mép phải của nút (Owner 2026-09-26).
             var themePanel = new Panel
             {
                 Name = "tabAbout_themePanel",
-                Height = S(40),
-                Dock = DockStyle.Fill,
-                Margin = new Padding(S(10), 0, S(10), 0),
+                Size = new Size(tabAbout_btnTerms.Width, S(30)),
+                Anchor = AnchorStyles.Top,
+                Margin = Padding.Empty,
                 BackColor = Color.Transparent
             };
 
@@ -1236,9 +1240,10 @@ namespace AutoJMS
             {
                 Name = "tabAbout_lblTheme",
                 Text = "Theme:",
-                Size = new Size(S(150), S(30)),
-                Location = new Point(S(45), S(5)),
-                TextAlign = ContentAlignment.MiddleRight,
+                AutoSize = true,
+                Location = Point.Empty,
+                MinimumSize = new Size(0, S(30)),
+                TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = UI.AppTheme.Colors.TextPrimary,
                 BackColor = Color.Transparent,
                 Font = UI.DesignSystem.ThemeTypography.BodyStrong
@@ -1248,8 +1253,9 @@ namespace AutoJMS
             var cboTheme = new UI.DesignSystem.AComboBox
             {
                 Name = "tabAbout_cboTheme",
-                Size = new Size(S(150), S(30)),
-                Location = new Point(S(195), S(5))
+                Size = new Size(S(120), S(30)),
+                Location = new Point(themePanel.Width - S(120), 0),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
             cboTheme.Items.Add("Light");
             cboTheme.Items.Add("Red");
@@ -1267,24 +1273,35 @@ namespace AutoJMS
 
                     if (Enum.TryParse<UI.ThemeMode>(selectedTheme, out var mode))
                     {
-                        UI.AppTheme.CurrentTheme = mode;
-                        UI.AppTheme.Apply(this);
-                        // AppTheme CỐ Ý bỏ qua lblNetworkStatus ("managed by Main.cs") nên
-                        // không ai tô lại nó sau khi đổi theme: nhãn giữ màu của theme CŨ cho
-                        // tới khi NetworkState.OnChanged tình cờ nổ. Gọi lại với trạng thái
-                        // đang giữ là đủ — hàm tự đọc CurrentTheme mới.
-                        UpdateNetworkUI(_currentNetworkStatus);
-                        ApplyWaybillInputBoldFonts();
-                        // ADataGridView.ApplyTheme() đặt lại cỡ chữ ô về ThemeTypography.Grid (9F)
-                        // mỗi lần đổi theme, đè mất 8.5F/7.5F mà ApplyStandardGridSettings chọn
-                        // lúc dựng. Không gọi lại thì đổi theme là hai bảng nhảy cỡ chữ.
-                        ApplyStandardGridSettings(tabTracking_dataView);
-                        ApplyStandardGridSettings(tabPrint_dataView);
-                        ApplyReverseTheme();       // cụm In Reverse dựng bằng code — theme không tự tô
-                        LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
-                        LayoutDkchNewbill();
-                        this.Invalidate(true);
-                        this.Update();
+                        // Khoá vẽ cả form tới khi tô xong: không khoá thì mỗi control tự vẽ lại
+                        // ngay lúc đổi màu, form "lăn" màu từng mảng và chậm thấy rõ (Owner
+                        // 2026-09-26). finally để lỗi giữa chừng không để form tắt vẽ luôn.
+                        SendMessage(Handle, WmSetRedraw, IntPtr.Zero, IntPtr.Zero);
+                        try
+                        {
+                            UI.AppTheme.CurrentTheme = mode;
+                            UI.AppTheme.Apply(this);
+                            // AppTheme CỐ Ý bỏ qua lblNetworkStatus ("managed by Main.cs") nên
+                            // không ai tô lại nó sau khi đổi theme: nhãn giữ màu của theme CŨ cho
+                            // tới khi NetworkState.OnChanged tình cờ nổ. Gọi lại với trạng thái
+                            // đang giữ là đủ — hàm tự đọc CurrentTheme mới.
+                            UpdateNetworkUI(_currentNetworkStatus);
+                            ApplyWaybillInputBoldFonts();
+                            // ADataGridView.ApplyTheme() đặt lại cỡ chữ ô về ThemeTypography.Grid (9F)
+                            // mỗi lần đổi theme, đè mất 8.5F/7.5F mà ApplyStandardGridSettings chọn
+                            // lúc dựng. Không gọi lại thì đổi theme là hai bảng nhảy cỡ chữ.
+                            ApplyStandardGridSettings(tabTracking_dataView);
+                            ApplyStandardGridSettings(tabPrint_dataView);
+                            ApplyReverseTheme();       // cụm In Reverse dựng bằng code — theme không tự tô
+                            LayoutDkchDataSection();   // theme vừa ghi đè Font — đo lại
+                            LayoutDkchNewbill();
+                        }
+                        finally
+                        {
+                            SendMessage(Handle, WmSetRedraw, (IntPtr)1, IntPtr.Zero);
+                            this.Invalidate(true);
+                            this.Update();
+                        }
                     }
 
                     // Sync the embedded JMS webview theme (server config + background reload).
@@ -2650,9 +2667,15 @@ namespace AutoJMS
             await WebViewHost.NavigateAsync(JmsHomeUrl);
         }
 
+        private bool? _dkchButtonsRunning;
+
         private void UpdateDkchButtonsByState(bool isRunning)
         {
             if (tabDKCH_btnDKCH1 == null || tabDKCH_btnDKCH2 == null || tabDKCH_btnStop == null) return;
+            // Timer gọi hàm này mỗi 300 ms. Gán Visible luôn chạy SetWindowPos + layout cha kể cả
+            // khi giá trị không đổi (tab DKCH đang ẩn thì GetVisibleCore = false) — chỉ gán khi đổi.
+            if (_dkchButtonsRunning == isRunning) return;
+            _dkchButtonsRunning = isRunning;
             tabDKCH_btnDKCH1.Visible = !isRunning;
             tabDKCH_btnDKCH2.Visible = !isRunning;
             tabDKCH_btnDKCH1.Enabled = !isRunning;
@@ -3059,7 +3082,7 @@ namespace AutoJMS
 
             // Huy hiệu ở góc phải thanh tiêu đề Newbill phản ánh chế độ đang chọn.
             _dkchModeText = _dkchGuideMode == DkchGuideMode.Newbie ? "NEWBIE" : "NORMAL";
-            if (uiTitlePanel2 != null && !uiTitlePanel2.IsDisposed) uiTitlePanel2.Invalidate();
+            if (tabDKCH_newbillHost != null && !tabDKCH_newbillHost.IsDisposed) tabDKCH_newbillHost.Invalidate();
             // Đổi chế độ làm dải GỢI Ý xuất hiện/biến mất ở lần kết quả kế tiếp; xếp lại
             // ngay để bố cục không lệch một nhịp.
             LayoutDkchNewbill();
@@ -3514,7 +3537,9 @@ namespace AutoJMS
                     manualInput = tabDKCH_inputNewBill?.Text ?? "";
                     sheetName = (tabDKCH_sheetName?.Text ?? "").Trim();
                     columnIndex = Math.Max(1, (int)(tabDKCH_numRow?.Value ?? 2));
-                    SetDkchSheetCountText("Tổng: ...");
+                    // "..." chỉ khi phải chờ đọc Sheet; đếm tay xong ngay, đổi chữ hai lần là
+                    // hai lượt co giãn nhãn + vẽ lại mỗi lần mở tab CHUYỂN HOÀN.
+                    if (useSheet) SetDkchSheetCountText("Tổng: ...");
                     return Task.CompletedTask;
                 });
 

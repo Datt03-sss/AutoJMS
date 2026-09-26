@@ -84,7 +84,7 @@ namespace AutoJMS.UI.DesignSystem
             int radius = S(Radius);
 
             ControlStyler.Prepare(g, radius);
-            using (var brush = new SolidBrush(Parent?.BackColor ?? c.Surface))
+            using (var brush = new SolidBrush(ControlStyler.SurfaceBehind(Parent)))
                 g.FillRectangle(brush, ClientRectangle);
 
             ControlStyler.FillSurface(g, ClientRectangle, ThemeColors.Blend(c.Danger, c.SurfaceRaised, 8), radius);

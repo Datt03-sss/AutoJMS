@@ -75,6 +75,8 @@ namespace AutoJMS
             _dataGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             _dataGrid.MultiSelect = false;
             _dataGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            // Đầu cột một dòng: thiếu chỗ thì cắt đuôi chứ không ngắt giữa từ ("Mã vận đ|ơn").
+            _dataGrid.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
             _dataGrid.ColumnHeaderMouseClick += DataGrid_ColumnHeaderMouseClick;
             _dataGrid.Columns.Clear();
             _dataGrid.Columns.AddRange(new DataGridViewColumn[]
@@ -217,6 +219,10 @@ namespace AutoJMS
                 }
 
                 width = Math.Max(MinColumnWidth, Math.Min(MaxColumnWidth, width + ColumnWidthPadding));
+                // Phần bù 28 thô không đủ cho đầu cột: padding CellPadX hai bên (đã nhân DPI) + chỗ
+                // DataGridView chừa cho mũi tên sắp xếp (SortMode Programmatic) vượt 28 → chữ đầu
+                // cột bị ngắt giữa từ. Để chính grid đo đầu cột, gồm đủ font, padding và mũi tên.
+                width = Math.Max(width, column.GetPreferredWidth(DataGridViewAutoSizeColumnMode.ColumnHeader, true));
                 _columnWidthCache[column.Name] = width;
                 column.Width = width;
             }

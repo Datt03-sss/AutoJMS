@@ -118,7 +118,7 @@ namespace AutoJMS.UI
             InputBorder = ColorTranslator.FromHtml("#3F3F46"),
             TextPrimary = ColorTranslator.FromHtml("#E4E4E7"), // Slightly dimmed off-white text (reduced glare)
             TextSecondary = ColorTranslator.FromHtml("#A1A1AA"),
-            TextInverse = ColorTranslator.FromHtml("#0A0A0C"),
+            TextInverse = ColorTranslator.FromHtml("#FFFFFF"), // Chữ trên nền accent/cảnh báo (nút, dòng chọn dropdown) - chữ đen trên đỏ #E53935 gần như không đọc được
 
             PrimaryAccent = ColorTranslator.FromHtml("#E53935"), // Red J&T/JMS Accent
             PrimaryHover = ColorTranslator.FromHtml("#EF5350"),
@@ -168,6 +168,7 @@ namespace AutoJMS.UI
 
             form.BackColor = colors.AppBackground;
 
+            CacheText(form);
             EnableDoubleBuffer(form);
             ApplyToControls(form.Controls, colors);
 
@@ -187,6 +188,8 @@ namespace AutoJMS.UI
                 // Skip WebViews entirely to avoid breaking them
                 if (ctrl.GetType().FullName.Contains("WebView2"))
                     continue;
+
+                CacheText(ctrl);
 
                 // Control của design system tự lấy màu/cỡ chữ từ ThemeManager và tự vẽ lại
                 // khi đổi theme. ApplyStyleToControl đè Font 10F lên chúng thì mọi token
@@ -208,6 +211,37 @@ namespace AutoJMS.UI
                     ApplyToControls(ctrl.Controls, colors);
                 }
             }
+        }
+
+        private static readonly System.Reflection.MethodInfo SetStyleMethod = typeof(Control).GetMethod("SetStyle",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+        /// <summary>
+        /// Giữ Text trong bộ nhớ thay vì hỏi lại cửa sổ. Không có cờ CacheText, WinForms gọi
+        /// GetWindowText (2 message Win32) ở MỖI lần vẽ và MỖI lần layout của mọi control —
+        /// trên máy có hook toàn cục (UltraViewer...) mỗi message tốn ~0,3 ms, đổi tab thành
+        /// khựng cả giây. Bật cho mọi control TRỪ ô nhập gốc của Windows (TextBox, ComboBox,
+        /// DateTimePicker): người dùng gõ/chọn thẳng vào cửa sổ nên bản cache sẽ cũ. Control tự
+        /// vẽ (DkchDropDown, DkchSpin...) cũng thuộc diện được bật - Text của chúng chỉ đổi qua
+        /// thuộc tính. Phải bật TRƯỚC khi có handle: bật sau thì Text trả về "".
+        /// </summary>
+        private static void CacheText(Control ctrl)
+        {
+            if (ctrl.IsHandleCreated) return;
+            if (ctrl is TextBoxBase || ctrl is ComboBox || ctrl is DateTimePicker) return;
+            SetStyleMethod?.Invoke(ctrl, new object[] { ControlStyles.CacheText, true });
+        }
+
+        // Nền đặc = màu cha khi cha là khung phẳng tự tô nền đặc; còn lại giữ Transparent.
+        // Transparent bắt WinForms vẽ lại nền + OnPaint của cha cho từng nhãn (cha trong suốt thì
+        // leo tiếp, tới TabPage còn qua DrawThemeParentBackground) - ~20% thời gian đổi sang tab
+        // IN ĐƠN. Cha tự vẽ (APanel bo góc, Panel có Paint như tabDKCH_newbillHost) giữ trong
+        // suốt để không che viền/góc bo. Apply đi từ cha xuống con nên màu cha đã là theme mới.
+        private static Color BackColorBehind(Control ctrl)
+        {
+            var p = ctrl.Parent;
+            bool flat = p is TabPage || p is TableLayoutPanel || p is FlowLayoutPanel || p is SplitterPanel;
+            return flat && p.BackColor.A == 255 && p.BackgroundImage == null ? p.BackColor : Color.Transparent;
         }
 
         private static void EnableDoubleBuffer(Control ctrl)
@@ -245,7 +279,7 @@ namespace AutoJMS.UI
                 link.LinkColor = colors.PrimaryAccent;
                 link.ActiveLinkColor = colors.PrimaryPress;
                 link.VisitedLinkColor = colors.PrimaryAccent;
-                link.BackColor = Color.Transparent;
+                link.BackColor = BackColorBehind(link);
             }
             else if (ctrl is Label lbl)
             {
@@ -273,7 +307,7 @@ namespace AutoJMS.UI
                 {
                     lbl.ForeColor = colors.TextPrimary;
                 }
-                lbl.BackColor = Color.Transparent;
+                lbl.BackColor = BackColorBehind(lbl);
             }
             else if (ctrl is TabPage page)
             {
@@ -281,13 +315,13 @@ namespace AutoJMS.UI
             }
             else if (ctrl is TableLayoutPanel tlp)
             {
-                tlp.BackColor = Color.Transparent;
+                tlp.BackColor = BackColorBehind(tlp);
             }
             else if (ctrl is SplitContainer sc)
             {
-                sc.BackColor = Color.Transparent;
-                sc.Panel1.BackColor = Color.Transparent;
-                sc.Panel2.BackColor = Color.Transparent;
+                sc.BackColor = BackColorBehind(sc);
+                sc.Panel1.BackColor = sc.BackColor;
+                sc.Panel2.BackColor = sc.BackColor;
             }
         }
     }

@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -73,10 +75,10 @@ namespace AutoJMS
         // Mỗi mốc thời gian là HAI picker: một chọn ngày, một chọn giờ. Cả hai vẫn giữ một
         // DateTime đầy đủ, nhưng mỗi cái chỉ hiện và chỉ cho sửa một nửa — ghép lại trong
         // ReverseRange.
-        private DateTimePicker tabPrint_dateFrom;
-        private DateTimePicker tabPrint_timeFrom;
-        private DateTimePicker tabPrint_dateTo;
-        private DateTimePicker tabPrint_timeTo;
+        private ReverseDateTimePicker tabPrint_dateFrom;
+        private ReverseDateTimePicker tabPrint_timeFrom;
+        private ReverseDateTimePicker tabPrint_dateTo;
+        private ReverseDateTimePicker tabPrint_timeTo;
         private TextBox tabPrint_tenNV;
         private TextBox tabPrint_maCOD;
         private TextBox tabPrint_sdtNG;
@@ -365,10 +367,18 @@ namespace AutoJMS
             var codeBox = NewReverseBox(
                 tabPrint_maCOD, ReverseInputBox.Glyph.None, null, "Mã khách hàng", 0);
 
+            // Thẳng cột với ô ngày / ô giờ của "Thời gian đến" ngay trên (Owner 2026-09-26): đo
+            // cùng chuỗi mẫu như NewReverseTimeField nên mép trái "Dấu Reverse" trùng mép ô giờ.
+            codeBox.Width = Math.Max(codeBox.Width, ReverseInputBox.MeasureWidth(
+                this, "2026-09-20", ReverseFieldFont, ReverseInputBox.Glyph.Calendar, false, true));
+            int timeWidth = ReverseInputBox.MeasureWidth(
+                this, "00:00:00", ReverseFieldFont, ReverseInputBox.Glyph.Clock, false, true);
+
             tabPrint_reverseFlag.Location =
                 new Point(codeBox.Right + S(ReverseBoxGap), S(ReverseCaptionHeight));
             tabPrint_reverseFlag.Size = new Size(
-                DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont), S(ReverseInputHeight));
+                Math.Max(timeWidth, DkchDropDown.WidthFor(tabPrint_reverseFlag, ReverseFieldFont)),
+                S(ReverseInputHeight));
             // ItemHeight là pixel thật (dòng trong popup); constructor chỉ đặt số 96-DPI.
             tabPrint_reverseFlag.ItemHeight = S(26);
 
@@ -440,7 +450,7 @@ namespace AutoJMS
             PlaceholderText = placeholder
         };
 
-        private static DateTimePicker NewReverseDateOnlyPicker(string name) => new()
+        private static ReverseDateTimePicker NewReverseDateOnlyPicker(string name) => new()
         {
             Name = name,
             Font = ReverseFieldFont,
@@ -449,7 +459,7 @@ namespace AutoJMS
         };
 
         // ShowUpDown bỏ hẳn nút xổ lịch, thay bằng nút tăng giảm — đúng thứ cần cho giờ/phút/giây.
-        private static DateTimePicker NewReverseTimeOnlyPicker(string name) => new()
+        private static ReverseDateTimePicker NewReverseTimeOnlyPicker(string name) => new()
         {
             Name = name,
             Font = ReverseFieldFont,
@@ -539,19 +549,17 @@ namespace AutoJMS
         {
             if (_reverseGridToolbar == null || _reverseGridToolbar.IsDisposed) return;
             _reverseGridToolbar.Visible = GetTabPrintModeFromSelectedTab() == PrintMode.InReverse;
-
-            // Đổi tab con cũng phát lại một lượt: rẻ, và bắt được mọi đường nào lỡ tô đè lên cụm
-            // này mà không đi qua AppTheme.Apply.
-            ApplyReverseTheme();
+            // Không phát lại ApplyReverseTheme ở đây: đổi tab con không đổi theme, còn lượt
+            // PerformLayout + Invalidate cả cụm mỗi lần bấm tab con là giật (Owner 2026-09-26).
         }
 
         /// <summary>
-        /// Tô màu và trả lại font cho cụm control của tab. Gọi lúc dựng, mỗi lần đổi tab con, và
-        /// ngay sau mỗi <c>AppTheme.Apply</c>. KHÔNG bỏ được: cụm này toàn
+        /// Tô màu và trả lại font cho cụm control của tab. Gọi lúc dựng và ngay sau mỗi
+        /// <c>AppTheme.Apply</c>. KHÔNG bỏ được: cụm này toàn
         /// control tự vẽ nên AppTheme không tô màu cho, nhưng vẫn gán đè Font = "Segoe UI" 10F
         /// lên MỌI control không mang font token — không phát lại là nhãn và ô nhập tụt cỡ chữ.
-        /// <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor — hai ô
-        /// thời gian luôn giữ nền sáng kể cả ở theme tối.
+        /// <see cref="DateTimePicker"/> là control của Windows, không nhận BackColor — ở theme
+        /// tối bốn ô ngày giờ được đổi tông khi vẽ, xem <see cref="ReverseDateTimePicker"/>.
         /// </summary>
         private void ApplyReverseTheme()
         {
@@ -567,7 +575,11 @@ namespace AutoJMS
             }
 
             foreach (var picker in new[] { tabPrint_dateFrom, tabPrint_timeFrom, tabPrint_dateTo, tabPrint_timeTo })
+            {
+                if (picker == null || picker.IsDisposed) continue;
                 RestoreReverseFont(picker, ReverseFieldFont);
+                picker.SetTone(colors.InputBackground, colors.TextPrimary);
+            }
 
             // Khung bo góc tự vẽ nên phải tự nhận màu theme — nền, viền, viền lúc focus, và màu
             // biểu tượng trái. Font của control nhập vừa trả lại ở trên nên đo lại luôn chiều cao.
@@ -640,15 +652,15 @@ namespace AutoJMS
 
         /// <summary>
         /// Tô một nút dưới lưới theo tông màu vai trò của nó. <c>BackColor</c> là màu NGOÀI bốn
-        /// góc bo — lấy đúng màu nền uiPanel20 chứ không để trong suốt: nút nằm trên một APanel
-        /// tự vẽ, control trong suốt trên đó lộ mảng xám của Form.
+        /// góc bo — lấy màu bề mặt uiPanel20 thật sự vẽ ra (APanel tô theo Elevation), KHÔNG lấy
+        /// uiPanel20.BackColor: thuộc tính đó là Transparent nên góc bo ra đen.
         /// </summary>
         private void StyleReverseToolbarButton(ReverseRoundButton button, Color tone)
         {
             if (button == null || button.IsDisposed) return;
 
             var colors = UI.AppTheme.Colors;
-            button.BackColor = uiPanel20 != null && !uiPanel20.IsDisposed ? uiPanel20.BackColor : colors.CardBackground;
+            button.BackColor = ControlStyler.SurfaceBehind(button.Parent ?? uiPanel20);
             button.Fill = tone;
             button.HoverFill = ControlPaint.Light(tone, 0.25f);
             button.DisabledFill = colors.InputBorder;
@@ -1525,6 +1537,7 @@ namespace AutoJMS
         private readonly Control _trailing;
         private readonly Glyph _glyph;
         private bool _hot;
+        private Rectangle _clip;
 
         public Color FieldBackColor { get; set; } = Color.White;
         public Color BorderColor { get; set; } = Color.Gainsboro;
@@ -1629,13 +1642,22 @@ namespace AutoJMS
                 // handle vùng của GDI.
                 //
                 // DateTimePicker tự ép chiều cao theo font y như TextBox một dòng (28 đặt vào
-                // thành 26), nên phải căn giữa theo chiều cao THẬT của nó sau khi đặt bề ngang
-                // — đặt Top = 0 là chữ bị lệch lên trên trong khung.
-                _input.Bounds = new Rectangle(left - 2, 0, width + 4, Height);
-                _input.Top = Math.Max((Height - _input.Height) / 2, 0);
-                var old = _input.Region;
-                _input.Region = new Region(new Rectangle(2, 2, _input.Width - 4, _input.Height - 4));
-                old?.Dispose();
+                // thành 26), nên căn giữa theo chiều cao THẬT của nó — đặt Top = 0 là chữ bị lệch
+                // lên trên trong khung.
+                //
+                // Đặt Bounds MỘT lần với đúng chiều cao nó sẽ giữ, và chỉ thay Region khi khung
+                // cắt đổi: bounds không đổi thì WinForms bỏ qua SetWindowPos, còn gán Region thì
+                // luôn gọi SetWindowRgn - mỗi lần đổi sang tab IN ĐƠN trước đây tốn 3 lệnh này
+                // cho mỗi ô ngày giờ.
+                _input.Bounds = new Rectangle(left - 2, Math.Max((Height - _input.Height) / 2, 0), width + 4, _input.Height);
+                var clip = new Rectangle(2, 2, _input.Width - 4, _input.Height - 4);
+                if (clip != _clip || _input.Region == null)
+                {
+                    _clip = clip;
+                    var old = _input.Region;
+                    _input.Region = new Region(clip);
+                    old?.Dispose();
+                }
             }
             else
             {
@@ -1693,14 +1715,19 @@ namespace AutoJMS
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.Clear(BackColor);
+            // BackColor trong suốt thì Clear không xoá được bộ đệm đen — lấy màu cha thật sự vẽ.
+            g.Clear(BackColor.A == 255 ? BackColor : ControlStyler.SurfaceBehind(Parent));
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
+            // Tô thân trên trọn W x H với PixelOffsetMode.Half (pixel i phủ [i, i+1]). Chế độ mặc
+            // định + khung W-1/H-1 chỉ phủ nửa hàng/cột pixel mép nên thân nút có vành mờ quanh viền.
             var body = new Rectangle(0, 0, Width - 1, Height - 1);
             var tone = !Enabled ? DisabledFill : _hover ? HoverFill : Fill;
-            using (var path = DkchPaint.RoundRect(body, S(Radius)))
+            g.PixelOffsetMode = PixelOffsetMode.Half;
+            using (var path = DkchPaint.RoundRect(ClientRectangle, S(Radius)))
             using (var brush = new SolidBrush(tone))
                 g.FillPath(brush, path);
+            g.PixelOffsetMode = PixelOffsetMode.Default;
 
             var ink = Enabled ? ForeColor : DisabledForeColor;
             if (Symbol != ASymbols.None)
@@ -1716,7 +1743,8 @@ namespace AutoJMS
                     | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
             }
 
-            if (Focused && Enabled)
+            // Khung chấm chỉ khi focus đến từ bàn phím — bấm chuột xong không để lại khung đen.
+            if (Focused && Enabled && ShowFocusCues)
                 ControlPaint.DrawFocusRectangle(g, Rectangle.Inflate(body, -S(4), -S(4)));
         }
 
@@ -1725,5 +1753,143 @@ namespace AutoJMS
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
         protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
         protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+    }
+
+    /// <summary>
+    /// <see cref="DateTimePicker"/> theo tông theme tối. Control này của Windows bỏ qua
+    /// <c>BackColor</c>, luôn vẽ nền trắng chữ đen — lọt thỏm một mảng sáng giữa khung nhập tối.
+    /// Chặn WM_PAINT: để nó tự vẽ vào bitmap rồi chép ra màn hình qua ma trận màu đưa trắng về
+    /// nền, đen về chữ. Ánh xạ tuyến tính TỪNG kênh nên viền ClearType của chữ vẫn đúng điểm
+    /// ảnh con; cái giá là ô đang chọn đổi từ xanh sang cam. Nút tăng giảm (ShowUpDown) là cửa
+    /// sổ con riêng nên móc thêm một lớp y hệt. Lịch xổ xuống là popup của hệ thống - vẫn sáng.
+    /// </summary>
+    internal sealed class ReverseDateTimePicker : DateTimePicker
+    {
+        private const int WM_PAINT = 0x000F;
+        private const int WM_ERASEBKGND = 0x0014;
+        private const int WM_PRINTCLIENT = 0x0318, PRF_CLIENT = 0x0004;
+
+        private ImageAttributes _remap;
+        private UpDownHook _upDown;
+
+        /// <summary>Nền sáng thì để Windows vẽ nguyên bản; nền tối thì đổi tông.</summary>
+        public void SetTone(Color back, Color ink)
+        {
+            _remap?.Dispose();
+            _remap = null;
+            if (back.GetBrightness() < 0.5f)
+            {
+                // out = ink + in * (back - ink), từng kênh: trắng (1) -> back, đen (0) -> ink.
+                _remap = new ImageAttributes();
+                _remap.SetColorMatrix(new ColorMatrix
+                {
+                    Matrix00 = (back.R - ink.R) / 255f,
+                    Matrix11 = (back.G - ink.G) / 255f,
+                    Matrix22 = (back.B - ink.B) / 255f,
+                    Matrix40 = ink.R / 255f,
+                    Matrix41 = ink.G / 255f,
+                    Matrix42 = ink.B / 255f
+                });
+            }
+            Invalidate(true);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            IntPtr upDown = FindWindowEx(Handle, IntPtr.Zero, "msctls_updown32", null);
+            _upDown = upDown == IntPtr.Zero ? null : new UpDownHook(this, upDown);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { _remap?.Dispose(); _remap = null; }
+            base.Dispose(disposing);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (_remap != null && Remaps(m)) Remap(ref m, _remap, msg => DefWndProc(ref msg));
+            else base.WndProc(ref m);
+        }
+
+        private static bool Remaps(Message m) =>
+            m.Msg == WM_ERASEBKGND || (m.Msg == WM_PAINT && m.WParam == IntPtr.Zero);
+
+        /// <summary>
+        /// Xử lý thay WM_ERASEBKGND / WM_PAINT khi đang đổi tông. <paramref name="native"/> là thủ
+        /// tục cửa sổ gốc: nó được gọi xoá nền rồi vẽ vào DC của bitmap bằng WM_PRINTCLIENT - đường
+        /// vẽ-vào-HDC-có-sẵn mà common controls được tài liệu hoá là hỗ trợ (WM_PAINT kèm HDC ở
+        /// wParam chỉ là quy ước ngầm). Bitmap 32bppRgb chứ không ARGB: GDI để kênh alpha bằng 0.
+        /// </summary>
+        private static void Remap(ref Message m, ImageAttributes remap, Action<Message> native)
+        {
+            m.Result = (IntPtr)1;
+            if (m.Msg == WM_ERASEBKGND) return;
+
+            var ps = new PaintStruct();
+            IntPtr hdc = BeginPaint(m.HWnd, ref ps);
+            try
+            {
+                GetClientRect(m.HWnd, out var rc);
+                if (rc.Right > 0 && rc.Bottom > 0)
+                {
+                    using var bmp = new Bitmap(rc.Right, rc.Bottom, PixelFormat.Format32bppRgb);
+                    using (var g = Graphics.FromImage(bmp))
+                    {
+                        IntPtr mem = g.GetHdc();
+                        try
+                        {
+                            native(Message.Create(m.HWnd, WM_ERASEBKGND, mem, IntPtr.Zero));
+                            native(Message.Create(m.HWnd, WM_PRINTCLIENT, mem, (IntPtr)PRF_CLIENT));
+                        }
+                        finally { g.ReleaseHdc(mem); }
+                    }
+                    using var screen = Graphics.FromHdc(hdc);
+                    screen.DrawImage(bmp, new Rectangle(0, 0, rc.Right, rc.Bottom),
+                        0, 0, rc.Right, rc.Bottom, GraphicsUnit.Pixel, remap);
+                }
+            }
+            finally { EndPaint(m.HWnd, ref ps); }
+            m.Result = IntPtr.Zero;
+        }
+
+        private sealed class UpDownHook : NativeWindow
+        {
+            private readonly ReverseDateTimePicker _owner;
+
+            public UpDownHook(ReverseDateTimePicker owner, IntPtr handle)
+            {
+                _owner = owner;
+                AssignHandle(handle);
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                var remap = _owner._remap;
+                if (remap != null && Remaps(m)) Remap(ref m, remap, msg => DefWndProc(ref msg));
+                else base.WndProc(ref m);
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PaintStruct
+        {
+            public IntPtr Hdc;
+            public int Erase;
+            public Rect Paint;
+            public int Restore;
+            public int IncUpdate;
+            public long Reserved0, Reserved1, Reserved2, Reserved3; // BYTE rgbReserved[32]
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Rect { public int Left, Top, Right, Bottom; }
+
+        [DllImport("user32.dll")] private static extern IntPtr BeginPaint(IntPtr hWnd, ref PaintStruct ps);
+        [DllImport("user32.dll")] private static extern bool EndPaint(IntPtr hWnd, ref PaintStruct ps);
+        [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hWnd, out Rect rect);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
     }
 }

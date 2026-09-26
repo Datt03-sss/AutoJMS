@@ -68,7 +68,7 @@ namespace AutoJMS.UI.DesignSystem
             {
                 // Góc bo để lộ nền cha - phải tô nền cha trước, nếu không sẽ có
                 // bốn chấm tối ở bốn góc.
-                using (var brush = new SolidBrush(Parent?.BackColor ?? c.Surface))
+                using (var brush = new SolidBrush(ControlStyler.SurfaceBehind(Parent)))
                     e.Graphics.FillRectangle(brush, ClientRectangle);
             }
 
