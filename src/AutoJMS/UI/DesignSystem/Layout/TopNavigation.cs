@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -15,8 +16,9 @@ namespace AutoJMS.UI.DesignSystem
     /// Kiểu "sliding pill" theo index.html của Owner (2026-10-01): dải SurfaceRaised phủ hết bề
     /// ngang, các nút xếp từ mép TRÁI theo đúng bề rộng chữ (không giãn lấp đầy - phần còn trống để
     /// dành cho tab mới); giữa các nút là vách 1px; một viên pill nằm DƯỚI chữ trượt 100ms tới đúng
-    /// Left/Width thật của nút đang chọn. Màu lấy theo theme. Animation là ngoại lệ có chủ đích so
-    /// với DESIGN.md (Owner yêu cầu).
+    /// Left/Width thật của nút đang chọn. Pill tô Primary, chữ trên pill OnPrimary - đúng màu nút
+    /// Primary (AButton) của từng theme. Animation là ngoại lệ có chủ đích so với DESIGN.md (Owner
+    /// yêu cầu).
     ///
     /// KHÔNG GIỮ TRẠNG THÁI CHỌN. Nguồn sự thật duy nhất là <see cref="Target"/>.
     /// Bấm nav thì ghi vào <c>Target.SelectedIndex</c>; Target đổi thì nav vẽ lại.
@@ -31,7 +33,6 @@ namespace AutoJMS.UI.DesignSystem
         private const int ItemPaddingX = 12;   // button padding: 0 12px
         private const int BarPadding = 3;      // từ mép thanh tới nút, cả bốn phía
         private const int PillRadius = 6;
-        private const int PillTint = 75;       // % Primary trộn lên nền thanh
         private const int DividerAlpha = 71;   // chữ 28%
         private const int DividerHeight = 12;
         private const int SlideMs = 100;
@@ -236,7 +237,7 @@ namespace AutoJMS.UI.DesignSystem
             {
                 Rectangle to = _itemRects[selected];
                 _pill = _slideTimer.Enabled ? Lerp(_slideFrom, to, Ease(SlideProgress())) : to;
-                ControlStyler.FillSurface(g, _pill, ThemeColors.Blend(c.Primary, c.SurfaceRaised, PillTint), S(PillRadius));
+                ControlStyler.FillSurface(g, _pill, c.Primary, S(PillRadius));
             }
 
             // Vách chỉ là nét vẽ nên không cản click. Vách nào chạm pill thì bỏ: đứng yên là đúng
@@ -248,7 +249,20 @@ namespace AutoJMS.UI.DesignSystem
                 for (int i = 0; i < _itemRects.Count; i++)
                 {
                     var rect = _itemRects[i];
-                    DrawItem(g, i, rect, c.Text);
+                    if (rect.IntersectsWith(_pill))
+                    {
+                        // Hai lượt cắt theo pill: ngoài pill màu Text, trên pill OnPrimary - lúc
+                        // trượt chữ đổi màu đúng tới mép pill thay vì trắng trên nền trắng.
+                        var state = g.Save();
+                        g.SetClip(_pill, CombineMode.Exclude);
+                        DrawItem(g, i, rect, c.Text, TextFormatFlags.PreserveGraphicsClipping);
+                        g.Restore(state);
+                        state = g.Save();
+                        g.SetClip(_pill, CombineMode.Intersect);
+                        DrawItem(g, i, rect, c.OnPrimary, TextFormatFlags.PreserveGraphicsClipping);
+                        g.Restore(state);
+                    }
+                    else DrawItem(g, i, rect, c.Text, TextFormatFlags.Default);
                     int dividerX = rect.Right - dividerWidth;
                     bool touchesPill = dividerX + dividerWidth >= _pill.Left && dividerX < _pill.Right;
                     if (i < _itemRects.Count - 1 && !touchesPill)
@@ -261,7 +275,7 @@ namespace AutoJMS.UI.DesignSystem
                 ControlStyler.DrawFocusRing(g, _itemRects[selected], c, S(PillRadius));
         }
 
-        private void DrawItem(Graphics g, int index, Rectangle rect, Color ink)
+        private void DrawItem(Graphics g, int index, Rectangle rect, Color ink, TextFormatFlags clip)
         {
             int symbol = SymbolAt(index);
             int icon = symbol != ASymbols.None ? S(ThemeMetrics.IconSizeDense) : 0;
@@ -270,11 +284,11 @@ namespace AutoJMS.UI.DesignSystem
             int x = rect.X + (rect.Width - (icon + gap + textWidth)) / 2;
 
             if (icon > 0)
-                ASymbols.Draw(g, symbol, icon, ink, new Rectangle(x, rect.Y + (rect.Height - icon) / 2, icon, icon));
+                ASymbols.Draw(g, symbol, icon, ink, new Rectangle(x, rect.Y + (rect.Height - icon) / 2, icon, icon), clip);
 
             int textX = x + icon + gap;
             TextRenderer.DrawText(g, _target.TabPages[index].Text, NavFont,
-                new Rectangle(textX, rect.Y, rect.Right - textX, rect.Height), ink, DrawFlags);
+                new Rectangle(textX, rect.Y, rect.Right - textX, rect.Height), ink, DrawFlags | clip);
         }
 
         private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);   // ease-out cubic

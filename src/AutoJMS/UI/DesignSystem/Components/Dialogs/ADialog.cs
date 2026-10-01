@@ -52,8 +52,8 @@ namespace AutoJMS.UI.DesignSystem
 
         /// <summary>
         /// Hộp thoại chỉ có một câu ngắn cần đọc rõ (hộp "Đóng ứng dụng"): câu căn giữa,
-        /// chữ đậm màu Text, nút cao ControlHeightLarge, nút ĐẦU (Huỷ) tách sang góc trái cho xa
-        /// nút chính. Mặc định tắt - các hộp khác giữ nguyên.
+        /// chữ đậm màu Text, nút cao ControlHeightLarge và rộng hơn, nút ĐẦU (Huỷ) tách sang góc
+        /// trái. Mặc định tắt - các hộp khác giữ nguyên.
         /// </summary>
         public bool Emphasized
         {
@@ -129,7 +129,13 @@ namespace AutoJMS.UI.DesignSystem
             for (int i = _buttons.Count - 1; i >= 0; i--)
             {
                 var b = _buttons[i];
-                int w = Math.Max(S(_emphasized ? 104 : 88), b.GetPreferredSize(Size.Empty).Width);
+                // Emphasized 128: hộp 360 còn hở 56 giữa Huỷ (trái) và nút chính (phải).
+                // Kẹp theo nửa hàng nút: Width của hộp là số thô chưa nhân DPI, nên từ 125%
+                // S(128) x2 tràn quá hàng và hai nút đè nhau.
+                int min = _emphasized
+                    ? Math.Min(S(128), (Width - Pad * 2 - S(ThemeSpacing.Sm)) / 2)
+                    : S(88);
+                int w = Math.Max(min, b.GetPreferredSize(Size.Empty).Width);
                 if (i == 0 && _emphasized && _buttons.Count > 1) x = Pad + w;   // Huỷ về góc trái
                 x -= w;
                 b.Bounds = new Rectangle(x, y, w, h);

@@ -193,13 +193,17 @@ namespace AutoJMS.UI.DesignSystem
             }
         }
 
-        /// <summary>Vẽ icon căn giữa trong <paramref name="bounds"/>. symbol = 0 thì không vẽ gì.</summary>
-        public static void Draw(Graphics g, int symbol, int size, Color color, Rectangle bounds)
+        /// <summary>
+        /// Vẽ icon căn giữa trong <paramref name="bounds"/>. symbol = 0 thì không vẽ gì.
+        /// <paramref name="extraFlags"/>: vd. PreserveGraphicsClipping khi người gọi đặt g.SetClip
+        /// - TextRenderer mặc định bỏ qua clip của Graphics.
+        /// </summary>
+        public static void Draw(Graphics g, int symbol, int size, Color color, Rectangle bounds, TextFormatFlags extraFlags = TextFormatFlags.Default)
         {
             if (symbol == None || size <= 0) return;
 
             TextRenderer.DrawText(g, char.ConvertFromUtf32(symbol), FontFor(size), bounds, color,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | extraFlags);
         }
     }
 }
