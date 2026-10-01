@@ -575,7 +575,7 @@ namespace AutoJMS
             // tabPrint_printTabs
             //
             tabPrint_printTabs.Dock = DockStyle.Top;
-            tabPrint_printTabs.Height = AutoJMS.UI.DesignSystem.ThemeMetrics.SubTabHeight;
+            tabPrint_printTabs.Height = AutoJMS.UI.DesignSystem.ThemeMetrics.NavHeight;
             tabPrint_printTabs.Name = "tabPrint_printTabs";
             tabPrint_printTabs.TabIndex = 0;
             tabPrint_printTabs.Target = tabPrint_printFunc;
@@ -720,7 +720,7 @@ namespace AutoJMS
             tabPrint_btnTimKiem.SymbolSize = 16;
             tabPrint_btnTimKiem.TabIndex = 10;
             tabPrint_btnTimKiem.Text = "Tìm kiếm";
-            tabPrint_btnTimKiem.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
+            tabPrint_btnTimKiem.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Secondary;
             tabPrint_btnTimKiem.Click += print_TimKiem_Click;
             // 
             // tabPrint_btnLamMoi
@@ -883,7 +883,7 @@ namespace AutoJMS
             tabTracking_btnSearch.SymbolSize = 16;
             tabTracking_btnSearch.TabIndex = 3;
             tabTracking_btnSearch.Text = "Tìm kiếm";
-            tabTracking_btnSearch.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Primary;
+            tabTracking_btnSearch.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Secondary;
             tabTracking_btnSearch.Click += btnSearch_Click;
             // 
             // tabTracking_btnExport
@@ -1254,7 +1254,7 @@ namespace AutoJMS
             tabDKCH_Home.SymbolSize = AutoJMS.UI.DesignSystem.ThemeMetrics.IconSizeDefault;
             tabDKCH_Home.TabIndex = 1;
             tabDKCH_Home.Text = "Home";
-            tabDKCH_Home.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Ghost;
+            tabDKCH_Home.Variant = AutoJMS.UI.DesignSystem.AButtonVariant.Secondary;
             tabDKCH_Home.Click += btn_Refresh_Click;
             // 
             // tabDKCH_dataSrc

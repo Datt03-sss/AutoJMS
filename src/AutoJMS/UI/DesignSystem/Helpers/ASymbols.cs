@@ -49,6 +49,8 @@ namespace AutoJMS.UI.DesignSystem
         public const int Export       = 0xE0B9; // external-link
         public const int Share        = 0xE155;
         public const int Send         = 0xE152;
+        public const int Repeat       = 0xE146; // repeat — tab CHUYỂN HOÀN
+        public const int MapPin       = 0xE111; // map-pin — tab TRA HÀNH TRÌNH
 
         // Content & Editing
         public const int Copy         = 0xE09E;
@@ -67,6 +69,7 @@ namespace AutoJMS.UI.DesignSystem
         public const int Clock        = 0xE087; // clock-4 — bí danh của "clock" trong lucide.ttf
         public const int Inbox        = 0xE0F7;
         public const int Page         = 0xE129; // package
+        public const int Info         = 0xE0F9; // info — tab ABOUT
 
         // Status & Feedback
         public const int View         = 0xE0BA; // eye

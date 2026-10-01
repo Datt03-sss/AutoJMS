@@ -1075,6 +1075,12 @@ namespace AutoJMS
                 Name = "topNav",
                 Dock = DockStyle.Top,
                 TabIndex = 0,
+                // Cùng thứ tự 5 TabPage trong Designer: HOME, CHUYỂN HOÀN, TRA HÀNH TRÌNH, IN ĐƠN, ABOUT.
+                Symbols = new[]
+                {
+                    UI.DesignSystem.ASymbols.Home, UI.DesignSystem.ASymbols.Repeat, UI.DesignSystem.ASymbols.MapPin,
+                    UI.DesignSystem.ASymbols.Print, UI.DesignSystem.ASymbols.Info
+                },
                 Target = tabControl
             };
             // Thêm SAU tabControl: WinForms dock ngược thứ tự Controls, nên control vào sau được

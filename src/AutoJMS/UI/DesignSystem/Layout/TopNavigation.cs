@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -7,7 +9,13 @@ using System.Windows.Forms;
 namespace AutoJMS.UI.DesignSystem
 {
     /// <summary>
-    /// Thanh điều hướng chính của AutoJMS. Xem DesignReference/AutoJMS.DESIGN.md §M.
+    /// Thanh điều hướng của AutoJMS — một lớp cho cả thanh tab chính (Main.topNav), dải tab CON
+    /// 4 chế độ in của tab IN ĐƠN và dải tab của FullStackOperation.
+    ///
+    /// Kiểu "sliding pill" theo index.html của Owner (2026-10-01): card trắng ôm sát các nút, căn
+    /// giữa trên nền Ziggurat; giữa các nút là vách 1px; một viên pill nằm DƯỚI chữ trượt 100ms tới
+    /// đúng Left/Width thật của nút đang chọn. Palette CỐ ĐỊNH ở mọi theme (Owner chọn) và có
+    /// animation — hai ngoại lệ có chủ đích so với DESIGN.md (màu qua token, không animation).
     ///
     /// KHÔNG GIỮ TRẠNG THÁI CHỌN. Nguồn sự thật duy nhất là <see cref="Target"/>.
     /// Bấm nav thì ghi vào <c>Target.SelectedIndex</c>; Target đổi thì nav vẽ lại.
@@ -15,22 +23,40 @@ namespace AutoJMS.UI.DesignSystem
     /// là lỗi mà ThemeManager đã cố ý tránh (xem DesignSystem/README.md § Theme).
     ///
     /// Nav chỉ VẼ nhãn của TabPage. Không control nghiệp vụ nào bị di chuyển vào đây.
-    ///
-    /// CHỈ vẽ đầu tab, KHÔNG vẽ icon + tên sản phẩm ở góc trái: thanh tiêu đề (AppTitleBar ở
-    /// Main, thanh của Windows ở FullStackOperation) đã mang sẵn cả hai, vẽ lại ở đây là hai lần
-    /// "AutoJMS" chồng nhau và chữ dính sát tab đầu tiên. Nhờ vậy cùng một lớp dùng được cho cả
-    /// thanh nav chính lẫn dải tab CON bên trong một trang (4 chế độ in của tab IN ĐƠN) — một
-    /// thanh chứ không phải hai lớp gần giống nhau.
     /// </summary>
     public sealed class TopNavigation : AControl
     {
-        private const int ItemPaddingX = 16;  // đệm trái/phải trong một tab
-        private const int EdgePaddingX = 12;  // lề trái của cả thanh
+        private const int ItemHeight = 30;     // .nav-tab height
+        private const int ItemPaddingX = 12;   // button padding: 0 12px
+        private const int CardPadding = 3;
+        private const int CardRadius = 8;
+        private const int PillRadius = 6;
+        private const int DividerHeight = 12;
+        private const int SlideMs = 100;
+
+        private static readonly Color Ziggurat = Color.FromArgb(173, 206, 218);   // nền thanh + pill
+        private static readonly Color Ink = Color.FromArgb(13, 63, 82);            // chữ + icon
+        private static readonly Color DividerColor = Color.FromArgb(71, Ink);      // Ink 28%
+
+        // 12px Medium. Segoe UI không có bậc Medium (500); Semibold là bậc gần nhất còn đọc ra
+        // "đậm vừa" trên chữ in hoa nhỏ. 9pt = 12px ở 96 DPI, GDI tự nhân theo DPI. Font tĩnh vẽ
+        // tay, KHÔNG gán vào Control.Font - AppTheme kéo mọi font không phải token về Body.
+        private static readonly Font NavFont = new Font(ThemeTypography.FamilySemibold, 9F, FontStyle.Regular);
+
+        private const TextFormatFlags MeasureFlags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+        private const TextFormatFlags DrawFlags = ControlStyler.TextLeft | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
 
         private readonly List<Rectangle> _itemRects = new List<Rectangle>();
+        private readonly System.Windows.Forms.Timer _slideTimer = new System.Windows.Forms.Timer { Interval = 15 };
+        private int[] _textWidths = Array.Empty<int>();
         private TabControl _target;
         private bool _layoutDirty = true;
         private int _hotIndex = -1;
+        private int[] _symbols;
+        private Rectangle _card;
+        private Rectangle _pill;        // pill của lần vẽ gần nhất = điểm xuất phát khi lựa chọn đổi
+        private Rectangle _slideFrom;
+        private long _slideStart;       // Stopwatch timestamp; 0 = chưa tick lần nào
 
         public TopNavigation()
         {
@@ -43,6 +69,7 @@ namespace AutoJMS.UI.DesignSystem
             Height = S(ThemeMetrics.NavHeight);
             Dock = DockStyle.Top;
             TabStop = true;
+            _slideTimer.Tick += OnSlideTick;
         }
 
         /// <summary>
@@ -73,26 +100,43 @@ namespace AutoJMS.UI.DesignSystem
                     _target.ControlRemoved += OnTargetPagesChanged;
                 }
 
+                _slideTimer.Stop();
+                _pill = Rectangle.Empty;
                 _layoutDirty = true;
                 Invalidate();
             }
         }
 
+        /// <summary>Icon <see cref="ASymbols"/> từng tab, cùng thứ tự Target.TabPages. null = chỉ chữ.</summary>
+        [Browsable(false), DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public int[] Symbols
+        {
+            get => _symbols;
+            set { _symbols = value; _layoutDirty = true; Invalidate(); }
+        }
+
+        private int SymbolAt(int index) => _symbols != null && index < _symbols.Length ? _symbols[index] : ASymbols.None;
+
         private int SelectedIndex => _target?.SelectedIndex ?? -1;
 
         private int ItemCount => _target?.TabPages.Count ?? 0;
 
-        private void OnTargetSelectionChanged(object sender, EventArgs e) => Invalidate();
+        private void OnTargetSelectionChanged(object sender, EventArgs e)
+        {
+            // Trượt từ chỗ pill đang đứng - kể cả giữa chừng một lần trượt khác. Nav chưa vẽ lần
+            // nào (dải tab con trên trang chưa mở) thì không có điểm xuất phát: hiện thẳng ở đích.
+            if (!_pill.IsEmpty)
+            {
+                _slideFrom = _pill;
+                _slideStart = 0;
+                _slideTimer.Start();
+            }
+            Invalidate();
+        }
 
         private void OnTargetPagesChanged(object sender, ControlEventArgs e)
         {
             _layoutDirty = true;
-            Invalidate();
-        }
-
-        protected override void OnThemeChanged()
-        {
-            _layoutDirty = true;   // BodyStrong rộng hơn Body → bề rộng tab đổi theo theme/font
             Invalidate();
         }
 
@@ -102,43 +146,66 @@ namespace AutoJMS.UI.DesignSystem
             _layoutDirty = true;
         }
 
+        private void OnSlideTick(object sender, EventArgs e)
+        {
+            // Đồng hồ bắt đầu ở tick ĐẦU chứ không lúc bấm: đổi sang trang nặng (WebView2, lưới
+            // lớn) giữ luồng UI quá 100ms, tính giờ từ lúc bấm thì pill nhảy thẳng tới đích.
+            if (_slideStart == 0) _slideStart = Stopwatch.GetTimestamp();
+            else if (SlideProgress() >= 1f) _slideTimer.Stop();
+            Invalidate(_card);
+        }
+
+        private float SlideProgress()
+            => _slideStart == 0 ? 0f : Math.Min(1f, (float)Stopwatch.GetElapsedTime(_slideStart).TotalMilliseconds / SlideMs);
+
         // ---- Bố cục ----------------------------------------------------------
 
-        /// <summary>
-        /// Đo lại bề rộng từng tab. Đo bằng <see cref="ThemeTypography.BodyStrong"/> cho MỌI tab,
-        /// kể cả tab chưa chọn: nếu đo bằng font của trạng thái hiện tại thì tab sẽ nhảy ngang
-        /// mỗi lần đổi lựa chọn.
-        /// </summary>
         private void EnsureLayout(Graphics g)
         {
             if (!_layoutDirty) return;
+            _layoutDirty = false;
 
             _itemRects.Clear();
+            int count = ItemCount;
+            _textWidths = new int[count];
+            if (count == 0) return;
 
-            int left = S(EdgePaddingX);
-
-            var widths = new int[ItemCount];
+            int padX = S(ItemPaddingX);
+            int cardPad = S(CardPadding);
+            var widths = new int[count];
             int total = 0;
-            for (int i = 0; i < ItemCount; i++)
+            for (int i = 0; i < count; i++)
             {
-                widths[i] = TextRenderer.MeasureText(g, _target.TabPages[i].Text, ThemeTypography.BodyStrong).Width
-                          + (S(ItemPaddingX) * 2);
+                _textWidths[i] = TextRenderer.MeasureText(g, _target.TabPages[i].Text, NavFont, Size.Empty, MeasureFlags).Width;
+                int icon = SymbolAt(i) != ASymbols.None ? S(ThemeMetrics.IconSizeDense) + S(ThemeSpacing.Xs) : 0;
+                widths[i] = _textWidths[i] + icon + padX * 2;
                 total += widths[i];
             }
 
-            // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải hoặc
-            // giấu sau cặp mũi tên ‹ › — giấu là "In Reverse" biến mất hẳn trên màn hẹp.
-            // Co lại thì chữ hụt nhưng tab vẫn bấm được.
-            int available = Width - left - S(EdgePaddingX);
-            int x = left;
-            for (int i = 0; i < ItemCount; i++)
+            // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải - chữ hụt "…"
+            // nhưng tab vẫn bấm được.
+            int available = Width - (cardPad + S(ThemeSpacing.Sm)) * 2;
+            if (total > available && available > 0)
             {
-                int width = total > available && available > 0 ? widths[i] * available / total : widths[i];
-                _itemRects.Add(new Rectangle(x, 0, width, Height));
-                x += width;
+                int shrunk = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    widths[i] = widths[i] * available / total;
+                    shrunk += widths[i];
+                }
+                total = shrunk;
             }
 
-            _layoutDirty = false;
+            int itemHeight = S(ItemHeight);
+            _card = new Rectangle((Width - total) / 2 - cardPad, (Height - itemHeight) / 2 - cardPad,
+                total + cardPad * 2, itemHeight + cardPad * 2);
+
+            int x = _card.X + cardPad;
+            for (int i = 0; i < count; i++)
+            {
+                _itemRects.Add(new Rectangle(x, _card.Y + cardPad, widths[i], itemHeight));
+                x += widths[i];
+            }
         }
 
         private int HitTest(Point location)
@@ -152,60 +219,64 @@ namespace AutoJMS.UI.DesignSystem
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var c = Theme;
             var g = e.Graphics;
-
             EnsureLayout(g);
 
-            using (var back = new SolidBrush(c.Surface))
+            using (var back = new SolidBrush(Ziggurat))
                 g.FillRectangle(back, ClientRectangle);
+            if (_itemRects.Count == 0) return;
+
+            ControlStyler.Prepare(g, CardRadius);
+            ControlStyler.FillSurface(g, _card, Color.White, S(CardRadius));
 
             int selected = SelectedIndex;
-            for (int i = 0; i < _itemRects.Count; i++)
-                DrawItem(g, c, i, i == selected);
+            _pill = Rectangle.Empty;
+            if (selected >= 0 && selected < _itemRects.Count)
+            {
+                Rectangle to = _itemRects[selected];
+                _pill = _slideTimer.Enabled ? Lerp(_slideFrom, to, Ease(SlideProgress())) : to;
+                ControlStyler.FillSurface(g, _pill, Ziggurat, S(PillRadius));
+            }
 
-            // Đường phân cách nav / nội dung. 1px, không đổ bóng (DESIGN.md §I).
-            using (var border = new Pen(c.Border))
-                g.DrawLine(border, 0, Height - 1, Width, Height - 1);
+            // Vách nằm trên pill như ::after của index.html; chỉ là nét vẽ nên không cản click.
+            int dividerHeight = S(DividerHeight);
+            using (var divider = new SolidBrush(DividerColor))
+            {
+                for (int i = 0; i < _itemRects.Count; i++)
+                {
+                    var rect = _itemRects[i];
+                    DrawItem(g, i, rect);
+                    if (i < _itemRects.Count - 1)
+                        g.FillRectangle(divider, rect.Right - S(1), rect.Y + (rect.Height - dividerHeight) / 2, S(1), dividerHeight);
+                }
+            }
+
+            // Vòng focus chỉ khi focus đến từ bàn phím (←/→ đổi tab), bấm chuột không để lại viền.
+            if (Focused && ShowFocusCues && selected >= 0 && selected < _itemRects.Count)
+                ControlStyler.DrawFocusRing(g, _itemRects[selected], Theme, S(PillRadius));
         }
 
-        private void DrawItem(Graphics g, ThemeColors c, int index, bool isSelected)
+        private void DrawItem(Graphics g, int index, Rectangle rect)
         {
-            var rect = _itemRects[index];
-            bool isHot = index == _hotIndex && !isSelected;
+            int symbol = SymbolAt(index);
+            int icon = symbol != ASymbols.None ? S(ThemeMetrics.IconSizeDense) : 0;
+            int gap = icon > 0 ? S(ThemeSpacing.Xs) : 0;
+            int textWidth = Math.Min(_textWidths[index], Math.Max(0, rect.Width - S(ItemPaddingX) * 2 - icon - gap));
+            int x = rect.X + (rect.Width - (icon + gap + textWidth)) / 2;
 
-            // Tab đang chọn KHÔNG tô nền Primary — DESIGN.md §M nói rõ vì sao:
-            // một vệt đặc cao 40px cạnh vùng dữ liệu kéo mắt khỏi chính dữ liệu.
-            if (isHot)
-            {
-                using (var hot = new SolidBrush(c.SurfaceAlt))
-                    g.FillRectangle(hot, rect);
-            }
+            if (icon > 0)
+                ASymbols.Draw(g, symbol, icon, Ink, new Rectangle(x, rect.Y + (rect.Height - icon) / 2, icon, icon));
 
-            Color fore = isSelected ? c.Text : (isHot ? c.Text : c.TextSecondary);
-            Font font = isSelected ? ThemeTypography.BodyStrong : ThemeTypography.Body;
-
-            // EndEllipsis: khi thanh phải co lại (cửa sổ hẹp) thì cắt ĐUÔI rồi thêm "…".
-            // Không có cờ này, HorizontalCenter gặm đều cả hai đầu - "In chuyển hoàn" hiện
-            // ra "n chuyển hoà" và dính liền tab kế bên, không đọc ra tab nào nữa.
-            TextRenderer.DrawText(g, _target.TabPages[index].Text, font, rect, fore,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
-                | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-
-            if (isSelected)
-            {
-                int indicator = S(ThemeMetrics.TabIndicatorHeight);
-                using (var accent = new SolidBrush(c.Primary))
-                    g.FillRectangle(accent, rect.X, Height - indicator, rect.Width, indicator);
-            }
-
-            // Viền focus bàn phím: cố ý dùng Focus, KHÔNG dùng Primary (DESIGN.md §S).
-            if (Focused && index == SelectedIndex)
-            {
-                using (var focus = new Pen(c.Focus) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot })
-                    g.DrawRectangle(focus, rect.X + 2, 2, rect.Width - 5, Height - 6);
-            }
+            int textX = x + icon + gap;
+            TextRenderer.DrawText(g, _target.TabPages[index].Text, NavFont,
+                new Rectangle(textX, rect.Y, rect.Right - textX, rect.Height), Ink, DrawFlags);
         }
+
+        private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);   // ease-out cubic
+
+        private static Rectangle Lerp(Rectangle a, Rectangle b, float t) => new Rectangle(
+            a.X + (int)Math.Round((b.X - a.X) * t), b.Y,
+            a.Width + (int)Math.Round((b.Width - a.Width) * t), b.Height);
 
         // ---- Chuột / bàn phím ------------------------------------------------
 
@@ -218,7 +289,6 @@ namespace AutoJMS.UI.DesignSystem
 
             _hotIndex = hot;
             Cursor = hot >= 0 ? Cursors.Hand : Cursors.Default;
-            Invalidate();
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -228,7 +298,6 @@ namespace AutoJMS.UI.DesignSystem
 
             _hotIndex = -1;
             Cursor = Cursors.Default;
-            Invalidate();
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -303,7 +372,11 @@ namespace AutoJMS.UI.DesignSystem
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) Target = null;   // gỡ handler khỏi TabControl
+            if (disposing)
+            {
+                Target = null;   // gỡ handler khỏi TabControl
+                _slideTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
     }
