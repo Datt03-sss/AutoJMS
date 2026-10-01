@@ -69,6 +69,11 @@ Use them proactively when they fit — but note:
 - **Khoá phải mang định danh phiên.** `Current Writer` ghi `<tên agent> (<định danh phiên>)`, ví dụ
   `Claude Code (cleanup-tooling-rules)`. Thấy một định danh không phải của mình thì repo đang bị khoá
   — **chờ**, đừng cho là khoá cũ. Xem `AGENTS.md` § Workspace Lock Rules.
+- **Nhiều phiên Claude Code chạy song song, dùng chung khoá** (Owner, chat 2026-10-01): nếu MỌI định danh
+  trong `Current Writer` đều là `Claude Code (...)` thì nối định danh của mình vào (cách nhau dấu phẩy) +
+  thêm dòng `Scope` riêng, không cần chờ — miễn Scope không trùng file với phiên khác. Có phiên đang
+  build/upload release thì làm trong `git worktree` riêng. Nhả khoá chỉ xoá định danh của mình. Chi tiết:
+  `AGENTS.md` § Workspace Lock Rules bước 7. Có agent không phải Claude giữ khoá → vẫn **chờ**.
 - **Never** use `set_config_value` to widen desktop-commander's `allowedDirectories` /
   `blockedCommands` without an explicit owner request; never `git add .`; never delete files.
 - `superpowers` TDD applies to pure-logic classes only (`DkchJourneyAnalyzer`, `Tab2Config`, the

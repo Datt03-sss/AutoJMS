@@ -164,6 +164,15 @@ namespace AutoJMS
         public Dictionary<string, List<string>> DropdownOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
+        /// GIÁ TRỊ (value của option Vue) của dropdown "Loại đơn" theo mode — không đổi khi JMS đổi
+        /// chữ hay đổi ngôn ngữ. Có thì app chọn theo value trước, nhãn chỉ là dự phòng; nhờ vậy
+        /// JMS đổi tên hoặc HOÁN ĐỔI hai nhãn cũng không bấm nhầm. Để trống thì app dùng value
+        /// tự học được ở lần khớp nhãn gần nhất (xem <see cref="LearnDropdownValue"/>).
+        /// </summary>
+        [JsonPropertyName("dropdownValues")]
+        public Dictionary<string, List<string>> DropdownValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
         /// Nhãn/tooltip của nút "Lưu và thêm mới". Trang JMS chạy được ở tiếng Việt VÀ tiếng Trung
         /// nên phải liệt kê cả hai; app khớp theo <c>title</c> hoặc chữ hiển thị trên nút.
         /// </summary>
@@ -316,6 +325,96 @@ namespace AutoJMS
             return Merge(configured, DefaultDropdownOptions[key]);
         }
 
+        private static string ModeKey(string modeKey)
+            => string.Equals(modeKey, "DKCH2", StringComparison.OrdinalIgnoreCase) ? "DKCH2" : "DKCH1";
+
+        /// <summary>
+        /// Value cần chọn cho mode <paramref name="modeKey"/>: value ghim trong cấu hình (server)
+        /// thắng value tự học — cấu hình là thứ Owner chủ động sửa khi app học sai.
+        /// </summary>
+        public List<string> DropdownValuesFor(string modeKey)
+            => DropdownValuesFor(modeKey, LearnedDropdownValues());
+
+        internal List<string> DropdownValuesFor(string modeKey, IReadOnlyDictionary<string, string> learned)
+        {
+            string key = ModeKey(modeKey);
+            List<string>? configured = null;
+            if (DropdownValues != null) DropdownValues.TryGetValue(key, out configured);
+            var pinned = Merge(configured, Array.Empty<string>());
+            if (pinned.Count > 0) return pinned;
+
+            return learned != null && learned.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v)
+                ? new List<string> { v.Trim() }
+                : new List<string>();
+        }
+
+        // ── Value tự học ────────────────────────────────────────────────────────────────
+        // Lưu ở AppData chứ không trong tab2config.json: file đó có thể bị bản server/bản ship
+        // đè bất cứ lúc nào, mà value học được là sự thật của trang JMS máy này đang thấy.
+
+        private static readonly object LearnGate = new object();
+        private static Dictionary<string, string>? _learned;
+        private static string LearnedPath => Path.Combine(AppPaths.ModulesCacheDir, "modules", "tab2learned.json");
+
+        public static IReadOnlyDictionary<string, string> LearnedDropdownValues()
+        {
+            lock (LearnGate)
+            {
+                if (_learned == null)
+                {
+                    _learned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    try
+                    {
+                        if (File.Exists(LearnedPath))
+                            foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(
+                                         File.ReadAllText(LearnedPath), JsonOpts) ?? new())
+                                _learned[kv.Key] = kv.Value;
+                    }
+                    catch (Exception ex) { AppLogger.Warning($"Tab2Config: đọc {LearnedPath} lỗi: {ex.Message}"); }
+                }
+                return new Dictionary<string, string>(_learned, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// Ghi nhớ value của option vừa chọn đúng bằng nhãn. Từ chối khi value trùng value đã học
+        /// của mode KIA — dấu hiệu nhãn đang trỏ nhầm option, học vào là khoá chặt lỗi bấm sai.
+        /// </summary>
+        public static bool LearnDropdownValue(string modeKey, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            string key = ModeKey(modeKey), other = key == "DKCH1" ? "DKCH2" : "DKCH1";
+            value = value.Trim();
+
+            var current = LearnedDropdownValues();
+            if (!CanLearn(current, key, other, value)) return false;
+            if (current.TryGetValue(key, out var old) && old == value) return true;
+
+            lock (LearnGate)
+            {
+                _learned![key] = value;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(LearnedPath)!);
+                    File.WriteAllText(LearnedPath, JsonSerializer.Serialize(_learned, JsonOpts));
+                }
+                catch (Exception ex) { AppLogger.Warning($"Tab2Config: ghi {LearnedPath} lỗi: {ex.Message}"); }
+            }
+            AppLogger.Info($"Tab2Config: học value dropdown {key} = '{value}'.");
+            return true;
+        }
+
+        internal static bool CanLearn(IReadOnlyDictionary<string, string> learned, string key, string other, string value)
+        {
+            if (learned.TryGetValue(other, out var o) && o == value)
+            {
+                AppLogger.Warning($"Tab2Config: KHÔNG học value '{value}' cho {key} — đang là value của {other}. " +
+                                  "Nhãn trong dropdownOptions có thể đang trỏ nhầm option; kiểm tra lại tab2config.json.");
+                return false;
+            }
+            return true;
+        }
+
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -326,6 +425,9 @@ namespace AutoJMS
 
         private static readonly object Gate = new object();
         private static Tab2Config? _current;
+
+        /// <summary>Tên module trong modules/modules.json trên DataHub mang file tab2config.json.</summary>
+        public const string ServerModuleName = "tab2config";
 
         private static string UserPath => Path.Combine(AppPaths.ModulesCacheDir, "modules", "tab2config.json");
         private static string BundledPath => AppPaths.InstallResource(Path.Combine("modules", "tab2config.json"));
@@ -362,8 +464,16 @@ namespace AutoJMS
         {
             var found = new List<(string Path, DateTime Stamp)>();
 
-            foreach (var path in new[] { UserPath, BundledPath })
+            // Bản server đẩy về qua module "tab2config" (VpsModuleProvider) nằm ở
+            // modules/tab2config/<version>/tab2config.json. Nó dự cùng luật "mới hơn thắng":
+            // tải về là lúc nó được ghi, nên mới hơn bản ship; Owner sửa tay AppData sau đó vẫn thắng.
+            string? serverPath = null;
+            try { serverPath = AutoJMS.ModuleSystem.ActiveModules.LoadLocal().GetModuleFilePath(ServerModuleName, "tab2config.json"); }
+            catch { /* chưa từng sync — bỏ qua */ }
+
+            foreach (var path in new[] { serverPath, UserPath, BundledPath })
             {
+                if (string.IsNullOrEmpty(path)) continue;
                 try
                 {
                     if (File.Exists(path)) found.Add((path, File.GetLastWriteTimeUtc(path)));
@@ -401,6 +511,7 @@ namespace AutoJMS
                     // khai báo ở field bị mất. Dựng lại để "dkch1"/"nodata" trong file người dùng
                     // vẫn khớp, không im lặng bỏ qua.
                     cfg.DropdownOptions = Normalize(cfg.DropdownOptions);
+                    cfg.DropdownValues = Normalize(cfg.DropdownValues);
                     cfg.JmsMessages = Normalize(cfg.JmsMessages);
                     if (cfg.ActionMessages != null)
                         cfg.ActionMessages = new Dictionary<string, string>(cfg.ActionMessages, StringComparer.OrdinalIgnoreCase);

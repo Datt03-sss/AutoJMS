@@ -224,6 +224,14 @@ namespace AutoJMS.ModuleSystem
 
         public async Task SyncAsync(CancellationToken ct = default)
         {
+            // Cờ autoUpdate của license trước đây được gán nhưng không nơi nào đọc. Tắt thì máy
+            // giữ nguyên module/config đang có; Owner bật autoUpdate cho license đó để máy nhận.
+            if (!AutoUpdateEnabled)
+            {
+                AppLogger.Info("Module sync bỏ qua: license không bật autoUpdate.");
+                return;
+            }
+
             var localApp = AppManifest.LoadLocal();
             var active = ActiveModules.LoadLocal();
             var localCache = LoadLocalCache();
@@ -282,6 +290,13 @@ namespace AutoJMS.ModuleSystem
                     {
                         versionMap[entry.Name] = entry.Version;
                         AppLogger.Info($"Updated {entry.Name} → v{entry.Version}");
+                        // Pointer active chỉ ghi đĩa ở cuối hàm nên phải lưu trước khi Reload,
+                        // không thì Tab2Config đọc lại vẫn thấy bản cũ.
+                        if (string.Equals(entry.Name, AutoJMS.Tab2Config.ServerModuleName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            active.SaveLocal();
+                            AutoJMS.Tab2Config.Reload();
+                        }
                     }
                 }
                 else if (entry.Required)

@@ -78,6 +78,38 @@ public sealed class Tab2ConfigI18nTests
         Assert.Contains("退回", list);
     }
 
+    // ── Value của option (không đổi khi JMS đổi nhãn) ───────────────────────────────
+
+    private static readonly Dictionary<string, string> Learned =
+        new() { ["DKCH1"] = "1", ["DKCH2"] = "2" };
+
+    [Fact]
+    public void DropdownValue_GhimTuServer_ThangValueTuHoc()
+    {
+        var cfg = new Tab2Config
+        {
+            DropdownValues = new Dictionary<string, List<string>> { ["DKCH1"] = new() { "9" } }
+        };
+        Assert.Equal(new[] { "9" }, cfg.DropdownValuesFor("DKCH1", Learned));
+        Assert.Equal(new[] { "2" }, cfg.DropdownValuesFor("dkch2", Learned)); // DKCH2 không ghim -> dùng value đã học
+    }
+
+    [Fact]
+    public void DropdownValue_ChuaGhimChuaHoc_TraVeRong()
+    {
+        Assert.Empty(new Tab2Config().DropdownValuesFor("DKCH1", new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void HocValue_TuChoiValueDangThuocModeKia()
+    {
+        // Nhãn DKCH1 trỏ vào option mang value của DKCH2 = JMS đặt lại tên cũ cho option khác.
+        // Học vào sẽ khoá chặt lỗi bấm sai, nên phải từ chối.
+        Assert.False(Tab2Config.CanLearn(Learned, "DKCH1", "DKCH2", "2"));
+        Assert.True(Tab2Config.CanLearn(Learned, "DKCH1", "DKCH2", "1"));
+        Assert.True(Tab2Config.CanLearn(new Dictionary<string, string>(), "DKCH1", "DKCH2", "2"));
+    }
+
     // ── Nút Lưu / 保存并新增 ───────────────────────────────────────────────────────
 
     [Fact]

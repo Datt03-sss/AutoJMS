@@ -624,30 +624,44 @@ namespace AutoJMS
         }
 
         /// <summary>
-        /// Chọn dropdown "Loại đơn" theo DANH SÁCH nhãn ứng viên — dùng nhãn nào đang có trên trang.
+        /// Chọn dropdown "Loại đơn" cho mode <paramref name="modeKey"/> ("DKCH1"/"DKCH2").
         /// <para>
-        /// JMS đã từng đổi nhãn (DKCH1: "Chuyển hoàn" → "Từ chối"). Danh sách lấy từ
-        /// <c>modules/tab2config.json</c> nên khi JMS đổi tên chỉ cần sửa file, không build lại app.
-        /// Nếu không nhãn nào khớp, exception sẽ kèm DANH SÁCH các mục đang có trên trang để bạn
-        /// biết tên mới mà điền vào config.
+        /// Thứ tự: (1) VALUE của option Vue — ghim trong <c>dropdownValues</c> hoặc tự học — không
+        /// đổi khi JMS đổi chữ; (2) nhãn trong <c>dropdownOptions</c> THEO THỨ TỰ ƯU TIÊN của cấu hình
+        /// (bản cũ đi theo thứ tự trên trang nên một nhãn cũ có thể thắng nhãn hiện tại), bỏ qua
+        /// option đang mang value của mode kia. Chính lớp chặn đó ngăn "bấm sai" khi JMS đặt lại
+        /// một tên cũ cho option khác. Khớp bằng nhãn thì value của nó được học cho lần sau.
         /// </para>
+        /// Không khớp gì thì exception kèm DANH SÁCH "nhãn=value" đang có trên trang để điền config.
         /// </summary>
         /// <returns>Nhãn đã chọn được.</returns>
         public static async Task<string> CheckAndSelectDropdownAsync(
-            WebView2 webView, IList<string> candidates, CancellationToken token)
+            WebView2 webView, string modeKey, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();
 
-            if (candidates == null || candidates.Count == 0)
-                throw new Exception("Chưa cấu hình nhãn dropdown 'Loại đơn' (dropdownOptions trong tab2config.json).");
+            var cfg = Tab2Config.Current;
+            string otherMode = string.Equals(modeKey, "DKCH2", StringComparison.OrdinalIgnoreCase) ? "DKCH1" : "DKCH2";
+            var candidates = cfg.DropdownOptionsFor(modeKey);
+            var values = cfg.DropdownValuesFor(modeKey);
+            var otherValues = cfg.DropdownValuesFor(otherMode);
 
-            // Mảng JS các nhãn cần thử, giữ đúng thứ tự ưu tiên trong cấu hình.
-            string jsList = "[" + string.Join(",", candidates.Select(EscapeJsString)) + "]";
+            string JsArr(IEnumerable<string> xs) => "[" + string.Join(",", xs.Select(EscapeJsString)) + "]";
+            string jsList = JsArr(candidates);
 
             string js = $@"
             (async function() {{
                 try {{
-                    var wanted = {jsList}.map(function(x) {{ return x.toLowerCase().trim(); }});
+                    {NormJs}
+                    var wanted = {jsList}.map(__n);
+                    var wantedVals = {JsArr(values)};
+                    var otherVals = {JsArr(otherValues)};
+                    function vueVal(el, prop) {{
+                        if (el && el.__vue__) return el.__vue__[prop];
+                        var c = el && el.__vueParentComponent;
+                        return c && c.props ? c.props[prop === 'value' && el.classList.contains('el-select') ? 'modelValue' : prop] : undefined;
+                    }}
+                    function str(v) {{ return v === undefined || v === null ? '' : String(v); }}
 
                     // Kiểm tra và bấm phải nhìn CÙNG MỘT ô. Bản trước đọc
                     // '.el-select .el-input__inner' (ô select ĐẦU TIÊN trên trang, có thể là
@@ -656,8 +670,12 @@ namespace AutoJMS
                     // và mỗi mã đều mở dropdown bấm lại một lần — chậm mà không cần thiết.
                     var inputs = document.querySelectorAll('.el-select .el-input__inner[readonly]');
                     for (var i = 0; i < inputs.length; i++) {{
-                        var v = (inputs[i].value || '').toLowerCase().trim();
-                        if (v && wanted.indexOf(v) >= 0) return 'already|' + inputs[i].value;
+                        var sel = str(vueVal(inputs[i].closest('.el-select'), 'value'));
+                        var v = __n(inputs[i].value);
+                        var ok = wantedVals.length > 0
+                            ? (sel !== '' && wantedVals.indexOf(sel) >= 0)
+                            : (v && wanted.indexOf(v) >= 0 && otherVals.indexOf(sel) < 0);
+                        if (ok) return 'already|' + inputs[i].value + '|' + sel + '|' + (wantedVals.length > 0 ? 'value' : 'label');
                     }}
 
                     let ddInput = inputs.length > 0 ? inputs[0] : null;
@@ -666,29 +684,38 @@ namespace AutoJMS
                     ddInput.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
                     ddInput.click();
 
+                    function pick(item, text, val, how) {{
+                        item.scrollIntoView({{ block: 'center' }});
+                        item.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: true }}));
+                        item.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
+                        item.click();
+                        item.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true }}));
+                        return 'ok|' + text + '|' + val + '|' + how;
+                    }}
+
                     let seen = [];
                     let maxRetries = 20;
                     while (maxRetries > 0) {{
                         await new Promise(r => setTimeout(r, 100));
 
+                        let opts = [];
                         let visibleDropdowns = document.querySelectorAll('.el-select-dropdown:not([style*=""display: none""])');
                         for (let dd of visibleDropdowns) {{
-                            let items = dd.querySelectorAll('li.el-select-dropdown__item');
-                            for (let item of items) {{
+                            for (let item of dd.querySelectorAll('li.el-select-dropdown__item')) {{
                                 let text = item.innerText.trim();
-                                if (seen.indexOf(text) < 0) seen.push(text);
-                                if (item.classList.contains('is-disabled')) continue;
-
-                                if (wanted.indexOf(text.toLowerCase()) >= 0) {{
-                                    item.scrollIntoView({{ block: 'center' }});
-                                    item.dispatchEvent(new MouseEvent('mouseenter', {{ bubbles: true }}));
-                                    item.dispatchEvent(new MouseEvent('mousedown', {{ bubbles: true }}));
-                                    item.click();
-                                    item.dispatchEvent(new MouseEvent('mouseup', {{ bubbles: true }}));
-                                    return 'ok|' + text;
-                                }}
+                                let val = str(vueVal(item, 'value'));
+                                let tag = val ? text + '=' + val : text;
+                                if (seen.indexOf(tag) < 0) seen.push(tag);
+                                if (!item.classList.contains('is-disabled')) opts.push({{ item, text, val, n: __n(text) }});
                             }}
                         }}
+
+                        for (let o of opts)
+                            if (o.val && wantedVals.indexOf(o.val) >= 0) return pick(o.item, o.text, o.val, 'value');
+                        for (let w of wanted)
+                            for (let o of opts)
+                                if (o.n === w && otherVals.indexOf(o.val) < 0) return pick(o.item, o.text, o.val, 'label');
+
                         maxRetries--;
                     }}
                     return 'item_not_found|' + seen.join(' / ');
@@ -706,17 +733,29 @@ namespace AutoJMS
             {
                 case "already":
                 case "ok":
+                {
                     if (status == "ok") await Task.Delay(120, token);
-                    return string.IsNullOrWhiteSpace(detail) ? candidates[0] : detail;
+                    // detail = nhãn|value|how
+                    var parts = detail.Split('|');
+                    string label = parts[0].Trim(), value = parts.Length > 1 ? parts[1] : "", how = parts.Length > 2 ? parts[2] : "";
+
+                    if (how == "label") Tab2Config.LearnDropdownValue(modeKey, value);
+                    else if (how == "value" && !candidates.Any(c => string.Equals(c, label, StringComparison.OrdinalIgnoreCase)))
+                        AppLogger.Warning($"[DKCH] JMS đã đổi nhãn {modeKey} thành '{label}' (value={value}); " +
+                                          "app vẫn chọn đúng nhờ value — nên thêm nhãn mới vào dropdownOptions.");
+
+                    return string.IsNullOrWhiteSpace(label) ? candidates[0] : label;
+                }
 
                 case "no_input":
                     throw new Exception("Không tìm thấy ô Dropdown 'Loại đơn'.");
 
                 case "item_not_found":
                     throw new Exception(
-                        $"Không tìm thấy mục nào trong [{string.Join(" / ", candidates)}]. " +
-                        $"Các mục JMS đang có: [{detail}]. " +
-                        "Cập nhật 'dropdownOptions' trong modules/tab2config.json (không cần build lại app).");
+                        $"Không tìm thấy mục nào trong [{string.Join(" / ", candidates)}]" +
+                        (values.Count > 0 ? $" hay value [{string.Join(" / ", values)}]" : "") + ". " +
+                        $"Các mục JMS đang có (nhãn=value): [{detail}]. " +
+                        "Cập nhật 'dropdownOptions'/'dropdownValues' trong tab2config.json (không cần build lại app).");
 
                 case "error":
                     throw new Exception($"Lỗi chọn dropdown 'Loại đơn': {detail}");
@@ -761,6 +800,16 @@ namespace AutoJMS
             try { return JsonSerializer.Deserialize<string>(raw) ?? ""; }
             catch { return raw.Trim('"'); }
         }
+
+        /// <summary>
+        /// Hàm JS <c>__n(s)</c>: bỏ dấu tiếng Việt, đ→d, chữ thường, gộp khoảng trắng — để JMS
+        /// đổi hoa/thường, dấu, khoảng trắng thừa trên nhãn không làm trượt khớp. Dải dấu tổ hợp
+        /// dựng bằng fromCharCode để không phải nhúng escape \u vào file C#.
+        /// </summary>
+        private const string NormJs =
+            "function __n(s){return (s||'').normalize('NFD')" +
+            ".replace(new RegExp('['+String.fromCharCode(0x300)+'-'+String.fromCharCode(0x36f)+']','g'),'')" +
+            ".replace(/[đĐ]/g,'d').toLowerCase().replace(/\\s+/g,' ').trim();}";
 
         /// <summary>Chuỗi JS an toàn trong dấu nháy đơn.</summary>
         private static string EscapeJsString(string value)
@@ -840,21 +889,29 @@ namespace AutoJMS
 
             string saveJs = $@"
             (function() {{
-                var wanted = {saveList}.map(function(x) {{ return x.toLowerCase().trim(); }});
-                var buttons = document.querySelectorAll('button');
+                {NormJs}
+                var wanted = {saveList}.map(__n);
+                var buttons = Array.prototype.slice.call(document.querySelectorAll('button'));
                 var seen = [];
+                function hit(b) {{
+                    if (b.disabled || b.classList.contains('is-disabled')) return 'disabled|';
+                    b.click();
+                    return 'clicked|' + (b.getAttribute('title') || b.innerText || '').trim();
+                }}
+                // Lượt 1: trùng khớp (sau chuẩn hoá) title hoặc chữ trên nút.
                 for (var i = 0; i < buttons.length; i++) {{
                     var b = buttons[i];
-                    var title = (b.getAttribute('title') || '').toLowerCase().trim();
-                    var label = (b.innerText || '').toLowerCase().trim();
-                    if (label && seen.indexOf(label) < 0) seen.push(label);
-
-                    if (wanted.indexOf(title) >= 0 || wanted.indexOf(label) >= 0) {{
-                        if (b.disabled || b.classList.contains('is-disabled')) return 'disabled|';
-                        b.click();
-                        return 'clicked|' + (b.getAttribute('title') || b.innerText || '').trim();
-                    }}
+                    var title = __n(b.getAttribute('title')), label = __n(b.innerText);
+                    if (label && seen.indexOf(b.innerText.trim()) < 0) seen.push(b.innerText.trim());
+                    if (wanted.indexOf(title) >= 0 || wanted.indexOf(label) >= 0) return hit(b);
                 }}
+                // Lượt 2: JMS thêm chữ quanh nhãn cũ ('Lưu và thêm mới (F2)'). Chỉ nhận cụm >= 6 ký tự
+                // để 'Lưu' không khớp nhầm 'Lưu nháp', và chỉ khi DUY NHẤT một nút khớp.
+                var loose = buttons.filter(function(b) {{
+                    var t = __n(b.getAttribute('title')), l = __n(b.innerText);
+                    return wanted.some(function(w) {{ return w.length >= 6 && (t.indexOf(w) >= 0 || l.indexOf(w) >= 0); }});
+                }});
+                if (loose.length === 1) return hit(loose[0]);
                 return 'not_found|' + seen.join(' / ');
             }})();";
 
@@ -1627,10 +1684,9 @@ namespace AutoJMS
 
         private async Task<string> PrepareFormAsync(string waybill, string modeKey, CancellationToken token)
         {
-            var options = Tab2Config.Current.DropdownOptionsFor(modeKey);
             // Các nhịp chờ ở đây nhân với số mã trong lượt nhập, nên cắt xuống mức tối thiểu
             // mà Vue vẫn kịp nhận dữ liệu (trước: 100 + 100 = 200ms mỗi đơn).
-            string picked = await WebViewAutomation.CheckAndSelectDropdownAsync(_webView, options, token);
+            string picked = await WebViewAutomation.CheckAndSelectDropdownAsync(_webView, modeKey, token);
             await Task.Delay(40, token);
 
             OnStatusUpdate?.Invoke("2/3 Điền mã + tìm kiếm...");

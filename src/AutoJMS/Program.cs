@@ -293,16 +293,23 @@ namespace AutoJMS
                     AppLogger.Error("Module system init failed, using built-in only", ex);
                 }
 
-                // Background sync (non-blocking) — DataHub + Firebase Storage
+                // Background sync (non-blocking) — DataHub + Firebase Storage. Lặp mỗi 30 phút để
+                // máy mở app cả ngày vẫn nhận tab2config.json mới khi JMS đổi nhãn nút; mỗi vòng chỉ
+                // tải manifest, file chỉ tải lại khi version/sha256 đổi.
                 _ = Task.Run(async () =>
                 {
-                    try
+                    while (!AppCts.IsCancellationRequested)
                     {
-                        await ModuleStartup.SyncAsync(AppCts.Token);
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Warning($"Background module sync: {ex.Message}");
+                        try
+                        {
+                            await ModuleStartup.SyncAsync(AppCts.Token);
+                        }
+                        catch (Exception ex) when (!AppCts.IsCancellationRequested)
+                        {
+                            AppLogger.Warning($"Background module sync: {ex.Message}");
+                        }
+                        try { await Task.Delay(TimeSpan.FromMinutes(30), AppCts.Token); }
+                        catch (OperationCanceledException) { break; }
                     }
                 }, AppCts.Token);
 

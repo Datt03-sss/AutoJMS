@@ -46,6 +46,20 @@
 5. **Release Lock**: After verification and push succeed, reset `Current Writer: None`, `Mode: READ_ONLY`.
 6. **Re-read Before Release**: Read `.agent-lock.md` again before releasing. If `Current Writer` is no
    longer your identifier, another session took the lock — do not overwrite it, report to the Owner.
+7. **Shared lock between Claude Code sessions** (Owner, chat 2026-10-01): if **every** identifier in
+   `Current Writer` is `Claude Code (...)`, another Claude Code session may join instead of waiting:
+   - append its own identifier, comma-separated:
+     `Current Writer: Claude Code (a), Claude Code (b)`, and add its own `Scope (Claude Code (b)): ...` line;
+   - its Scope must not share a file with any other active Scope — overlap means **wait** as in step 2;
+   - if another session is building/uploading a release or running anything that reads the whole tree
+     (`release/build-release.ps1`, `verify.ps1`), work in a separate `git worktree` off `origin/main` —
+     never edit `src/` under a running release build;
+   - stage only its own Scope files; if `git push` is rejected because the other session pushed first,
+     `git pull --rebase origin main` (only its own unpushed commits get rebased), rebuild, then push;
+   - on release remove **only** its own identifier and Scope line; set `Current Writer: None` /
+     `Mode: READ_ONLY` only when no identifier is left. Other identifiers changing is not a step-6 alarm
+     as long as its own is still there.
+   Any non-Claude identifier (Antigravity, Codex, ...) in `Current Writer` keeps the exclusive rule: wait.
 
 ---
 

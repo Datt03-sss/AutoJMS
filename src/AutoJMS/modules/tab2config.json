@@ -68,8 +68,13 @@
     "  DKCH1: 'Từ chối' | 'Chuyển hoàn' (tên cũ) | 退回",
     "  DKCH2: 'Chuyển hoàn lần 2' | 二次退件",
     "",
+    "dropdownValues — VALUE của option (không đổi khi JMS đổi chữ). Có value thì app chọn theo value TRƯỚC,",
+    "  nhãn chỉ là dự phòng. Để trống thì app TỰ HỌC value ở lần khớp nhãn đúng (AppData/modules/tab2learned.json)",
+    "  và từ chối chọn option đang mang value của mode kia — chặn bấm nhầm khi JMS đổi/hoán đổi nhãn.",
+    "  Không khớp gì thì lỗi in danh sách 'nhãn=value' đang có trên trang để điền vào đây.",
+    "",
     "saveButtonTitles — nút Lưu: 'Lưu và thêm mới' | 保存并新增.",
-    "  App khớp theo title HOẶC chữ hiển thị trên nút.",
+    "  App khớp theo title HOẶC chữ hiển thị trên nút (không phân biệt dấu/hoa thường); nếu JMS thêm chữ quanh nhãn cũ thì vẫn khớp khi chỉ DUY NHẤT một nút chứa nhãn.",
     "",
     "collapseHeaders — các panel thu gọn trước khi điền mã (khớp theo chuỗi con của tiêu đề):",
     "  'Thông tin người gửi' | 'hóa đơn gốc' | 'đơn hàng mới' | 原单收寄件人信息 | 新单收寄件人信息",
@@ -96,6 +101,8 @@
     "DKCH1": [ "Từ chối", "Chuyển hoàn", "退回" ],
     "DKCH2": [ "Chuyển hoàn lần 2", "Từ chối lần 2", "二次退件" ]
   },
+
+  "dropdownValues": { "DKCH1": [], "DKCH2": [] },
 
   "saveButtonTitles": [ "Lưu và thêm mới", "保存并新增" ],
 
