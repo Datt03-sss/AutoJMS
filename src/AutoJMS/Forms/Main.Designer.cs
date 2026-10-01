@@ -1017,11 +1017,12 @@ namespace AutoJMS
             // 
             // tabTracking_process
             // 
-            tabTracking_process.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            // Không Anchor Left|Right: cột Percent 100 kéo thanh dài hết màn hình. Để mặc định
+            // Top|Left - thanh nằm sát mép trên hàng, ngay dưới "Tải xuống" / "Phát - Hoàn".
             tabTracking_process.Margin = new Padding(0);
             tabTracking_process.MinimumSize = new Size(200, 10);
             tabTracking_process.Name = "tabTracking_process";
-            tabTracking_process.Size = new Size(200, 10);
+            tabTracking_process.Size = new Size(250, 10);
             tabTracking_process.TabIndex = 2;
             // 
             // tabTracking_dataView
