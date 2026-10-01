@@ -26,7 +26,7 @@ namespace AutoJMS
                 uiPanel10 = CreateTopBar();
                 _filterBarPanel = CreateFilterBar();
                 _queueNavPanel = CreateQueueNavigator();
-                var body = CreateBodyPanel();
+                CreateDashGrids();
 
                 _webView = new Microsoft.Web.WebView2.WinForms.WebView2
                 {
@@ -177,7 +177,7 @@ namespace AutoJMS
                 ForeColor = TextPrimary,
                 PlaceholderText = "Tìm mã vận đơn, NV, SĐT..."
             };
-            _dashSearchBox.TextChanged += (s, e) => { if (_lastDashSourceData.Count == 0) return; RefreshFilteredGrid(); UpdateFilterInfo(); };
+            _dashSearchBox.TextChanged += (s, e) => { if (_lastDashSourceData.Count == 0) return; RefreshFilteredGrid(); };
 
             _dashDateFrom = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false, Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm" };
             _dashDateTo = new DateTimePicker { Visible = false, ShowCheckBox = true, Checked = false, Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy HH:mm" };
@@ -253,88 +253,10 @@ namespace AutoJMS
             return p;
         }
 
-        private Control CreateBodyPanel()
+        // Không bao giờ lên form (giao diện là _webView) nhưng vẫn là chỗ chứa dữ liệu:
+        // tabDash_dataGridView là nguồn của lọc/export, uiDataGridView2 giữ dữ liệu Thời hiệu.
+        private void CreateDashGrids()
         {
-            var body = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 3,
-                RowCount = 1,
-                Margin = Padding.Empty,
-                Padding = Padding.Empty,
-                BackColor = WorkspaceBackColor
-            };
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 256F));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 336F));
-
-            _leftContextPanel = CreateSmartContextPanel();
-            var center = CreateOperationMainWorkArea();
-            _rightIntelligencePanel = CreateRightOrderIntelligencePanel();
-
-            body.Controls.Add(_leftContextPanel, 0, 0);
-            body.Controls.Add(center, 1, 0);
-            body.Controls.Add(_rightIntelligencePanel, 2, 0);
-            return body;
-        }
-
-        private Label _lblRightWaybillNo;
-        private Label _lblRightStatus;
-
-        private Panel CreateRightOrderIntelligencePanel()
-        {
-            var p = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(20) };
-            
-            var tl = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            tl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            tl.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-
-            var lblTitle = new Label { Text = "THÔNG TIN VẬN ĐƠN", Font = new Font("Segoe UI", 12F, FontStyle.Bold), ForeColor = TextPrimary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-            _lblRightWaybillNo = new Label { Text = "Chưa chọn", Font = new Font("Segoe UI", 10F, FontStyle.Regular), ForeColor = TextSecondary, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-            _lblRightStatus = new Label { Text = "", Font = new Font("Segoe UI", 10F, FontStyle.Bold), ForeColor = AccentBlue, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-            
-            tl.Controls.Add(lblTitle, 0, 0);
-            tl.Controls.Add(_lblRightWaybillNo, 0, 1);
-            tl.Controls.Add(_lblRightStatus, 0, 2);
-
-            p.Controls.Add(tl);
-            return p;
-        }
-
-        private Panel CreateSmartContextPanel()
-        {
-            var p = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
-            var lbl = new Label 
-            { 
-                Text = "DANH SÁCH ĐƠN\n\n(Smart Context)", 
-                Dock = DockStyle.Fill, 
-                TextAlign = ContentAlignment.MiddleCenter, 
-                ForeColor = TextSecondary,
-                Font = new Font("Segoe UI", 9F)
-            };
-            p.Controls.Add(lbl);
-            return p;
-        }
-
-        private Control CreateOperationMainWorkArea()
-        {
-            var center = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                Margin = Padding.Empty,
-                Padding = new Padding(20, 18, 20, 18),
-                ColumnCount = 1,
-                RowCount = 3,
-                BackColor = WorkspaceBackColor
-            };
-            center.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F)); // Toolbar
-            center.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // Grid
-            center.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F)); // Footer metrics
-
-            var gridToolbar = CreateGridToolbar();
-
             tabPage3 = new TabPage { Name = "tabPage3", Text = "Tồn kho" };
             tabPage4 = new TabPage { Name = "tabPage4", Text = "Thời hiệu cũ" };
             uiTabControl2 = new TabControl { Dock = DockStyle.Fill, Visible = false };
@@ -343,32 +265,6 @@ namespace AutoJMS
             tabDash_dataGridView = CreateGrid("tabDash_dataGridView");
             tabDash_dataGridView.Dock = DockStyle.Fill;
             tabDash_dataGridView.BorderStyle = BorderStyle.None;
-
-            _operationGridHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
-            _operationInventoryWorkspace = new Panel { Dock = DockStyle.Fill, Visible = true };
-            _operationInventoryWorkspace.Controls.Add(tabDash_dataGridView);
-            
-            InitializeWaybillJourneyWorkspace();
-            _operationGridHost.Controls.Add(_waybillJourneyWorkspace);
-            _operationGridHost.Controls.Add(_operationInventoryWorkspace);
-
-            _operationMiniMetricStrip = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.LeftToRight,
-                BackColor = Color.Transparent,
-                Margin = new Padding(0, 6, 0, 0)
-            };
-
-            center.Controls.Add(gridToolbar, 0, 0);
-            center.Controls.Add(_operationGridHost, 0, 1);
-            center.Controls.Add(_operationMiniMetricStrip, 0, 2);
-
-            _operationGridFilterToolbar = new GridFilterToolbarControl { Visible = false };
-            _operationGridFilterToolbar.FilterRequested += OperationGridFilterToolbar_FilterRequested;
-            _operationGridFilterToolbar.PresetRequested += OperationGridFilterToolbar_PresetRequested;
-
-            return center;
         }
 
         private AComboBox CreateHeaderComboBox(string name)
@@ -703,7 +599,6 @@ namespace AutoJMS
                 if (_lastDashSourceData.Count > 0)
                 {
                     RefreshFilteredGrid();
-                    UpdateFilterInfo();
                 }
             }
             catch (Exception ex)
@@ -1229,44 +1124,6 @@ namespace AutoJMS
             {
                 AppLogger.Error("PostStateToWebView2 failed", ex);
             }
-        }
-        
-        private Control CreateGridToolbar()
-        {
-            var host = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2,
-                RowCount = 1,
-                Margin = Padding.Empty,
-                BackColor = Color.Transparent
-            };
-            host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            host.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-
-            _dashFilterInfo = new Label
-            {
-                Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
-                ForeColor = TextPrimary,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Text = "Danh sách đơn | Tất cả tồn kho"
-            };
-            host.Controls.Add(_dashFilterInfo, 0, 0);
-
-            _dashQuickFilterPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft,
-                AutoSize = true
-            };
-            AddDashQuickFilterButton("Tất cả", "Tất cả tồn kho", AccentSlate);
-            AddDashQuickFilterButton("KVD", "Giao thất bại", AccentBlue);
-            AddDashQuickFilterButton(">48h", "Tồn quá hạn (>48h)", AccentPurple);
-            AddDashQuickFilterButton("SLA", "SLA quá hạn", AccentWarning);
-            AddDashQuickFilterButton("Cần xử lý", "Cần xử lý ngay", AccentRed);
-            host.Controls.Add(_dashQuickFilterPanel, 1, 0);
-            return host;
         }
     }
 }

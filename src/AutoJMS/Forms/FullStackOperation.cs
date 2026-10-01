@@ -98,7 +98,6 @@ namespace AutoJMS
         private DateTimePicker _dashDateFrom;
         private DateTimePicker _dashDateTo;
         private AButton _dashExportBtn;
-        private Label _dashFilterInfo;
         private List<int> _kpiHistory = new();
         private string _lastDataHash = string.Empty;
         private ToolTip _tooltip;
@@ -118,7 +117,6 @@ namespace AutoJMS
         private readonly FullStackExportService _fullStackExportService = new();
         private readonly IFullStackJourneyService _fullStackJourneyService = new FullStackJourneyService();
         private readonly JourneyHistoryService _journeyHistoryService = new();
-        private readonly IJourneyAttachmentService _journeyAttachmentService = new JourneyAttachmentService();
         private List<WaybillDbModel> _lastFilteredDashRows = new();
         private bool _isSyncRunning = false;
         // 0 = idle, 1 = a stream render is in flight. Interlocked because the sync consumer thread
@@ -130,8 +128,6 @@ namespace AutoJMS
         // Set when rows changed in SQLite outside this form's knowledge (DataHub merge, hot-set
         // enrich): RAM cannot be patched from a batch, so the next render re-reads the snapshot.
         private volatile bool _streamReloadRequested = false;
-        private string _savedOperationFilter = string.Empty;
-        private string _savedOperationSearch = string.Empty;
         private IReadOnlyDictionary<string, FullStackOperationMetadata> _operationMetadata = new Dictionary<string, FullStackOperationMetadata>(StringComparer.OrdinalIgnoreCase);
         private Action<string> _authTokenHandler;
 
@@ -198,7 +194,6 @@ namespace AutoJMS
             // STATE 1 — IDLE: UI only, no API calls, no realtime
             SetupGrids();
             InitializeEnhancedUI();
-            SetupDashToolbar();
             tabDash_dataSource.SelectedIndex = 1;
             tabDash_timeUpdateData.Text = "30 PHÚT";
 
@@ -858,8 +853,6 @@ namespace AutoJMS
         private void tabDash_statusSelect_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (_isRefreshingStatusCombos) return;
-            _dashQuickFilter = GetSelectedDashStatus();
-            UpdateDashQuickFilterButtons();
             if (_lastDashSourceData.Count == 0) return;
             RefreshFilteredGrid();
         }
@@ -1247,13 +1240,8 @@ namespace AutoJMS
             if (tabDash_lblLastUpdate != null)
                 tabDash_lblLastUpdate.Text = $"Local refresh: {DateTime.Now:HH:mm:ss}";
 
-            if (_dashFilterInfo != null)
-                _dashFilterInfo.Text = $"Inventory grid | Hiển thị {filteredCount:N0} / {sourceCount:N0} đơn";
-
             UpdatePriorityFocusCards(sourceCount, filteredCount);
-            UpdateDashQueueInsight();
             UpdateOperationCenterChrome(sourceCount, filteredCount);
-            UpdateOperationFilterToolbar();
         }
 
         private void UpdateDashGridDataSource(List<WaybillDbModel> data)
@@ -1283,7 +1271,6 @@ namespace AutoJMS
                     tabDash_dataGridView.CurrentCell = tabDash_dataGridView.Rows[0].Cells[Math.Min(1, tabDash_dataGridView.Columns.Count - 1)];
                 }
                 UpdateSelectedOperationDetailFromGrid();
-                UpdateOperationFilterToolbar();
             }
 
             if (tabDash_dataGridView.InvokeRequired)
@@ -1693,15 +1680,6 @@ namespace AutoJMS
         // ======================================================================================
 
 
-        private void tabDash_dataGridView_SelectionChanged(object sender, EventArgs e)
-        {
-            if (tabDash_dataGridView.CurrentRow == null) return;
-            var waybillNo = tabDash_dataGridView.CurrentRow.Cells["Mã vận đơn"]?.Value?.ToString();
-            var status = tabDash_dataGridView.CurrentRow.Cells["Trạng thái"]?.Value?.ToString();
-
-            if (_lblRightWaybillNo != null) _lblRightWaybillNo.Text = waybillNo ?? "N/A";
-            if (_lblRightStatus != null) _lblRightStatus.Text = status ?? "";
-        }
         private void tabDash_dataGridView_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0 || e.RowIndex >= tabDash_dataGridView.Rows.Count) return;
@@ -1914,88 +1892,6 @@ namespace AutoJMS
             SetupAlertCheck();
         }
 
-        private void SetupDashToolbar()
-        {
-            // Removed for new UI
-        }
-
-        private Control CreateDashQuickFilterPanel()
-        {
-            var host = new TableLayoutPanel();
-            host.Dock = DockStyle.Fill;
-            host.ColumnCount = 2;
-            host.RowCount = 1;
-            host.Margin = Padding.Empty;
-            host.Padding = Padding.Empty;
-            host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            host.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 245F));
-            host.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-
-            _dashQuickFilterPanel = new FlowLayoutPanel();
-            _dashQuickFilterPanel.Dock = DockStyle.Fill;
-            _dashQuickFilterPanel.FlowDirection = FlowDirection.LeftToRight;
-            _dashQuickFilterPanel.WrapContents = false;
-            _dashQuickFilterPanel.AutoScroll = true;
-            _dashQuickFilterPanel.Margin = new Padding(2, 0, 2, 0);
-            _dashQuickFilterPanel.Padding = new Padding(3, 2, 3, 2);
-            _dashQuickFilterPanel.BackColor = Color.Transparent;
-
-            AddDashQuickFilterButton("Cần xử lý", "Cần xử lý ngay", AccentRed);
-            AddDashQuickFilterButton("Chưa phát", "Chưa quét phát", Color.FromArgb(220, 125, 40));
-            AddDashQuickFilterButton("SLA trễ", "SLA quá hạn", Color.FromArgb(190, 40, 40));
-            AddDashQuickFilterButton("Sắp trễ", "SLA sắp trễ (<4 giờ)", Color.FromArgb(190, 145, 25));
-            AddDashQuickFilterButton(">48h", "Tồn quá hạn (>48h)", Color.FromArgb(120, 80, 180));
-            AddDashQuickFilterButton("KVD", "Giao thất bại", AccentBlue);
-            AddDashQuickFilterButton("Tất cả", "Tất cả tồn kho", Color.FromArgb(90, 105, 115));
-
-            _dashQueueInsightLabel = new Label();
-            _dashQueueInsightLabel.Dock = DockStyle.Fill;
-            _dashQueueInsightLabel.TextAlign = ContentAlignment.MiddleRight;
-            _dashQueueInsightLabel.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
-            _dashQueueInsightLabel.ForeColor = Color.FromArgb(75, 75, 75);
-            _dashQueueInsightLabel.AutoEllipsis = true;
-            _dashQueueInsightLabel.Margin = new Padding(0, 2, 4, 2);
-            _dashQueueInsightLabel.Text = "Cần xử lý: 0";
-
-            host.Controls.Add(_dashQuickFilterPanel, 0, 0);
-            host.Controls.Add(_dashQueueInsightLabel, 1, 0);
-            return host;
-        }
-
-        private void AddDashQuickFilterButton(string text, string status, Color color)
-        {
-            if (_dashQuickFilterPanel == null) return;
-
-            var btn = new Button();
-            btn.Text = text;
-            btn.Tag = status;
-            btn.AutoSize = false;
-            btn.Size = new Size(76, 28);
-            btn.Margin = new Padding(2, 1, 2, 1);
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.BorderColor = Color.FromArgb(210, 215, 225);
-            btn.BackColor = Color.White;
-            btn.ForeColor = color;
-            btn.Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold);
-            btn.TextAlign = ContentAlignment.MiddleCenter;
-            _tooltip?.SetToolTip(btn, status);
-            btn.Click += DashQuickFilter_Click;
-            _dashQuickFilterPanel.Controls.Add(btn);
-        }
-
-        private void DashQuickFilter_Click(object sender, EventArgs e)
-        {
-            if (sender is not Button btn) return;
-            var status = btn.Tag?.ToString() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(status)) return;
-
-            _dashQuickFilter = status;
-            SelectDashStatus(status);
-            UpdateDashQuickFilterButtons();
-            RefreshFilteredGrid();
-        }
-
         private void SelectDashStatus(string status)
         {
             if (tabDash_statusSelect == null) return;
@@ -2011,49 +1907,6 @@ namespace AutoJMS
 
             tabDash_statusSelect.Items.Insert(0, status);
             tabDash_statusSelect.SelectedIndex = 0;
-        }
-
-        private void UpdateDashQuickFilterButtons()
-        {
-            if (_dashQuickFilterPanel == null) return;
-
-            var selected = GetSelectedDashStatus();
-            foreach (Control control in _dashQuickFilterPanel.Controls)
-            {
-                if (control is not Button btn) continue;
-                var status = btn.Tag?.ToString() ?? string.Empty;
-                bool active = string.Equals(status, selected, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(status, _dashQuickFilter, StringComparison.OrdinalIgnoreCase);
-                btn.BackColor = active ? Color.FromArgb(35, 45, 55) : Color.White;
-                btn.ForeColor = active ? Color.White : GetQuickFilterColor(status);
-                btn.FlatAppearance.BorderColor = active ? Color.FromArgb(35, 45, 55) : Color.FromArgb(210, 215, 225);
-            }
-        }
-
-        private static Color GetQuickFilterColor(string status)
-        {
-            return status switch
-            {
-                "Cần xử lý ngay" => AccentRed,
-                "Chưa quét phát" => Color.FromArgb(220, 125, 40),
-                "SLA quá hạn" => Color.FromArgb(190, 40, 40),
-                "SLA sắp trễ (<4 giờ)" => Color.FromArgb(190, 145, 25),
-                "Tồn quá hạn (>48h)" => Color.FromArgb(120, 80, 180),
-                "Giao thất bại" => AccentBlue,
-                _ => Color.FromArgb(90, 105, 115)
-            };
-        }
-
-        private void UpdateDashQueueInsight()
-        {
-            if (_dashQueueInsightLabel == null) return;
-
-            int needsAction = _cloudData.Count(IsNeedsAction);
-            int slaLate = _cloudData.Count(x => IsSlaBreached(x.ThoiGianNhanHang));
-            int over48 = _cloudData.Count(x => GetWarehouseAgeDays(x.ThoiGianThaoTac) >= 2.0);
-            _dashQueueInsightLabel.Text = $"Cần xử lý {needsAction:N0} | SLA {slaLate:N0} | >48h {over48:N0}";
-            _dashQueueInsightLabel.ForeColor = needsAction > 0 ? AccentRed : AccentGreen;
-            UpdateDashQuickFilterButtons();
         }
 
         private void UpdateOperationCenterChrome(int sourceCount, int filteredCount)
@@ -2073,7 +1926,6 @@ namespace AutoJMS
             }
 
             UpdateOperationQueues();
-            UpdateOperationMiniMetrics();
         }
 
         private void UpdatePriorityFocusCards(int sourceCount, int filteredCount)
@@ -2134,50 +1986,10 @@ namespace AutoJMS
             };
         }
 
-        private void UpdateOperationMiniMetrics()
-        {
-            if (_operationMiniMetricStrip == null) return;
-            _operationMiniMetricStrip.SuspendLayout();
-            try
-            {
-                _operationMiniMetricStrip.Controls.Clear();
-                AddMiniMetric("Local rows", _cloudData.Count.ToString("N0"), AccentSlate);
-                AddMiniMetric("Filtered", _lastFilteredDashRows.Count.ToString("N0"), AccentBlue);
-                AddMiniMetric("Critical", _cloudData.Count(x => GetRiskScore(x) >= 80).ToString("N0"), AccentRed);
-                AddMiniMetric("High", _cloudData.Count(x => GetRiskScore(x) >= 60 && GetRiskScore(x) < 80).ToString("N0"), Color.FromArgb(220, 125, 40));
-                AddMiniMetric("Workflow", "SQLite", AccentGreen);
-                AddMiniMetric("Lost risk", _cloudData.Count(IsLostRisk).ToString("N0"), AccentPurple);
-                AddMiniMetric("Saved view", string.IsNullOrWhiteSpace(_savedOperationFilter) && string.IsNullOrWhiteSpace(_savedOperationSearch) ? "No" : "Yes", AccentBlue);
-            }
-            finally
-            {
-                _operationMiniMetricStrip.ResumeLayout(true);
-            }
-        }
-
-        private void AddMiniMetric(string label, string value, Color color)
-        {
-            var item = new Label
-            {
-                AutoSize = false,
-                Width = 118,
-                Height = 24,
-                Margin = new Padding(0, 0, 8, 0),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI Semibold", 8.5F, FontStyle.Bold),
-                BackColor = Color.FromArgb(245, 248, 251),
-                ForeColor = color,
-                Text = $"{label}: {value}"
-            };
-            _operationMiniMetricStrip.Controls.Add(item);
-        }
-
         private void OperationQueueSidebar_QueueSelected(object sender, OperationQueueSelectedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(e?.Key)) return;
-            _dashQuickFilter = e.Key;
             SelectDashStatus(e.Key);
-            UpdateDashQuickFilterButtons();
             RefreshFilteredGrid();
             SetFullStackStatus($"Đang lọc grid: {e.Key}");
         }
@@ -2185,24 +1997,6 @@ namespace AutoJMS
         private void OperationKpiCard_Clicked(object sender, OperationQueueSelectedEventArgs e)
         {
             OperationQueueSidebar_QueueSelected(sender, e);
-        }
-
-        private void OperationGridFilterToolbar_FilterRequested(object sender, OperationGridFilterEventArgs e)
-        {
-            if (e == null || string.IsNullOrWhiteSpace(e.Key)) return;
-            _dashQuickFilter = e.Key;
-            SelectDashStatus(e.Key);
-            UpdateDashQuickFilterButtons();
-            RefreshFilteredGrid();
-        }
-
-        private void OperationGridFilterToolbar_PresetRequested(object sender, OperationGridFilterEventArgs e)
-        {
-            if (e == null) return;
-            if (e.Key == "SAVE_PRESET")
-                SaveCurrentOperationPreset();
-            else if (e.Key == "APPLY_PRESET")
-                ApplySavedOperationPreset();
         }
 
         private async void OperationDetailPanel_ActionRequested(object sender, OperationDetailActionEventArgs e)
@@ -2492,52 +2286,11 @@ namespace AutoJMS
             if (current != null)
                 await UpdateOperationDetailPanelAsync(current);
             await RefreshOperationMetadataAsync();
-            UpdateOperationFilterToolbar();
         }
 
         private string GetCurrentSelectedWaybillNo()
         {
             return (tabDash_dataGridView?.CurrentRow?.DataBoundItem as WaybillDbModel)?.WaybillNo ?? string.Empty;
-        }
-
-        private void SaveCurrentOperationPreset()
-        {
-            _savedOperationFilter = GetSelectedDashStatus();
-            _savedOperationSearch = _dashSearchBox?.Text?.Trim() ?? string.Empty;
-            SetFullStackStatus($"Đã lưu view: {(string.IsNullOrWhiteSpace(_savedOperationFilter) ? "Tất cả tồn kho" : _savedOperationFilter)}");
-            UpdateOperationFilterToolbar();
-        }
-
-        private void ApplySavedOperationPreset()
-        {
-            if (string.IsNullOrWhiteSpace(_savedOperationFilter) && string.IsNullOrWhiteSpace(_savedOperationSearch))
-            {
-                MessageBox.Show("Chưa có saved view trong phiên làm việc này.", "Operation Center", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_savedOperationFilter))
-            {
-                _dashQuickFilter = _savedOperationFilter;
-                SelectDashStatus(_savedOperationFilter);
-            }
-
-            if (_dashSearchBox != null)
-                _dashSearchBox.Text = _savedOperationSearch ?? string.Empty;
-
-            UpdateDashQuickFilterButtons();
-            RefreshFilteredGrid();
-            SetFullStackStatus($"Đã áp dụng saved view: {_savedOperationFilter}");
-        }
-
-        private void UpdateOperationFilterToolbar()
-        {
-            if (_operationGridFilterToolbar == null) return;
-            string filter = GetSelectedDashStatus();
-            if (string.IsNullOrWhiteSpace(filter))
-                filter = "Tất cả tồn kho";
-            bool hasPreset = !string.IsNullOrWhiteSpace(_savedOperationFilter) || !string.IsNullOrWhiteSpace(_savedOperationSearch);
-            _operationGridFilterToolbar.SetActiveFilter(filter, hasPreset);
         }
 
         private static void TryOpenPath(string path)
@@ -2568,32 +2321,6 @@ namespace AutoJMS
             return string.IsNullOrWhiteSpace(value) || string.Equals(value, "empty", StringComparison.OrdinalIgnoreCase)
                 ? "-"
                 : value.Trim();
-        }
-
-        private void UpdateFilterInfo()
-        {
-            try
-            {
-                int total = tabDash_dataGridView.Rows.Count;
-                string search = _dashSearchBox?.Text?.Trim() ?? "";
-                bool hasDate = (_dashDateFrom?.Checked == true || _dashDateTo?.Checked == true);
-                string status = GetSelectedDashStatus();
-
-                var parts = new List<string>();
-                parts.Add($"{total:N0} đơn");
-                if (!string.IsNullOrWhiteSpace(status) && status != "Tất cả")
-                    parts.Add($"● {status}");
-                if (!string.IsNullOrWhiteSpace(search))
-                    parts.Add($"🔍 \"{search}\"");
-                if (hasDate)
-                {
-                    string from = _dashDateFrom.Checked ? _dashDateFrom.Value.ToString("dd/MM/yyyy HH:mm") : "...";
-                    string to = _dashDateTo.Checked ? _dashDateTo.Value.ToString("dd/MM/yyyy HH:mm") : "...";
-                    parts.Add($"📅 {from} - {to}");
-                }
-                _dashFilterInfo.Text = string.Join(" | ", parts);
-            }
-            catch { }
         }
 
         private void ExportDashToExcel(object sender, EventArgs e)
@@ -2987,7 +2714,6 @@ namespace AutoJMS
         private void TabDash_SelectionChanged(object sender, EventArgs e)
         {
             UpdateSelectedOperationDetailFromGrid();
-            UpdateOperationFilterToolbar();
         }
 
         private void ShowDetailForWaybill(WaybillDbModel model)

@@ -16,8 +16,6 @@ namespace AutoJMS
         private Panel uiPanel10;
         private Panel _filterBarPanel;
         private Panel _queueNavPanel;
-        private Panel _leftContextPanel;
-        private Panel _rightIntelligencePanel;
         private AComboBox tabDash_timeUpdateData;
         private Label tabDash_lblLastUpdate;
         private AButton tabDash_updateData;
@@ -56,9 +54,6 @@ namespace AutoJMS
         private Label tabChat_sumFollow;
         private APanel uiPanel5;
 
-        private FlowLayoutPanel _dashQuickFilterPanel;
-        private string _dashQuickFilter = string.Empty;
-        private Label _dashQueueInsightLabel;
         // Ba control OperationCenter này ĐƯỢC ĐỌC (UpdateOperationCenterChrome,
         // UpdateOperationQueues, UpdateSelectedOperationDetailFromGrid) nhưng CHƯA CHỖ NÀO GÁN
         // — phần dựng UI của OperationCenter còn dở. Mọi chỗ đọc đều đã guard null nên app
@@ -67,20 +62,8 @@ namespace AutoJMS
         private QueueSidebarControl _operationQueueSidebar = null;
         private WaybillDetailPanel _operationDetailPanel = null;
         private StatusFooterControl _operationStatusFooter = null;
-        private GridFilterToolbarControl _operationGridFilterToolbar;
-        private Panel _operationGridHost;
-        private Panel _operationInventoryWorkspace;
-        private Panel _waybillJourneyWorkspace;
-        private DataGridView _waybillJourneyGrid;
-        private Label _waybillJourneyTitle;
-        private Label _waybillJourneyWaybillLabel;
-        private Label _waybillJourneyStatusLabel;
-        private Button _waybillJourneyCacheButton;
-        private Button _waybillJourneyRawJsonButton;
-        private Button _waybillJourneyBackButton;
         private string _activeJourneyWaybillNo = string.Empty;
         private CancellationTokenSource _journeyLoadCts;
-        private FlowLayoutPanel _operationMiniMetricStrip;
         private TableLayoutPanel _operationFocusStrip;
         private KpiCardControl _kpiTotalInventory;
         private KpiCardControl _kpiInbound;
