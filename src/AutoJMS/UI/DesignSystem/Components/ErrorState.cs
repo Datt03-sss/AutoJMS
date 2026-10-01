@@ -108,7 +108,8 @@ namespace AutoJMS.UI.DesignSystem
             TextRenderer.DrawText(g, _detail, ThemeTypography.Small,
                 new Rectangle(x, y, w, ThemeTypography.Small.Height * 2), c.Text,
                 TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.WordBreak |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding |
+                TextFormatFlags.NoFullWidthCharacterBreak);   // không ngắt giữa chữ có dấu, xem ADialog.MessageFlags
         }
     }
 }

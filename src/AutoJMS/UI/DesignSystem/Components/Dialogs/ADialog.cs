@@ -105,9 +105,13 @@ namespace AutoJMS.UI.DesignSystem
                 : TextRenderer.MeasureText(_message, MessageFont,
                     new Size(width, int.MaxValue), MessageFlags).Height;
 
+        // NoFullWidthCharacterBreak: thiếu cờ này DrawText áp luật ngắt của ký tự rộng (DBCS)
+        // cho chữ có dấu - máy ACP 65001 (UTF-8) coi MỌI ký tự ngoài ASCII là ký tự rộng nên
+        // ngắt dòng ngay giữa chữ ("mạ / ng"). App không có chữ CJK nên tắt luật đó không mất gì.
         private TextFormatFlags MessageFlags
             => (_emphasized ? TextFormatFlags.HorizontalCenter : TextFormatFlags.Left) |
-               TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding;
+               TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPadding |
+               TextFormatFlags.NoFullWidthCharacterBreak;
 
         protected void RecalcHeight()
         {

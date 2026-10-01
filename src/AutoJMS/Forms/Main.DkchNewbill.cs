@@ -1337,7 +1337,8 @@ namespace AutoJMS
             using (var f = Ui(8.5f, FontStyle.Bold))
             {
                 var size = TextRenderer.MeasureText(Tip ?? "", f,
-                    new Size(Math.Max(S(40), width - S(26)), int.MaxValue), TextFormatFlags.WordBreak);
+                    new Size(Math.Max(S(40), width - S(26)), int.MaxValue),
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoFullWidthCharacterBreak);   // không ngắt giữa chữ có dấu, xem ADialog.MessageFlags
                 return Math.Max(S(38), size.Height + S(26));
             }
         }
@@ -1363,7 +1364,7 @@ namespace AutoJMS
             {
                 Draw(g, "GỢI Ý:", fLabel, new Rectangle(x, S(5), w, S(11)), Skin.TipLabel);
                 TextRenderer.DrawText(g, Tip ?? "", fText, new Rectangle(x, S(17), w, Height - S(22)),
-                    Skin.TipText, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+                    Skin.TipText, TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix | TextFormatFlags.NoFullWidthCharacterBreak);
             }
         }
     }
