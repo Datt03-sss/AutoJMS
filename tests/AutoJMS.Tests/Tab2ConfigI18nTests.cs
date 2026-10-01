@@ -22,7 +22,8 @@ public sealed class Tab2ConfigI18nTests
         var cfg = new Tab2Config();   // chưa có cấu hình -> phải rơi về mặc định trong code
 
         var dkch1 = cfg.DropdownOptionsFor("DKCH1");
-        Assert.Contains("Từ chối", dkch1);        // nhãn hiện tại
+        Assert.Equal("Trả lại", dkch1[0]);       // nhãn hiện tại (JMS đổi 2026-10)
+        Assert.Contains("Từ chối", dkch1);
         Assert.Contains("Chuyển hoàn", dkch1);    // nhãn cũ — bản build vẫn chạy được ở cả hai phía
         Assert.Contains("退回", dkch1);            // tiếng Trung
 

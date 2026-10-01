@@ -65,7 +65,7 @@
     "  - không khớp được thì log in ra DANH SÁCH những gì JMS đang có, để biết chuỗi mới mà điền.",
     "",
     "dropdownOptions — dropdown 'Loại đơn' / '申请类型', theo từng mode:",
-    "  DKCH1: 'Từ chối' | 'Chuyển hoàn' (tên cũ) | 退回",
+    "  DKCH1: 'Trả lại' (từ 2026-10) | 'Từ chối' | 'Chuyển hoàn' (tên cũ) | 退回",
     "  DKCH2: 'Chuyển hoàn lần 2' | 二次退件",
     "",
     "dropdownValues — VALUE của option (không đổi khi JMS đổi chữ). Có value thì app chọn theo value TRƯỚC,",
@@ -98,7 +98,7 @@
   ],
 
   "dropdownOptions": {
-    "DKCH1": [ "Từ chối", "Chuyển hoàn", "退回" ],
+    "DKCH1": [ "Trả lại", "Từ chối", "Chuyển hoàn", "退回" ],
     "DKCH2": [ "Chuyển hoàn lần 2", "Từ chối lần 2", "二次退件" ]
   },
 

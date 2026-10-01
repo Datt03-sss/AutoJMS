@@ -154,7 +154,7 @@ namespace AutoJMS
         /// <summary>
         /// Nhãn của dropdown "Loại đơn" trên trang JMS, theo từng mode.
         /// <para>
-        /// JMS ĐÃ TỪNG đổi nhãn này (DKCH1: "Chuyển hoàn" → "Từ chối"). Vì vậy nó nằm ở đây chứ
+        /// JMS ĐÃ TỪNG đổi nhãn này (DKCH1: "Chuyển hoàn" → "Từ chối" → "Trả lại"). Vì vậy nó nằm ở đây chứ
         /// không hardcode trong code: mỗi mode nhận một DANH SÁCH nhãn, app thử lần lượt và dùng
         /// nhãn nào đang có trên trang. Nhờ vậy JMS đổi tên là chỉ cần sửa file này, không build lại;
         /// và để cả tên cũ lẫn tên mới thì bản build hiện tại chạy được ở cả hai phía.
@@ -223,12 +223,12 @@ namespace AutoJMS
 
         /// <summary>
         /// Nhãn mặc định nếu file cấu hình thiếu — giữ CẢ HAI ngôn ngữ và cả tên cũ.
-        /// 退回 = "Từ chối"/"Chuyển hoàn"; 二次退件 = "Chuyển hoàn lần 2".
+        /// 退回 = "Trả lại"/"Từ chối"/"Chuyển hoàn"; 二次退件 = "Chuyển hoàn lần 2".
         /// </summary>
         private static readonly Dictionary<string, string[]> DefaultDropdownOptions =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                ["DKCH1"] = new[] { "Từ chối", "Chuyển hoàn", "退回" },
+                ["DKCH1"] = new[] { "Trả lại", "Từ chối", "Chuyển hoàn", "退回" },
                 ["DKCH2"] = new[] { "Chuyển hoàn lần 2", "Từ chối lần 2", "二次退件" }
             };
 
