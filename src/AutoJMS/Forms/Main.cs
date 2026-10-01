@@ -1078,7 +1078,7 @@ namespace AutoJMS
                 // Cùng thứ tự 5 TabPage trong Designer: HOME, CHUYỂN HOÀN, TRA HÀNH TRÌNH, IN ĐƠN, ABOUT.
                 Symbols = new[]
                 {
-                    UI.DesignSystem.ASymbols.Home, UI.DesignSystem.ASymbols.Repeat, UI.DesignSystem.ASymbols.MapPin,
+                    UI.DesignSystem.ASymbols.Home, UI.DesignSystem.ASymbols.Repeat, UI.DesignSystem.ASymbols.ReceiptText,
                     UI.DesignSystem.ASymbols.Print, UI.DesignSystem.ASymbols.Info
                 },
                 Target = tabControl

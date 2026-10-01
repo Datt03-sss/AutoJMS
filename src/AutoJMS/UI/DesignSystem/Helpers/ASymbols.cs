@@ -50,7 +50,7 @@ namespace AutoJMS.UI.DesignSystem
         public const int Share        = 0xE155;
         public const int Send         = 0xE152;
         public const int Repeat       = 0xE146; // repeat — tab CHUYỂN HOÀN
-        public const int MapPin       = 0xE111; // map-pin — tab TRA HÀNH TRÌNH
+        public const int ReceiptText  = 0xE5AC; // receipt-text — tab TRA HÀNH TRÌNH
 
         // Content & Editing
         public const int Copy         = 0xE09E;

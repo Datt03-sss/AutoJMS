@@ -31,7 +31,7 @@ namespace AutoJMS.UI.DesignSystem
         private const int ItemPaddingX = 12;   // button padding: 0 12px
         private const int BarPadding = 3;      // từ mép thanh tới nút, cả bốn phía
         private const int PillRadius = 6;
-        private const int PillTint = 20;       // % Primary trộn lên nền thanh
+        private const int PillTint = 50;       // % Primary trộn lên nền thanh
         private const int DividerAlpha = 71;   // chữ 28%
         private const int DividerHeight = 12;
         private const int SlideMs = 100;
@@ -239,16 +239,20 @@ namespace AutoJMS.UI.DesignSystem
                 ControlStyler.FillSurface(g, _pill, ThemeColors.Blend(c.Primary, c.SurfaceRaised, PillTint), S(PillRadius));
             }
 
-            // Vách nằm trên pill như ::after của index.html; chỉ là nét vẽ nên không cản click.
+            // Vách chỉ là nét vẽ nên không cản click. Vách nào chạm pill thì bỏ: đứng yên là đúng
+            // hai vách cạnh tab đang chọn, lúc trượt thì pill "nuốt" vách nó đi qua.
             int dividerHeight = S(DividerHeight);
+            int dividerWidth = S(1);
             using (var divider = new SolidBrush(Color.FromArgb(DividerAlpha, c.Text)))
             {
                 for (int i = 0; i < _itemRects.Count; i++)
                 {
                     var rect = _itemRects[i];
                     DrawItem(g, i, rect, c.Text);
-                    if (i < _itemRects.Count - 1)
-                        g.FillRectangle(divider, rect.Right - S(1), rect.Y + (rect.Height - dividerHeight) / 2, S(1), dividerHeight);
+                    int dividerX = rect.Right - dividerWidth;
+                    bool touchesPill = dividerX + dividerWidth >= _pill.Left && dividerX < _pill.Right;
+                    if (i < _itemRects.Count - 1 && !touchesPill)
+                        g.FillRectangle(divider, dividerX, rect.Y + (rect.Height - dividerHeight) / 2, dividerWidth, dividerHeight);
                 }
             }
 
