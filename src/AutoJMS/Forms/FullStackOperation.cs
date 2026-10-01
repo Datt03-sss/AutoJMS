@@ -3137,6 +3137,7 @@ namespace AutoJMS
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.FromArgb(245, 245, 245),
+                Margin = Padding.Empty, // Margin mặc định 3 làm hàng 38 chỉ còn 23 cho nút cao 28 - mất viền dưới.
                 Padding = new Padding(6, 5, 6, 4)
             };
 
@@ -3180,20 +3181,17 @@ namespace AutoJMS
 
         private Button CreateThoiHieuToolbarButton(string text, EventHandler onClick)
         {
-            var button = new Button
+            var button = new ThemedFlatButton
             {
                 Text = text,
                 AutoSize = true,
                 Height = 28,
-                FlatStyle = FlatStyle.Flat,
                 BackColor = Color.White,
                 ForeColor = Color.FromArgb(45, 45, 45),
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 Margin = new Padding(0, 0, 6, 0),
-                Padding = new Padding(8, 1, 8, 1),
-                UseVisualStyleBackColor = false
+                Padding = new Padding(8, 1, 8, 1)
             };
-            button.FlatAppearance.BorderColor = Color.FromArgb(190, 190, 190);
             button.Click += onClick;
             return button;
         }
