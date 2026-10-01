@@ -31,7 +31,7 @@ namespace AutoJMS.UI.DesignSystem
         private const int ItemPaddingX = 12;   // button padding: 0 12px
         private const int BarPadding = 3;      // từ mép thanh tới nút, cả bốn phía
         private const int PillRadius = 6;
-        private const int PillTint = 50;       // % Primary trộn lên nền thanh
+        private const int PillTint = 75;       // % Primary trộn lên nền thanh
         private const int DividerAlpha = 71;   // chữ 28%
         private const int DividerHeight = 12;
         private const int SlideMs = 100;
