@@ -8,8 +8,8 @@ namespace AutoJMS.UI.DesignSystem
     {
         // Chrome
         public const int TitleBarHeight = 32;
-        /// <summary>Mọi thanh tab (TopNavigation): card 30 + đệm 3×2, chừa 6 trên dưới.</summary>
-        public const int NavHeight = 48;
+        /// <summary>Mọi thanh tab (TopNavigation): nút 30 + đệm 3 trên dưới.</summary>
+        public const int NavHeight = 36;
         public const int ToolbarHeight = 32;
 
         // Control tương tác

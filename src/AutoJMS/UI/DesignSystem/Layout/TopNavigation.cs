@@ -12,10 +12,11 @@ namespace AutoJMS.UI.DesignSystem
     /// Thanh điều hướng của AutoJMS — một lớp cho cả thanh tab chính (Main.topNav), dải tab CON
     /// 4 chế độ in của tab IN ĐƠN và dải tab của FullStackOperation.
     ///
-    /// Kiểu "sliding pill" theo index.html của Owner (2026-10-01): card trắng ôm sát các nút, căn
-    /// giữa trên nền Ziggurat; giữa các nút là vách 1px; một viên pill nằm DƯỚI chữ trượt 100ms tới
-    /// đúng Left/Width thật của nút đang chọn. Palette CỐ ĐỊNH ở mọi theme (Owner chọn) và có
-    /// animation — hai ngoại lệ có chủ đích so với DESIGN.md (màu qua token, không animation).
+    /// Kiểu "sliding pill" theo index.html của Owner (2026-10-01): dải SurfaceRaised phủ hết bề
+    /// ngang, các nút xếp từ mép TRÁI theo đúng bề rộng chữ (không giãn lấp đầy - phần còn trống để
+    /// dành cho tab mới); giữa các nút là vách 1px; một viên pill nằm DƯỚI chữ trượt 100ms tới đúng
+    /// Left/Width thật của nút đang chọn. Màu lấy theo theme. Animation là ngoại lệ có chủ đích so
+    /// với DESIGN.md (Owner yêu cầu).
     ///
     /// KHÔNG GIỮ TRẠNG THÁI CHỌN. Nguồn sự thật duy nhất là <see cref="Target"/>.
     /// Bấm nav thì ghi vào <c>Target.SelectedIndex</c>; Target đổi thì nav vẽ lại.
@@ -28,15 +29,12 @@ namespace AutoJMS.UI.DesignSystem
     {
         private const int ItemHeight = 30;     // .nav-tab height
         private const int ItemPaddingX = 12;   // button padding: 0 12px
-        private const int CardPadding = 3;
-        private const int CardRadius = 8;
+        private const int BarPadding = 3;      // từ mép thanh tới nút, cả bốn phía
         private const int PillRadius = 6;
+        private const int PillTint = 20;       // % Primary trộn lên nền thanh
+        private const int DividerAlpha = 71;   // chữ 28%
         private const int DividerHeight = 12;
         private const int SlideMs = 100;
-
-        private static readonly Color Ziggurat = Color.FromArgb(173, 206, 218);   // nền thanh + pill
-        private static readonly Color Ink = Color.FromArgb(13, 63, 82);            // chữ + icon
-        private static readonly Color DividerColor = Color.FromArgb(71, Ink);      // Ink 28%
 
         // 12px Medium. Segoe UI không có bậc Medium (500); Semibold là bậc gần nhất còn đọc ra
         // "đậm vừa" trên chữ in hoa nhỏ. 9pt = 12px ở 96 DPI, GDI tự nhân theo DPI. Font tĩnh vẽ
@@ -53,7 +51,7 @@ namespace AutoJMS.UI.DesignSystem
         private bool _layoutDirty = true;
         private int _hotIndex = -1;
         private int[] _symbols;
-        private Rectangle _card;
+        private Rectangle _band;        // khung bao các nút - vùng vẽ lại khi pill trượt
         private Rectangle _pill;        // pill của lần vẽ gần nhất = điểm xuất phát khi lựa chọn đổi
         private Rectangle _slideFrom;
         private long _slideStart;       // Stopwatch timestamp; 0 = chưa tick lần nào
@@ -152,7 +150,7 @@ namespace AutoJMS.UI.DesignSystem
             // lớn) giữ luồng UI quá 100ms, tính giờ từ lúc bấm thì pill nhảy thẳng tới đích.
             if (_slideStart == 0) _slideStart = Stopwatch.GetTimestamp();
             else if (SlideProgress() >= 1f) _slideTimer.Stop();
-            Invalidate(_card);
+            Invalidate(_band);
         }
 
         private float SlideProgress()
@@ -171,7 +169,7 @@ namespace AutoJMS.UI.DesignSystem
             if (count == 0) return;
 
             int padX = S(ItemPaddingX);
-            int cardPad = S(CardPadding);
+            int barPad = S(BarPadding);
             var widths = new int[count];
             int total = 0;
             for (int i = 0; i < count; i++)
@@ -184,7 +182,7 @@ namespace AutoJMS.UI.DesignSystem
 
             // Không đủ chỗ thì co đều thay vì để tab cuối tràn ra ngoài mép phải - chữ hụt "…"
             // nhưng tab vẫn bấm được.
-            int available = Width - (cardPad + S(ThemeSpacing.Sm)) * 2;
+            int available = Width - barPad * 2;
             if (total > available && available > 0)
             {
                 int shrunk = 0;
@@ -197,13 +195,12 @@ namespace AutoJMS.UI.DesignSystem
             }
 
             int itemHeight = S(ItemHeight);
-            _card = new Rectangle((Width - total) / 2 - cardPad, (Height - itemHeight) / 2 - cardPad,
-                total + cardPad * 2, itemHeight + cardPad * 2);
+            _band = new Rectangle(barPad, barPad, total, itemHeight);
 
-            int x = _card.X + cardPad;
+            int x = barPad;
             for (int i = 0; i < count; i++)
             {
-                _itemRects.Add(new Rectangle(x, _card.Y + cardPad, widths[i], itemHeight));
+                _itemRects.Add(new Rectangle(x, barPad, widths[i], itemHeight));
                 x += widths[i];
             }
         }
@@ -219,15 +216,19 @@ namespace AutoJMS.UI.DesignSystem
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            var c = Theme;
             var g = e.Graphics;
             EnsureLayout(g);
 
-            using (var back = new SolidBrush(Ziggurat))
+            using (var back = new SolidBrush(c.SurfaceRaised))
                 g.FillRectangle(back, ClientRectangle);
+
+            // Đáy 1px tách thanh khỏi trang bên dưới (cũng trắng ở Light/Red), như đáy AppTitleBar.
+            using (var border = new Pen(c.Border))
+                g.DrawLine(border, 0, Height - 1, Width, Height - 1);
             if (_itemRects.Count == 0) return;
 
-            ControlStyler.Prepare(g, CardRadius);
-            ControlStyler.FillSurface(g, _card, Color.White, S(CardRadius));
+            ControlStyler.Prepare(g, PillRadius);
 
             int selected = SelectedIndex;
             _pill = Rectangle.Empty;
@@ -235,17 +236,17 @@ namespace AutoJMS.UI.DesignSystem
             {
                 Rectangle to = _itemRects[selected];
                 _pill = _slideTimer.Enabled ? Lerp(_slideFrom, to, Ease(SlideProgress())) : to;
-                ControlStyler.FillSurface(g, _pill, Ziggurat, S(PillRadius));
+                ControlStyler.FillSurface(g, _pill, ThemeColors.Blend(c.Primary, c.SurfaceRaised, PillTint), S(PillRadius));
             }
 
             // Vách nằm trên pill như ::after của index.html; chỉ là nét vẽ nên không cản click.
             int dividerHeight = S(DividerHeight);
-            using (var divider = new SolidBrush(DividerColor))
+            using (var divider = new SolidBrush(Color.FromArgb(DividerAlpha, c.Text)))
             {
                 for (int i = 0; i < _itemRects.Count; i++)
                 {
                     var rect = _itemRects[i];
-                    DrawItem(g, i, rect);
+                    DrawItem(g, i, rect, c.Text);
                     if (i < _itemRects.Count - 1)
                         g.FillRectangle(divider, rect.Right - S(1), rect.Y + (rect.Height - dividerHeight) / 2, S(1), dividerHeight);
                 }
@@ -253,10 +254,10 @@ namespace AutoJMS.UI.DesignSystem
 
             // Vòng focus chỉ khi focus đến từ bàn phím (←/→ đổi tab), bấm chuột không để lại viền.
             if (Focused && ShowFocusCues && selected >= 0 && selected < _itemRects.Count)
-                ControlStyler.DrawFocusRing(g, _itemRects[selected], Theme, S(PillRadius));
+                ControlStyler.DrawFocusRing(g, _itemRects[selected], c, S(PillRadius));
         }
 
-        private void DrawItem(Graphics g, int index, Rectangle rect)
+        private void DrawItem(Graphics g, int index, Rectangle rect, Color ink)
         {
             int symbol = SymbolAt(index);
             int icon = symbol != ASymbols.None ? S(ThemeMetrics.IconSizeDense) : 0;
@@ -265,11 +266,11 @@ namespace AutoJMS.UI.DesignSystem
             int x = rect.X + (rect.Width - (icon + gap + textWidth)) / 2;
 
             if (icon > 0)
-                ASymbols.Draw(g, symbol, icon, Ink, new Rectangle(x, rect.Y + (rect.Height - icon) / 2, icon, icon));
+                ASymbols.Draw(g, symbol, icon, ink, new Rectangle(x, rect.Y + (rect.Height - icon) / 2, icon, icon));
 
             int textX = x + icon + gap;
             TextRenderer.DrawText(g, _target.TabPages[index].Text, NavFont,
-                new Rectangle(textX, rect.Y, rect.Right - textX, rect.Height), Ink, DrawFlags);
+                new Rectangle(textX, rect.Y, rect.Right - textX, rect.Height), ink, DrawFlags);
         }
 
         private static float Ease(float t) => 1f - (1f - t) * (1f - t) * (1f - t);   // ease-out cubic
