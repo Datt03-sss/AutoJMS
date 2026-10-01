@@ -14,7 +14,7 @@ namespace AutoJMS.UI.DesignSystem
 
         public AInputDialog()
         {
-            Width = ThemeMetrics.DialogWidthCompact;
+            Width = S(ThemeMetrics.DialogWidthCompact);
             Text = "Nhập giá trị";
 
             _input = new ATextBox();

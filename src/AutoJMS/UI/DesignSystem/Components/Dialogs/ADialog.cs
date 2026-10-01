@@ -9,7 +9,8 @@ namespace AutoJMS.UI.DesignSystem
     /// Khung hộp thoại dùng chung. Xem DesignReference/AutoJMS.DESIGN.md §T.
     ///
     ///  - FormBorderStyle.None + tự vẽ: thanh tiêu đề hệ thống không theo theme được.
-    ///  - Bề rộng chỉ lấy từ ThemeMetrics.DialogWidth*, chiều cao tự tính theo nội dung.
+    ///  - Bề rộng chỉ lấy từ ThemeMetrics.DialogWidth*, LUÔN qua S() (form dựng bằng code,
+    ///    AutoScale không nhân), chiều cao tự tính theo nội dung.
     ///  - Nút chính NGOÀI CÙNG BÊN PHẢI. Gọi AddButton theo thứ tự trái sang phải.
     ///  - Esc = huỷ, Enter = nút mặc định.
     ///  - Không đổ bóng: làm mờ nền (scrim) để tách lớp thay cho bóng.
@@ -35,8 +36,8 @@ namespace AutoJMS.UI.DesignSystem
             // góc nút ra đốm sáng quanh viền.
             BackColor = Theme.SurfaceRaised;
             Font = ThemeTypography.Body;
-            Width = ThemeMetrics.DialogWidthDefault;
-            Height = 160;
+            Width = S(ThemeMetrics.DialogWidthDefault);
+            Height = S(160);
         }
 
         protected static ThemeColors Theme => ThemeManager.Current;
@@ -130,12 +131,8 @@ namespace AutoJMS.UI.DesignSystem
             {
                 var b = _buttons[i];
                 // Emphasized 128: hộp 360 còn hở 56 giữa Huỷ (trái) và nút chính (phải).
-                // Kẹp theo nửa hàng nút: Width của hộp là số thô chưa nhân DPI, nên từ 125%
-                // S(128) x2 tràn quá hàng và hai nút đè nhau.
-                int min = _emphasized
-                    ? Math.Min(S(128), (Width - Pad * 2 - S(ThemeSpacing.Sm)) / 2)
-                    : S(88);
-                int w = Math.Max(min, b.GetPreferredSize(Size.Empty).Width);
+                // Width của hộp cũng qua S() nên tỉ lệ này giữ nguyên ở mọi DPI.
+                int w = Math.Max(S(_emphasized ? 128 : 88), b.GetPreferredSize(Size.Empty).Width);
                 if (i == 0 && _emphasized && _buttons.Count > 1) x = Pad + w;   // Huỷ về góc trái
                 x -= w;
                 b.Bounds = new Rectangle(x, y, w, h);

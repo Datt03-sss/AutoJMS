@@ -13,7 +13,7 @@ namespace AutoJMS.UI.DesignSystem
     {
         public AMessageDialog()
         {
-            Width = ThemeMetrics.DialogWidthCompact;
+            Width = S(ThemeMetrics.DialogWidthCompact);
             Text = "Thông báo";
             AddButton("Đóng", AButtonVariant.Primary, DialogResult.OK, isDefault: true);
         }

@@ -20,7 +20,7 @@ namespace AutoJMS.UI.DesignSystem
 
         public AProgressDialog()
         {
-            Width = ThemeMetrics.DialogWidthDefault;
+            Width = S(ThemeMetrics.DialogWidthDefault);
             Text = "Đang xử lý";
             ControlBox = false;
 

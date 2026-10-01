@@ -12,7 +12,7 @@ namespace AutoJMS.UI.DesignSystem
     {
         public AConfirmDialog()
         {
-            Width = ThemeMetrics.DialogWidthCompact;
+            Width = S(ThemeMetrics.DialogWidthCompact);
             Text = "Xác nhận";
         }
 
