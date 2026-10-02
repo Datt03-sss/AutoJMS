@@ -1034,6 +1034,10 @@ namespace AutoJMS
             // người dùng có thể đã bấm Huỷ ở hộp thoại thoát phía trên.
             LicenseApiService.BroadcastUpdateReceived -= OnBroadcastUpdateReceived;
 
+            // FullStack không phải owned form nên WinForms không đóng theo Main: đóng tay để
+            // FormClosing của nó dừng timer và nhả lease DataHub. Đặt SAU hộp xác nhận thoát.
+            _fullStackForm?.Close();
+
             this.Hide();
             _appCts.Cancel();
             DisposeAppCaptureWebViews();
@@ -2060,8 +2064,10 @@ namespace AutoJMS
                 _fullStackForm.ShowInTaskbar = true;
                 _fullStackForm.BackColor = System.Drawing.Color.LightBlue;
 
+                // Không truyền owner: owned window luôn nằm trên owner nên Main bị đè mãi.
+                // Bù lại Main_FormClosing phải tự đóng form này.
                 if (!_fullStackForm.Visible)
-                    _fullStackForm.Show(this);
+                    _fullStackForm.Show();
 
                 _fullStackForm.WindowState = FormWindowState.Maximized;
                 _fullStackForm.Activate();
