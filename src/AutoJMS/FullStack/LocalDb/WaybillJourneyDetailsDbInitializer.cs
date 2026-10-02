@@ -43,6 +43,11 @@ namespace AutoJMS.FullStack.LocalDb
                 await EnsureColumnAsync(connection, transaction, "waybill_journey_events", "volume_weight", "volume_weight TEXT", cancellationToken).ConfigureAwait(false);
                 await EnsureColumnAsync(connection, transaction, "waybill_journey_events", "created_at", "created_at TEXT", cancellationToken).ConfigureAwait(false);
 
+                // Index theo seq phải chạy SAU khi EnsureColumnAsync thêm cột: để trong SchemaSql thì
+                // "no such column: seq" làm rollback cả init.
+                command.CommandText = "CREATE INDEX IF NOT EXISTS idx_journey_events_waybill ON waybill_journey_events(waybill_no, seq);";
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
                 _initializedPath = path;
@@ -152,9 +157,6 @@ ON waybill_journey_cache(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_journey_events_fetched
 ON waybill_journey_events(fetched_at);
-
-CREATE INDEX IF NOT EXISTS idx_journey_events_waybill
-ON waybill_journey_events(waybill_no, seq);
 ";
     }
 }
