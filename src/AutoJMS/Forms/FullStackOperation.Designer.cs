@@ -12,8 +12,6 @@ namespace AutoJMS
         {
             if (disposing)
             {
-                // Cell fonts are not components, so nothing else releases them.
-                DisposeThoiHieuFonts();
                 // ThemeChanged là event tĩnh: không gỡ thì form đã đóng bị giữ sống tới hết tiến trình.
                 _contentThemeHook?.Dispose();
                 components?.Dispose();
