@@ -9,16 +9,14 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 {
     /// <summary>
     /// Tab "Thời hiệu": bản sao sheet "Tổng" của file Excel thật, nạp từ file mẫu nhúng trong assembly.
-    /// Thanh công cụ chỉ có Xuất ảnh và Mở thư mục; bảng chỉ đọc.
+    /// Thanh công cụ chỉ có Xuất ảnh và Mở thư mục; bảng chỉ đọc. Cả tab cố ý không theo theme: luôn sáng kiểu Excel.
     /// </summary>
     internal sealed class ThoiHieuKpiView : UserControl
     {
         private const string TemplateResource = "ThoiHieuKpi.template.xlsx";
         private const string SummarySheet = "Tổng";
 
-        private readonly Panel _toolbar;
-        private readonly AButton _openFolderButton;
-        private readonly ThemeHook _themeHook;
+        private readonly Button _openFolderButton;
 
         private static string ExportDirectory => Path.Combine(AppPaths.UserDataDir, "FullStack", "Exports", "ThoiHieu");
 
@@ -26,9 +24,9 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
         {
             var grid = new ReoGridControl { Dock = DockStyle.Fill };
 
-            var exportButton = CreateButton("Xuất ảnh", ASymbols.Download);
+            var exportButton = CreateButton("Xuất ảnh");
             exportButton.Click += (s, e) => ExportImage();
-            _openFolderButton = CreateButton("Mở thư mục", ASymbols.Export);
+            _openFolderButton = CreateButton("Mở thư mục");
             _openFolderButton.Enabled = false;   // bật sau lần xuất ảnh đầu tiên
             _openFolderButton.Click += (s, e) => OpenExportFolder();
 
@@ -37,12 +35,18 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             buttons.Controls.Add(_openFolderButton);
 
             // Chiều cao = nút S(32) + padding trên S(6) + padding dưới S(6): tránh 1 px bị cắt khi DpiHelper.Scale làm tròn ra xa 0
-            _toolbar = new Panel { Dock = DockStyle.Top, Height = S(32) + 2 * S(6), Padding = new Padding(S(8), S(6), S(8), S(6)) };
-            _toolbar.Controls.Add(buttons);
+            var toolbar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = S(32) + 2 * S(6),
+                Padding = new Padding(S(8), S(6), S(8), S(6)),
+                BackColor = Color.FromArgb(245, 245, 245)
+            };
+            toolbar.Controls.Add(buttons);
 
             // Dock xếp control thêm SAU trước: lưới (Fill) thêm trước thì thanh công cụ (Top) giữ được đỉnh.
             Controls.Add(grid);
-            Controls.Add(_toolbar);
+            Controls.Add(toolbar);
 
             try
             {
@@ -55,9 +59,6 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 AppLogger.Error("ThoiHieuKpiView: nạp file mẫu thất bại", ex);
                 exportButton.Enabled = false;
             }
-
-            ApplyTheme();
-            _themeHook = new ThemeHook(this, ApplyTheme);
         }
 
         /// <summary>
@@ -110,22 +111,16 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 
         private int S(int value) => DpiHelper.Scale(this, value);
 
-        private AButton CreateButton(string text, int symbol) => new AButton
+        // Button gốc thay AButton: AButton luôn vẽ theo theme hiện hành, tab này thì không theo theme.
+        // FullStackOperation không qua AppTheme.Apply nên không ai tô lại nút này.
+        private Button CreateButton(string text) => new Button
         {
             Text = text,
-            Symbol = symbol,
-            SymbolSize = 16,
-            Radius = 6,
-            Variant = AButtonVariant.Secondary,
+            Font = ThemeTypography.Button,
+            UseVisualStyleBackColor = true,
             Size = new Size(S(112), S(32)),
             Margin = new Padding(0, 0, S(6), 0)
         };
-
-        // Bảng giữ kiểu Excel nền trắng ở mọi theme; chỉ thanh công cụ theo theme (nút AButton tự theo).
-        private void ApplyTheme()
-        {
-            _toolbar.BackColor = ThemeManager.IsDark ? ThemeManager.Current.SurfaceAlt : Color.FromArgb(245, 245, 245);
-        }
 
         private void ExportImage()
         {
@@ -153,19 +148,6 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             {
                 MessageBox.Show(this, "Không thể mở thư mục xuất ảnh: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-        }
-
-        protected override void OnHandleCreated(EventArgs e)
-        {
-            base.OnHandleCreated(e);
-            ApplyTheme();   // view nằm trên tab chưa mở nên chưa có handle, ThemeHook bỏ qua tín hiệu đổi theme lúc đó — bắt kịp một lần
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-                _themeHook?.Dispose();   // ThemeChanged là event tĩnh: không gỡ thì view bị giữ sống tới hết tiến trình
-            base.Dispose(disposing);
         }
     }
 }

@@ -143,7 +143,7 @@ Xong cả 4 phase (2026-09-25). `Sunny.UI` đã gỡ khỏi `AutoJMS.csproj` —
 | TRACKING | `Forms/Main.Designer.cs` | `AButton`, `ATextBox`, `ADataGridView`, `ProgressBar`. |
 | IN ĐƠN | `Forms/Main.TabPrint*.cs` | `ADataGridView`, `ATextBox`, `ACheckBox`, `AToggleSwitch`; nút IN là `AButton` có `Image`; 4 tab con là `ATabControl` + `TopNavigation`. |
 | ABOUT | `Forms/Main.Designer.cs` | `Label` / `AButton` / `LinkLabel` trong `ACard`. Luôn là tab cuối. |
-| ULTRA (DASH) | `Forms/FullStackOperation*.cs`, `FullStack/UI/ThoiHieu/ThoiHieuKpiView.cs` | `FullStackOperation : Form`. Tab Thời hiệu là `ReoGridControl` chỉ đọc, giữ nền trắng kiểu Excel ở mọi theme. 5 bảng cố ý giữ `DataGridView` gốc — bảng màu ô tự đặt, `ThemeHook` của `ADataGridView` sẽ tô đè. |
+| ULTRA (DASH) | `Forms/FullStackOperation*.cs`, `FullStack/UI/ThoiHieu/ThoiHieuKpiView.cs` | `FullStackOperation : Form`. Tab Thời hiệu (`ReoGridControl` chỉ đọc + 2 `Button` gốc trên thanh công cụ) cố ý không theo theme, luôn sáng kiểu Excel. 5 bảng cố ý giữ `DataGridView` gốc — bảng màu ô tự đặt, `ThemeHook` của `ADataGridView` sẽ tô đè. |
 
 Control A* nối thẳng vào chính handler cũ, không có lớp trung gian, không có logic nghiệp vụ nào
 được chép lại.
