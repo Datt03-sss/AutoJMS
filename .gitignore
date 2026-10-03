@@ -171,4 +171,6 @@ tests/AutoJMS.Tests/AdminLicenseTest/
 
 # File Excel gốc Owner để làm mẫu layout tab Thời hiệu: chứa tên nhân viên thật. Chỉ file mẫu đã
 # làm sạch src/AutoJMS/FullStack/UI/ThoiHieu/ThoiHieuKpi.template.xlsx được commit.
-docs/layout/tabThoiHieu/*.xls
+# *.xls* bao gồm cả .xls lẫn .xlsx; eng/tmp chứa bản sao làm việc của cùng nguồn dữ liệu thật.
+docs/layout/tabThoiHieu/*.xls*
+eng/tmp/**/*.xls*

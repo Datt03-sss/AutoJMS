@@ -36,7 +36,8 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             buttons.Controls.Add(exportButton);
             buttons.Controls.Add(_openFolderButton);
 
-            _toolbar = new Panel { Dock = DockStyle.Top, Height = S(44), Padding = new Padding(S(8), S(6), S(8), S(6)) };
+            // Chiều cao = nút S(32) + padding trên S(6) + padding dưới S(6): tránh 1 px bị cắt khi DpiHelper.Scale làm tròn ra xa 0
+            _toolbar = new Panel { Dock = DockStyle.Top, Height = S(32) + 2 * S(6), Padding = new Padding(S(8), S(6), S(8), S(6)) };
             _toolbar.Controls.Add(buttons);
 
             // Dock xếp control thêm SAU trước: lưới (Fill) thêm trước thì thanh công cụ (Top) giữ được đỉnh.
@@ -152,6 +153,12 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             {
                 MessageBox.Show(this, "Không thể mở thư mục xuất ảnh: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            ApplyTheme();   // view nằm trên tab chưa mở nên chưa có handle, ThemeHook bỏ qua tín hiệu đổi theme lúc đó — bắt kịp một lần
         }
 
         protected override void Dispose(bool disposing)
