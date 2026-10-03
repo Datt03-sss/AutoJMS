@@ -126,6 +126,12 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 summary.DeleteRows(FirstBodyRow + 1, TemplateBodyRows - n);   // giữ hàng 3 (đầu merge B) và hàng cuối (viền dưới)
             }
 
+            // File mẫu zoom 70%: ReoGrid chèn/xoá hàng dời vị trí chữ đã cache sai theo zoom và không canh lại chữ ô gộp B,
+            // nên trên lưới đang hiện chú thích dưới Tổng trôi xuống/mất, "Giám sát" lệch. Đặt lại zoom bắt tính lại mọi ô.
+            float zoom = summary.ScaleFactor;
+            summary.ScaleFactor = 1f;
+            summary.ScaleFactor = zoom;
+
             for (int i = 0; i < n; i++)
             {
                 var e = Employees[i];

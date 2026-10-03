@@ -149,6 +149,31 @@ public sealed class ThoiHieuKpiImportTests : IDisposable
         AssertFormulasNormal(sheet);
     }
 
+    // Lưới đang hiện (có handle) nhập lần hai: vị trí chữ đã cache phải khớp ô sau khi chèn hàng, không thì chú thích dưới
+    // Tổng vẽ lệch xuống dưới. ReoGrid không lộ TextBounds/Bounds ra public nên đọc bằng reflection.
+    [Theory]
+    [InlineData(41)]
+    [InlineData(1)]
+    public void Fill_OnLiveGrid_KeepsTextInsideMovedCells(int employees)
+    {
+        using var grid = new ReoGridControl { Size = new System.Drawing.Size(1400, 1300) };
+        _ = grid.Handle;
+        grid.CurrentWorksheet = ThoiHieuKpiView.LoadTemplate(grid);
+        var sheet = grid.CurrentWorksheet = ThoiHieuKpiView.LoadTemplate(grid, FakeImport(employees));
+        int total = ThoiHieuKpiConditionalFormat.FindTotalRow(sheet);
+
+        const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+        var textBounds = typeof(Cell).GetProperty("TextBounds", any)!;
+        var bounds = typeof(Cell).GetProperty("Bounds", any)!;
+        // "Giám sát" (B gộp), "Quy ước màu tỷ lệ", dòng chú thích đầu và cuối
+        foreach (var cell in new[] { sheet.Cells[2, 1], sheet.Cells[total + 1, 1], sheet.Cells[total + 1, 4], sheet.Cells[total + 3, 4] })
+        {
+            var text = (unvell.ReoGrid.Graphics.Rectangle)textBounds.GetValue(cell)!;
+            var box = (unvell.ReoGrid.Graphics.Rectangle)bounds.GetValue(cell)!;
+            Assert.InRange((text.Y + text.Height / 2) / sheet.ScaleFactor, box.Y, box.Bottom);   // tâm chữ nằm trong ô
+        }
+    }
+
     private static void AssertFormulasNormal(Worksheet sheet)
     {
         var bad = new List<string>();
