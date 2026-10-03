@@ -26,6 +26,9 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
         private readonly StringFormat _leftFormat = CreateFormat(StringAlignment.Near, StringAlignment.Center);
         private readonly StringFormat _rightFormat = CreateFormat(StringAlignment.Far, StringAlignment.Center);
 
+        /// <summary>Màn hình đổi theo theme; renderer tạo mới (ảnh xuất) luôn là Light.</summary>
+        public ThoiHieuKpiColorPalette Palette { get; set; } = ThoiHieuKpiColorPalette.Light;
+
         public Size Measure(ThoiHieuKpiSheetData data)
         {
             int rowCount = Math.Max(0, data?.Rows?.Count ?? 0);
@@ -67,7 +70,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 
             graphics.SmoothingMode = SmoothingMode.None;
             graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-            graphics.Clear(Color.White);
+            graphics.Clear(Palette.Canvas);
             graphics.ScaleTransform(scale, scale, MatrixOrder.Append);
             graphics.TranslateTransform(-scrollOffset.X, -scrollOffset.Y, MatrixOrder.Append);
 
@@ -76,7 +79,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             DrawColumnHeaders(graphics);
             DrawRows(graphics, data);
 
-            using var outerPen = new Pen(ThoiHieuKpiColorPalette.Border, 1F);
+            using var outerPen = new Pen(Palette.Border, 1F);
             graphics.DrawRectangle(outerPen, new Rectangle(0, 0, totalWidth - 1, Measure(data).Height - MinFooterHeight - 1));
 
             graphics.ResetTransform();
@@ -86,9 +89,9 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
         {
             int leftTitleWidth = GetColumnRight(9);
             var titleRect = new Rectangle(0, 0, leftTitleWidth, TitleHeight);
-            FillRect(graphics, titleRect, ThoiHieuKpiColorPalette.TitleGreen);
+            FillRect(graphics, titleRect, Palette.TitleGreen);
 
-            using (var brush = new SolidBrush(Color.White))
+            using (var brush = new SolidBrush(Palette.TitleText))
             {
                 graphics.DrawString(
                     $"BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN {data.SiteCode}",
@@ -137,9 +140,9 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 var rect = new Rectangle(GetColumnLeft(i), y, col.Width, HeaderHeight);
                 var back = GetHeaderBackColor(col);
                 FillRect(graphics, rect, back);
-                DrawBorder(graphics, rect, ThoiHieuKpiColorPalette.Border);
+                DrawBorder(graphics, rect, Palette.Border);
 
-                using var brush = new SolidBrush(col.IsKpiTarget ? ThoiHieuKpiColorPalette.RedText : ThoiHieuKpiColorPalette.Text);
+                using var brush = new SolidBrush(col.IsKpiTarget ? Palette.RedText : Palette.Text);
                 using var font = new Font(_headerFont, col.IsKpiTarget ? FontStyle.Bold : FontStyle.Bold);
                 graphics.DrawString(col.HeaderText, font, brush, Inflate(rect, -4, -6), _centerFormat);
 
@@ -178,10 +181,10 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 
                 Color back = GetBodyBackColor(col, row);
                 FillRect(graphics, rect, back);
-                DrawBorder(graphics, rect, col.IsLeftBlock ? ThoiHieuKpiColorPalette.Border : ThoiHieuKpiColorPalette.ThinBorder);
+                DrawBorder(graphics, rect, col.IsLeftBlock ? Palette.Border : Palette.ThinBorder);
 
                 string text = GetCellText(col, row);
-                using var brush = new SolidBrush(ThoiHieuKpiColorPalette.Text);
+                using var brush = new SolidBrush(Palette.Text);
                 var format = col.Align switch
                 {
                     ColumnAlign.Left => _leftFormat,
@@ -205,9 +208,9 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             }
 
             var merged = new Rectangle(rect.X, rect.Y, rect.Width, RowHeight * span);
-            FillRect(graphics, merged, Color.White);
-            DrawBorder(graphics, merged, ThoiHieuKpiColorPalette.Border);
-            using var brush = new SolidBrush(ThoiHieuKpiColorPalette.Text);
+            FillRect(graphics, merged, Palette.CellBack);
+            DrawBorder(graphics, merged, Palette.Border);
+            using var brush = new SolidBrush(Palette.Text);
             graphics.DrawString(row.SupervisorName, _bodyFont, brush, Inflate(merged, -3, 0), _centerFormat);
         }
 
@@ -225,11 +228,11 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                     rect.Width = GetColumnRight(4);
                 }
 
-                FillRect(graphics, rect, ThoiHieuKpiColorPalette.TotalRed);
-                DrawBorder(graphics, rect, ThoiHieuKpiColorPalette.Border);
+                FillRect(graphics, rect, Palette.TotalRed);
+                DrawBorder(graphics, rect, Palette.Border);
 
                 string text = c == 0 ? "Tổng" : GetTotalText(col, totals);
-                using var brush = new SolidBrush(col.IsKpiTarget || col.Key == "SignedRate" ? Color.Yellow : Color.White);
+                using var brush = new SolidBrush(col.IsKpiTarget || col.Key == "SignedRate" ? Palette.TotalHighlightText : Palette.TotalText);
                 var format = c == 0 ? _centerFormat : col.Align == ColumnAlign.Left ? _leftFormat : _centerFormat;
                 graphics.DrawString(text, _bodyBoldFont, brush, Inflate(rect, -3, 0), format);
             }
@@ -302,21 +305,21 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             };
         }
 
-        private static Color GetHeaderBackColor(SheetColumn col)
+        private Color GetHeaderBackColor(SheetColumn col)
         {
-            if (col.IsKpiTarget) return ThoiHieuKpiColorPalette.Yellow;
-            if (col.Key == "SignedCount" || col.Key == "SignedRate" || col.IsHour) return ThoiHieuKpiColorPalette.HeaderGreen;
-            return ThoiHieuKpiColorPalette.White;
+            if (col.IsKpiTarget) return Palette.Yellow;
+            if (col.Key == "SignedCount" || col.Key == "SignedRate" || col.IsHour) return Palette.HeaderGreen;
+            return Palette.CellBack;
         }
 
-        private static Color GetBodyBackColor(SheetColumn col, ThoiHieuEmployeeRow row)
+        private Color GetBodyBackColor(SheetColumn col, ThoiHieuEmployeeRow row)
         {
-            if (col.IsKpiTarget) return Color.FromArgb(255, 255, 210);
+            if (col.IsKpiTarget) return Palette.KpiBodyYellow;
             if (col.Key == "SignedRate")
             {
-                if (row.SignedRate >= 0.9m) return ThoiHieuKpiColorPalette.RateGreen;
-                if (row.SignedRate >= 0.8m) return ThoiHieuKpiColorPalette.RateLight;
-                return Color.FromArgb(255, 199, 206);
+                if (row.SignedRate >= 0.9m) return Palette.RateGreen;
+                if (row.SignedRate >= 0.8m) return Palette.RateLight;
+                return Palette.RateLow;
             }
 
             if (col.Hour.HasValue)
@@ -324,40 +327,40 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 int hour = col.Hour.Value;
                 if (row.HourlySigned == null || !row.HourlySigned.TryGetValue(hour, out int? value) || !value.HasValue || value.Value <= 0)
                 {
-                    return ThoiHieuKpiColorPalette.DangerRed;
+                    return Palette.DangerRed;
                 }
 
-                if (value.Value >= 18) return Color.FromArgb(142, 180, 227);
-                if (value.Value >= 10) return ThoiHieuKpiColorPalette.LightBlue;
-                return Color.FromArgb(235, 242, 252);
+                if (value.Value >= 18) return Palette.HourHighBlue;
+                if (value.Value >= 10) return Palette.LightBlue;
+                return Palette.HourLowBlue;
             }
 
-            return ThoiHieuKpiColorPalette.White;
+            return Palette.CellBack;
         }
 
         private void DrawSummaryTextCell(Graphics graphics, Rectangle rect, string text, bool yellow)
         {
-            FillRect(graphics, rect, yellow ? ThoiHieuKpiColorPalette.Yellow : ThoiHieuKpiColorPalette.LightGray);
-            DrawBorder(graphics, rect, ThoiHieuKpiColorPalette.Border);
-            using var brush = new SolidBrush(ThoiHieuKpiColorPalette.Text);
+            FillRect(graphics, rect, yellow ? Palette.Yellow : Palette.LightGray);
+            DrawBorder(graphics, rect, Palette.Border);
+            using var brush = new SolidBrush(Palette.Text);
             graphics.DrawString(text, _headerFont, brush, Inflate(rect, -3, -3), _centerFormat);
         }
 
         private void DrawSummaryValueCell(Graphics graphics, Rectangle rect, int value, bool yellow)
         {
-            FillRect(graphics, rect, yellow ? ThoiHieuKpiColorPalette.Yellow : ThoiHieuKpiColorPalette.White);
-            DrawBorder(graphics, rect, ThoiHieuKpiColorPalette.Border);
-            using var brush = new SolidBrush(ThoiHieuKpiColorPalette.RedText);
+            FillRect(graphics, rect, yellow ? Palette.Yellow : Palette.CellBack);
+            DrawBorder(graphics, rect, Palette.Border);
+            using var brush = new SolidBrush(Palette.RedText);
             graphics.DrawString(value.ToString("N0"), _bodyBoldFont, brush, Inflate(rect, -2, 0), _centerFormat);
         }
 
         private void DrawFilterGlyph(Graphics graphics, Rectangle headerRect)
         {
             var glyphRect = new Rectangle(headerRect.Right - 22, headerRect.Bottom - 22, 18, 18);
-            FillRect(graphics, glyphRect, Color.FromArgb(242, 242, 242));
-            DrawBorder(graphics, glyphRect, Color.FromArgb(190, 190, 190));
+            FillRect(graphics, glyphRect, Palette.GlyphBack);
+            DrawBorder(graphics, glyphRect, Palette.GlyphBorder);
 
-            using var brush = new SolidBrush(Color.FromArgb(90, 90, 90));
+            using var brush = new SolidBrush(Palette.GlyphFill);
             Point[] points =
             {
                 new(glyphRect.Left + 5, glyphRect.Top + 7),

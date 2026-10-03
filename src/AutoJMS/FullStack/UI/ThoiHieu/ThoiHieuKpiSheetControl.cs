@@ -43,6 +43,17 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 
         public string FitWarning => _fitWarning;
 
+        public ThoiHieuKpiColorPalette Palette
+        {
+            get => _renderer.Palette;
+            set
+            {
+                _renderer.Palette = value ?? ThoiHieuKpiColorPalette.Light;
+                BackColor = _renderer.Palette.Canvas;
+                Invalidate();
+            }
+        }
+
         public void SetData(ThoiHieuKpiSheetData data)
         {
             _data = data ?? new ThoiHieuKpiSheetData();

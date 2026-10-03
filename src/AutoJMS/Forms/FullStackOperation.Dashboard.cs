@@ -305,6 +305,45 @@ namespace AutoJMS
         /// <summary>The only origin allowed to drive the privileged bridge in <see cref="OnWebViewMessageReceived"/>.</summary>
         private const string DashboardOrigin = "https://autojms.local";
 
+        private string _dashboardThemeScriptId;
+        private int _dashboardThemeVersion;
+
+        /// <summary>
+        /// Every colour in Web/index.html is light-dark(&lt;light&gt;, &lt;dark&gt;), switched by the
+        /// aj-dark class on &lt;html&gt;. The class is set twice: as a document-created script so a
+        /// (re)load paints the right theme from its first frame, and directly on the live page for a
+        /// theme switch while the dashboard is open. A document-created script can run before
+        /// &lt;html&gt; exists, hence the observer.
+        /// </summary>
+        private async Task ApplyDashboardThemeAsync()
+        {
+            if (_webView == null || _webView.IsDisposed) return;
+            bool dark = ThemeManager.IsDark;
+            _webView.DefaultBackgroundColor = dark ? ThemeManager.Current.Surface : FullStackBackColor;
+
+            var core = _webView.CoreWebView2;
+            if (core == null) return; // InitializeWebView2Async calls this again once the core exists.
+            string script =
+                "(function(d){var f=function(){d.documentElement.classList.toggle('aj-dark'," + (dark ? "true" : "false") + ")};" +
+                "if(d.documentElement)f();else new MutationObserver(function(_,o){if(d.documentElement){o.disconnect();f()}}).observe(d,{childList:true})})(document)";
+            // Đổi theme liên tiếp: hai lần gọi chồng nhau qua await; lần cũ về sau phải gỡ script của nó, không ghi đè lần mới.
+            int version = ++_dashboardThemeVersion;
+            try
+            {
+                if (_dashboardThemeScriptId != null) core.RemoveScriptToExecuteOnDocumentCreated(_dashboardThemeScriptId);
+                _dashboardThemeScriptId = null;
+                string id = await core.AddScriptToExecuteOnDocumentCreatedAsync(script);
+                if (version != _dashboardThemeVersion) { core.RemoveScriptToExecuteOnDocumentCreated(id); return; }
+                _dashboardThemeScriptId = id;
+                await core.ExecuteScriptAsync(script);
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+            {
+                // The form is closing and the WebView went away mid-switch; nothing left to paint.
+                AppLogger.Warning("[Dashboard] theme switch skipped: " + ex.Message);
+            }
+        }
+
         private async System.Threading.Tasks.Task InitializeWebView2Async()
         {
             if (_webViewInitialized) return;
@@ -354,6 +393,8 @@ namespace AutoJMS
 
                 _webView.CoreWebView2.NavigationStarting += OnDashboardNavigationStarting;
                 _webView.WebMessageReceived += OnWebViewMessageReceived;
+                // Before Navigate, so the first paint of the page is already in the right theme.
+                await ApplyDashboardThemeAsync();
                 _webView.CoreWebView2.Navigate(DashboardOrigin + "/index.html");
 
                 _webViewInitialized = true;
@@ -933,9 +974,10 @@ namespace AutoJMS
             double tonKhoDays = hasOpTime ? GetWarehouseAgeDays(row.ThoiGianThaoTac) : 0;
             int tonKhoWhole = (int)Math.Floor(tonKhoDays);
             string tonKhoText = !hasOpTime ? "-" : (tonKhoWhole <= 0 ? "< 1 ngày" : tonKhoWhole + " ngày");
+            // light-dark(): trang tự chọn theo theme (aj-dark, xem ApplyDashboardThemeAsync), Light giữ màu cũ.
             string tonKhoColor = !hasOpTime
-                ? "#6b7588"
-                : (tonKhoDays >= 7.0 ? "#d23a2e" : (tonKhoDays >= 3.0 ? "#e07b39" : "#3a4555"));
+                ? "light-dark(#6b7588, #99999c)"
+                : (tonKhoDays >= 7.0 ? "light-dark(#d23a2e, #e07970)" : (tonKhoDays >= 3.0 ? "light-dark(#e07b39, #e89b69)" : "light-dark(#3a4555, #c7c7ca)"));
 
             return new
             {

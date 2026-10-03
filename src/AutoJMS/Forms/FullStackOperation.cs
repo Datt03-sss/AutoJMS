@@ -66,6 +66,7 @@ namespace AutoJMS
         private Button _thoiHieuExportImageButton;
         private Button _thoiHieuOpenExportFolderButton;
         private Label _thoiHieuStatusLabel;
+        private Panel _thoiHieuToolbar;
         private string _lastThoiHieuExportPath = string.Empty;
         private TableLayoutPanel _thoiHieuLayout;
         private DataGridView _thoiHieuGrid;
@@ -194,6 +195,8 @@ namespace AutoJMS
             // STATE 1 — IDLE: UI only, no API calls, no realtime
             SetupGrids();
             InitializeEnhancedUI();
+            ApplyFullStackContentTheme();
+            _contentThemeHook = new ThemeHook(this, ApplyFullStackContentTheme);
             tabDash_dataSource.SelectedIndex = 1;
             tabDash_timeUpdateData.Text = "30 PHÚT";
 
@@ -2848,6 +2851,8 @@ namespace AutoJMS
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty
             };
+            // Thanh cuộn native của sheet không nhận BackColor; tab chưa mở thì chưa có handle.
+            _thoiHieuKpiSheet.HandleCreated += (s, e) => ControlStyler.ApplyNativeScrollTheme(_thoiHieuKpiSheet);
             _thoiHieuKpiSheet.ViewWarningChanged += (s, warning) => UpdateThoiHieuStatus(string.IsNullOrWhiteSpace(warning) ? BuildThoiHieuViewStatus() : warning);
             _thoiHieuLayout.Controls.Add(_thoiHieuKpiSheet, 0, 1);
             RefreshThoiHieuKpiSheet();
@@ -2859,10 +2864,10 @@ namespace AutoJMS
 
         private Control CreateThoiHieuKpiToolbar()
         {
-            var panel = new Panel
+            var panel = _thoiHieuToolbar = new Panel
             {
                 Dock = DockStyle.Fill,
-                BackColor = Color.FromArgb(245, 245, 245),
+                BackColor = ThoiHieuToolbarBack,
                 Margin = Padding.Empty, // Margin mặc định 3 làm hàng 38 chỉ còn 23 cho nút cao 28 - mất viền dưới.
                 Padding = new Padding(6, 5, 6, 4)
             };
@@ -2895,7 +2900,7 @@ namespace AutoJMS
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleRight,
                 Font = new Font("Segoe UI", 9F, FontStyle.Regular),
-                ForeColor = Color.FromArgb(80, 80, 80),
+                ForeColor = ThoiHieuStatusText,
                 AutoEllipsis = true,
                 Text = "Cuộn xem - giữ kích thước chuẩn"
             };
@@ -2912,8 +2917,8 @@ namespace AutoJMS
                 Text = text,
                 AutoSize = true,
                 Height = 28,
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(45, 45, 45),
+                BackColor = ThoiHieuButtonBack,
+                ForeColor = ThoiHieuButtonText,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
                 Margin = new Padding(0, 0, 6, 0),
                 Padding = new Padding(8, 1, 8, 1)
@@ -2943,7 +2948,7 @@ namespace AutoJMS
         private static void StyleThoiHieuModeButton(Button button, bool selected)
         {
             if (button == null) return;
-            button.BackColor = selected ? Color.FromArgb(198, 224, 180) : Color.White;
+            button.BackColor = selected ? ThoiHieuPalette.HeaderGreen : ThoiHieuButtonBack;
             button.Font = new Font(button.Font, selected ? FontStyle.Bold : FontStyle.Regular);
         }
 
@@ -2967,8 +2972,8 @@ namespace AutoJMS
             if (_thoiHieuStatusLabel == null || _thoiHieuStatusLabel.IsDisposed) return;
             _thoiHieuStatusLabel.Text = text ?? "";
             _thoiHieuStatusLabel.ForeColor = (text ?? "").Contains("quá lớn", StringComparison.OrdinalIgnoreCase)
-                ? Color.FromArgb(192, 0, 0)
-                : Color.FromArgb(80, 80, 80);
+                ? ThoiHieuPalette.RedText
+                : ThoiHieuStatusText;
         }
 
         private void RefreshThoiHieuKpiSheet()

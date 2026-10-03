@@ -161,7 +161,7 @@ namespace AutoJMS
                 Text = text,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font = UiBoldFont,
-                ForeColor = Color.FromArgb(70, 70, 70),
+                ForeColor = ContentLabelText,
                 MinimumSize = new Size(1, 1)
             };
         }
@@ -174,7 +174,7 @@ namespace AutoJMS
                 Text = text,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(70, 70, 70),
+                ForeColor = ContentLabelText,
                 MinimumSize = new Size(1, 1)
             };
         }

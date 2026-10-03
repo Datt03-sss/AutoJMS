@@ -33,61 +33,67 @@
 /* `overflow: hidden` only hides the scrollbars — the box stays a scroll container, so
    drag-select auto-scroll, a swipe or scrollIntoView can still shift it sideways and with
    no scrollbar there is no way back. `clip` makes the shell unscrollable outright. */
-html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none; background: #f4f6f9; }
+/* Theme Dark: host (FullStackOperation.Dashboard.cs) bật class aj-dark trên <html>; mọi màu
+   viết dạng light-dark(<sáng>, <tối>) nên Light/Red giữ nguyên màu cũ. */
+:root { color-scheme: light; }
+html.aj-dark { color-scheme: dark; }
+/* Ô nhập không đặt nền inline thì Chromium tô màu Field xám (59,59,59) ở dark; inline vẫn thắng rule này. */
+html.aj-dark input[type="text"], html.aj-dark textarea { background-color: #18181b; }
+html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none; background: light-dark(#f4f6f9, #101012); }
 .aj-scroll { overscroll-behavior: contain; }
 .aj-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.aj-scroll::-webkit-scrollbar-thumb { background: #cfd6e0; border-radius: 4px; }
+.aj-scroll::-webkit-scrollbar-thumb { background: light-dark(#cfd6e0, #3f3f46); border-radius: 4px; }
 .aj-scroll::-webkit-scrollbar-track { background: transparent; }
 @keyframes ajspin { to { transform: rotate(360deg); } }
 .aj-spin { animation: ajspin 0.9s linear infinite; transform-origin: 50% 50%; }
 </style>
 </helmet>
 
-<div style="font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f4f6f9; color: #1f2937; overflow: clip; overscroll-behavior: none; -webkit-font-smoothing: antialiased;">
+<div style="font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: light-dark(#f4f6f9, #101012); color: light-dark(#1f2937, #e2e2e5); overflow: clip; overscroll-behavior: none; -webkit-font-smoothing: antialiased;">
 
 
   <!-- ===== FILTER BAR ===== -->
-  <div style="height: 64px; flex: none; background: #fff; border-bottom: 1px solid #e4e8ef; display: flex; align-items: center; padding: 0 18px; gap: 16px;">
+  <div style="height: 64px; flex: none; background: light-dark(#fff, #18181b); border-bottom: 1px solid light-dark(#e4e8ef, #262629); display: flex; align-items: center; padding: 0 18px; gap: 16px;">
     <div style="display: flex; flex-direction: column; gap: 3px;">
-      <span style="font-size: 11px; color: #8a94a6;">Bưu cục</span>
-      <div title="Cố định theo middle code bưu cục" style="width: 130px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #f1f4f8; font-weight: 600; color: #3a4555; display: flex; align-items: center; gap: 7px;">
+      <span style="font-size: 11px; color: light-dark(#8a94a6, #7d7d80);">Bưu cục</span>
+      <div title="Cố định theo middle code bưu cục" style="width: 130px; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: light-dark(#f1f4f8, #222225); font-weight: 600; color: light-dark(#3a4555, #c7c7ca); display: flex; align-items: center; gap: 7px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
         {{ siteId }}
       </div>
     </div>
     <div style="display: flex; flex-direction: column; gap: 3px;">
-      <span style="font-size: 11px; color: #8a94a6;">Cập nhật sau</span>
-      <select onchange="{{ onTimeIntervalChange }}" value="{{ selectedTimeInterval }}" style="width: 150px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555;">
+      <span style="font-size: 11px; color: light-dark(#8a94a6, #7d7d80);">Cập nhật sau</span>
+      <select onchange="{{ onTimeIntervalChange }}" value="{{ selectedTimeInterval }}" style="width: 150px; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; padding: 0 10px; font-size: 13.5px; background: light-dark(#fff, #18181b); outline: none; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">
         <option value="30 phút">30 phút</option>
         <option value="1 giờ">1 giờ</option>
         <option value="2 giờ">2 giờ</option>
       </select>
     </div>
     <div style="display: flex; flex-direction: column; gap: 3px;">
-      <span style="font-size: 11px; color: #8a94a6;">Thời gian tồn kho</span>
+      <span style="font-size: 11px; color: light-dark(#8a94a6, #7d7d80);">Thời gian tồn kho</span>
       <div style="display: flex; align-items: center; gap: 6px;">
-        <div style="position: relative; display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
-          <input type="text" inputmode="numeric" maxlength="10" placeholder="dd/MM/yyyy" value="{{ fromDateOnlyDisplay }}" oninput="{{ onFromDateOnlyInput }}" onblur="{{ onFromDateOnlyBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 96px; height: 100%; border: none; padding: 0 6px 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
-          <span style="position: relative; width: 22px; height: 100%; display: flex; align-items: center; justify-content: center; color: #3a4555; border-right: 1px solid #e7ebf1;">
+        <div style="position: relative; display: flex; align-items: center; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; background: light-dark(#fff, #18181b); overflow: hidden;">
+          <input type="text" inputmode="numeric" maxlength="10" placeholder="dd/MM/yyyy" value="{{ fromDateOnlyDisplay }}" oninput="{{ onFromDateOnlyInput }}" onblur="{{ onFromDateOnlyBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 96px; height: 100%; border: none; padding: 0 6px 0 8px; font-size: 12.5px; background: light-dark(#fff, #18181b); outline: none; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); text-align: center;">
+          <span style="position: relative; width: 22px; height: 100%; display: flex; align-items: center; justify-content: center; color: light-dark(#3a4555, #c7c7ca); border-right: 1px solid light-dark(#e7ebf1, #242427);">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
             <input type="date" value="{{ fromDateOnly }}" onchange="{{ onFromDateOnly }}" title="Chọn ngày bắt đầu" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; cursor: pointer;">
           </span>
-          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" value="{{ fromTimeOnly }}" oninput="{{ onFromTimeInput }}" onblur="{{ onFromTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" value="{{ fromTimeOnly }}" oninput="{{ onFromTimeInput }}" onblur="{{ onFromTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: light-dark(#fff, #18181b); outline: none; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); text-align: center;">
         </div>
-        <span style="color: #8a94a6; font-size: 13px;">–</span>
-        <div style="position: relative; display: flex; align-items: center; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; overflow: hidden;">
-          <input type="text" inputmode="numeric" maxlength="10" placeholder="dd/MM/yyyy" value="{{ toDateOnlyDisplay }}" oninput="{{ onToDateOnlyInput }}" onblur="{{ onToDateOnlyBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 96px; height: 100%; border: none; padding: 0 6px 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
-          <span style="position: relative; width: 22px; height: 100%; display: flex; align-items: center; justify-content: center; color: #3a4555; border-right: 1px solid #e7ebf1;">
+        <span style="color: light-dark(#8a94a6, #7d7d80); font-size: 13px;">–</span>
+        <div style="position: relative; display: flex; align-items: center; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; background: light-dark(#fff, #18181b); overflow: hidden;">
+          <input type="text" inputmode="numeric" maxlength="10" placeholder="dd/MM/yyyy" value="{{ toDateOnlyDisplay }}" oninput="{{ onToDateOnlyInput }}" onblur="{{ onToDateOnlyBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 96px; height: 100%; border: none; padding: 0 6px 0 8px; font-size: 12.5px; background: light-dark(#fff, #18181b); outline: none; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); text-align: center;">
+          <span style="position: relative; width: 22px; height: 100%; display: flex; align-items: center; justify-content: center; color: light-dark(#3a4555, #c7c7ca); border-right: 1px solid light-dark(#e7ebf1, #242427);">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
             <input type="date" value="{{ toDateOnly }}" max="{{ toDateMax }}" onchange="{{ onToDateOnly }}" title="Chọn ngày kết thúc" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; cursor: pointer;">
           </span>
-          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" value="{{ toTimeOnly }}" oninput="{{ onToTimeInput }}" onblur="{{ onToTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: #fff; outline: none; font-weight: 600; color: #3a4555; text-align: center;">
+          <input type="text" inputmode="numeric" maxlength="5" placeholder="HH:mm" value="{{ toTimeOnly }}" oninput="{{ onToTimeInput }}" onblur="{{ onToTimeBlur }}" onkeydown="{{ onTimeKeyDown }}" style="width: 54px; height: 100%; border: none; padding: 0 8px; font-size: 12.5px; background: light-dark(#fff, #18181b); outline: none; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); text-align: center;">
         </div>
       </div>
     </div>
-    <div style="flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; border: 1px solid #d7dde6; border-radius: 7px; padding: 0 12px; margin-top: 16px; background: #fff;">
+    <div style="flex: 1; display: flex; align-items: center; gap: 8px; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; padding: 0 12px; margin-top: 16px; background: light-dark(#fff, #18181b);">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg>
-      <input type="text" onchange="{{ onSearchChange }}" onkeydown="{{ onSearchKeyDown }}" value="{{ searchText }}" placeholder="Nhập mã vận đơn" style="flex: 1; border: none; outline: none; font-size: 13.5px; color: #1f2937;">
+      <input type="text" onchange="{{ onSearchChange }}" onkeydown="{{ onSearchKeyDown }}" value="{{ searchText }}" placeholder="Nhập mã vận đơn" style="flex: 1; border: none; outline: none; font-size: 13.5px; color: light-dark(#1f2937, #e2e2e5);">
     </div>
     <div onclick="{{ onSearchSubmit }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: #3a4760; color: #fff; border: 1px solid #3a4760; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #2f3a50; border-color: #8a97b3;" style-active="background: #283143; border-color: #aab4cc; transform: scale(0.97);">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.5" y2="16.5"></line></svg> Tìm kiếm
@@ -95,20 +101,20 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
     <div onclick="{{ onSyncClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; background: {{ accent }}; color: #fff; border: 1px solid {{ accent }}; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="filter: brightness(1.07); border-color: #1b4fc0;" style-active="filter: brightness(0.92); border-color: #173f99; transform: scale(0.97);">
       <svg class="{{ syncSpinClass }}" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity="0.3"></circle><path d="M21 12a9 9 0 0 0-9-9"></path></svg> Đồng bộ
     </div>
-    <div onclick="{{ onExportClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; border: 1px solid #d7dde6; color: #3a4555; border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #e8f7ee; border-color: #0f5e2f; color: #157a3e;" style-active="background: #d3f0de; border-color: #0a4423; color: #0f5e2f; transform: scale(0.97);">
+    <div onclick="{{ onExportClick }}" style="display: flex; align-items: center; gap: 6px; height: 34px; border: 1px solid light-dark(#d7dde6, #2e2e32); color: light-dark(#3a4555, #c7c7ca); border-radius: 7px; padding: 0 16px; font-size: 13.5px; font-weight: 600; margin-top: 16px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: light-dark(#e8f7ee, #1b3124); border-color: #0f5e2f; color: light-dark(#157a3e, #6be69d);" style-active="background: light-dark(#d3f0de, #1b3224); border-color: #0a4423; color: light-dark(#0f5e2f, #69e79c); transform: scale(0.97);">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Xuất dữ liệu
     </div>
     <div style="display: flex; flex-direction: column; gap: 4px; margin-left: 6px; margin-top: 4px; align-items: flex-start;">
       <div style="display: flex; align-items: center; gap: 16px; font-size: 11.5px;">
-        <span style="display: flex; align-items: center; gap: 5px; color: #6b7588;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #28a745;"></span>{{ syncStatus }}</span>
+        <span style="display: flex; align-items: center; gap: 5px; color: light-dark(#6b7588, #99999c);"><span style="width: 7px; height: 7px; border-radius: 50%; background: #28a745;"></span>{{ syncStatus }}</span>
       </div>
-      <span style="font-size: 11.5px; color: #6b7588;">Last Update: <span style="font-weight: 600; color: #3a4555;">{{ lastUpdateTime }}</span></span>
+      <span style="font-size: 11.5px; color: light-dark(#6b7588, #99999c);">Last Update: <span style="font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">{{ lastUpdateTime }}</span></span>
     </div>
   </div>
 
   <!-- ===== QUEUE NAVIGATOR ===== -->
   <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
-  <div style="flex: none; background: #fff; border-bottom: 1px solid #e4e8ef; padding: 12px 18px 13px;">
+  <div style="flex: none; background: light-dark(#fff, #18181b); border-bottom: 1px solid light-dark(#e4e8ef, #262629); padding: 12px 18px 13px;">
     <div style="display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 10px;">
       <sc-for list="{{ mains }}" as="m" hint-placeholder-count="9">
         <div onclick="{{ m.onSelect }}" style="display: flex; align-items: center; gap: 10px; min-width: 0; height: 64px; padding: 0 12px; border-radius: 10px; cursor: pointer; border: 1px solid {{ m.border }}; background: {{ m.bg }};" style-hover="filter:brightness(0.98);">
@@ -120,8 +126,8 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
         </div>
       </sc-for>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; padding-top: 11px; border-top: 1px dashed #e4e8ef;">
-      <span style="font-size: 11px; font-weight: 600; color: #97a1b2; align-self: center; margin-right: 2px;">{{ activeMainLabel }}:</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; padding-top: 11px; border-top: 1px dashed light-dark(#e4e8ef, #262629);">
+      <span style="font-size: 11px; font-weight: 600; color: light-dark(#97a1b2, #717174); align-self: center; margin-right: 2px;">{{ activeMainLabel }}:</span>
       <sc-for list="{{ subs }}" as="s" hint-placeholder-count="7">
         <div onclick="{{ s.onSelect }}" style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 8px; cursor: pointer; font-size: 12.5px; border: 1px solid {{ s.border }}; background: {{ s.bg }}; color: {{ s.color }}; font-weight: {{ s.weight }};" style-hover="filter:brightness(0.97);">
           {{ s.label }}
@@ -136,9 +142,9 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
   <div style="flex: 1; display: flex; min-height: 0;">
 
     <!-- ===== LEFT SMART CONTEXT PANEL ===== -->
-    <div class="aj-scroll" style="width: 230px; flex: none; background: #fff; border-right: 1px solid #e4e8ef; overflow-y: auto;">
-      <div style="display: flex; align-items: center; gap: 8px; padding: 15px 14px 10px; position: sticky; top: 0; background: #fff; z-index: 2;">
-        <span style="font-size: 12px; font-weight: 700; letter-spacing: .6px; color: #6b7588; white-space: nowrap;">DANH SÁCH ĐƠN</span>
+    <div class="aj-scroll" style="width: 230px; flex: none; background: light-dark(#fff, #18181b); border-right: 1px solid light-dark(#e4e8ef, #262629); overflow-y: auto;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 15px 14px 10px; position: sticky; top: 0; background: light-dark(#fff, #18181b); z-index: 2;">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: .6px; color: light-dark(#6b7588, #99999c); white-space: nowrap;">DANH SÁCH ĐƠN</span>
         <sc-if value="{{ canCopyLeft }}" hint-placeholder-val="{{ true }}">
         <span onclick="{{ copyList }}" title="Sao chép toàn bộ mã vận đơn trong danh sách" style="display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; color: {{ copyColor }}; border: 1px solid {{ copyBorder }}; background: {{ copyBg }}; border-radius: 7px; padding: 4px 9px; cursor: pointer;" style-hover="filter:brightness(0.97);">
           <aj-morph-icon icon="{{ copyIconD }}" size="12"></aj-morph-icon>
@@ -151,15 +157,15 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       </div>
 
       <sc-if value="{{ leftEmpty }}" hint-placeholder-val="{{ false }}">
-        <div style="display: flex; flex-direction: column; align-items: center; text-align: center; color: #9aa4b4; padding: 48px 24px;">
-          <span style="width: 48px; height: 48px; border-radius: 12px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3.5" cy="6" r="1"></circle><circle cx="3.5" cy="12" r="1"></circle><circle cx="3.5" cy="18" r="1"></circle></svg></span>
+        <div style="display: flex; flex-direction: column; align-items: center; text-align: center; color: light-dark(#9aa4b4, #6e6e71); padding: 48px 24px;">
+          <span style="width: 48px; height: 48px; border-radius: 12px; background: light-dark(#f1f4f8, #222225); display: flex; align-items: center; justify-content: center; margin-bottom: 12px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="3.5" cy="6" r="1"></circle><circle cx="3.5" cy="12" r="1"></circle><circle cx="3.5" cy="18" r="1"></circle></svg></span>
           <div style="font-size: 12.5px; line-height: 1.5;">Chọn một <b>nhóm con</b> ở thanh điều hướng để xem danh sách đơn.</div>
         </div>
       </sc-if>
 
       <sc-if value="{{ leftStats }}" hint-placeholder-val="{{ false }}">
         <div style="padding: 0 16px 16px;">
-          <div style="font-size: 12px; color: #8a94a6;">{{ leftSubLabel }}</div>
+          <div style="font-size: 12px; color: light-dark(#8a94a6, #7d7d80);">{{ leftSubLabel }}</div>
           <div style="font-size: 30px; font-weight: 700; color: {{ activeColor }}; line-height: 1.1; margin-top: 2px;">{{ leftCountText }}</div>
         </div>
       </sc-if>
@@ -167,12 +173,12 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       <sc-if value="{{ leftCodes }}" hint-placeholder-val="{{ false }}">
         <div style="padding: 0 12px 16px;">
           <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px 8px;">
-            <span style="font-size: 12.5px; font-weight: 600; color: #3a4555;">{{ leftSubLabel }}</span>
-            <span style="font-size: 11.5px; color: #97a1b2;">{{ leftCountText }} đơn</span>
+            <span style="font-size: 12.5px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">{{ leftSubLabel }}</span>
+            <span style="font-size: 11.5px; color: light-dark(#97a1b2, #717174);">{{ leftCountText }} đơn</span>
           </div>
           <div style="display: flex; flex-direction: column; gap: 5px;">
             <sc-for list="{{ orders }}" as="o" hint-placeholder-count="6">
-              <div onclick="{{ o.onOpen }}" title="Bấm để mở hành trình" style="border: 1px solid {{ o.activeBorder }}; background: {{ o.activeBg }}; border-radius: 9px; padding: 9px 10px; cursor: pointer; text-align: center;" style-hover="background:#f4f8ff;">
+              <div onclick="{{ o.onOpen }}" title="Bấm để mở hành trình" style="border: 1px solid {{ o.activeBorder }}; background: {{ o.activeBg }}; border-radius: 9px; padding: 9px 10px; cursor: pointer; text-align: center;" style-hover="background:light-dark(#f4f8ff, #172236);">
                 <span style="font-size: 12.5px; font-weight: 700; color: {{ o.codeColor }};"><span style="color: {{ o.starInk }}; margin-right: 3px;">★</span>{{ o.code }}</span>
               </div>
             </sc-for>
@@ -185,24 +191,24 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
     <div class="aj-scroll" style="flex: 1; min-width: 0; overflow-y: auto; padding: 18px 20px;">
 
       <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
-      <div class="aj-scroll" style="background: #fff; border: 1px solid #e7ebf1; border-radius: 10px; overflow-x: auto;">
-        <div style="display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid #eef1f5; font-size: 13.5px;">
-          <span style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: #1f2937;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg> Danh sách đơn</span>
-          <span style="color: #cdd4de;">|</span>
-          <span style="font-weight: 700; color: #1f2937;">{{ activeMainLabel }}</span>
+      <div class="aj-scroll" style="background: light-dark(#fff, #18181b); border: 1px solid light-dark(#e7ebf1, #242427); border-radius: 10px; overflow-x: auto;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid light-dark(#eef1f5, #202023); font-size: 13.5px;">
+          <span style="display: flex; align-items: center; gap: 5px; font-weight: 700; color: light-dark(#1f2937, #e2e2e5);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg> Danh sách đơn</span>
+          <span style="color: light-dark(#cdd4de, #424245);">|</span>
+          <span style="font-weight: 700; color: light-dark(#1f2937, #e2e2e5);">{{ activeMainLabel }}</span>
           <sc-if value="{{ hasSub }}" hint-placeholder-val="{{ true }}">
-            <span style="color: #cdd4de;">·</span>
+            <span style="color: light-dark(#cdd4de, #424245);">·</span>
             <span style="display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ activeStatusBg }}; color: {{ activeStatusColor }};">{{ leftSubLabel }}</span>
           </sc-if>
-          <span style="color: #cdd4de;">·</span>
-          <span style="color: #6b7588;">{{ centerCountText }} đơn</span>
-          <span style="margin-left: auto; font-size: 12px; color: #9aa4b4; display: flex; align-items: center; gap: 5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l2 2"></path></svg> Bấm đúp vào một dòng để mở chi tiết</span>
+          <span style="color: light-dark(#cdd4de, #424245);">·</span>
+          <span style="color: light-dark(#6b7588, #99999c);">{{ centerCountText }} đơn</span>
+          <span style="margin-left: auto; font-size: 12px; color: light-dark(#9aa4b4, #6e6e71); display: flex; align-items: center; gap: 5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa4b4" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l2 2"></path></svg> Bấm đúp vào một dòng để mở chi tiết</span>
         </div>
 
         <sc-if value="{{ hasOrders }}" hint-placeholder-val="{{ true }}">
         <sc-raw-table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <sc-raw-thead>
-            <sc-raw-tr style="background: #f8fafc; color: #6b7588; text-align: left;">
+            <sc-raw-tr style="background: light-dark(#f8fafc, #1c1c20); color: light-dark(#6b7588, #99999c); text-align: left;">
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</sc-raw-th>
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Mã vận đơn</sc-raw-th>
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thao tác hiện tại</sc-raw-th>
@@ -213,12 +219,12 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
           </sc-raw-thead>
           <sc-raw-tbody>
             <sc-for list="{{ orders }}" as="o" hint-placeholder-count="10">
-            <sc-raw-tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid #f0f2f6; cursor: pointer; background: {{ o.activeBg }};" style-hover="background:#f4f8ff;">
-                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</sc-raw-td>
+            <sc-raw-tr ondoubleclick="{{ o.onOpen }}" title="Bấm đúp để mở chi tiết" style="border-top: 1px solid light-dark(#f0f2f6, #1f1f22); cursor: pointer; background: {{ o.activeBg }};" style-hover="background:light-dark(#f4f8ff, #172236);">
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#6b7588, #99999c); border-left: 3px solid {{ o.rowAccent }};">{{ o.stt }}</sc-raw-td>
                 <sc-raw-td style="padding: {{ cellPad }}; white-space: nowrap;"><span style="color: {{ o.starInk }}; margin-right: 4px;">★</span><span onclick="{{ o.onOpen }}" title="Bấm để xem chi tiết" style="color: {{ o.codeColor }}; font-weight: 600; cursor: pointer;">{{ o.code }}</span></sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #2d3645; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ o.curOp }}">{{ o.curOp }}</sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: #eef1f5; color: #3a4555; white-space: nowrap;">{{ o.lastOp }}</span></sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ o.opTime }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#2d3645, #d5d5d8); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ o.curOp }}">{{ o.curOp }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: light-dark(#eef1f5, #242427); color: light-dark(#3a4555, #c7c7ca); white-space: nowrap;">{{ o.lastOp }}</span></sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#6b7588, #99999c); white-space: nowrap;">{{ o.opTime }}</sc-raw-td>
                 <sc-raw-td style="padding: {{ cellPad }}; font-weight: 600; white-space: nowrap; color: {{ o.tonKhoColor }};">{{ o.tonKho }}</sc-raw-td>
               </sc-raw-tr>
             </sc-for>
@@ -227,46 +233,46 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
         </sc-if>
 
         <sc-if value="{{ noOrders }}" hint-placeholder-val="{{ false }}">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; border-top: 1px solid #eef1f5; color: #7b8798; text-align: center;">
-          <div style="font-size: 13px; font-weight: 700; color: #3a4555;">Không có đơn trong queue hiện tại</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; border-top: 1px solid light-dark(#eef1f5, #202023); color: light-dark(#7b8798, #8a8a8d); text-align: center;">
+          <div style="font-size: 13px; font-weight: 700; color: light-dark(#3a4555, #c7c7ca);">Không có đơn trong queue hiện tại</div>
           <div style="font-size: 12px;">waybills={{ debugWaybillCount }} · orders={{ debugOrderCount }}</div>
           <div style="font-size: 12px;">mainKey={{ debugMainKey }} · subKey={{ debugSubKey }} · {{ debugSubLabel }}</div>
         </div>
         </sc-if>
 
-        <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid #eef1f5; font-size: 12.5px; color: #6b7588;">
+        <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid light-dark(#eef1f5, #202023); font-size: 12.5px; color: light-dark(#6b7588, #99999c);">
           <span>Hiển thị {{ pageRangeText }} / {{ centerCountText }} đơn · tối đa 100 đơn/trang</span>
           <div style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
-            <span onclick="{{ pagePrev }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee; cursor: pointer; color: {{ prevColor }}; background: {{ prevBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></span>
+            <span onclick="{{ pagePrev }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid light-dark(#e2e7ee, #27272a); cursor: pointer; color: {{ prevColor }}; background: {{ prevBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></span>
             <sc-for list="{{ pages }}" as="p" hint-placeholder-count="3">
               <span onclick="{{ p.onSelect }}" style="min-width: 30px; height: 30px; padding: 0 6px; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer; font-weight: {{ p.weight }}; border: 1px solid {{ p.border }}; background: {{ p.bg }}; color: {{ p.color }};">{{ p.label }}</span>
             </sc-for>
-            <span onclick="{{ pageNext }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee; cursor: pointer; color: {{ nextColor }}; background: {{ nextBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
+            <span onclick="{{ pageNext }}" style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid light-dark(#e2e7ee, #27272a); cursor: pointer; color: {{ nextColor }}; background: {{ nextBg }};"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
           </div>
         </div>
       </div>
       </sc-if>
 
       <sc-if value="{{ isJourney }}" hint-placeholder-val="{{ false }}">
-      <div class="aj-scroll" style="background: #fff; border: 1px solid #e7ebf1; border-radius: 10px; overflow-x: auto;">
-        <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid #eef1f5; font-size: 13.5px;">
-          <span onclick="{{ backToList }}" style="display: flex; align-items: center; gap: 5px; color: #2f6fed; font-weight: 600; cursor: pointer; border: 1px solid #d3e0fb; background: #f3f8ff; border-radius: 7px; padding: 5px 11px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Quay lại danh sách</span>
-          <span style="font-weight: 700; color: #1f2937;">Hành trình vận chuyển</span>
-          <span style="color: #cdd4de;">·</span>
-          <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.3px; color: #1f2937; background: #eef4ff; border: 1px solid #d3e0fb; border-radius: 7px; padding: 3px 10px;">{{ wbCode }}</span>
+      <div class="aj-scroll" style="background: light-dark(#fff, #18181b); border: 1px solid light-dark(#e7ebf1, #242427); border-radius: 10px; overflow-x: auto;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid light-dark(#eef1f5, #202023); font-size: 13.5px;">
+          <span onclick="{{ backToList }}" style="display: flex; align-items: center; gap: 5px; color: light-dark(#2f6fed, #6392ee); font-weight: 600; cursor: pointer; border: 1px solid light-dark(#d3e0fb, #2a3d65); background: light-dark(#f3f8ff, #172436); border-radius: 7px; padding: 5px 11px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Quay lại danh sách</span>
+          <span style="font-weight: 700; color: light-dark(#1f2937, #e2e2e5);">Hành trình vận chuyển</span>
+          <span style="color: light-dark(#cdd4de, #424245);">·</span>
+          <span style="font-weight: 800; font-size: 16px; letter-spacing: 0.3px; color: light-dark(#1f2937, #e2e2e5); background: light-dark(#eef4ff, #172236); border: 1px solid light-dark(#d3e0fb, #2a3d65); border-radius: 7px; padding: 3px 10px;">{{ wbCode }}</span>
           <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-            <span onclick="{{ copyJourney }}" title="Sao chép hành trình vận chuyển" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: {{ journeyCopyColor }}; background: {{ journeyCopyBg }}; border: 1px solid {{ journeyCopyBorder }}; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef8f0; border-color: #1c8a3c; color: #1c8a3c;" style-active="background: #ddf0e2; border-color: #157032; transform: scale(0.96);">
+            <span onclick="{{ copyJourney }}" title="Sao chép hành trình vận chuyển" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: {{ journeyCopyColor }}; background: {{ journeyCopyBg }}; border: 1px solid {{ journeyCopyBorder }}; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: light-dark(#eef8f0, #1d3021); border-color: #1c8a3c; color: light-dark(#1c8a3c, #6fe290);" style-active="background: light-dark(#ddf0e2, #2f2f32); border-color: #157032; transform: scale(0.96);">
               <aj-morph-icon icon="{{ journeyCopyIconD }}" size="14"></aj-morph-icon>
               {{ journeyCopyLabel }}
             </span>
-            <span onclick="{{ refreshJourney }}" title="Làm mới hành trình" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #3a4555; background: #fff; border: 1px solid #d7dde6; border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: #eef4ff; border-color: #2f6fed; color: #2f6fed;" style-active="background: #dde9ff; border-color: #2a63d6; transform: scale(0.96);"><svg class="{{ refreshSpinClass }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Làm mới</span>
+            <span onclick="{{ refreshJourney }}" title="Làm mới hành trình" style="display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: light-dark(#3a4555, #c7c7ca); background: light-dark(#fff, #18181b); border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 7px; padding: 5px 11px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;" style-hover="background: light-dark(#eef4ff, #172236); border-color: #2f6fed; color: light-dark(#2f6fed, #6392ee);" style-active="background: light-dark(#dde9ff, #172236); border-color: #2a63d6; transform: scale(0.96);"><svg class="{{ refreshSpinClass }}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg> Làm mới</span>
           </span>
         </div>
 
         <sc-if value="{{ hasJourneyRows }}" hint-placeholder-val="{{ true }}">
         <sc-raw-table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <sc-raw-thead>
-            <sc-raw-tr style="background: #f8fafc; color: #6b7588; text-align: left;">
+            <sc-raw-tr style="background: light-dark(#f8fafc, #1c1c20); color: light-dark(#6b7588, #99999c); text-align: left;">
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 46px;">STT</sc-raw-th>
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600; width: 28px;"></sc-raw-th>
               <sc-raw-th style="padding: {{ cellPad }}; font-weight: 600;">Thời gian thao tác</sc-raw-th>
@@ -279,15 +285,15 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
           </sc-raw-thead>
           <sc-raw-tbody>
             <sc-for list="{{ rows }}" as="r" hint-placeholder-count="14">
-              <sc-raw-tr style="border-top: 1px solid #f0f2f6;" style-hover="background:#fafbfd;">
-                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588;">{{ r.stt }}</sc-raw-td>
+              <sc-raw-tr style="border-top: 1px solid light-dark(#f0f2f6, #1f1f22);" style-hover="background:light-dark(#fafbfd, #1b1b1e);">
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#6b7588, #99999c);">{{ r.stt }}</sc-raw-td>
                 <sc-raw-td style="padding: {{ cellPad }};"><span style="display: block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid {{ r.dotColor }}; background: {{ r.dotFill }};"></span></sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.t1 }}</sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #6b7588; white-space: nowrap;">{{ r.t2 }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#3a4555, #c7c7ca); white-space: nowrap;">{{ r.t1 }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#6b7588, #99999c); white-space: nowrap;">{{ r.t2 }}</sc-raw-td>
                 <sc-raw-td style="padding: {{ cellPad }};"><span style="display: inline-block; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px; background: {{ r.badgeBg }}; color: {{ r.badgeColor }}; white-space: nowrap;">{{ r.type }}</span></sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555;">{{ r.desc }}</sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555; white-space: nowrap;">{{ r.source }}</sc-raw-td>
-                <sc-raw-td style="padding: {{ cellPad }}; color: #3a4555;">{{ wbWeight }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#3a4555, #c7c7ca);">{{ r.desc }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#3a4555, #c7c7ca); white-space: nowrap;">{{ r.source }}</sc-raw-td>
+                <sc-raw-td style="padding: {{ cellPad }}; color: light-dark(#3a4555, #c7c7ca);">{{ wbWeight }}</sc-raw-td>
               </sc-raw-tr>
             </sc-for>
           </sc-raw-tbody>
@@ -295,22 +301,22 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
         </sc-if>
 
         <sc-if value="{{ noJourneyRows }}" hint-placeholder-val="{{ false }}">
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; color: #7b8798; text-align: center;">
-          <div style="font-size: 13px; font-weight: 700; color: #3a4555;">Not found {{ wbCode }}</div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 44px 18px; color: light-dark(#7b8798, #8a8a8d); text-align: center;">
+          <div style="font-size: 13px; font-weight: 700; color: light-dark(#3a4555, #c7c7ca);">Not found {{ wbCode }}</div>
           <div style="font-size: 12px;">Bấm "Làm mới" để tải lại.</div>
         </div>
         </sc-if>
 
-        <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid #eef1f5; font-size: 12.5px; color: #6b7588;">
+        <div style="display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid light-dark(#eef1f5, #202023); font-size: 12.5px; color: light-dark(#6b7588, #99999c);">
           <span>Hiển thị 1 - 20 / 65 sự kiện</span>
           <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
             <span>Hiển thị</span>
-            <div style="display: flex; align-items: center; gap: 8px; height: 30px; border: 1px solid #d7dde6; border-radius: 6px; padding: 0 9px;">20 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+            <div style="display: flex; align-items: center; gap: 8px; height: 30px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 6px; padding: 0 9px;">20 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: {{ accent }}; color: #fff; font-weight: 600;">1</span>
-              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">2</span>
-              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;">3</span>
-              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #e2e7ee;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7588" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
+              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid light-dark(#e2e7ee, #27272a);">2</span>
+              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid light-dark(#e2e7ee, #27272a);">3</span>
+              <span style="width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid light-dark(#e2e7ee, #27272a);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7588" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
             </div>
           </div>
         </div>
@@ -319,12 +325,12 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
     </div>
 
     <!-- ===== RIGHT PANEL ===== -->
-    <div class="aj-scroll" style="width: 336px; flex: none; background: #fff; border-left: 1px solid #e4e8ef; overflow-y: auto; padding: 16px 18px;">
+    <div class="aj-scroll" style="width: 336px; flex: none; background: light-dark(#fff, #18181b); border-left: 1px solid light-dark(#e4e8ef, #262629); overflow-y: auto; padding: 16px 18px;">
 
       <sc-if value="{{ noWaybill }}" hint-placeholder-val="{{ true }}">
-        <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #9aa4b4; padding: 40px 20px;">
-          <span style="width: 56px; height: 56px; border-radius: 14px; background: #f1f4f8; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg></span>
-          <div style="font-size: 13.5px; font-weight: 600; color: #6b7588;">Chưa chọn vận đơn</div>
+        <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: light-dark(#9aa4b4, #6e6e71); padding: 40px 20px;">
+          <span style="width: 56px; height: 56px; border-radius: 14px; background: light-dark(#f1f4f8, #222225); display: flex; align-items: center; justify-content: center; margin-bottom: 14px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#b7c0cd" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg></span>
+          <div style="font-size: 13.5px; font-weight: 600; color: light-dark(#6b7588, #99999c);">Chưa chọn vận đơn</div>
           <div style="font-size: 12.5px; margin-top: 6px; line-height: 1.5;">Bấm đúp vào một vận đơn trong danh sách để xem tổng quan &amp; đề xuất xử lý.</div>
         </div>
       </sc-if>
@@ -332,7 +338,7 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       <sc-if value="{{ hasWaybill }}" hint-placeholder-val="{{ false }}">
       <div>
       <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 19px; font-weight: 700; color: #1f2937;">{{ wbCode }}</span>
+        <span style="font-size: 19px; font-weight: 700; color: light-dark(#1f2937, #e2e2e5);">{{ wbCode }}</span>
         <span onclick="{{ copyWaybill }}" title="Sao chép mã vận đơn" style="margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: {{ wbCopyColor }}; border: 1px solid {{ wbCopyBorder }}; background: {{ wbCopyBg }}; border-radius: 6px; padding: 4px 9px; cursor: pointer;">
           <aj-morph-icon icon="{{ wbCopyIconD }}" size="12"></aj-morph-icon>
           {{ wbCopyLabel }}
@@ -349,21 +355,21 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       </div>
 
       <sc-if value="{{ showInfo }}" hint-placeholder-val="{{ true }}">
-      <div style="display: flex; flex-direction: column; gap: 15px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+      <div style="display: flex; flex-direction: column; gap: 15px; font-size: 12.5px; padding-bottom: 14px; border-bottom: 1px solid light-dark(#eef1f5, #202023);">
         <sc-for list="{{ detailGroups }}" as="g" hint-placeholder-count="3">
-          <div style="border: 1px solid #dce2ec; border-radius: 10px; padding: 12px 14px 13px; background: #fbfcfe; box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
-            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: #1f2937; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e4e8ef; text-transform: uppercase;">{{ g.title }}</div>
+          <div style="border: 1px solid light-dark(#dce2ec, #2a2a2d); border-radius: 10px; padding: 12px 14px 13px; background: light-dark(#fbfcfe, #1a1a1d); box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
+            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: light-dark(#1f2937, #e2e2e5); margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid light-dark(#e4e8ef, #262629); text-transform: uppercase;">{{ g.title }}</div>
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <sc-for list="{{ g.rows }}" as="d" hint-placeholder-count="3">
                 <div style="display: flex; align-items: flex-start; gap: 12px;">
-                  <span style="color: #8a94a6; width: 104px; flex: none;">{{ d.k }}</span>
+                  <span style="color: light-dark(#8a94a6, #7d7d80); width: 104px; flex: none;">{{ d.k }}</span>
                   <sc-if value="{{ d.isText }}" hint-placeholder-val="{{ true }}">
-                    <span style="color: #2d3645; font-weight: 500;">{{ d.v }}</span>
+                    <span style="color: light-dark(#2d3645, #d5d5d8); font-weight: 500;">{{ d.v }}</span>
                   </sc-if>
                   <sc-if value="{{ d.isList }}" hint-placeholder-val="{{ false }}">
                     <div style="display: flex; flex-direction: column; gap: 4px;">
                       <sc-for list="{{ d.v }}" as="li" hint-placeholder-count="3">
-                        <span style="color: #2d3645; font-weight: 500; line-height: 1.4;">• {{ li }}</span>
+                        <span style="color: light-dark(#2d3645, #d5d5d8); font-weight: 500; line-height: 1.4;">• {{ li }}</span>
                       </sc-for>
                     </div>
                   </sc-if>
@@ -372,14 +378,14 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
             </div>
           </div>
         </sc-for>
-        <div style="border: 1px solid #dce2ec; border-radius: 10px; padding: 10px 14px; background: #fbfcfe; box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
+        <div style="border: 1px solid light-dark(#dce2ec, #2a2a2d); border-radius: 10px; padding: 10px 14px; background: light-dark(#fbfcfe, #1a1a1d); box-shadow: 0 1px 2px rgba(31,41,55,0.04);">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: #1f2937; text-transform: uppercase;">Hình ảnh</div>
+            <div style="font-size: 12.5px; font-weight: 800; letter-spacing: .3px; color: light-dark(#1f2937, #e2e2e5); text-transform: uppercase;">Hình ảnh</div>
             <sc-if value="{{ hasOrderMedia }}" hint-placeholder-val="{{ false }}">
               <span onclick="{{ viewOrderMedia }}" style="display: inline-flex; align-items: center; gap: 6px; background: #2f6fed; color: #fff; border: 1px solid #2f6fed; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: filter 0.15s ease, transform 0.05s ease;" style-hover="filter: brightness(1.08);" style-active="filter: brightness(0.92); transform: scale(0.97);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> Xem ảnh</span>
             </sc-if>
             <sc-if value="{{ noOrderMedia }}" hint-placeholder-val="{{ true }}">
-              <span style="font-size: 12px; color: #aab2c0;">Chưa có hình ảnh</span>
+              <span style="font-size: 12px; color: light-dark(#aab2c0, #616164);">Chưa có hình ảnh</span>
             </sc-if>
           </div>
         </div>
@@ -387,48 +393,48 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       </sc-if>
 
       <sc-if value="{{ showHistory }}" hint-placeholder-val="{{ false }}">
-      <div onclick="{{ onRegisterIssue }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid #f0c9c4; background: #fff6f5; color: #d23a2e; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:#fdeeec;">
+      <div onclick="{{ onRegisterIssue }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid light-dark(#f0c9c4, #5d3732); background: light-dark(#fff6f5, #361a17); color: light-dark(#d23a2e, #e07970); border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:light-dark(#fdeeec, #361b17);">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Đăng ký kiện vấn đề
       </div>
       <sc-if value="{{ hasIssues }}" hint-placeholder-val="{{ true }}">
-      <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
+      <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid light-dark(#eef1f5, #202023);">
         <sc-for list="{{ issueHistory }}" as="h" hint-placeholder-count="3">
-          <div style="border: 1px solid #e7ebf1; border-radius: 9px; padding: 10px 11px; background: #fbfcfe;">
-            <div style="font-size: 12.5px; font-weight: 700; color: #d23a2e;">{{ h.abnormalPieceName }}</div>
-            <div style="font-size: 11.5px; color: #6b7588; margin-top: 4px;"><span style="font-weight: 600; color: #3a4555;">{{ h.scanNetworkCode }}</span> {{ h.scanNetworkName }}</div>
+          <div style="border: 1px solid light-dark(#e7ebf1, #242427); border-radius: 9px; padding: 10px 11px; background: light-dark(#fbfcfe, #1a1a1d);">
+            <div style="font-size: 12.5px; font-weight: 700; color: light-dark(#d23a2e, #e07970);">{{ h.abnormalPieceName }}</div>
+            <div style="font-size: 11.5px; color: light-dark(#6b7588, #99999c); margin-top: 4px;"><span style="font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">{{ h.scanNetworkCode }}</span> {{ h.scanNetworkName }}</div>
             <div style="display: flex; align-items: flex-start; gap: 10px; margin-top: 6px;">
-              <div style="flex: 1; min-width: 0; font-size: 12px; color: #2d3645; line-height: 1.45; white-space: pre-wrap;">{{ h.remark }}</div>
+              <div style="flex: 1; min-width: 0; font-size: 12px; color: light-dark(#2d3645, #d5d5d8); line-height: 1.45; white-space: pre-wrap;">{{ h.remark }}</div>
               <div style="flex: none;">
-                <sc-if value="{{ h.hasPod }}" hint-placeholder-val="{{ false }}"><span onclick="{{ h.onViewPod }}" title="Xem ảnh POD" style="font-size: 12px; color: #2f6fed; cursor: pointer; text-decoration: underline; font-weight: 600;">Xem</span></sc-if>
-                <sc-if value="{{ h.noPod }}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: #aab2c0;">--</span></sc-if>
+                <sc-if value="{{ h.hasPod }}" hint-placeholder-val="{{ false }}"><span onclick="{{ h.onViewPod }}" title="Xem ảnh POD" style="font-size: 12px; color: light-dark(#2f6fed, #6392ee); cursor: pointer; text-decoration: underline; font-weight: 600;">Xem</span></sc-if>
+                <sc-if value="{{ h.noPod }}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; color: light-dark(#aab2c0, #616164);">--</span></sc-if>
               </div>
             </div>
-            <div style="font-size: 11px; color: #97a1b2; margin-top: 7px;">{{ h.scanTime }} · {{ h.operatorCode }} {{ h.operatorName }}</div>
+            <div style="font-size: 11px; color: light-dark(#97a1b2, #717174); margin-top: 7px;">{{ h.scanTime }} · {{ h.operatorCode }} {{ h.operatorName }}</div>
           </div>
         </sc-for>
       </div>
       </sc-if>
       <sc-if value="{{ noIssues }}" hint-placeholder-val="{{ false }}">
-      <div style="font-size: 12px; color: #aab2c0; padding: 4px 2px 14px;">Chưa có lịch sử kiện vấn đề cho vận đơn này.</div>
+      <div style="font-size: 12px; color: light-dark(#aab2c0, #616164); padding: 4px 2px 14px;">Chưa có lịch sử kiện vấn đề cho vận đơn này.</div>
       </sc-if>
       </sc-if>
 
       <sc-if value="{{ showComplaint }}" hint-placeholder-val="{{ false }}">
-      <div style="padding-bottom: 14px; border-bottom: 1px solid #eef1f5;">
-        <div onclick="{{ onCreateComplaint }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid #f0c9c4; background: #fff6f5; color: #d23a2e; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:#fdeeec;">
+      <div style="padding-bottom: 14px; border-bottom: 1px solid light-dark(#eef1f5, #202023);">
+        <div onclick="{{ onCreateComplaint }}" style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; height: 34px; border: 1px solid light-dark(#f0c9c4, #5d3732); background: light-dark(#fff6f5, #361a17); color: light-dark(#d23a2e, #e07970); border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer;" style-hover="background:light-dark(#fdeeec, #361b17);">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Tạo khiếu nại
         </div>
-        <div style="display: flex; align-items: center; gap: 9px; background: #f6f8fb; border: 1px solid #e7ebf1; border-radius: 9px; padding: 11px 12px;">
+        <div style="display: flex; align-items: center; gap: 9px; background: light-dark(#f6f8fb, #1e1e21); border: 1px solid light-dark(#e7ebf1, #242427); border-radius: 9px; padding: 11px 12px;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a94a6" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-          <span style="font-size: 12.5px; color: #6b7588;">Chưa có khiếu nại nào cho vận đơn này.</span>
+          <span style="font-size: 12.5px; color: light-dark(#6b7588, #99999c);">Chưa có khiếu nại nào cho vận đơn này.</span>
         </div>
       </div>
       </sc-if>
 
       <div style="margin: 14px 0;">
         <div style="display: flex; align-items: baseline; gap: 7px; margin-bottom: 8px;">
-          <span style="font-size: 13px; font-weight: 600; color: #3a4555;">Ghi chú</span>
-          <span style="font-size: 11px; color: #97a1b2;">{{ noteCountText }}</span>
+          <span style="font-size: 13px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Ghi chú</span>
+          <span style="font-size: 11px; color: light-dark(#97a1b2, #717174);">{{ noteCountText }}</span>
         </div>
         <sc-if value="{{ hasNotes }}" hint-placeholder-val="{{ false }}">
         <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px;">
@@ -438,29 +444,29 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 11px; color: {{ n.metaColor }};"><span style="font-weight: 600; color: {{ n.authorColor }};">{{ n.author }}</span> đã từng nói: {{ n.time }}</div>
                 <div style="font-size: 12.5px; color: {{ n.textColor }}; line-height: 1.45; white-space: pre-wrap; margin-top: 3px; text-decoration: {{ n.textDecoration }};">{{ n.text }}</div>
-                <sc-if value="{{ n.done }}" hint-placeholder-val="{{ false }}"><span style="display: inline-block; margin-top: 5px; font-size: 10px; font-weight: 700; color: #1c8a3c; background: #e3f4e8; padding: 1px 7px; border-radius: 5px;">Đã xử lý</span></sc-if>
+                <sc-if value="{{ n.done }}" hint-placeholder-val="{{ false }}"><span style="display: inline-block; margin-top: 5px; font-size: 10px; font-weight: 700; color: light-dark(#1c8a3c, #6fe290); background: light-dark(#e3f4e8, #1c3022); padding: 1px 7px; border-radius: 5px;">Đã xử lý</span></sc-if>
               </div>
             </div>
           </sc-for>
         </div>
         </sc-if>
         <sc-if value="{{ noNotes }}" hint-placeholder-val="{{ true }}">
-        <div style="font-size: 12px; color: #aab2c0; margin-bottom: 10px;">Chưa có ghi chú nào cho vận đơn này.</div>
+        <div style="font-size: 12px; color: light-dark(#aab2c0, #616164); margin-bottom: 10px;">Chưa có ghi chú nào cho vận đơn này.</div>
         </sc-if>
-        <textarea value="{{ noteDraft }}" onchange="{{ onNoteDraftChange }}" placeholder="Nhập ghi chú mới..." style="width: 100%; height: 64px; resize: none; border: 1px solid #d7dde6; border-radius: 8px; padding: 9px 11px; font-size: 12.5px; font-family: inherit; outline: none; color: #2d3645;"></textarea>
+        <textarea value="{{ noteDraft }}" onchange="{{ onNoteDraftChange }}" placeholder="Nhập ghi chú mới..." style="width: 100%; height: 64px; resize: none; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; padding: 9px 11px; font-size: 12.5px; font-family: inherit; outline: none; color: light-dark(#2d3645, #d5d5d8);"></textarea>
         <div style="display: flex; justify-content: flex-end; margin-top: 9px;">
           <span onclick="{{ onSaveNote }}" style="font-size: 12.5px; font-weight: 600; color: #fff; background: #3a4760; padding: 7px 15px; border-radius: 7px; cursor: pointer;">Lưu ghi chú</span>
         </div>
       </div>
 
-      <div style="font-size: 13px; font-weight: 600; color: #3a4555; margin-bottom: 10px;">Đề xuất xử lý</div>
+      <div style="font-size: 13px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); margin-bottom: 10px;">Đề xuất xử lý</div>
       <div style="display: flex; flex-direction: column; gap: 10px;">
         <sc-for list="{{ suggestions }}" as="g" hint-placeholder-count="2">
-          <div style="display: flex; align-items: center; gap: 11px; background: #fffaf0; border: 1px solid #f5e4c3; border-radius: 9px; padding: 11px 12px;">
-            <span style="width: 30px; height: 30px; border-radius: 8px; background: #fdedcf; display: flex; align-items: center; justify-content: center; flex: none; color: #d98318;">{{ g.iconEl }}</span>
+          <div style="display: flex; align-items: center; gap: 11px; background: light-dark(#fffaf0, #362b17); border: 1px solid light-dark(#f5e4c3, #61502e); border-radius: 9px; padding: 11px 12px;">
+            <span style="width: 30px; height: 30px; border-radius: 8px; background: light-dark(#fdedcf, #362b17); display: flex; align-items: center; justify-content: center; flex: none; color: light-dark(#d98318, #eeb063);">{{ g.iconEl }}</span>
             <div style="flex: 1;">
-              <div style="font-size: 12.5px; font-weight: 600; color: #2d3645;">{{ g.title }}</div>
-              <div style="font-size: 11px; color: #8a94a6; margin-top: 2px;">{{ g.sub }}</div>
+              <div style="font-size: 12.5px; font-weight: 600; color: light-dark(#2d3645, #d5d5d8);">{{ g.title }}</div>
+              <div style="font-size: 11px; color: light-dark(#8a94a6, #7d7d80); margin-top: 2px;">{{ g.sub }}</div>
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c9b888" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </div>
@@ -473,11 +479,11 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
     <sc-if value="{{ podOverlayOpen }}" hint-placeholder-val="{{ false }}">
     <div onclick="{{ closePodOverlay }}" title="Bấm ra vùng tối để đóng · bấm đúp ảnh để phóng to" style="position: fixed; inset: 0; background: rgba(15,23,42,0.8); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 28px; cursor: zoom-out; overflow: hidden;">
       <div onclick="{{ stopEvt }}" style="position: fixed; top: 16px; right: 18px; z-index: 100000;">
-        <span onclick="{{ closePodOverlay }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #d23a2e; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
+        <span onclick="{{ closePodOverlay }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: light-dark(rgba(255,255,255,0.92), rgba(24,24,27,0.92)); color: light-dark(#d23a2e, #e07970); font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
       </div>
       <div onclick="{{ stopEvt }}" class="aj-scroll" style="max-width: 96%; max-height: 92%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px;">
         <sc-for list="{{ podImages }}" as="m" hint-placeholder-count="1">
-          <sc-if value="{{ m.isImage }}" hint-placeholder-val="{{ true }}"><img ondoubleclick="{{ m.onFocus }}" title="Bấm đúp để phóng to" src="{{ m.url }}" alt="" style="max-width: 84vw; max-height: 86vh; border-radius: 8px; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,0.45); cursor: zoom-in;"></sc-if>
+          <sc-if value="{{ m.isImage }}" hint-placeholder-val="{{ true }}"><img ondoubleclick="{{ m.onFocus }}" title="Bấm đúp để phóng to" src="{{ m.url }}" alt="" style="max-width: 84vw; max-height: 86vh; border-radius: 8px; background: light-dark(#fff, #18181b); box-shadow: 0 8px 30px rgba(0,0,0,0.45); cursor: zoom-in;"></sc-if>
           <sc-if value="{{ m.isVideo }}" hint-placeholder-val="{{ false }}"><video ondoubleclick="{{ m.onFocus }}" src="{{ m.url }}" controls style="max-width: 84vw; max-height: 86vh; border-radius: 8px; background: #000; box-shadow: 0 8px 30px rgba(0,0,0,0.45);"></video></sc-if>
         </sc-for>
       </div>
@@ -485,10 +491,10 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
       <sc-if value="{{ podFocused }}" hint-placeholder-val="{{ false }}">
       <div onclick="{{ closePodFocus }}" onwheel="{{ onFocusWheel }}" title="Cuộn để phóng to tại con trỏ · kéo để di chuyển · bấm ra ngoài để đóng" style="position: fixed; inset: 0; background: rgba(8,12,20,0.9); display: flex; align-items: center; justify-content: center; z-index: 100001; overflow: hidden; cursor: zoom-out;">
         <div onclick="{{ stopEvt }}" style="position: fixed; top: 16px; right: 18px; display: flex; align-items: center; gap: 8px; z-index: 100002;">
-          <span onclick="{{ podZoomOut }}" title="Thu nhỏ" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">−</span>
-          <span onclick="{{ podZoomReset }}" title="Kích thước gốc" style="height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">1:1</span>
-          <span onclick="{{ podZoomIn }}" title="Phóng to" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #1f2937; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">+</span>
-          <span onclick="{{ closePodFocus }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,0.92); color: #d23a2e; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
+          <span onclick="{{ podZoomOut }}" title="Thu nhỏ" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: light-dark(rgba(255,255,255,0.92), rgba(24,24,27,0.92)); color: light-dark(#1f2937, #e2e2e5); font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">−</span>
+          <span onclick="{{ podZoomReset }}" title="Kích thước gốc" style="height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: light-dark(rgba(255,255,255,0.92), rgba(24,24,27,0.92)); color: light-dark(#1f2937, #e2e2e5); font-size: 12px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">1:1</span>
+          <span onclick="{{ podZoomIn }}" title="Phóng to" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: light-dark(rgba(255,255,255,0.92), rgba(24,24,27,0.92)); color: light-dark(#1f2937, #e2e2e5); font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">+</span>
+          <span onclick="{{ closePodFocus }}" title="Đóng" style="width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: light-dark(rgba(255,255,255,0.92), rgba(24,24,27,0.92)); color: light-dark(#d23a2e, #e07970); font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); user-select: none;">✕</span>
         </div>
         <sc-if value="{{ podFocusIsImage }}" hint-placeholder-val="{{ true }}"><img onclick="{{ stopEvt }}" onmousedown="{{ onFocusMouseDown }}" src="{{ podFocusUrl }}" alt="" style="{{ podFocusImgStyle }}"></sc-if>
         <sc-if value="{{ podFocusIsVideo }}" hint-placeholder-val="{{ false }}"><video onclick="{{ stopEvt }}" src="{{ podFocusUrl }}" controls autoplay style="max-width: 88vw; max-height: 88vh; border: 3px solid #e0453a; border-radius: 6px; background: #000; box-shadow: 0 0 0 3px rgba(224,69,58,0.28), 0 12px 40px rgba(0,0,0,0.6);"></video></sc-if>
@@ -499,16 +505,16 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
 
     <sc-if value="{{ issueOpen }}" hint-placeholder-val="{{ false }}">
     <div onclick="{{ requestCancelIssue }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.55); display: flex; align-items: center; justify-content: center; z-index: 99998; padding: 24px;">
-      <div onclick="{{ stopEvt }}" style="width: 440px; max-width: 94%; background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;">
-        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #eef1f5;">
-          <span style="font-size: 15px; font-weight: 700; color: #1f2937;">Đăng ký kiện vấn đề</span>
-          <span style="font-size: 12.5px; color: #6b7588;">{{ wbCode }}</span>
-          <span onclick="{{ requestCancelIssue }}" title="Đóng" style="margin-left: auto; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #6b7588; cursor: pointer; font-size: 15px;" style-hover="background:#f1f4f8;">✕</span>
+      <div onclick="{{ stopEvt }}" style="width: 440px; max-width: 94%; background: light-dark(#fff, #18181b); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid light-dark(#eef1f5, #202023);">
+          <span style="font-size: 15px; font-weight: 700; color: light-dark(#1f2937, #e2e2e5);">Đăng ký kiện vấn đề</span>
+          <span style="font-size: 12.5px; color: light-dark(#6b7588, #99999c);">{{ wbCode }}</span>
+          <span onclick="{{ requestCancelIssue }}" title="Đóng" style="margin-left: auto; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: light-dark(#6b7588, #99999c); cursor: pointer; font-size: 15px;" style-hover="background:light-dark(#f1f4f8, #222225);">✕</span>
         </div>
         <div style="padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;">
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Vấn đề cấp 1</span>
-            <select value="{{ issLevel1 }}" onchange="{{ onIssLevel1Change }}" style="height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937;">
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Vấn đề cấp 1</span>
+            <select value="{{ issLevel1 }}" onchange="{{ onIssLevel1Change }}" style="height: 38px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; padding: 0 10px; font-size: 13px; background: light-dark(#fff, #18181b); outline: none; color: light-dark(#1f2937, #e2e2e5);">
               <option value="603">Phát kiện</option>
               <option value="604">Lấy kiện</option>
               <option value="696">Trung chuyển</option>
@@ -516,43 +522,43 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
             </select>
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Vấn đề cấp 2</span>
-            <select value="{{ issLevel2Code }}" onchange="{{ onIssLevel2Change }}" style="height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937;">
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Vấn đề cấp 2</span>
+            <select value="{{ issLevel2Code }}" onchange="{{ onIssLevel2Change }}" style="height: 38px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; padding: 0 10px; font-size: 13px; background: light-dark(#fff, #18181b); outline: none; color: light-dark(#1f2937, #e2e2e5);">
               <sc-for list="{{ iss2Options }}" as="o2" hint-placeholder-count="3">
                 <option value="{{ o2.code }}" label="{{ o2.name }}"></option>
               </sc-for>
             </select>
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Bưu cục tiếp nhận</span>
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Bưu cục tiếp nhận</span>
             <div style="display: flex; align-items: center; gap: 10px;">
               <div style="position: relative; flex: 1; min-width: 0;">
-                <input type="text" value="{{ issNetQuery }}" oninput="{{ onNetQueryInput }}" onkeydown="{{ onNetKeyDown }}" onblur="{{ onNetBlur }}" placeholder="Nhập mã bưu cục" style="width: 100%; height: 38px; border: 1px solid #d7dde6; border-radius: 8px; padding: 0 10px; font-size: 13px; background: #fff; outline: none; color: #1f2937; box-sizing: border-box;">
+                <input type="text" value="{{ issNetQuery }}" oninput="{{ onNetQueryInput }}" onkeydown="{{ onNetKeyDown }}" onblur="{{ onNetBlur }}" placeholder="Nhập mã bưu cục" style="width: 100%; height: 38px; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; padding: 0 10px; font-size: 13px; background: light-dark(#fff, #18181b); outline: none; color: light-dark(#1f2937, #e2e2e5); box-sizing: border-box;">
                 <sc-if value="{{ issNetOpen }}" hint-placeholder-val="{{ false }}">
-                <div class="aj-scroll" style="position: absolute; top: 41px; left: 0; right: 0; z-index: 5; background: #fff; border: 1px solid #d7dde6; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); max-height: 200px; overflow: auto;">
+                <div class="aj-scroll" style="position: absolute; top: 41px; left: 0; right: 0; z-index: 5; background: light-dark(#fff, #18181b); border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); max-height: 200px; overflow: auto;">
                   <sc-for list="{{ issNetResults }}" as="nr" hint-placeholder-count="3">
-                    <div onmousedown="{{ nr.onSelect }}" onclick="{{ nr.onSelect }}" style="padding: 8px 10px; font-size: 12.5px; color: #2d3645; cursor: pointer; background: {{ nr.bg }};" style-hover="background:#f4f8ff;">{{ nr.label }}</div>
+                    <div onmousedown="{{ nr.onSelect }}" onclick="{{ nr.onSelect }}" style="padding: 8px 10px; font-size: 12.5px; color: light-dark(#2d3645, #d5d5d8); cursor: pointer; background: {{ nr.bg }};" style-hover="background:light-dark(#f4f8ff, #172236);">{{ nr.label }}</div>
                   </sc-for>
                 </div>
                 </sc-if>
               </div>
               <sc-if value="{{ issNetCaption }}" hint-placeholder-val="{{ false }}">
-              <span title="{{ issNetCaption }}" style="flex: none; max-width: 48%; display: inline-block; font-size: 14px; font-weight: 800; color: #157a3e; background: #e3f4e8; border: 1px solid #bfe3c8; border-radius: 8px; padding: 6px 12px; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ issNetCaption }}</span>
+              <span title="{{ issNetCaption }}" style="flex: none; max-width: 48%; display: inline-block; font-size: 14px; font-weight: 800; color: light-dark(#157a3e, #6be69d); background: light-dark(#e3f4e8, #1c3022); border: 1px solid light-dark(#bfe3c8, #3a3a3e); border-radius: 8px; padding: 6px 12px; letter-spacing: .2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ issNetCaption }}</span>
               </sc-if>
             </div>
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Mô tả vấn đề</span>
-            <textarea value="{{ issDesc }}" oninput="{{ onIssDescChange }}" placeholder="Nhập mô tả vấn đề" class="aj-scroll" wrap="soft" style="display: block; width: 100%; height: {{ issDescHeight }}px; max-height: 218px; resize: none; overflow-x: hidden; overflow-y: {{ issDescOverflow }}; scrollbar-gutter: stable; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; word-wrap: break-word; border: 1px solid #d7dde6; border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 20px; background: #fff; outline: none; color: #1f2937; font-family: inherit; box-sizing: border-box;"></textarea>
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Mô tả vấn đề</span>
+            <textarea value="{{ issDesc }}" oninput="{{ onIssDescChange }}" placeholder="Nhập mô tả vấn đề" class="aj-scroll" wrap="soft" style="display: block; width: 100%; height: {{ issDescHeight }}px; max-height: 218px; resize: none; overflow-x: hidden; overflow-y: {{ issDescOverflow }}; scrollbar-gutter: stable; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; word-wrap: break-word; border: 1px solid light-dark(#d7dde6, #2e2e32); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 20px; background: light-dark(#fff, #18181b); outline: none; color: light-dark(#1f2937, #e2e2e5); font-family: inherit; box-sizing: border-box;"></textarea>
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Hình ảnh <sc-if value="{{ picRequired }}" hint-placeholder-val="{{ false }}"><span style="color: #e0453a;">* (bắt buộc)</span></sc-if></span>
-            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssImageDrop }}" style="border: 1.5px dashed #c7cfda; border-radius: 8px; padding: 12px; text-align: center; background: #fafbfd;">
-              <label style="font-size: 12px; color: #6b7588; cursor: pointer;">Kéo thả hoặc <span style="color: #2f6fed; font-weight: 600;">chọn ảnh</span><input type="file" accept="image/*" multiple onchange="{{ onIssImagePick }}" style="display: none;"></label>
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Hình ảnh <sc-if value="{{ picRequired }}" hint-placeholder-val="{{ false }}"><span style="color: light-dark(#e0453a, #e77269);">* (bắt buộc)</span></sc-if></span>
+            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssImageDrop }}" style="border: 1.5px dashed light-dark(#c7cfda, #39393c); border-radius: 8px; padding: 12px; text-align: center; background: light-dark(#fafbfd, #1b1b1e);">
+              <label style="font-size: 12px; color: light-dark(#6b7588, #99999c); cursor: pointer;">Kéo thả hoặc <span style="color: light-dark(#2f6fed, #6392ee); font-weight: 600;">chọn ảnh</span><input type="file" accept="image/*" multiple onchange="{{ onIssImagePick }}" style="display: none;"></label>
               <sc-if value="{{ hasIssImages }}" hint-placeholder-val="{{ false }}">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center;">
                   <sc-for list="{{ issImages }}" as="im" hint-placeholder-count="1">
-                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e7ee; background: #000;">
+                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid light-dark(#e2e7ee, #27272a); background: #000;">
                       <img src="{{ im.url }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
                       <span onclick="{{ im.onRemove }}" title="Xóa" style="position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; cursor: pointer;">✕</span>
                     </div>
@@ -562,13 +568,13 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
             </div>
           </div>
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; font-weight: 600; color: #3a4555;">Video <sc-if value="{{ vidRequired }}" hint-placeholder-val="{{ false }}"><span style="color: #e0453a;">* (bắt buộc)</span></sc-if></span>
-            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssVideoDrop }}" style="border: 1.5px dashed #c7cfda; border-radius: 8px; padding: 12px; text-align: center; background: #fafbfd;">
-              <label style="font-size: 12px; color: #6b7588; cursor: pointer;">Kéo thả hoặc <span style="color: #2f6fed; font-weight: 600;">chọn video</span><input type="file" accept="video/*" multiple onchange="{{ onIssVideoPick }}" style="display: none;"></label>
+            <span style="font-size: 12px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca);">Video <sc-if value="{{ vidRequired }}" hint-placeholder-val="{{ false }}"><span style="color: light-dark(#e0453a, #e77269);">* (bắt buộc)</span></sc-if></span>
+            <div ondragover="{{ onIssDragOver }}" ondrop="{{ onIssVideoDrop }}" style="border: 1.5px dashed light-dark(#c7cfda, #39393c); border-radius: 8px; padding: 12px; text-align: center; background: light-dark(#fafbfd, #1b1b1e);">
+              <label style="font-size: 12px; color: light-dark(#6b7588, #99999c); cursor: pointer;">Kéo thả hoặc <span style="color: light-dark(#2f6fed, #6392ee); font-weight: 600;">chọn video</span><input type="file" accept="video/*" multiple onchange="{{ onIssVideoPick }}" style="display: none;"></label>
               <sc-if value="{{ hasIssVideos }}" hint-placeholder-val="{{ false }}">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; justify-content: center;">
                   <sc-for list="{{ issVideos }}" as="vd" hint-placeholder-count="1">
-                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e7ee; background: #000;">
+                    <div style="position: relative; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid light-dark(#e2e7ee, #27272a); background: #000;">
                       <video src="{{ vd.url }}" style="width: 100%; height: 100%; object-fit: cover;"></video>
                       <span onclick="{{ vd.onRemove }}" title="Xóa" style="position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; cursor: pointer;">✕</span>
                     </div>
@@ -578,21 +584,21 @@ html, body { margin: 0; height: 100%; overflow: clip; overscroll-behavior: none;
             </div>
           </div>
         </div>
-        <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid #eef1f5;">
-          <span onclick="{{ requestCancelIssue }}" style="font-size: 13px; font-weight: 600; color: #3a4555; background: #f1f4f8; border-radius: 8px; padding: 9px 16px; cursor: pointer;">Hủy</span>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid light-dark(#eef1f5, #202023);">
+          <span onclick="{{ requestCancelIssue }}" style="font-size: 13px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); background: light-dark(#f1f4f8, #222225); border-radius: 8px; padding: 9px 16px; cursor: pointer;">Hủy</span>
           <span onclick="{{ onIssSubmit }}" style="font-size: 13px; font-weight: 600; color: #fff; background: {{ issueSubmitBg }}; border-radius: 8px; padding: 9px 18px; cursor: {{ issueSubmitCursor }};">{{ issueSubmitLabel }}</span>
         </div>
       </div>
     </div>
       <sc-if value="{{ issConfirmCancel }}" hint-placeholder-val="{{ false }}">
       <div onclick="{{ backToIssueForm }}" style="position: fixed; inset: 0; background: rgba(15,23,42,0.42); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 24px;">
-        <div onclick="{{ stopEvt }}" style="width: 372px; max-width: 92%; background: #fff; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); overflow: hidden;">
+        <div onclick="{{ stopEvt }}" style="width: 372px; max-width: 92%; background: light-dark(#fff, #18181b); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.4); overflow: hidden;">
           <div style="padding: 20px 20px 6px; display: flex; flex-direction: column; gap: 8px;">
-            <span style="font-size: 14.5px; font-weight: 700; color: #1f2937;">Đăng ký kiện vấn đề chưa hoàn tất</span>
-            <span style="font-size: 13px; color: #55606f; line-height: 1.45;">Xác nhận hủy thao tác? Thông tin đã nhập sẽ không được lưu.</span>
+            <span style="font-size: 14.5px; font-weight: 700; color: light-dark(#1f2937, #e2e2e5);">Đăng ký kiện vấn đề chưa hoàn tất</span>
+            <span style="font-size: 13px; color: light-dark(#55606f, #aeaeb1); line-height: 1.45;">Xác nhận hủy thao tác? Thông tin đã nhập sẽ không được lưu.</span>
           </div>
           <div style="display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px;">
-            <span onclick="{{ backToIssueForm }}" style="font-size: 13px; font-weight: 600; color: #3a4555; background: #f1f4f8; border-radius: 8px; padding: 9px 16px; cursor: pointer;" style-hover="background:#e7ecf3;">Quay lại</span>
+            <span onclick="{{ backToIssueForm }}" style="font-size: 13px; font-weight: 600; color: light-dark(#3a4555, #c7c7ca); background: light-dark(#f1f4f8, #222225); border-radius: 8px; padding: 9px 16px; cursor: pointer;" style-hover="background:light-dark(#e7ecf3, #29292c);">Quay lại</span>
             <span onclick="{{ confirmCancelIssue }}" style="font-size: 13px; font-weight: 600; color: #fff; background: #e0453a; border-radius: 8px; padding: 9px 18px; cursor: pointer;" style-hover="background:#c93b31;">Hủy thao tác</span>
           </div>
         </div>
@@ -1247,15 +1253,15 @@ class Component extends DCLogic {
     };
     const mains = this.state.counts && this.state.counts.mains ? this.state.counts.mains : {};
     return [
-      { key: 'tong-ton', label: 'Tổng tồn', total: mains ? (mains['tong-ton'] || '0') : '2,505', color: '#e0453a', iconBg: '#fde7e5', icon: I.warehouse },
-      { key: 'hang-den', label: 'Hàng đến', total: mains ? (mains['hang-den'] || '0') : '2,104', color: '#2f6fed', iconBg: '#e4eefe', icon: I.truck },
-      { key: 'phat-hang', label: 'Phát hàng', total: mains ? (mains['phat-hang'] || '0') : '0', color: '#1c8a3c', iconBg: '#e3f4e8', icon: I.package },
-      { key: 'chuyen-hoan', label: 'Chuyển hoàn', total: mains ? (mains['chuyen-hoan'] || '0') : '284', color: '#2f6fed', iconBg: '#e4eefe', icon: I.refresh },
-      { key: 'backlog', label: 'Backlog', total: mains ? (mains['backlog'] || '0') : '238', color: '#e89020', iconBg: '#fdf0db', icon: I.clock },
-      { key: 'cskh', label: 'CSKH', total: mains ? (mains['cskh'] || '0') : '39', color: '#d23a2e', iconBg: '#fde7e5', icon: I.headset },
-      { key: 'kiem-kho', label: 'Kiểm kho', total: mains ? (mains['kiem-kho'] || '0') : '554', color: '#1aa3a3', iconBg: '#dcf3f3', icon: I.grid },
-      { key: 'dung-tram', label: 'Đơn dừng trạm', total: mains ? (mains['dung-tram'] || '0') : '17', color: '#8b5cf6', iconBg: '#efe9fd', icon: I.pause },
-      { key: 'star', label: 'Star', total: mains ? (mains['star'] || '0') : '12', color: '#d99a00', iconBg: '#fff3d4', icon: I.star },
+      { key: 'tong-ton', label: 'Tổng tồn', total: mains ? (mains['tong-ton'] || '0') : '2,505', color: 'light-dark(#e0453a, #e77269)', iconBg: 'light-dark(#fde7e5, #361917)', icon: I.warehouse },
+      { key: 'hang-den', label: 'Hàng đến', total: mains ? (mains['hang-den'] || '0') : '2,104', color: 'light-dark(#2f6fed, #6392ee)', iconBg: 'light-dark(#e4eefe, #172336)', icon: I.truck },
+      { key: 'phat-hang', label: 'Phát hàng', total: mains ? (mains['phat-hang'] || '0') : '0', color: 'light-dark(#1c8a3c, #6fe290)', iconBg: 'light-dark(#e3f4e8, #1c3022)', icon: I.package },
+      { key: 'chuyen-hoan', label: 'Chuyển hoàn', total: mains ? (mains['chuyen-hoan'] || '0') : '284', color: 'light-dark(#2f6fed, #6392ee)', iconBg: 'light-dark(#e4eefe, #172336)', icon: I.refresh },
+      { key: 'backlog', label: 'Backlog', total: mains ? (mains['backlog'] || '0') : '238', color: 'light-dark(#e89020, #eeb163)', iconBg: 'light-dark(#fdf0db, #362a17)', icon: I.clock },
+      { key: 'cskh', label: 'CSKH', total: mains ? (mains['cskh'] || '0') : '39', color: 'light-dark(#d23a2e, #e07970)', iconBg: 'light-dark(#fde7e5, #361917)', icon: I.headset },
+      { key: 'kiem-kho', label: 'Kiểm kho', total: mains ? (mains['kiem-kho'] || '0') : '554', color: 'light-dark(#1aa3a3, #69e7e7)', iconBg: 'light-dark(#dcf3f3, #1b3131)', icon: I.grid },
+      { key: 'dung-tram', label: 'Đơn dừng trạm', total: mains ? (mains['dung-tram'] || '0') : '17', color: '#8b5cf6', iconBg: 'light-dark(#efe9fd, #201736)', icon: I.pause },
+      { key: 'star', label: 'Star', total: mains ? (mains['star'] || '0') : '12', color: 'light-dark(#d99a00, #eec563)', iconBg: 'light-dark(#fff3d4, #362d17)', icon: I.star },
     ];
   }
 
@@ -1341,17 +1347,17 @@ class Component extends DCLogic {
 
   statusForMain(key) {
     const m = {
-      'tong-ton': { text: 'TỒN KHO', bg: '#fdf0db', color: '#c77a14' },
-      'hang-den': { text: 'HÀNG ĐẾN', bg: '#e4eefe', color: '#2f6fed' },
-      'phat-hang': { text: 'ĐANG PHÁT', bg: '#e4eefe', color: '#2f6fed' },
-      'backlog': { text: 'TỒN KHO', bg: '#fdf0db', color: '#c77a14' },
-      'chuyen-hoan': { text: 'CHUYỂN HOÀN', bg: '#e4eefe', color: '#2f6fed' },
-      'kiem-kho': { text: 'KIỂM KHO', bg: '#dcf3f3', color: '#1aa3a3' },
-      'cskh': { text: 'KHIẾU NẠI', bg: '#fde7e5', color: '#d23a2e' },
-      'dung-tram': { text: 'DỪNG TRẠM', bg: '#efe9fd', color: '#7c4ddb' },
-      'star': { text: 'ĐÃ GHIM', bg: '#fff3d4', color: '#b07d00' },
+      'tong-ton': { text: 'TỒN KHO', bg: 'light-dark(#fdf0db, #362a17)', color: 'light-dark(#c77a14, #eeb263)' },
+      'hang-den': { text: 'HÀNG ĐẾN', bg: 'light-dark(#e4eefe, #172336)', color: 'light-dark(#2f6fed, #6392ee)' },
+      'phat-hang': { text: 'ĐANG PHÁT', bg: 'light-dark(#e4eefe, #172336)', color: 'light-dark(#2f6fed, #6392ee)' },
+      'backlog': { text: 'TỒN KHO', bg: 'light-dark(#fdf0db, #362a17)', color: 'light-dark(#c77a14, #eeb263)' },
+      'chuyen-hoan': { text: 'CHUYỂN HOÀN', bg: 'light-dark(#e4eefe, #172336)', color: 'light-dark(#2f6fed, #6392ee)' },
+      'kiem-kho': { text: 'KIỂM KHO', bg: 'light-dark(#dcf3f3, #1b3131)', color: 'light-dark(#1aa3a3, #69e7e7)' },
+      'cskh': { text: 'KHIẾU NẠI', bg: 'light-dark(#fde7e5, #361917)', color: 'light-dark(#d23a2e, #e07970)' },
+      'dung-tram': { text: 'DỪNG TRẠM', bg: 'light-dark(#efe9fd, #201736)', color: 'light-dark(#7c4ddb, #956fe2)' },
+      'star': { text: 'ĐÃ GHIM', bg: 'light-dark(#fff3d4, #362d17)', color: 'light-dark(#b07d00, #eec563)' },
     };
-    return m[key] || { text: 'CHỜ XỬ LÝ', bg: '#f0f2f6', color: '#5a6678' };
+    return m[key] || { text: 'CHỜ XỬ LÝ', bg: 'light-dark(#f0f2f6, #232326)', color: 'light-dark(#5a6678, #a8a8ab)' };
   }
 
   leftShowsCodes(key, sub) {
@@ -1403,9 +1409,9 @@ class Component extends DCLogic {
       out.push({
         label: String(i + 1),
         onSelect: () => this.setState({ page: i }),
-        bg: active ? '#2f6fed' : '#fff',
-        color: active ? '#fff' : '#3a4555',
-        border: active ? '#2f6fed' : '#e2e7ee',
+        bg: active ? '#2f6fed' : 'light-dark(#fff, #18181b)',
+        color: active ? '#fff' : 'light-dark(#3a4555, #c7c7ca)',
+        border: active ? '#2f6fed' : 'light-dark(#e2e7ee, #27272a)',
         weight: active ? '600' : '500',
       });
     }
@@ -1511,9 +1517,9 @@ class Component extends DCLogic {
     const mains = mainDefs.map(m => {
       const active = m.key === mainKey;
       m.onSelect = () => this.setState({ mainKey: m.key, subKey: this.defaultSubKeyFor(m.key), subLabel: this.defaultSubFor(m.key), mode: 'list', waybill: null, page: 0 });
-      m.bg = active ? '#f3f8ff' : '#fbfcfe';
-      m.border = active ? accent : '#e7ebf1';
-      m.labelColor = active ? '#1f2937' : '#6b7588';
+      m.bg = active ? 'light-dark(#f3f8ff, #172436)' : 'light-dark(#fbfcfe, #1a1a1d)';
+      m.border = active ? accent : 'light-dark(#e7ebf1, #242427)';
+      m.labelColor = active ? 'light-dark(#1f2937, #e2e2e5)' : 'light-dark(#6b7588, #99999c)';
       m.iconEl = React.createElement('span', { style: { display: 'flex' }, dangerouslySetInnerHTML: { __html: m.icon } });
       return m;
     });
@@ -1523,12 +1529,12 @@ class Component extends DCLogic {
       return {
         key: s.key, label: s.label, count: s.count,
         onSelect: () => this.setState({ subKey: s.key, subLabel: s.label, mode: 'list', waybill: null, page: 0 }),
-        bg: active ? accent : '#f4f6f9',
-        border: active ? accent : '#e7ebf1',
-        color: active ? '#fff' : '#3a4555',
+        bg: active ? accent : 'light-dark(#f4f6f9, #202023)',
+        border: active ? accent : 'light-dark(#e7ebf1, #242427)',
+        color: active ? '#fff' : 'light-dark(#3a4555, #c7c7ca)',
         weight: active ? '600' : '500',
-        badgeBg: active ? 'rgba(255,255,255,0.25)' : '#e6eaf0',
-        badgeColor: active ? '#fff' : '#5a6678',
+        badgeBg: active ? 'rgba(255,255,255,0.25)' : 'light-dark(#e6eaf0, #2a2a2d)',
+        badgeColor: active ? '#fff' : 'light-dark(#5a6678, #a8a8ab)',
       };
     });
 
@@ -1585,10 +1591,10 @@ class Component extends DCLogic {
       };
       const isActive = wb && o.code === wb.code;
       o.isStar = !!starredCodes[o.code];
-      o.activeBg = isActive ? '#eef4ff' : (o.isStar ? '#fff6da' : '#fff');
-      o.activeBorder = isActive ? accent : (o.isStar ? '#e9c860' : '#eef1f5');
-      o.starInk = o.isStar ? '#f5a623' : 'transparent';
-      o.codeColor = o.isStar ? '#b8860b' : '#2f6fed';
+      o.activeBg = isActive ? 'light-dark(#eef4ff, #172236)' : (o.isStar ? 'light-dark(#fff6da, #362e17)' : 'light-dark(#fff, #18181b)');
+      o.activeBorder = isActive ? accent : (o.isStar ? '#e9c860' : 'light-dark(#eef1f5, #202023)');
+      o.starInk = o.isStar ? 'light-dark(#f5a623, #eeb963)' : 'transparent';
+      o.codeColor = o.isStar ? 'light-dark(#b8860b, #eec663)' : 'light-dark(#2f6fed, #6392ee)';
       o.rowAccent = o.isStar ? '#f5a623' : 'transparent';
     });
 
@@ -1603,11 +1609,11 @@ class Component extends DCLogic {
       ? 'Quá nhiều đơn'
       : 'Không có đơn';
 
-    const blue = { badgeBg: '#e4eefe', badgeColor: '#2f6fed' };
-    const green = { badgeBg: '#e3f4e8', badgeColor: '#1c8a3c' };
-    const teal = { badgeBg: '#dcf3f3', badgeColor: '#1aa3a3' };
-    const purple = { badgeBg: '#efe9fd', badgeColor: '#7c4ddb' };
-    const orange = { badgeBg: '#fdf0db', badgeColor: '#d98318' };
+    const blue = { badgeBg: 'light-dark(#e4eefe, #172336)', badgeColor: 'light-dark(#2f6fed, #6392ee)' };
+    const green = { badgeBg: 'light-dark(#e3f4e8, #1c3022)', badgeColor: 'light-dark(#1c8a3c, #6fe290)' };
+    const teal = { badgeBg: 'light-dark(#dcf3f3, #1b3131)', badgeColor: 'light-dark(#1aa3a3, #69e7e7)' };
+    const purple = { badgeBg: 'light-dark(#efe9fd, #201736)', badgeColor: 'light-dark(#7c4ddb, #956fe2)' };
+    const orange = { badgeBg: 'light-dark(#fdf0db, #362a17)', badgeColor: 'light-dark(#d98318, #eeb063)' };
 
     let rows = [];
     if (this.state.journeyRows && this.state.journeyRows.length > 0) {
@@ -1625,8 +1631,8 @@ class Component extends DCLogic {
           type: type, badgeBg: badge.badgeBg, badgeColor: badge.badgeColor,
           desc: item.Description || item.description || '-',
           source: item.ScanSite || item.scanSite || item.ScanSource || item.scanSource || '-',
-          dotColor: i === this.state.journeyRows.length - 1 ? '#1c8a3c' : '#c3cad6',
-          dotFill: i === this.state.journeyRows.length - 1 ? '#1c8a3c' : '#fff',
+          dotColor: i === this.state.journeyRows.length - 1 ? '#1c8a3c' : 'light-dark(#c3cad6, #3c3c3f)',
+          dotFill: i === this.state.journeyRows.length - 1 ? '#1c8a3c' : 'light-dark(#fff, #18181b)',
         };
       });
     } else {
@@ -1650,8 +1656,8 @@ class Component extends DCLogic {
       detailGroups.forEach(g => g.rows.forEach(r => { r.isList = !!r.isList; r.isText = !r.isList; }));
       badges = [
         { t: status.text, bg: status.bg, c: status.color },
-        { t: 'COD ' + wb.cod, bg: '#e4eefe', c: '#2f6fed' },
-        { t: wb.service.toUpperCase(), bg: '#fdeede', c: '#d98318' },
+        { t: 'COD ' + wb.cod, bg: 'light-dark(#e4eefe, #172336)', c: 'light-dark(#2f6fed, #6392ee)' },
+        { t: wb.service.toUpperCase(), bg: 'light-dark(#fdeede, #362717)', c: 'light-dark(#d98318, #eeb063)' },
       ];
       suggestions = this.suggestForMain(mainKey);
       wbCode = wb.code; wbWeight = wb.weight;
@@ -1659,19 +1665,19 @@ class Component extends DCLogic {
 
     const rt = this.state.rightTab || 'info';
     const rtDefs = [['info', 'Thông tin cơ bản'], ['history', 'Lịch sử kiện vấn đề'], ['complaint', 'Khiếu nại']];
-    const rightTabs = rtDefs.map(d => ({ label: d[1], onSelect: () => this.setState({ rightTab: d[0] }), bg: rt === d[0] ? accent : '#f1f4f8', fg: rt === d[0] ? '#fff' : '#6b7588', weight: rt === d[0] ? '600' : '500' }));
+    const rightTabs = rtDefs.map(d => ({ label: d[1], onSelect: () => this.setState({ rightTab: d[0] }), bg: rt === d[0] ? accent : 'light-dark(#f1f4f8, #222225)', fg: rt === d[0] ? '#fff' : 'light-dark(#6b7588, #99999c)', weight: rt === d[0] ? '600' : '500' }));
     const showInfo = rt === 'info', showHistory = rt === 'history', showComplaint = rt === 'complaint';
     const rawNotes = hasWaybill ? this.notesFor(wb.code) : [];
     const noteList = rawNotes.map(n => ({
       text: n.text, author: n.author, time: n.time, done: !!n.done, notDone: !n.done,
       onToggle: () => this.toggleNoteDone(wb.code, n.id),
-      cardBg: n.done ? '#eef4ee' : '#f6f8fb',
-      cardBorder: n.done ? '#cfe3cf' : '#e7ebf1',
-      textColor: n.done ? '#9aa7a0' : '#2d3645',
-      authorColor: n.done ? '#9aa7a0' : '#6b7588',
-      metaColor: n.done ? '#a9b3ad' : '#97a1b2',
+      cardBg: n.done ? 'light-dark(#eef4ee, #262628)' : 'light-dark(#f6f8fb, #1e1e21)',
+      cardBorder: n.done ? 'light-dark(#cfe3cf, #353538)' : 'light-dark(#e7ebf1, #242427)',
+      textColor: n.done ? 'light-dark(#9aa7a0, #737376)' : 'light-dark(#2d3645, #d5d5d8)',
+      authorColor: n.done ? 'light-dark(#9aa7a0, #737376)' : 'light-dark(#6b7588, #99999c)',
+      metaColor: n.done ? 'light-dark(#a9b3ad, #67676a)' : 'light-dark(#97a1b2, #717174)',
       textDecoration: n.done ? 'line-through' : 'none',
-      iconColor: n.done ? '#1c8a3c' : '#c3cad6',
+      iconColor: n.done ? 'light-dark(#1c8a3c, #6fe290)' : 'light-dark(#c3cad6, #4b4b4e)',
       tickTitle: n.done ? 'Bỏ đánh dấu đã xử lý' : 'Đánh dấu đã xử lý xong',
     }));
     const idata = this.state.issueData;
@@ -1709,7 +1715,7 @@ class Component extends DCLogic {
     // "Bưu cục tiếp nhận" typeahead results + caption ("[code] name").
     const issNetResultsView = (this.state.issNetResults || []).map((r, i) => ({
       code: r.code, label: '[' + r.code + '] ' + (r.name || ''),
-      bg: (this.state.issNetActive === i) ? '#eef4ff' : '#fff',
+      bg: (this.state.issNetActive === i) ? 'light-dark(#eef4ff, #172236)' : 'light-dark(#fff, #18181b)',
       onSelect: () => this.pickNet(r)
     }));
     const issNetCaption = this.state.issNetwork
@@ -1779,7 +1785,7 @@ class Component extends DCLogic {
       onIssLevel1Change: this.onIssLevel1Change, onIssLevel2Change: this.onIssLevel2Change, onIssNetworkChange: this.onIssNetworkChange,
       onIssSubmit: this.onIssSubmit,
       issueCanSubmit: issueCanSubmit,
-      issueSubmitBg: issueCanSubmit ? '#2f6fed' : '#c7cfda',
+      issueSubmitBg: issueCanSubmit ? '#2f6fed' : 'light-dark(#c7cfda, #424245)',
       issueSubmitCursor: issueCanSubmit ? 'pointer' : 'not-allowed',
       issueSubmitLabel: this.state.issueSubmitting ? 'Đang gửi...' : 'Đăng ký',
       toastShow: !!toast, toastText: toast ? toast.text : '', toastBg: (toast && toast.ok) ? '#1c8a3c' : '#d23a2e',
@@ -1797,8 +1803,8 @@ class Component extends DCLogic {
       pages: this.buildPageButtons(page, pageCount),
       pagePrev: () => this.setState(s => ({ page: Math.max(0, (s.page || 0) - 1) })),
       pageNext: () => this.setState(s => ({ page: Math.min(pageCount - 1, (s.page || 0) + 1) })),
-      prevColor: page <= 0 ? '#c3cad6' : '#6b7588', prevBg: page <= 0 ? '#f6f8fb' : '#fff',
-      nextColor: page >= pageCount - 1 ? '#c3cad6' : '#6b7588', nextBg: page >= pageCount - 1 ? '#f6f8fb' : '#fff',
+      prevColor: page <= 0 ? 'light-dark(#c3cad6, #4b4b4e)' : 'light-dark(#6b7588, #99999c)', prevBg: page <= 0 ? 'light-dark(#f6f8fb, #1e1e21)' : 'light-dark(#fff, #18181b)',
+      nextColor: page >= pageCount - 1 ? 'light-dark(#c3cad6, #4b4b4e)' : 'light-dark(#6b7588, #99999c)', nextBg: page >= pageCount - 1 ? 'light-dark(#f6f8fb, #1e1e21)' : 'light-dark(#fff, #18181b)',
       hasSub: !!activeSub, centerCountText: realCount,
       activeStatusText: status.text, activeStatusBg: status.bg, activeStatusColor: status.color,
       backToList: () => this.setState({ mode: 'list', waybill: null }),
@@ -1807,15 +1813,15 @@ class Component extends DCLogic {
       canCopyLeft: leftCodes || leftStats, cannotCopyLeft: !(leftCodes || leftStats),
       copyIconD: AJ_ICON(this.state.copied ? 'check' : 'copy'),
       copyLabel: this.state.copied ? 'Đã copy' : 'Copy',
-      copyColor: this.state.copied ? '#1c8a3c' : '#3a4555',
-      copyBorder: this.state.copied ? '#bfe3c8' : '#d7dde6',
-      copyBg: this.state.copied ? '#eef8f0' : '#fff',
+      copyColor: this.state.copied ? 'light-dark(#1c8a3c, #6fe290)' : 'light-dark(#3a4555, #c7c7ca)',
+      copyBorder: this.state.copied ? 'light-dark(#bfe3c8, #3a3a3e)' : 'light-dark(#d7dde6, #2e2e32)',
+      copyBg: this.state.copied ? 'light-dark(#eef8f0, #1d3021)' : 'light-dark(#fff, #18181b)',
       copyJourney: () => this.copyJourney(rows),
       journeyCopyIconD: AJ_ICON(this.state.journeyCopied ? 'check' : 'copy'),
       journeyCopyLabel: this.state.journeyCopied ? 'Đã copy' : 'Copy',
-      journeyCopyColor: this.state.journeyCopied ? '#1c8a3c' : '#3a4555',
-      journeyCopyBorder: this.state.journeyCopied ? '#bfe3c8' : '#d7dde6',
-      journeyCopyBg: this.state.journeyCopied ? '#eef8f0' : '#fff',
+      journeyCopyColor: this.state.journeyCopied ? 'light-dark(#1c8a3c, #6fe290)' : 'light-dark(#3a4555, #c7c7ca)',
+      journeyCopyBorder: this.state.journeyCopied ? 'light-dark(#bfe3c8, #3a3a3e)' : 'light-dark(#d7dde6, #2e2e32)',
+      journeyCopyBg: this.state.journeyCopied ? 'light-dark(#eef8f0, #1d3021)' : 'light-dark(#fff, #18181b)',
       refreshJourney: this.refreshJourney,
       refreshSpinClass: this.state.journeyRefreshing ? 'aj-spin' : '',
       rows, wbCode, wbWeight,
@@ -1828,9 +1834,9 @@ class Component extends DCLogic {
       copyWaybill: this.copyWaybill,
       wbCopyIconD: AJ_ICON(this.state.wbCopied ? 'check' : 'copy'),
       wbCopyLabel: this.state.wbCopied ? 'Đã copy' : 'Copy',
-      wbCopyColor: this.state.wbCopied ? '#1c8a3c' : '#3a4555',
-      wbCopyBorder: this.state.wbCopied ? '#bfe3c8' : '#d7dde6',
-      wbCopyBg: this.state.wbCopied ? '#eef8f0' : '#fff',
+      wbCopyColor: this.state.wbCopied ? 'light-dark(#1c8a3c, #6fe290)' : 'light-dark(#3a4555, #c7c7ca)',
+      wbCopyBorder: this.state.wbCopied ? 'light-dark(#bfe3c8, #3a3a3e)' : 'light-dark(#d7dde6, #2e2e32)',
+      wbCopyBg: this.state.wbCopied ? 'light-dark(#eef8f0, #1d3021)' : 'light-dark(#fff, #18181b)',
       toggleStar: () => {
         if (!wb) return;
         this.setState(s => {
@@ -1843,9 +1849,9 @@ class Component extends DCLogic {
         });
       },
       starFill: starActive ? '#f5b301' : 'none',
-      starColor: starActive ? '#b07d00' : '#6b7588',
-      starBg: starActive ? '#fff7df' : '#fff',
-      starBorder: starActive ? '#f0d588' : '#d7dde6',
+      starColor: starActive ? 'light-dark(#b07d00, #eec563)' : 'light-dark(#6b7588, #99999c)',
+      starBg: starActive ? 'light-dark(#fff7df, #362e17)' : 'light-dark(#fff, #18181b)',
+      starBorder: starActive ? 'light-dark(#f0d588, #63552c)' : 'light-dark(#d7dde6, #2e2e32)',
       starLabel: 'Star',
       siteId: this.state.siteId || '---',
       lastUpdateTime: this.state.lastUpdateTime || '00:00:00',
