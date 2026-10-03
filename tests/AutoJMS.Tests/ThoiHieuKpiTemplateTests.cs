@@ -61,15 +61,22 @@ public sealed class ThoiHieuKpiTemplateTests
         Assert.Empty(bad);
     }
 
-    // I5 nằm trong vùng shared formula: chỉ đúng khi LoadTemplate có gọi Recalculate.
+    // Chưa nhập file thì không hiện số liệu ảo: mọi ô số là 0, tên/giám sát/mã bưu cục để trống. J5 nằm trong vùng
+    // shared formula: thiếu Recalculate thì ra NaN thay vì 0.
     [Fact]
-    public void Template_SharedFormulas_AreCalculated()
+    public void Template_BeforeImport_ShowsZerosOnly()
     {
         var sheet = LoadSummary(out _);
-        double sum = Enumerable.Range(10, 17).Sum(col => Value(sheet, 4, col));   // K5:AA5
-        Assert.True(sum > 0);
-        Assert.Equal(sum, Value(sheet, 4, 8));                                     // I5
-        Assert.Equal(Value(sheet, 2, 5) * 0.911, Value(sheet, 2, 6), 9);           // G3 = F3 × 91,1%
+        Assert.Equal("BẢNG KÝ NHẬN THỜI HIỆU THEO MỐC THỜI GIAN", sheet.Cells[0, 0].Data);
+        foreach (int col in new[] { 11, 13, 15, 17, 19, 21, 24 })                   // L1 N1 P1 R1 T1 V1 Y1
+            Assert.Equal(0, Value(sheet, 0, col));
+        for (int row = 2; row <= TotalRow; row++)
+        {
+            foreach (int col in new[] { 1, 2, 4 })                                  // B giám sát, C bưu cục, E tên
+                Assert.True(string.IsNullOrEmpty(sheet.Cells[row, col].DisplayText), sheet.Cells[row, col].Address);
+            for (int col = 5; col <= 28; col++)                                     // F..AC
+                Assert.True(Value(sheet, row, col) == 0, $"{sheet.Cells[row, col].Address}={sheet.Cells[row, col].Data}");
+        }
     }
 
     [Fact]
@@ -78,13 +85,13 @@ public sealed class ThoiHieuKpiTemplateTests
         var sheet = LoadSummary(out _);
         Assert.Equal(TotalRow, ThoiHieuKpiConditionalFormat.FindTotalRow(sheet));
 
-        // Ô nhỏ nhất của K3:AA30 mang màu min của thang.
-        var min = (Row: 0, Col: 0, Value: double.MaxValue);
+        // K3:AA30 toàn 0: Excel tô cả vùng màu max của thang (đã đối chiếu DisplayFormat trên Excel thật).
         for (int row = 2; row < TotalRow; row++)
             for (int col = 10; col <= 26; col++)
-                if (Value(sheet, row, col) < min.Value) min = (row, col, Value(sheet, row, col));
-        var back = sheet.GetCell(min.Row, min.Col).Style.BackColor;
-        Assert.Equal((0xF8, 0x69, 0x6B), (back.R, back.G, back.B));
+            {
+                var back = sheet.GetCell(row, col).Style.BackColor;
+                Assert.Equal((0x5A, 0x8A, 0xC6), (back.R, back.G, back.B));
+            }
 
         // Dòng Tổng nằm ngoài vùng thang màu: giữ nền đỏ FF0000 của file gốc.
         var total = sheet.GetCell(TotalRow, 10).Style.BackColor;

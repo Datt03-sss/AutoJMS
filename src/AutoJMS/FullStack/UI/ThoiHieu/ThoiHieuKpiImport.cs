@@ -54,16 +54,19 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 int waybill = Column(WaybillHeader), employee = Column(NameHeader), signed = Column(SignedHeader), site = Column(SiteHeader);
                 if (waybill == 0 || employee == 0 || signed == 0) continue;
 
+                // Cùng một tên có dòng gõ dựng sẵn, có dòng gõ tổ hợp (file JMS thật có): nhìn y hệt nhưng khác chuỗi.
+                // Pivot tách làm hai người còn COUNTIFS gộp, nên file Excel gốc thiếu đơn ở cột F. Chuẩn hoá NFC rồi
+                // gộp không phân biệt hoa thường như COUNTIFS.
                 var rows = sheet.RowsUsed(r => r.RowNumber() > header.RowNumber())
                     .Select(r => (Waybill: r.Cell(waybill).GetString().Trim(),
-                                  Name: r.Cell(employee).GetString().Trim(),
+                                  Name: r.Cell(employee).GetString().Trim().Normalize(),
                                   SignedAt: ReadTime(r.Cell(signed)),
                                   Site: site == 0 ? "" : r.Cell(site).GetString().Trim()))
                     .ToList();
 
                 // Như pivot: đếm mã vận đơn khác rỗng theo tên, xếp tên như Excel; dòng không tên là "(blank)", bỏ.
                 var employees = rows.Where(r => r.Name.Length > 0)
-                    .GroupBy(r => r.Name)
+                    .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
                     .OrderBy(g => g.Key, ExcelNameOrder)
                     .Select(g =>
                     {
@@ -152,7 +155,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 summary.Cells[r, 6].Formula = $"F{x}*911/1000";   // 91,1%: số thập phân trong công thức vỡ dưới culture vi-VN
                 summary.Cells[r, 7].Formula = $"F{x}*90%";
                 summary.Cells[r, 8].Formula = $"SUM(K{x}:AA{x})";
-                summary.Cells[r, 9].Formula = $"I{x}/F{x}";
+                summary.Cells[r, 9].Formula = $"IF(F{x}=0, 0, I{x}/F{x})";   // không ra #DIV/0!; ReoGrid đọc "0,0" thành số nên phải có dấu cách
                 for (int h = 0; h < HourColumns; h++) summary[r, ColK + h] = e.Hours[h];
                 summary.Cells[r, 27].Formula = $"G{x}-I{x}";
                 summary.Cells[r, 28].Formula = $"H{x}-I{x}";
@@ -162,7 +165,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             foreach (int c in new[] { 5, 6, 7 }.Concat(Enumerable.Range(ColK, HourColumns)))
                 summary.Cells[total, c].Formula = $"SUM({new RangePosition(FirstBodyRow, c, n, 1).ToAddress()})";
             summary.Cells[total, 8].Formula = $"SUM(K{xt}:AA{xt})";
-            summary.Cells[total, 9].Formula = $"I{xt}/F{xt}";
+            summary.Cells[total, 9].Formula = $"IF(F{xt}=0, 0, I{xt}/F{xt})";
             summary.Cells[total, 27].Formula = $"G{xt}-I{xt}";
             summary.Cells[total, 28].Formula = $"H{xt}-I{xt}";
             summary.Cells[0, 19].Formula = $"F{xt}";   // T1 "Cần phát ra"

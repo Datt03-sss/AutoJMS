@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using AutoJMS.FullStack.UI.ThoiHieu;
 using ClosedXML.Excel;
 using unvell.ReoGrid;
@@ -98,6 +99,24 @@ public sealed class ThoiHieuKpiImportTests : IDisposable
 
         Assert.Equal(7, data.Rows.Count);               // sheet data nhận đủ mọi dòng, kể cả dòng không tên
         Assert.Null(data.Rows[2].SignedAt);
+    }
+
+    // File JMS thật có cùng một tên, dòng gõ dấu dựng sẵn (NFC), dòng gõ dấu tổ hợp (NFD): nhìn y hệt, khác chuỗi.
+    // COUNTIFS coi là một người; pivot tách hai nên file Excel gốc thiếu đơn ở cột F. App phải ra một người.
+    [Fact]
+    public void Read_SameNameInComposedAndDecomposedForm_IsOneEmployee()
+    {
+        string composed = "Nguyễn Văn B", decomposed = composed.Normalize(NormalizationForm.FormD);
+        Assert.NotEqual(composed, decomposed);
+        var data = ThoiHieuKpiImport.Read(WriteImport(
+            new object[] { "W1", composed, new DateTime(2026, 10, 2, 9, 15, 0) },
+            new object[] { "W2", decomposed, new DateTime(2026, 10, 2, 9, 45, 0) },
+            new object[] { "W3", "NGUYỄN VĂN B", "" }));
+
+        var e = Assert.Single(data.Employees);
+        Assert.Equal(composed, e.Name);
+        Assert.Equal(3, e.Orders);
+        Assert.Equal(2, e.Hours[1]);                    // L = 9h
     }
 
     [Fact]
