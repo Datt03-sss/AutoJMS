@@ -93,6 +93,8 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.18.0" />
     <PackageReference Include="System.Management" Version="10.0.7" />
     <PackageReference Include="Velopack" Version="1.2.0" />
+    <!-- Bảng tính cho tab Thời hiệu (FullStack): nạp xlsx, vẽ giống Excel. MIT. -->
+    <PackageReference Include="unvell.ReoGrid.dll" Version="3.3.1" />
   </ItemGroup>
 
   <ItemGroup>
