@@ -168,3 +168,7 @@ docs/manual/tonkho30ngay.xlsx
 # ignore, nên chỉ một lần `git add .` là key lên repo PUBLIC này. Owner cho phép Claude Code
 # đọc khi debug cần license (chat 2026-09-26), nhưng không bao giờ commit.
 tests/AutoJMS.Tests/AdminLicenseTest/
+
+# File Excel gốc Owner để làm mẫu layout tab Thời hiệu: chứa tên nhân viên thật. Chỉ file mẫu đã
+# làm sạch src/AutoJMS/FullStack/UI/ThoiHieu/ThoiHieuKpi.template.xlsx được commit.
+docs/layout/tabThoiHieu/*.xls
