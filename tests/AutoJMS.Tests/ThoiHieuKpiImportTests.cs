@@ -149,29 +149,38 @@ public sealed class ThoiHieuKpiImportTests : IDisposable
         AssertFormulasNormal(sheet);
     }
 
-    // Lưới đang hiện (có handle) nhập lần hai: vị trí chữ đã cache phải khớp ô sau khi chèn hàng, không thì chú thích dưới
-    // Tổng vẽ lệch xuống dưới. ReoGrid không lộ TextBounds/Bounds ra public nên đọc bằng reflection.
+    // Như trên app: lưới đã vẽ số mẫu (mọi ô có hộp chữ cache) rồi mới Nhập file. ReoGrid chèn/xoá hàng dời hộp chữ cache
+    // sai theo zoom, chú thích dưới Tổng vẽ lệch xuống/mất. ReoGrid không lộ TextBounds/Bounds ra public nên đọc bằng reflection.
     [Theory]
     [InlineData(41)]
     [InlineData(1)]
-    public void Fill_OnLiveGrid_KeepsTextInsideMovedCells(int employees)
+    public void Fill_OnPaintedGrid_DrawsEveryTextInsideItsCell(int employees)
     {
-        using var grid = new ReoGridControl { Size = new System.Drawing.Size(1400, 1300) };
-        _ = grid.Handle;
+        // Thấp hơn bảng ở zoom 100% như cửa sổ thật: lỗi chỉ lộ khi chú thích nằm ngoài khung nhìn lúc đổi zoom.
+        using var grid = new ReoGridControl { Size = new System.Drawing.Size(1400, 1000) };
+        using var bitmap = new System.Drawing.Bitmap(grid.Width, grid.Height);
+        void Paint() => grid.DrawToBitmap(bitmap, new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height));
         grid.CurrentWorksheet = ThoiHieuKpiView.LoadTemplate(grid);
+        Paint();
         var sheet = grid.CurrentWorksheet = ThoiHieuKpiView.LoadTemplate(grid, FakeImport(employees));
+        Paint();
         int total = ThoiHieuKpiConditionalFormat.FindTotalRow(sheet);
 
         const System.Reflection.BindingFlags any = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
         var textBounds = typeof(Cell).GetProperty("TextBounds", any)!;
         var bounds = typeof(Cell).GetProperty("Bounds", any)!;
-        // "Giám sát" (B gộp), "Quy ước màu tỷ lệ", dòng chú thích đầu và cuối
-        foreach (var cell in new[] { sheet.Cells[2, 1], sheet.Cells[total + 1, 1], sheet.Cells[total + 1, 4], sheet.Cells[total + 3, 4] })
+        var fontDirty = typeof(Cell).GetProperty("FontDirty", any)!;
+        var misplaced = new List<string>();
+        sheet.IterateCells(new RangePosition(0, 0, total + 4, 30), (row, col, cell) =>
         {
+            if (string.IsNullOrEmpty(cell.DisplayText) || (bool)fontDirty.GetValue(cell)!) return true;   // ô chờ đo sẽ đo lúc vẽ
             var text = (unvell.ReoGrid.Graphics.Rectangle)textBounds.GetValue(cell)!;
             var box = (unvell.ReoGrid.Graphics.Rectangle)bounds.GetValue(cell)!;
-            Assert.InRange((text.Y + text.Height / 2) / sheet.ScaleFactor, box.Y, box.Bottom);   // tâm chữ nằm trong ô
-        }
+            float middle = (text.Y + text.Height / 2) / sheet.ScaleFactor;   // hộp chữ tính theo zoom, ô thì không
+            if (middle < box.Y || middle > box.Bottom) misplaced.Add($"{cell.Address} \"{cell.DisplayText}\"");
+            return true;
+        });
+        Assert.Empty(misplaced);
     }
 
     private static void AssertFormulasNormal(Worksheet sheet)

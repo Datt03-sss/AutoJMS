@@ -126,11 +126,20 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 summary.DeleteRows(FirstBodyRow + 1, TemplateBodyRows - n);   // giữ hàng 3 (đầu merge B) và hàng cuối (viền dưới)
             }
 
-            // File mẫu zoom 70%: ReoGrid chèn/xoá hàng dời vị trí chữ đã cache sai theo zoom và không canh lại chữ ô gộp B,
-            // nên trên lưới đang hiện chú thích dưới Tổng trôi xuống/mất, "Giám sát" lệch. Đặt lại zoom bắt tính lại mọi ô.
-            float zoom = summary.ScaleFactor;
-            summary.ScaleFactor = 1f;
-            summary.ScaleFactor = zoom;
+            // File mẫu zoom 70%: ReoGrid chèn/xoá hàng cộng số px chưa nhân zoom vào vị trí chữ đã đo của ô bị dời, không
+            // canh lại chữ ô gộp B, và đổi zoom chỉ đo lại ô trong khung nhìn. Trên lưới đang hiện "Tổng" và chú thích dưới
+            // Tổng trôi xuống/mất. Ghi lại giá trị (qua null: ghi trùng giá trị bị bỏ qua) đánh dấu ô cần đo lại lúc vẽ.
+            // Ô công thức không ghi lại được: hàng nhân viên và dòng Tổng viết lại công thức ngay dưới đây.
+            summary.IterateCells(new RangePosition(FirstBodyRow, 0, summary.RowCount - FirstBodyRow, summary.ColumnCount), (row, col, cell) =>
+            {
+                if (cell.Data != null && !cell.HasFormula)
+                {
+                    var value = cell.Data;
+                    cell.Data = null;
+                    cell.Data = value;
+                }
+                return true;
+            });
 
             for (int i = 0; i < n; i++)
             {
