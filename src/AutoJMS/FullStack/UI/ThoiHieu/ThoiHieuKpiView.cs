@@ -9,21 +9,26 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
 {
     /// <summary>
     /// Tab "Thời hiệu": bản sao sheet "Tổng" của file Excel thật, nạp từ file mẫu nhúng trong assembly.
-    /// Thanh công cụ chỉ có Xuất ảnh và Mở thư mục; bảng chỉ đọc. Cả tab cố ý không theo theme: luôn sáng kiểu Excel.
+    /// Thanh công cụ: Nhập file (dữ liệu thật từ file JMS), Xuất ảnh, Mở thư mục; bảng chỉ đọc. Cả tab cố ý không theo theme: luôn sáng kiểu Excel.
     /// </summary>
     internal sealed class ThoiHieuKpiView : UserControl
     {
         private const string TemplateResource = "ThoiHieuKpi.template.xlsx";
         private const string SummarySheet = "Tổng";
+        private const string DataSheet = "data";
 
+        private readonly ReoGridControl _grid;
         private readonly Button _openFolderButton;
+        private ThoiHieuKpiImport _data;   // null = đang hiện số mẫu của file mẫu
 
         private static string ExportDirectory => Path.Combine(AppPaths.UserDataDir, "FullStack", "Exports", "ThoiHieu");
 
         public ThoiHieuKpiView()
         {
-            var grid = new ReoGridControl { Dock = DockStyle.Fill };
+            var grid = _grid = new ReoGridControl { Dock = DockStyle.Fill };
 
+            var importButton = CreateButton("Nhập file");
+            importButton.Click += async (s, e) => await ImportFileAsync(importButton);
             var exportButton = CreateButton("Xuất ảnh");
             exportButton.Click += (s, e) => ExportImage();
             _openFolderButton = CreateButton("Mở thư mục");
@@ -31,6 +36,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             _openFolderButton.Click += (s, e) => OpenExportFolder();
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = Color.Transparent };
+            buttons.Controls.Add(importButton);
             buttons.Controls.Add(exportButton);
             buttons.Controls.Add(_openFolderButton);
 
@@ -57,15 +63,16 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             catch (Exception ex)
             {
                 AppLogger.Error("ThoiHieuKpiView: nạp file mẫu thất bại", ex);
+                importButton.Enabled = false;
                 exportButton.Enabled = false;
             }
         }
 
         /// <summary>
-        /// Nạp file mẫu vào <paramref name="workbook"/>, khoá sửa mọi sheet và vẽ phần định dạng ReoGrid không tự
-        /// nạp. Trả về sheet "Tổng". Màn hình, ảnh xuất và test đều đi qua đúng hàm này.
+        /// Nạp file mẫu vào <paramref name="workbook"/>, đổ <paramref name="data"/> (nếu có), khoá sửa mọi sheet và vẽ
+        /// phần định dạng ReoGrid không tự nạp. Trả về sheet "Tổng". Màn hình, ảnh xuất và test đều đi qua đúng hàm này.
         /// </summary>
-        internal static Worksheet LoadTemplate(IWorkbook workbook)
+        internal static Worksheet LoadTemplate(IWorkbook workbook, ThoiHieuKpiImport data = null)
         {
             using (var stream = typeof(ThoiHieuKpiView).Assembly.GetManifestResourceStream(TemplateResource)
                 ?? throw new InvalidOperationException($"Thiếu resource {TemplateResource}"))
@@ -73,6 +80,7 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
                 workbook.Load(stream, FileFormat.Excel2007);
             }
 
+            data?.Fill(workbook.Worksheets[SummarySheet], workbook.Worksheets[DataSheet]);
             foreach (var sheet in workbook.Worksheets)
                 sheet.SetSettings(WorksheetSettings.Edit_Readonly, true);
 
@@ -86,10 +94,10 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
         /// Vẽ A1 tới hết phần chú thích dưới dòng Tổng ra PNG, không có khung Excel. Control không có Form cha nên
         /// không cướp focus và Windows không kẹp kích thước theo màn hình. Trả về đường dẫn file.
         /// </summary>
-        internal static string ExportPng(string directory)
+        internal static string ExportPng(string directory, ThoiHieuKpiImport data)
         {
             using var grid = new ReoGridControl();
-            var sheet = LoadTemplate(grid);
+            var sheet = LoadTemplate(grid, data);
             grid.CurrentWorksheet = sheet;
             sheet.SetSettings(WorksheetSettings.View_ShowHeaders | WorksheetSettings.View_ShowGridLine, false);
             sheet.ScaleFactor = 1f;
@@ -122,11 +130,42 @@ namespace AutoJMS.FullStack.UI.ThoiHieu
             Margin = new Padding(0, 0, S(6), 0)
         };
 
+        private async Task ImportFileAsync(Button importButton)
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Chọn file ký nhận thực tế (Excel)",
+                Filter = "Excel (*.xlsx)|*.xlsx"
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+            importButton.Enabled = false;
+            try
+            {
+                // Đọc vài nghìn dòng bằng ClosedXML mất một nhịp: làm ngoài luồng UI. Nạp lại file mẫu mỗi lần nhập
+                // nên nhập lần hai không cộng dồn lên lần một.
+                var data = await Task.Run(() => ThoiHieuKpiImport.Read(dialog.FileName));
+                _grid.CurrentWorksheet = LoadTemplate(_grid, data);
+                _data = data;
+                AppLogger.Info($"Đã nhập thời hiệu: {data.Employees.Count} nhân viên, {data.Rows.Count} dòng từ {Path.GetFileName(dialog.FileName)}");
+                AToast.Show(this, $"Đã nhập {data.Employees.Count} nhân viên, {data.Employees.Sum(e => e.Orders):N0} đơn.");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("ThoiHieuKpiView.ImportFile failed", ex);
+                MessageBox.Show(this, $"Lỗi nhập file thời hiệu: {ex.Message}", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                importButton.Enabled = true;
+            }
+        }
+
         private void ExportImage()
         {
             try
             {
-                string path = ExportPng(ExportDirectory);
+                string path = ExportPng(ExportDirectory, _data);
                 _openFolderButton.Enabled = true;
                 AppLogger.Info($"Đã xuất ảnh thời hiệu: {path}");
                 AToast.Show(this, "Đã xuất ảnh thời hiệu.");
