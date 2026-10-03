@@ -114,6 +114,9 @@
          trong ASymbols.cs. Không phụ thuộc vào font Windows trên máy người dùng.
          Xem .agent/rules/11-icon-and-animation-rules.md. -->
     <EmbeddedResource Include="Resources\Fonts\lucide.ttf" />
+    <!-- File mẫu tab Thời hiệu: sheet "Tổng" của file Excel thật, dữ liệu đã thay bằng số giả.
+         ThoiHieuKpiView nạp theo LogicalName. -->
+    <EmbeddedResource Include="FullStack\UI\ThoiHieu\ThoiHieuKpi.template.xlsx" LogicalName="ThoiHieuKpi.template.xlsx" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <Optimize>false</Optimize>
